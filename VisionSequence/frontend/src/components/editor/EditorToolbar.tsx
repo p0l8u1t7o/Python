@@ -2,13 +2,13 @@
  * 頂列（EditorToolbar）：兩列，按鈕都是圖示＋短文字，寬度不足時換行（flex-wrap）。
  *  - 第一列：流程名稱、儲存狀態、儲存、範本下拉、配方鈕、綁定配方下拉、（唯讀／問題／鎖定／停用／未教導標籤）；
  *            右側：即時 badge、容量、復原、自動排列、參數卡／Golden Set／匯出／統計圖示。
- *  - 第二列：試跑、用上次影像重跑、上傳暫存影像、批次測試、連續執行、重置；右側：fps 標籤、說明下拉。
+ *  - 第二列：試執行、用上次影像重跑、上傳暫存影像、批次測試、連續執行、重置；右側：fps 標籤、說明下拉。
  * 選取／平移切換在畫布右上角（FlowCanvas 的 CanvasModePanel），不在頂列。
  * 全部是受控 props，狀態與動作都在 FlowEditorPage。
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { BarChart3, BookOpen, ChevronDown, Download, Eraser, FlaskConical, Gem, HelpCircle, ImageUp, Images, Keyboard, LayoutTemplate, Lock, Network, Plug, PowerOff, Radio, Redo2, Save, SlidersHorizontal, Square, TriangleAlert, Undo2, X } from 'lucide-react'
+import { BarChart3, BookOpen, ChevronDown, Download, Eraser, FlaskConical, Gem, HelpCircle, ImageUp, Images, Keyboard, LayoutTemplate, Lock, Network, Pause, Play, Plug, PowerOff, Radio, Redo2, Save, SlidersHorizontal, Square, TriangleAlert, Undo2, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { CapacityPill } from '@/components/layout/AppShell'
@@ -31,10 +31,20 @@ export interface EditorToolbarProps {
   problemCount: number
   execLocked: boolean
   lockHint?: string
-  /** 流程已停用（is_enabled=false）：後端會拒絕連續執行／外部觸發，試跑不受影響 */
+  /** 流程已停用（is_enabled=false）：後端會拒絕連續執行／外部觸發，試執行不受影響 */
   flowDisabled?: boolean
   previewing: boolean
   onPreview: () => void
+  sequenceAvailable: boolean
+  sequenceRunning: boolean
+  sequencePaused: boolean
+  sequenceLabel: string
+  sequenceIntervalMs: number
+  onSequenceStart: () => void
+  onSequencePause: () => void
+  onSequenceResume: () => void
+  onSequenceStop: () => void
+  onSequenceIntervalChange: (value: number) => void
   reuseImage: boolean
   canReuse: boolean
   onReuseChange: (value: boolean) => void
@@ -189,6 +199,37 @@ export function EditorToolbar(p: EditorToolbarProps) {
             {t('editor.preview')}
           </Button>
         </span>
+        {p.sequenceAvailable ? (
+          <span className="flex items-center gap-1.5 rounded-md border border-line px-1.5 py-0.5" title={t('editor.sequenceHint')} data-testid="sequence-preview-controls">
+            {p.sequenceRunning && !p.sequencePaused ? (
+              <Button size="sm" icon={<Pause size={14} />} disabled={p.execLocked} onClick={p.onSequencePause} data-testid="btn-sequence-preview">
+                {t('editor.sequencePause')}
+              </Button>
+            ) : (
+              <Button size="sm" icon={<Play size={14} />} disabled={p.execLocked} onClick={p.sequencePaused ? p.onSequenceResume : p.onSequenceStart} data-testid="btn-sequence-preview">
+                {p.sequencePaused ? t('editor.sequenceResume') : t('editor.sequencePreview')}
+              </Button>
+            )}
+            {p.sequenceRunning || p.sequencePaused ? (
+              <Button size="sm" icon={<Square size={14} />} onClick={p.onSequenceStop} data-testid="btn-sequence-stop">
+                {t('editor.sequenceStop')}
+              </Button>
+            ) : null}
+            <label className="flex items-center gap-1 text-[11px] text-muted" title={t('editor.sequenceIntervalHint')}>
+              {t('editor.sequenceInterval')}
+              <input
+                className="input !h-7 !w-20 !py-0 text-xs"
+                type="number"
+                min={100}
+                step={100}
+                value={p.sequenceIntervalMs}
+                onChange={(e) => p.onSequenceIntervalChange(Math.max(100, Number(e.target.value) || 100))}
+                data-testid="sequence-preview-interval"
+              />
+            </label>
+            <span className="tnum whitespace-nowrap text-[11px] text-muted" data-testid="sequence-preview-status">{p.sequenceLabel}</span>
+          </span>
+        ) : null}
         <label className="flex items-center gap-1 whitespace-nowrap text-[11px] text-muted" title={t('editor.reuseImageHint')}>
           <input type="checkbox" className="accent-[var(--brand)]" checked={p.reuseImage} disabled={!p.canReuse || Boolean(p.scratch)} onChange={(e) => p.onReuseChange(e.target.checked)} data-testid="reuse-image" />
           {t('editor.reuseImage')}

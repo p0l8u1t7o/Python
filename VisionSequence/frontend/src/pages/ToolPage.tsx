@@ -5,7 +5,7 @@
  * 輸入影像上；輸出值只列在下方參考資訊，不疊浮層擋圖）＋下方參考資訊（直方圖／統計／series 橫向排列）；
  * 右＝按鍵（儲存／執行到此步驟／自動套用／重用影像／暫存影像）。
  *
- * 執行模式：預設「按執行鈕才跑」（改參數只暫存生效；可開自動套用改回 250 ms 防抖即跑）。
+ * 執行模式：預設按鈕觸發試執行。改參數只暫存生效, 可開啟自動試執行並使用 500 ms debounce。
  * 參數編輯只寫入共享草稿（lib/flowDraft.ts），按「儲存」才寫回後台；按「返回」且未儲存時，
  * 本頁對此步驟的參數編輯會被放棄（confirm 後還原進頁時的狀態）。有 ROI 參數且已有值時進頁直接顯示。
  */
@@ -24,17 +24,20 @@ import { iconFor } from '@/components/editor/ToolNode'
 import { Button, DetailRow, ErrorState, LoadingState, Modal, StatusBadge, Switch, TextInput } from '@/components/ui'
 import { ImageViewer } from '@/components/viewer/ImageViewer'
 import { imageUrl } from '@/lib/api'
+import { createDebouncedCall, type DebouncedCall } from '@/lib/debounce'
 import { useConfirm } from '@/lib/useConfirm'
 import { useRegisterAssistantContext } from '@/lib/assistantContext'
 import { errorMessage } from '@/lib/errors'
 import { getSession, patchDraftNode, setDraft, updateSession, useFlowSession } from '@/lib/flowDraft'
+import { readToolAutoPreview, writeToolAutoPreview } from '@/lib/localState'
 import { previewFlow, useAssetMutations, useFlow, useFlowMutations, useScratchImage, useToolTypes } from '@/lib/queries'
 import { isImageRef, type GraphNode, type NodeAnalysis, type Region, type ToolTypeDef } from '@/lib/types'
 import { isLockHolder, useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
 import { firstImageOutput, inputImage, sourceRefOf } from './FlowEditorPage'
 
-const DEBOUNCE_MS = 250
+// 500 ms 可把滑桿連續拖曳收斂到最後一次, 同時維持調參時的即時感。
+const AUTO_PREVIEW_DEBOUNCE_MS = 500
 
 function StatsRows({ stats }: { stats: NonNullable<NodeAnalysis['input']>['stats'] }) {
   const { t } = useTranslation()
@@ -60,7 +63,11 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
   const { fromImage } = useAssetMutations()
   const session = useFlowSession(flowId)
 
-  const [autoApply, setAutoApply] = useState(false) // 預設按「執行」鈕才跑；要即時的自己開自動套用
+  const [autoApply, setAutoApplyState] = useState(readToolAutoPreview) // 預設手動試執行, 要即時預覽時由使用者自行開啟。
+  const setAutoApply = useCallback((value: boolean) => {
+    setAutoApplyState(value)
+    writeToolAutoPreview(value)
+  }, [])
   const [reuse, setReuse] = useState(true)
   const [updating, setUpdating] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -130,9 +137,9 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
   const inputW = input?.width || analysis?.input?.stats?.width || 0
   const inputH = input?.height || analysis?.input?.stats?.height || 0
 
-  // ---- 試跑到此步驟（取消舊請求，只採用最後一次） ----
+  // ---- 試執行到此步驟, 取消舊請求並只採用最後一次 ----
   const abortRef = useRef<AbortController | null>(null)
-  const timerRef = useRef<number | undefined>(undefined)
+  const autoPreviewDebounce = useRef<DebouncedCall<[]> | null>(null)
   const graphRef = useRef(graph)
   graphRef.current = graph
   const runPreview = useCallback(async () => {
@@ -160,11 +167,15 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
   }, [flowId, nodeId])
 
   const schedulePreview = useCallback(() => {
-    window.clearTimeout(timerRef.current)
-    timerRef.current = window.setTimeout(() => void runPreview(), DEBOUNCE_MS)
+    autoPreviewDebounce.current?.schedule()
+  }, [])
+  useEffect(() => {
+    autoPreviewDebounce.current?.cancel()
+    autoPreviewDebounce.current = createDebouncedCall(() => void runPreview(), AUTO_PREVIEW_DEBOUNCE_MS)
+    return () => autoPreviewDebounce.current?.cancel()
   }, [runPreview])
 
-  // 進頁面先跑一次，讓前／後影像有東西看。
+  // 進頁面先試執行一次, 讓前後影像有內容可檢視。
   const bootedFor = useRef('')
   useEffect(() => {
     if (!graph || !def || execLocked) return
@@ -201,7 +212,7 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
   }
   useEffect(
     () => () => {
-      window.clearTimeout(timerRef.current)
+      autoPreviewDebounce.current?.cancel()
       abortRef.current?.abort()
     },
     [],
@@ -488,7 +499,7 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
           <Button icon={<FlaskConical size={14} />} loading={updating && !autoApply} disabled={execLocked} onClick={() => void runPreview()} data-testid="tool-preview">
             {t('tool.previewUntil')}
           </Button>
-          <label className="flex items-center gap-1.5 text-[11px] text-muted" title={t('tool.autoApplyHint')}>
+          <label className="flex items-center gap-1.5 text-[11px] text-muted" title={t('tool.autoApplyHint')} data-testid="tool-auto-preview">
             <Switch checked={autoApply} onChange={setAutoApply} label={t('tool.autoApply')} />
             {t('tool.autoApply')}
           </label>

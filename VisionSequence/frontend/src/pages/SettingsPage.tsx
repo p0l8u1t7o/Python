@@ -8,10 +8,11 @@ import { Check, KeyRound } from 'lucide-react'
 import { ChangePasswordModal } from '@/components/auth/ChangePasswordModal'
 import { Page } from '@/components/layout/AppShell'
 import { RetentionCard } from '@/components/settings/RetentionCard'
-import { Button, Card, CardBody, CardHeader, DetailRow, PageHeader, Panel, SegmentedControl, TextInput } from '@/components/ui'
+import { Button, Card, CardBody, CardHeader, DetailRow, PageHeader, Panel, SegmentedControl, Switch, TextInput } from '@/components/ui'
 import { setLanguage, storedLanguage, type Language } from '@/i18n'
 import { api, apiKey, setApiKey } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
+import { readFlowDraftAutoVersion, writeFlowDraftAutoVersion } from '@/lib/localState'
 import { normalizeOverlayLimit, readOverlayLimit, writeOverlayLimit } from '@/lib/overlayLimit'
 import { useCapacity, useUpdateProfile } from '@/lib/queries'
 import { useAuth } from '@/providers/AuthProvider'
@@ -29,6 +30,7 @@ export function SettingsPage() {
   const [language, setLang] = useState<Language>(storedLanguage())
   const [changing, setChanging] = useState(false)
   const [overlayLimit, setOverlayLimit] = useState(readOverlayLimit)
+  const [draftAutoVersion, setDraftAutoVersion] = useState(readFlowDraftAutoVersion)
   const profile = useUpdateProfile()
   const [displayName, setDisplayName] = useState(auth.me?.user?.display_name ?? '')
   const nameDirty = auth.me?.user ? displayName.trim() !== (auth.me.user.display_name ?? '') : false
@@ -123,6 +125,17 @@ export function SettingsPage() {
             onChange={(e) => setOverlayLimit(writeOverlayLimit(normalizeOverlayLimit(e.target.value)))}
             data-testid="settings-overlay-limit"
           />
+          <label className="flex items-center gap-2 text-xs text-muted" title={t('settings.draftAutoVersionHint')} data-testid="settings-draft-auto-version">
+            <Switch
+              checked={draftAutoVersion}
+              onChange={(value) => {
+                setDraftAutoVersion(value)
+                writeFlowDraftAutoVersion(value)
+              }}
+              label={t('settings.draftAutoVersion')}
+            />
+            <span>{t('settings.draftAutoVersion')}</span>
+          </label>
         </Panel>
         <Card>
           <CardHeader title={t('auth.account')} />

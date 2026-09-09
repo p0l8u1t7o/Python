@@ -5,7 +5,7 @@
 export const USER_SCOPED_KEYS = ['vs.token', 'vs.apiKey', 'vs.assistant.v1', 'vs.assistant.share', 'vs.tcpHistory'] as const
 export const USER_SCOPED_SESSION_KEYS = ['vs.assistant.hints.dismissed'] as const
 /** 說明用：這些故意保留 */
-export const DEVICE_SCOPED_KEYS = ['vs.theme', 'vs.language', 'vs.sidebar', 'vs.navOpen', 'vs.favoriteTools', 'vs.editorLayout', 'vs.canvasMode', 'vs.overlayLimit', 'vs.viewerState.v1', 'vs.editorGridView.v1'] as const
+export const DEVICE_SCOPED_KEYS = ['vs.theme', 'vs.language', 'vs.sidebar', 'vs.navOpen', 'vs.favoriteTools', 'vs.editorLayout', 'vs.canvasMode', 'vs.overlayLimit', 'vs.viewerState.v1', 'vs.editorGridView.v1', 'vs.toolAutoPreview.v1', 'vs.flowDraftAutoVersion.v1'] as const
 
 export interface ViewerLocalState {
   crosshair: boolean
@@ -21,6 +21,8 @@ export interface EditorGridLocalState {
 
 const VIEWER_STATE_KEY = 'vs.viewerState.v1'
 const EDITOR_GRID_VIEW_KEY = 'vs.editorGridView.v1'
+const TOOL_AUTO_PREVIEW_KEY = 'vs.toolAutoPreview.v1'
+const FLOW_DRAFT_AUTO_VERSION_KEY = 'vs.flowDraftAutoVersion.v1'
 
 function readRecord(key: string): Record<string, unknown> {
   try {
@@ -36,6 +38,24 @@ function readRecord(key: string): Record<string, unknown> {
 function writeRecord(key: string, value: Record<string, unknown>): void {
   try {
     localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    /* private mode */
+  }
+}
+
+function readBoolean(key: string, fallback: boolean): boolean {
+  try {
+    const raw = localStorage.getItem(key)
+    if (raw === null) return fallback
+    return raw === '1'
+  } catch {
+    return fallback
+  }
+}
+
+function writeBoolean(key: string, value: boolean): void {
+  try {
+    localStorage.setItem(key, value ? '1' : '0')
   } catch {
     /* private mode */
   }
@@ -84,6 +104,22 @@ export function writeEditorGridView(flowId: number, state: EditorGridLocalState)
   const record = readRecord(EDITOR_GRID_VIEW_KEY)
   record[String(flowId)] = state
   writeRecord(EDITOR_GRID_VIEW_KEY, record)
+}
+
+export function readToolAutoPreview(): boolean {
+  return readBoolean(TOOL_AUTO_PREVIEW_KEY, false)
+}
+
+export function writeToolAutoPreview(value: boolean): void {
+  writeBoolean(TOOL_AUTO_PREVIEW_KEY, value)
+}
+
+export function readFlowDraftAutoVersion(): boolean {
+  return readBoolean(FLOW_DRAFT_AUTO_VERSION_KEY, true)
+}
+
+export function writeFlowDraftAutoVersion(value: boolean): void {
+  writeBoolean(FLOW_DRAFT_AUTO_VERSION_KEY, value)
 }
 
 export function clearUserState(): void {

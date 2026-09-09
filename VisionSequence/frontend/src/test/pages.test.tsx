@@ -2,7 +2,7 @@
  * 頁面 smoke 測試：每頁在假後端下都要能 render 出標題／主要區塊，且不丟例外。
  * 抓的是「改了型別或 hook 卻沒開過那一頁」的回歸；互動細節另寫。
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createMemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
@@ -160,6 +160,26 @@ describe('pages render (smoke)', () => {
     fireEvent.click(await screen.findByTestId('btn-grid-view'))
     expect(await screen.findByTestId('editor-grid-view')).toBeInTheDocument()
     expect(screen.getAllByTestId('editor-grid-cell')).toHaveLength(4)
+  })
+
+  it('FlowEditorPage starts image sequence preview from the toolbar', async () => {
+    const { FlowEditorPage } = await import('@/pages/FlowEditorPage')
+    renderDataPage(<FlowEditorPage />, '/flows/1', '/flows/:flowId')
+    const button = await screen.findByTestId('btn-sequence-preview')
+    fireEvent.click(button)
+    await waitFor(() => expect(screen.getByTestId('sequence-preview-status')).toHaveTextContent('OK'))
+  })
+
+  it('ToolPage toggles automatic parameter preview', async () => {
+    localStorage.removeItem('vs.toolAutoPreview.v1')
+    const { ToolPage } = await import('@/pages/ToolPage')
+    renderDataPage(<ToolPage />, '/flows/1/tools/camera', '/flows/:flowId/tools/:nodeId')
+    const row = await screen.findByTestId('tool-auto-preview')
+    const toggle = within(row).getByRole('switch')
+    expect(toggle).toHaveAttribute('aria-checked', 'false')
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-checked', 'true')
+    expect(localStorage.getItem('vs.toolAutoPreview.v1')).toBe('1')
   })
 
   it('DashboardsPage lists operation dashboards from the API', async () => {

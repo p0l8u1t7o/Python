@@ -9,7 +9,7 @@ export const ME = {
   prefs: {}, lock: { locked: false, holder: '', reason: '', expires_at: null },
 }
 
-export const FLOW = { id: 1, name: '示範流程', description: '', version: 1, is_enabled: true, continuous_interval_ms: 0, timeout_s: 0, concurrency: 1, stop_on_ng: false, owner_id: 1, owner_name: 'admin', recipe_count: 0, commissioned: false, stats: { last_status: 'ok', total: 3, ok: 3, ng: 0, failed: 0, avg_ms: 5, last_ms: 5, running: false, continuous: false, queued: 0 }, graph: { nodes: [{ id: 'camera', type: 'image_source', label: 'Camera', params: {} }, { id: 'judge_out', type: 'output', params: { name: 'judge' } }, { id: 'width_out', type: 'output', params: { name: 'width' } }], edges: [] }, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }
+export const FLOW = { id: 1, name: '示範流程', description: '', version: 1, is_enabled: true, continuous_interval_ms: 0, timeout_s: 0, concurrency: 1, stop_on_ng: false, owner_id: 1, owner_name: 'admin', recipe_count: 0, commissioned: false, stats: { last_status: 'ok', total: 3, ok: 3, ng: 0, failed: 0, avg_ms: 5, last_ms: 5, running: false, continuous: false, queued: 0 }, graph: { nodes: [{ id: 'camera', type: 'image_source', label: 'Camera', params: { source_id: 1 } }, { id: 'judge_out', type: 'output', params: { name: 'judge' } }, { id: 'width_out', type: 'output', params: { name: 'width' } }], edges: [] }, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }
 
 export const RUNS = [
   { id: 'run-2', flow_id: 1, flow_version: 1, trigger: 'ui', status: 'ng', started_at: 1788500100, finished_at: 1788500101, duration_ms: 14, error: '', outputs: { judge: 'NG', width: 2.2 }, nodes: { camera: { status: 'ok', duration_ms: 2, message: '', branch: null, outputs: { image: { ref: 'run-2:image', width: 640, height: 480 } }, overlays: [], overlay_on: null, detail: {}, logs: [] } }, persisted: true },
@@ -111,6 +111,7 @@ export function routes(path: string, body?: unknown): unknown {
   if (path === '/vision/dashboards/default') return DASHBOARD
   if (/\/vision\/dashboards\/\d+\/data$/.test(path)) return DASHBOARD_DATA
   if (/\/vision\/dashboards\/\d+$/.test(path)) return DASHBOARD
+  if (/\/vision\/flows\/\d+\/preview$/.test(path)) return { ...RUNS[0], id: 'preview-1', persisted: false }
   if (/\/vision\/flows\/\d+$/.test(path)) return FLOW
   if (/\/vision\/flows\/\d+\/versions/.test(path)) return { items: [], current: 1, keep: 50 }
   if (/\/vision\/flows\/\d+\/recipes/.test(path)) return { items: [] }
@@ -118,12 +119,16 @@ export function routes(path: string, body?: unknown): unknown {
   if (/\/vision\/flows\/\d+\/runs/.test(path)) return { items: RUNS, total: RUNS.length, limit: 20, offset: 0 }
   if (/\/vision\/flows\/\d+\/stats/.test(path)) return { hours: 24, total: 8, by_status: { ok: 7, ng: 1 }, avg_ms: 12, max_ms: 30, hourly: [], live: { runs: 0, ok: 0, ng: 0, failed: 0, avg_ms: 0, max_ms: 0, last_ms: 0, last_status: '', last_run_id: '', last_finished_at: 0 } }
   if (path.startsWith('/vision/flows')) return { items: [FLOW], total: 1, limit: 100, offset: 0 }
-  if (path.startsWith('/vision/tool-types')) return { items: [{ key: 'grayscale', label: '灰階', description: '轉灰階', category: 'preprocess', icon: 'Box', params: [], inputs: [{ key: 'image', label: '影像', type: 'image' }], outputs: [{ key: 'image', label: '影像', type: 'image' }], heavy: false }], categories: [{ key: 'preprocess', label: '影像前處理' }] }
+  if (path.startsWith('/vision/tool-types')) return { items: [
+    { key: 'image_source', label: 'Image source', description: 'Acquire image', category: 'source', category_label: 'Source', icon: 'Camera', params: [{ key: 'source_id', label: 'Source', kind: 'source', required: false, default: null, help_text: '', options: [], unit: '', minimum: null, maximum: null, step: null, visible_when: null, shapes: [], accept: '', group: '' }], inputs: [], outputs: [{ key: 'image', label: 'Image', type: 'image' }], heavy: false },
+    { key: 'grayscale', label: '灰階', description: '轉灰階', category: 'preprocess', category_label: '影像前處理', icon: 'Box', params: [], inputs: [{ key: 'image', label: '影像', type: 'image' }], outputs: [{ key: 'image', label: '影像', type: 'image' }], heavy: false },
+  ], categories: [{ key: 'source', label: 'Source' }, { key: 'preprocess', label: '影像前處理' }] }
   if (path.startsWith('/vision/capture/download/info')) return { available: false, version: '', filename: '', size: 0, sha256: '', built_at: null, url: '/api/vision/capture/download' }
   if (path.startsWith('/vision/capture/clients')) return { listening: true, host: '0.0.0.0', port: 9100, items: [{ name: 'line-pc', address: '127.0.0.1:50000', version: '0.1.0', hostname: 'LINE-PC', connected_at: '2026-01-01T00:00:00', local: true, prefer_encoding: 'raw', shm: true, channels: [{ id: 'cam1', label: '產線相機 1', driver: 'basler', index: 0, width: 1280, height: 960, channels: 1, dtype: 'u8', pixel_format: 'Mono8', roi: { x: 0, y: 0, w: 1280, h: 960 }, full: { w: 1280, h: 960 }, mode: 'on_demand', enabled: true, streaming: false, seq: 12, last_frame_age_ms: 120, encoding: 'shm', shm: true, last_error: '', in_use_by: [], fps: 9.5, bytes_per_s: 0, frames: 12 }] }] }
   if (path.startsWith('/vision/capture')) return {}
   if (path.startsWith('/vision/sources/kinds')) return { items: [{ kind: 'folder', label: '資料夾', fields: ['path'] }, { kind: 'capture', label: '擷取端相機', fields: ['client', 'channel', 'mode', 'timeout_ms', 'fresh', 'encoding'] }] }
-  if (path.startsWith('/vision/sources')) return { items: [{ id: 1, name: '範例：圓孔量測', kind: 'folder', group: '範例', config: { path: 'x' }, status: {}, is_enabled: true }, { id: 2, name: '產線相機', kind: 'capture', group: '', config: { client: 'old-pc', channel: 'cam1', mode: 'on_demand' }, status: { open: false, connected: false, last_error: '' }, is_enabled: true }] }
+  if (path.startsWith('/vision/sources')) return { items: [{ id: 1, name: '範例：圓孔量測', kind: 'folder', group: '範例', config: { path: 'x' }, status: { count: 2 }, is_enabled: true }, { id: 2, name: '產線相機', kind: 'capture', group: '', config: { client: 'old-pc', channel: 'cam1', mode: 'on_demand' }, status: { open: false, connected: false, last_error: '' }, is_enabled: true }] }
+  if (path.startsWith('/vision/fs')) return { path: 'x', parent: null, dirs: [], files: ['a.png', 'b.png'] }
   if (/\/vision\/flows\/\d+\/board$/.test(path)) return { flow: { id: 1, name: 'demo', title: 'Line 1' }, config: { title: 'Line 1', image: '', overlays: true, values: [{ key: 'width', unit: 'mm', low: 1, high: 2 }], variables: [], show_verdict: true, show_counts: true }, run: null, values: [{ key: 'width', label: 'width', unit: 'mm', value: null, text: '', ok: null, present: false }], variables: { lot: 'A17' }, counts: { date: '2026-09-06', total: 10, ok: 9, ng: 1, failed: 0, yield: 90 }, stats: {} }
   if (/\/vision\/flows\/\d+\/variables$/.test(path)) return { flow_id: 1, items: { parts: 12, lot: 'A17' }, station: { shift: 'day' } }
   if (path.startsWith('/vision/variables')) return { items: { shift: 'day' } }

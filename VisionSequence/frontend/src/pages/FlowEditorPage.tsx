@@ -6,7 +6,7 @@
  * - 圖只在 flow.version 變時重載；存檔後自己標記已載入，避免畫布被重設。
  * - isEdit 只認 resizing=true 的 dimensions change。
  * - 鍵盤監聽用 ref 讀最新 nodes/edges；undo 歷史放 ref；deleteKeyCode={null}。
- * - 執行結果由 SSE（useFlowStream）與試跑回應餵進來，步驟狀態用 useMemo 派生。
+ * - 執行結果由 SSE（useFlowStream）與試執行回應餵進來，步驟狀態用 useMemo 派生。
  * - 未儲存的圖、暫存影像、最近試跑結果放在 lib/flowDraft.ts 的工作階段 store：離開頁面時寫入草稿，
  *   回來（或從工具頁回來）時若伺服器版本沒變就用草稿，所以編輯器 ⇄ 工具頁之間的變更不會丟。
  */
@@ -44,15 +44,17 @@ import { ImageViewer } from '@/components/viewer/ImageViewer'
 import { BoardSettings } from '@/components/flow/BoardSettings'
 import { CommSettings } from '@/components/flow/CommSettings'
 import { VariablesCard } from '@/components/flow/VariablesCard'
-import { downloadFile, imageUrl } from '@/lib/api'
+import { api, downloadFile, imageUrl } from '@/lib/api'
 import { useConfirm } from '@/lib/useConfirm'
 import { selectVisibleRun } from '@/lib/clearResults'
 import { errorMessage } from '@/lib/errors'
 import { createHistory, pushHistory as pushEditHistory, redoHistory, undoHistory } from '@/lib/flowHistory'
 import { getSession, setDraft, updateSession, useFlowSession } from '@/lib/flowDraft'
+import { flowGraphSignature, shouldSaveDraftVersion } from '@/lib/flowAutoVersion'
 import { searchNodes } from '@/lib/nodeSearch'
-import { readEditorGridView, writeEditorGridView } from '@/lib/localState'
+import { readEditorGridView, readFlowDraftAutoVersion, writeEditorGridView } from '@/lib/localState'
 import { GRID_COUNTS, bindGridCell, gridCellImage, gridPlacement, normalizeGridLayout, setGridCount, type GridBinding, type GridCount, type GridLayout } from '@/lib/gridView'
+import { countFolderPreviewFiles, countPreviewSequenceResult, createPreviewSequenceState, findPreviewSequenceSource, graphForPreviewSequenceItem, isPreviewSequenceDone, nextPreviewSequenceIndex, previewSequenceStatusLabel, type PreviewSequenceSource, type PreviewSequenceState } from '@/lib/previewSequence'
 import { describeReport, useRegisterAssistantContext } from '@/lib/assistantContext'
 import { useFlowStream, type StreamEvent } from '@/lib/flowStream'
 import { DECORATION_TYPES, checkConnection, graphProblems } from '@/lib/graphValidation'
@@ -63,12 +65,22 @@ import { useToast } from '@/providers/ToastProvider'
 
 const LAYOUT_KEY = 'vs.editorLayout'
 const FOCUS_OPTIONS = { duration: 300, maxZoom: 1.2 }
+const SEQUENCE_DEFAULT_INTERVAL_MS = 1000
+const AUTO_VERSION_INTERVAL_MS = 5 * 60 * 1000
 
 interface LayoutState {
   left: number
   right: number
   /** 畫布高度佔中欄比例 */
   canvas: number
+}
+
+interface SequenceRun extends PreviewSequenceState {
+  source: PreviewSequenceSource
+  running: boolean
+  paused: boolean
+  baseSignature: string
+  lastStatus?: string
 }
 
 function readLayout(): LayoutState {
@@ -155,7 +167,7 @@ export function resolveView(run: RunReport | null, selectedId: string | null, mo
   return { ref: chosen.ref, width: chosen.width, height: chosen.height, overlays, nodeId, hasInput: input !== null, hasOutput: output !== null }
 }
 
-/** image_source 步驟的輸出 ref（給「用上次影像重跑」）。 */
+/** image_source 步驟的輸出 ref（給「用上次影像重新試執行」）。 */
 export function sourceRefOf(run: RunReport | null, payloads: Map<string, GraphNode>): string | null {
   if (!run) return null
   for (const [id, report] of Object.entries(run.nodes)) {
@@ -242,6 +254,8 @@ function EditorInner({ flowId }: { flowId: number }) {
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchActive, setSearchActive] = useState(0)
+  const [sequenceIntervalMs, setSequenceIntervalMs] = useState(SEQUENCE_DEFAULT_INTERVAL_MS)
+  const [sequenceRun, setSequenceRun] = useState<SequenceRun | null>(null)
   const searchInput = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
 
@@ -280,8 +294,14 @@ function EditorInner({ flowId }: { flowId: number }) {
   const history = useRef(createHistory<FlowGraph>(HISTORY_LIMIT))
   const clipboard = useRef<{ nodes: GraphNode[]; edges: GraphEdge[] } | null>(null)
   const loadedFor = useRef('')
+  const lastAutoVersionSignature = useRef<string | null>(null)
+  const sequenceTimer = useRef<number | undefined>(undefined)
+  const sequenceAbort = useRef<AbortController | null>(null)
+  const sequenceRef = useRef<SequenceRun | null>(null)
+  const runSequenceStepRef = useRef<() => void>(() => {})
 
   const currentGraph = useCallback(() => graphFrom(nodesRef.current, edgesRef.current, payloads.current), [])
+  sequenceRef.current = sequenceRun
 
   // ---- 載入（只在 version 變時；草稿版本相符就用草稿） ----
   useEffect(() => {
@@ -298,6 +318,7 @@ function EditorInner({ flowId }: { flowId: number }) {
     setEdges(toFlowEdges(graph, defs))
     setMeta(source ? { name: source.name, description: source.description } : { name: data.name, description: data.description })
     setDirty(source ? source.dirty : false)
+    lastAutoVersionSignature.current = flowGraphSignature(data.graph)
     history.current = createHistory<FlowGraph>(HISTORY_LIMIT)
   }, [flow.data, defs, setNodes, setEdges, flowId])
 
@@ -319,6 +340,38 @@ function EditorInner({ flowId }: { flowId: number }) {
   /** 共用（或別人的）流程一般使用者不能改，只能複製。 */
   const readOnly = !auth.isEngineer  // 流程屬於產線：工程師都能改，操作員只能在參數卡頁調現場參數
   const lockHint = execLocked ? t('lock.execDisabled', { holder: auth.lock.holder === 'integrator' ? t('lock.integrator') : auth.lock.holder }) : undefined
+
+  const latestAutoVersion = useRef({ meta, dirty, readOnly })
+  latestAutoVersion.current = { meta, dirty, readOnly }
+  const autoVersionSaving = useRef(false)
+  useEffect(() => {
+    const saveDraftVersion = async () => {
+      const l = latestAutoVersion.current
+      if (l.readOnly || autoVersionSaving.current) return
+      const graph = currentGraph()
+      const signature = flowGraphSignature(graph)
+      if (!shouldSaveDraftVersion({ enabled: readFlowDraftAutoVersion(), dirty: l.dirty, currentSignature: signature, lastSavedSignature: lastAutoVersionSignature.current })) return
+      autoVersionSaving.current = true
+      try {
+        const saved = await patch.mutateAsync(
+          { id: flowId, name: l.meta.name.trim() || t('editor.untitled'), description: l.meta.description, graph },
+          { onSuccess: (item) => { loadedFor.current = `${item.id}:${item.version}` } },
+        )
+        lastAutoVersionSignature.current = signature
+        if (flowGraphSignature(currentGraph()) === signature) {
+          setDirty(false)
+          setDraft(flowId, { baseVersion: saved.version, graph, name: l.meta.name, description: l.meta.description, dirty: false })
+        }
+        toast.success(t('editor.toast.autoVersionSaved', { version: saved.version }))
+      } catch (error) {
+        toast.error(errorMessage(error))
+      } finally {
+        autoVersionSaving.current = false
+      }
+    }
+    const timer = window.setInterval(() => void saveDraftVersion(), AUTO_VERSION_INTERVAL_MS)
+    return () => window.clearInterval(timer)
+  }, [currentGraph, flowId, patch, t, toast])
 
   // ---- SSE ----
   const onStreamEvent = useCallback(
@@ -342,6 +395,7 @@ function EditorInner({ flowId }: { flowId: number }) {
   //: 沒選影像來源又沒暫存影像 → 試執行一定失敗；橫幅直接讓人選來源（不用先找到取像步驟再進工具頁）
   const missingSourceNode = useMemo(() => graphNodes.find((n) => n.type === 'image_source' && !n.params?.source_id) ?? null, [graphNodes])
   const sourceList = useSources()
+  const sequenceSource = useMemo(() => findPreviewSequenceSource({ nodes: graphNodes, edges: graphEdges }, sourceList.data?.items ?? []), [graphNodes, graphEdges, sourceList.data])
   const nodeOrder = useMemo(() => topoOrder(graphNodes, graphEdges), [graphNodes, graphEdges])
   const selectedCount = useMemo(() => nodes.filter((n) => n.selected).length, [nodes])
   const searchResults = useMemo(() => searchNodes(graphNodes, defs, searchQuery), [graphNodes, defs, searchQuery])
@@ -648,11 +702,13 @@ function EditorInner({ flowId }: { flowId: number }) {
     }
     if (problemMap.size > 0) toast.warning(t('editor.toast.validationWarning', { count: problemMap.size }))
     try {
+      const graph = currentGraph()
       await patch.mutateAsync(
-        { id: flowId, name: meta.name.trim() || t('editor.untitled'), description: meta.description, graph: currentGraph() },
+        { id: flowId, name: meta.name.trim() || t('editor.untitled'), description: meta.description, graph },
         // 回應的新 version 會觸發「重載圖」effect；先標記為已載入，畫布才不會被重設。
         { onSuccess: (saved) => { loadedFor.current = `${saved.id}:${saved.version}` } },
       )
+      lastAutoVersionSignature.current = flowGraphSignature(graph)
       setDirty(false)
       toast.success(t('editor.toast.saved'))
       return true
@@ -697,6 +753,133 @@ function EditorInner({ flowId }: { flowId: number }) {
       toast.error(errorMessage(error))
     }
   }, [preview, flowId, currentGraph, pinnedRef, setPreviewRun, toast, t])
+
+  const clearSequenceTimer = useCallback(() => {
+    if (sequenceTimer.current === undefined) return
+    window.clearTimeout(sequenceTimer.current)
+    sequenceTimer.current = undefined
+  }, [])
+
+  const stopSequencePreview = useCallback((announce = false) => {
+    clearSequenceTimer()
+    sequenceAbort.current?.abort()
+    sequenceAbort.current = null
+    const state = sequenceRef.current
+    if (!state) return
+    const next = { ...state, running: false, paused: false }
+    setSequenceRun(next)
+    sequenceRef.current = next
+    if (announce) toast.push(t('editor.sequenceStopped', { ok: state.ok, ng: state.ng }), 'info', 1600)
+  }, [clearSequenceTimer, toast, t])
+
+  const resolveSequenceTotal = useCallback(async (source: PreviewSequenceSource) => {
+    if (source.total > 0) return source.total
+    if (source.kind !== 'folder' || !source.folderPath) return 0
+    const listing = await api.get<{ files: string[] }>('/vision/fs', { path: source.folderPath })
+    return countFolderPreviewFiles(listing.files ?? [], source.pattern)
+  }, [])
+
+  const runSequenceStep = useCallback(async () => {
+    const state = sequenceRef.current
+    if (!state || !state.running || state.paused) return
+    const nextIndex = nextPreviewSequenceIndex(state)
+    if (nextIndex === null) {
+      const next = { ...state, running: false, paused: false }
+      setSequenceRun(next)
+      sequenceRef.current = next
+      toast.push(t('editor.sequenceDone', { ok: state.ok, ng: state.ng }), state.ng ? 'warning' : 'success', 2200)
+      return
+    }
+    clearSequenceTimer()
+    const controller = new AbortController()
+    sequenceAbort.current = controller
+    setSelectedId(state.source.nodeId)
+    setRightTab('results')
+    try {
+      const graph = graphForPreviewSequenceItem(currentGraph(), state.source, nextIndex)
+      const report = await preview.mutateAsync({ flowId, graph, reuse_image_ref: null, until_node: null, signal: controller.signal })
+      if (controller.signal.aborted) return
+      setPreviewRun(report)
+      setPinnedRunId(null)
+      setClearedRunId(null)
+      const updated = countPreviewSequenceResult(state, report.status)
+      const nextState: SequenceRun = { ...state, ...updated, lastStatus: report.status, running: !isPreviewSequenceDone(updated), paused: false }
+      setSequenceRun(nextState)
+      sequenceRef.current = nextState
+      if (isPreviewSequenceDone(updated)) {
+        toast.push(t('editor.sequenceDone', { ok: updated.ok, ng: updated.ng }), updated.ng ? 'warning' : 'success', 2200)
+      } else {
+        sequenceTimer.current = window.setTimeout(() => runSequenceStepRef.current(), sequenceIntervalMs)
+      }
+    } catch (error) {
+      if (controller.signal.aborted) return
+      const updated = countPreviewSequenceResult(state, 'failed')
+      const nextState: SequenceRun = { ...state, ...updated, lastStatus: 'failed', running: !isPreviewSequenceDone(updated), paused: false }
+      setSequenceRun(nextState)
+      sequenceRef.current = nextState
+      toast.error(errorMessage(error))
+      if (!isPreviewSequenceDone(updated)) sequenceTimer.current = window.setTimeout(() => runSequenceStepRef.current(), sequenceIntervalMs)
+    } finally {
+      if (sequenceAbort.current === controller) sequenceAbort.current = null
+    }
+  }, [clearSequenceTimer, currentGraph, flowId, preview, sequenceIntervalMs, setPreviewRun, t, toast])
+  runSequenceStepRef.current = runSequenceStep
+
+  const startSequencePreview = useCallback(async () => {
+    const source = sequenceSource
+    if (!source || execLocked) return
+    try {
+      const total = await resolveSequenceTotal(source)
+      if (total <= 0) {
+        toast.warning(t('editor.sequenceNoImages'))
+        return
+      }
+      const graph = currentGraph()
+      const state: SequenceRun = { ...createPreviewSequenceState(total), source: { ...source, total }, running: true, paused: false, baseSignature: flowGraphSignature(graph) }
+      setSequenceRun(state)
+      sequenceRef.current = state
+      clearSequenceTimer()
+      sequenceTimer.current = window.setTimeout(() => runSequenceStepRef.current(), 0)
+      toast.push(t('editor.sequenceStarted'), 'info', 1400)
+    } catch (error) {
+      toast.error(errorMessage(error))
+    }
+  }, [clearSequenceTimer, currentGraph, execLocked, resolveSequenceTotal, sequenceSource, t, toast])
+
+  const pauseSequencePreview = useCallback(() => {
+    clearSequenceTimer()
+    sequenceAbort.current?.abort()
+    sequenceAbort.current = null
+    const state = sequenceRef.current
+    if (!state) return
+    const next = { ...state, paused: true }
+    setSequenceRun(next)
+    sequenceRef.current = next
+  }, [clearSequenceTimer])
+
+  const resumeSequencePreview = useCallback(() => {
+    const state = sequenceRef.current
+    if (!state) return
+    const next = { ...state, running: true, paused: false }
+    setSequenceRun(next)
+    sequenceRef.current = next
+    clearSequenceTimer()
+    sequenceTimer.current = window.setTimeout(() => runSequenceStepRef.current(), 0)
+  }, [clearSequenceTimer])
+
+  const graphSignature = useMemo(() => flowGraphSignature({ nodes: graphNodes, edges: graphEdges }), [graphNodes, graphEdges])
+  useEffect(() => {
+    const state = sequenceRef.current
+    if (state?.running && state.baseSignature !== graphSignature) stopSequencePreview(true)
+  }, [graphSignature, stopSequencePreview])
+  useEffect(
+    () => () => {
+      clearSequenceTimer()
+      sequenceAbort.current?.abort()
+      sequenceAbort.current = null
+    },
+    [clearSequenceTimer],
+  )
 
   const clearResults = useCallback(() => {
     setClearedRunId(activeRun?.id ?? null)
@@ -988,6 +1171,16 @@ function EditorInner({ flowId }: { flowId: number }) {
         flowDisabled={flow.data?.is_enabled === false}
         previewing={preview.isPending}
         onPreview={() => void doPreview()}
+        sequenceAvailable={Boolean(sequenceSource)}
+        sequenceRunning={Boolean(sequenceRun?.running)}
+        sequencePaused={Boolean(sequenceRun?.paused)}
+        sequenceLabel={sequenceRun ? t('editor.sequenceStatus', { current: previewSequenceStatusLabel(sequenceRun), ok: sequenceRun.ok, ng: sequenceRun.ng }) : t('editor.sequenceIdle')}
+        sequenceIntervalMs={sequenceIntervalMs}
+        onSequenceStart={() => void startSequencePreview()}
+        onSequencePause={pauseSequencePreview}
+        onSequenceResume={resumeSequencePreview}
+        onSequenceStop={() => stopSequencePreview(true)}
+        onSequenceIntervalChange={setSequenceIntervalMs}
         reuseImage={reuseImage}
         canReuse={Boolean(lastSourceRef)}
         onReuseChange={(value) => updateSession(flowId, { reuseImage: value })}
