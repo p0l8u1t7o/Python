@@ -37,6 +37,52 @@ const PAGES = {
       { target: '[data-testid="dl-create-flow"]', label: 'dl-create-flow' }, { target: '[data-testid="dl-video-extract-start"]', label: 'From video' },
     ],
   },
+  // 流程編輯器：先選一個節點讓右側顯示參數（與 docs_shots.mjs 同一組標記）；流程與節點在 setup 從 API 現查
+  'editor': {
+    route: '/flows/__FLOW__', ready: '[data-testid="btn-preview"]',
+    setup: async () => {
+      const flows = await j('/vision/flows')
+      const items = (flows && flows.items) || flows || []
+      const flow = items.find((f) => f.graph && f.graph.nodes && f.graph.nodes.length > 1) || items[0]
+      if (!flow) throw new Error('no flow to shoot')
+      const detail = await j(`/vision/flows/${flow.id}`)
+      const node = ((detail && detail.graph && detail.graph.nodes) || []).find((n) => n.type !== 'image_source' && n.type !== 'note') || null
+      return { flowId: flow.id, nodeId: node ? node.id : null }
+    },
+    before: async (page, made) => {
+      if (made && made.nodeId) {
+        const nodeEl = page.locator(`.react-flow__node[data-id="${made.nodeId}"]`)
+        if (await nodeEl.count()) { await nodeEl.first().click({ position: { x: 10, y: 10 } }); await page.waitForTimeout(600) }
+      }
+    },
+    callouts: [
+      { target: '[data-testid="toolbar-row-1"]', label: 'toolbar-row-1' }, { target: '[data-testid="toolbar-row-2"]', label: 'toolbar-row-2' }, { target: '[data-testid="btn-add-tool"]', label: 'btn-add-tool' },
+      { target: '.react-flow', label: 'canvas' }, { target: '[data-testid="viewer-main"]', label: 'viewer-main' }, { target: '[data-testid="inspector"]', label: 'inspector' },
+      { target: '[data-testid="open-tool-page"]', label: 'open-tool-page' }, { target: '[data-testid="btn-preview"]', label: 'btn-preview' }, { target: '[data-testid="btn-teach"]', label: 'btn-teach' },
+      { target: '[data-testid="btn-stats"]', label: 'btn-stats' },
+    ],
+  },
+  // 流程編輯器右側「未選取節點」的流程設定：三顆按鈕開變數／看板／結果回報對話框
+  'editor-flow-settings': {
+    route: '/flows/__FLOW__', ready: '[data-testid="btn-preview"]',
+    setup: async () => {
+      const flows = await j('/vision/flows')
+      const items = (flows && flows.items) || flows || []
+      const flow = items[0]
+      if (!flow) throw new Error('no flow to shoot')
+      return { flowId: flow.id }
+    },
+    before: async (page) => {
+      // 點畫布空白處取消選取，右側才會顯示流程設定
+      const pane = page.locator('.react-flow__pane').first()
+      if (await pane.count()) { await pane.click({ position: { x: 5, y: 5 } }); await page.waitForTimeout(500) }
+    },
+    callouts: [
+      // 未選節點時右側面板沒有 inspector 的 testid：用「包含三顆按鈕的 aside」當目標
+      { target: 'aside:has([data-testid="editor-open-variables"])', label: 'inspector' }, { target: '[data-testid="editor-open-variables"]', label: 'Variables' },
+      { target: '[data-testid="editor-open-board"]', label: 'Board settings' }, { target: '[data-testid="editor-open-comm"]', label: 'Result reporting' },
+    ],
+  },
   'calibration-stereo': {
     route: '/calibration', ready: 'main',
     before: async (page) => { await page.click('[data-testid="calib-mode-stereo"]'); await page.waitForTimeout(600) },
@@ -80,7 +126,8 @@ async function resolve(page, target) {
   // 手冊圖是固定 1440×900 的首屏：不捲動頁面（捲了之後各目標的座標會對不上同一張截圖），首屏外的目標當沒抓到
   await page.evaluate(() => window.scrollTo(0, 0))
   const b = await first.boundingBox()
-  return b && b.width > 0 && b.height > 0 && b.y >= 0 && b.y + b.height <= 900 ? b : null
+  // 目標的上緣要在首屏內；整欄高的面板（右側 inspector）下緣會貼到或超出視窗底，交給呼叫端裁到 900
+  return b && b.width > 0 && b.height > 0 && b.y >= 0 && b.y < 900 ? b : null
 }
 
 function writeCallouts(name, line) {
@@ -104,10 +151,12 @@ for (const name of names) {
   if (!spec) { console.error('unknown page', name, '— add it to PAGES'); failures += 1; continue }
   const made = spec.setup ? await spec.setup() : null
   try {
-  await page.goto(`${FRONT}${spec.route}`)
+  // route 裡的 __FLOW__ 由 setup 回傳的 flowId 代入（編輯器類頁面）
+  const route = spec.route.replace('__FLOW__', made && made.flowId ? String(made.flowId) : '')
+  await page.goto(`${FRONT}${route}`)
   await page.waitForSelector(spec.ready, { timeout: 30000 })
   await page.waitForTimeout(1400)
-  if (spec.before) await spec.before(page)
+  if (spec.before) await spec.before(page, made)
   const rects = []
   const resolved = []
   for (const c of spec.callouts) {

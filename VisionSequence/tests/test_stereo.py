@@ -227,6 +227,51 @@ class StereoGraphTests(SimpleTestCase):
         self.tmp = tempfile.mkdtemp(prefix="vs-stereo-graph-")
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
 
+    def test_wired_images_take_precedence_over_sources(self):
+        """接了影像就不開來源（範本樣本圖、批次測試）；右圖沒接就用左圖代替並警告，來源留空也不報錯。"""
+        left, right, _part, _belt = _pair()
+        graph = {
+            "nodes": [
+                {"id": "a", "type": "fixed_image", "params": {"images": [], "mode": "fixed"}},
+                {"id": "src", "type": "stereo_grab", "params": {"left": "", "right": ""}},
+            ],
+            "edges": [{"source": "a", "target": "src", "source_handle": "image", "target_handle": "image"}],
+        }
+        compiled = compile_graph(validate_graph(graph))
+        calls = []
+
+        def grab(source_id: str):
+            calls.append(source_id)
+            return None
+
+        report = engine.execute(compiled, flow_id=0, flow_version=1, trigger="test", grab=grab, asset_path=lambda _a: None, input_image=left)
+        self.assertEqual(report.status, "ok", report.error)
+        node = report.nodes["src"]
+        self.assertEqual(calls, [])
+        # 報告裡的影像是快取參照（dict），比尺寸與訊息
+        self.assertIn("(wired)", node.message)
+        for key in ("image", "image_right"):
+            self.assertEqual((node.outputs[key]["width"], node.outputs[key]["height"]), (left.shape[1], left.shape[0]), key)
+        self.assertIsNone(node.outputs["dt_ms"])
+        self.assertTrue(any("right image" in w.lower() for w in node.detail.get("warnings", [])))
+        # 右圖也接上就用真的右圖
+        graph["nodes"].append({"id": "b", "type": "fixed_image", "params": {"images": [], "mode": "fixed"}})
+        graph["edges"].append({"source": "b", "target": "src", "source_handle": "image", "target_handle": "image_right"})
+        compiled = compile_graph(validate_graph(graph))
+        report = engine.execute(compiled, flow_id=0, flow_version=1, trigger="test", grab=grab, asset_path=lambda _a: None, input_image=left)
+        self.assertEqual(report.status, "ok", report.error)
+        self.assertEqual(report.nodes["src"].detail.get("warnings", []), [])
+
+    def test_instantiate_replaces_stereo_grab_placeholder(self):
+        from apps.vision.api_more import SOURCE_PLACEHOLDER, instantiate
+
+        graph = {"nodes": [{"id": "pair", "type": "stereo_grab", "params": {"left": SOURCE_PLACEHOLDER, "right": SOURCE_PLACEHOLDER}}], "edges": []}
+        with_source = instantiate(graph, source_id=7)
+        self.assertEqual(with_source["nodes"][0]["params"], {"left": 7, "right": 7})
+        with_samples = instantiate(graph, source_id=None, samples=[{"id": "x", "name": "x", "width": 1, "height": 1, "size": 1}])
+        self.assertEqual(with_samples["nodes"][0]["params"], {"left": "", "right": ""})
+        self.assertEqual(with_samples["nodes"][0]["type"], "stereo_grab")
+
     def test_full_graph_outputs_robot_line(self):
         left, right, _part, _belt = _pair()
         path = _save_calibration(self.tmp, _stereo_payload(640, 360, z_ref={"d0_mm": 800.0, "Z0_mm": 50.0, "scale": 1.0}))

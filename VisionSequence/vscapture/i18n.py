@@ -242,6 +242,9 @@ TEXTS: dict[str, dict[str, str]] = {
     # ---- 錄影 ----
     "recording.tab": {"zh-Hant": "錄影", "zh-Hans": "录像", "en": "Recording"},
     "recording.folder": {"zh-Hant": "資料夾", "zh-Hans": "文件夹", "en": "Folder"},
+    "recording.browse": {"zh-Hant": "瀏覽…", "zh-Hans": "浏览…", "en": "Browse…"},
+    "recording.chooseFolder": {"zh-Hant": "選擇本機錄影資料夾", "zh-Hans": "选择本机录像文件夹", "en": "Choose the local recording folder"},
+    "recording.chooseServerFolder": {"zh-Hant": "選擇伺服端影片資料夾", "zh-Hans": "选择服务端影片文件夹", "en": "Choose the server video folder"},
     "recording.folderHint": {"zh-Hant": "本機錄影儲存資料夾。", "zh-Hans": "本机录像保存文件夹。", "en": "Local recording folder."},
     "recording.codec": {"zh-Hant": "編碼", "zh-Hans": "编码", "en": "Codec"},
     "recording.fpsDivisor": {"zh-Hant": "降幀", "zh-Hans": "降帧", "en": "Frame divisor"},

@@ -79,6 +79,21 @@
      "zh-Hans": "试执行"
     },
     {
+     "en": "Variables…",
+     "zh-Hant": "變數…",
+     "zh-Hans": "变量…"
+    },
+    {
+     "en": "Board settings…",
+     "zh-Hant": "看板設定…",
+     "zh-Hans": "看板设置…"
+    },
+    {
+     "en": "Result reporting…",
+     "zh-Hant": "結果回報…",
+     "zh-Hans": "结果回报…"
+    },
+    {
      "en": "Export",
      "zh-Hant": "匯出",
      "zh-Hans": "导出"

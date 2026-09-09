@@ -2,13 +2,13 @@
  * 頂列（EditorToolbar）：兩列，按鈕都是圖示＋短文字，寬度不足時換行（flex-wrap）。
  *  - 第一列：流程名稱、儲存狀態、儲存、範本下拉、配方鈕、綁定配方下拉、（唯讀／問題／鎖定／停用／未教導標籤）；
  *            右側：即時 badge、容量、復原、自動排列、參數卡／Golden Set／匯出／統計圖示。
- *  - 第二列：試執行、用上次影像重跑、上傳暫存影像、批次測試、連續執行、重置；右側：fps 標籤、說明下拉。
+ *  - 第二列：試執行、用上次影像重跑、上傳暫存影像、連續執行、重置；右側：fps 標籤、說明下拉。
  * 選取／平移切換在畫布右上角（FlowCanvas 的 CanvasModePanel），不在頂列。
  * 全部是受控 props，狀態與動作都在 FlowEditorPage。
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { BarChart3, BookOpen, ChevronDown, Download, Eraser, FlaskConical, Gem, HelpCircle, ImageUp, Images, Keyboard, LayoutTemplate, Lock, Network, Pause, Play, Plug, PowerOff, Radio, Redo2, Save, SlidersHorizontal, Square, TriangleAlert, Undo2, X } from 'lucide-react'
+import { BarChart3, BookOpen, ChevronDown, Download, Eraser, FlaskConical, Gem, HelpCircle, ImageUp, Keyboard, LayoutTemplate, Lock, Network, Pause, Play, Plug, PowerOff, Radio, Redo2, Save, SlidersHorizontal, Square, TriangleAlert, Undo2, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { CapacityPill } from '@/components/layout/AppShell'
@@ -63,7 +63,6 @@ export interface EditorToolbarProps {
   resetting: boolean
   onReset: () => void
   onClearResults: () => void
-  onBatchTest: () => void
   onLoadTemplate: () => void
   onSaveTemplate: () => void
   /** 綁定配方：有配方時顯示「綁定」下拉（is_default）；連續執行／外部觸發都用綁定的配方 */
@@ -255,11 +254,6 @@ export function EditorToolbar(p: EditorToolbarProps) {
             if (file) p.onUploadScratch(file)
           }}
         />
-        <span title={p.lockHint ?? t('batch.hint')}>
-          <Button size="sm" icon={<Images size={14} />} disabled={p.execLocked} onClick={p.onBatchTest} data-testid="btn-batch">
-            {t('batch.title')}
-          </Button>
-        </span>
         <span className="mx-1 h-5 w-px bg-line" aria-hidden />
         <span title={p.lockHint ?? (p.flowDisabled && !p.isContinuous ? t('editor.flowDisabledHint') : p.isContinuous ? t('editor.continuousOff') : t('editor.continuous'))}>
           <Button size="sm" icon={p.isContinuous ? <Square size={14} /> : <Radio size={14} />} active={p.isContinuous} loading={p.continuousPending} disabled={(p.execLocked || p.flowDisabled) && !p.isContinuous} onClick={p.onToggleContinuous} data-testid="btn-continuous">

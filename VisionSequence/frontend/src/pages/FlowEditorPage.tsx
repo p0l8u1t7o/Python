@@ -37,13 +37,11 @@ import { FavoriteTools, ToolPicker, readFavorites, writeFavorites } from '@/comp
 import { NodeResult, RecentRunsTable, RunErrorBlock, RunWarnings, SpanTimingCard } from '@/components/editor/ResultsPanel'
 import { DRAG_MIME, HISTORY_LIMIT, computeLayout, edgeProps, graphFrom, isTypingTarget, nextNodeId, nodeDataFrom, toFlowEdges, toFlowNode, toFlowNodes, type ToolNodeData } from '@/components/editor/graphMapping'
 import { useResizer } from '@/components/editor/useResizer'
+import { FlowSettingsDialogs } from '@/components/flow/FlowSettingsDialogs'
 import { RecipeDrawer } from '@/components/recipes/RecipeDrawer'
 import { SaveTemplateModal, TemplateGallery } from '@/components/templates/TemplateGallery'
 import { Button, Checkbox, ConfirmDialog, ErrorState, LoadingState, Modal, Select, StatusBadge, Tabs, TextInput } from '@/components/ui'
 import { ImageViewer } from '@/components/viewer/ImageViewer'
-import { BoardSettings } from '@/components/flow/BoardSettings'
-import { CommSettings } from '@/components/flow/CommSettings'
-import { VariablesCard } from '@/components/flow/VariablesCard'
 import { api, downloadFile, imageUrl } from '@/lib/api'
 import { useConfirm } from '@/lib/useConfirm'
 import { selectVisibleRun } from '@/lib/clearResults'
@@ -1199,7 +1197,6 @@ function EditorInner({ flowId }: { flowId: number }) {
         resetting={clearRecent.isPending}
         onReset={() => setAskReset(true)}
         onClearResults={clearResults}
-        onBatchTest={() => navigate(`/batch?flow=${flowId}${dirty ? '&draft=1' : ''}`)}
         onLoadTemplate={() => setGalleryOpen(true)}
         onSaveTemplate={() => setSaveTemplateOpen(true)}
         recipes={recipes.data?.items ?? []}
@@ -1496,77 +1493,71 @@ function EditorInner({ flowId }: { flowId: number }) {
               ) : (
                 <div className="space-y-3 p-3">
                   <p className="text-xs text-muted">{t('editor.selectNodeHint')}</p>
-                  <TextInput
-                    label={t('common.description')}
-                    value={meta.description}
-                    onChange={(e) => {
-                      setMeta({ ...meta, description: e.target.value })
-                      setDirty(true)
-                    }}
-                  />
-                  <TextInput
-                    label={t('flows.continuousInterval')}
-                    type="number"
-                    min={0}
-                    value={String(flow.data?.continuous_interval_ms ?? 0)}
-                    disabled={readOnly}
-                    onChange={(e) => patch.mutate({ id: flowId, continuous_interval_ms: Number(e.target.value) || 0 }, { onSuccess: (saved) => { loadedFor.current = `${saved.id}:${saved.version}` } })}
-                  />
-                  <TextInput
-                    label={t('flow.timeoutS')}
-                    type="number"
-                    min={0}
-                    value={String(flow.data?.timeout_s ?? 0)}
-                    disabled={readOnly}
-                    onChange={(e) => patch.mutate({ id: flowId, timeout_s: Number(e.target.value) || 0 }, { onSuccess: (saved) => { loadedFor.current = `${saved.id}:${saved.version}` } })}
-                  />
-                  <TextInput
-                    label={t('flow.concurrency')}
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={String(flow.data?.concurrency ?? 1)}
-                    disabled={readOnly}
-                    onChange={(e) => patch.mutate({ id: flowId, concurrency: Math.max(1, Number(e.target.value) || 1) }, { onSuccess: (saved) => { loadedFor.current = `${saved.id}:${saved.version}` }, onError: (error) => toast.error(errorMessage(error)) })}
-                  />
-                  {/* 複製出來的流程預設停用；不用回列表就能在這裡開啟 */}
-                  <Checkbox
-                    label={t('flows.enabledToggle')}
-                    hint={flow.data?.is_enabled === false ? t('editor.flowDisabledHint') : undefined}
-                    checked={flow.data?.is_enabled !== false}
-                    disabled={readOnly}
-                    onChange={(v) => patch.mutate({ id: flowId, is_enabled: v }, { onSuccess: (saved) => { loadedFor.current = `${saved.id}:${saved.version}` }, onError: (error) => toast.error(errorMessage(error)) })}
-                  />
-                  <Checkbox
-                    label={t('flow.stopOnNg')}
-                    checked={flow.data?.stop_on_ng === true}
-                    disabled={readOnly}
-                    onChange={(v) => patch.mutate({ id: flowId, stop_on_ng: v }, { onSuccess: (saved) => { loadedFor.current = `${saved.id}:${saved.version}` }, onError: (error) => toast.error(errorMessage(error)) })}
-                  />
-                  <div className="border-t border-line pt-3">
-                    <p className="mb-1.5 text-xs font-semibold text-heading">{t('variables.title')}</p>
-                    <VariablesCard flowId={flowId} />
-                  </div>
-                  <div className="border-t border-line pt-3">
-                    <p className="mb-1.5 text-xs font-semibold text-heading">{t('board.settings.title')}</p>
-                    <BoardSettings
-                      flowId={flowId}
-                      config={flow.data?.board}
-                      outputNames={boardOutputNames}
-                      imageNodes={boardImageNodes}
-                      readOnly={readOnly}
-                      saving={patch.isPending}
-                      onSave={(cfg) => patch.mutate({ id: flowId, board: cfg }, { onSuccess: (saved) => { loadedFor.current = `${saved.id}:${saved.version}`; toast.success(t('board.settings.saved')) }, onError: (error) => toast.error(errorMessage(error)) })}
+                  <div className="space-y-3">
+                    <p className="text-xs font-semibold text-heading">{t('editor.flowSettings')}</p>
+                    <TextInput
+                      label={t('common.description')}
+                      value={meta.description}
+                      onChange={(e) => {
+                        setMeta({ ...meta, description: e.target.value })
+                        setDirty(true)
+                      }}
                     />
+                    <div className="grid grid-cols-2 gap-2">
+                      <TextInput
+                        label={t('flows.continuousInterval')}
+                        type="number"
+                        min={0}
+                        value={String(flow.data?.continuous_interval_ms ?? 0)}
+                        disabled={readOnly}
+                        onChange={(e) => patch.mutate({ id: flowId, continuous_interval_ms: Number(e.target.value) || 0 }, { onSuccess: (saved) => { loadedFor.current = `${saved.id}:${saved.version}` } })}
+                      />
+                      <TextInput
+                        label={t('flow.timeoutS')}
+                        type="number"
+                        min={0}
+                        value={String(flow.data?.timeout_s ?? 0)}
+                        disabled={readOnly}
+                        onChange={(e) => patch.mutate({ id: flowId, timeout_s: Number(e.target.value) || 0 }, { onSuccess: (saved) => { loadedFor.current = `${saved.id}:${saved.version}` } })}
+                      />
+                      <TextInput
+                        label={t('flow.concurrency')}
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={String(flow.data?.concurrency ?? 1)}
+                        disabled={readOnly}
+                        onChange={(e) => patch.mutate({ id: flowId, concurrency: Math.max(1, Number(e.target.value) || 1) }, { onSuccess: (saved) => { loadedFor.current = `${saved.id}:${saved.version}` }, onError: (error) => toast.error(errorMessage(error)) })}
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1">
+                      {/* 複製出來的流程預設停用；不用回列表就能在這裡開啟 */}
+                      <Checkbox
+                        label={t('flows.enabledToggle')}
+                        hint={flow.data?.is_enabled === false ? t('editor.flowDisabledHint') : undefined}
+                        checked={flow.data?.is_enabled !== false}
+                        disabled={readOnly}
+                        onChange={(v) => patch.mutate({ id: flowId, is_enabled: v }, { onSuccess: (saved) => { loadedFor.current = `${saved.id}:${saved.version}` }, onError: (error) => toast.error(errorMessage(error)) })}
+                      />
+                      <Checkbox
+                        label={t('flow.stopOnNg')}
+                        checked={flow.data?.stop_on_ng === true}
+                        disabled={readOnly}
+                        onChange={(v) => patch.mutate({ id: flowId, stop_on_ng: v }, { onSuccess: (saved) => { loadedFor.current = `${saved.id}:${saved.version}` }, onError: (error) => toast.error(errorMessage(error)) })}
+                      />
+                    </div>
                   </div>
-                  <div className="border-t border-line pt-3">
-                    <p className="mb-1.5 text-xs font-semibold text-heading">{t('comm.title')}</p>
-                    <CommSettings
-                      config={flow.data?.comm}
-                      nodes={boardImageNodes}
+                  <div className="space-y-3 border-t border-line pt-3">
+                    <p className="text-xs font-semibold text-heading">{t('editor.moreSettings')}</p>
+                    <FlowSettingsDialogs
+                      flowId={flowId}
+                      flow={flow.data}
+                      boardOutputNames={boardOutputNames}
+                      boardImageNodes={boardImageNodes}
                       readOnly={readOnly}
                       saving={patch.isPending}
-                      onSave={(rules) => patch.mutate({ id: flowId, comm: rules }, { onSuccess: (saved) => { loadedFor.current = `${saved.id}:${saved.version}`; toast.success(t('comm.saved')) }, onError: (error) => toast.error(errorMessage(error)) })}
+                      onSaveBoard={(cfg) => patch.mutate({ id: flowId, board: cfg }, { onSuccess: (saved) => { loadedFor.current = `${saved.id}:${saved.version}`; toast.success(t('board.settings.saved')) }, onError: (error) => toast.error(errorMessage(error)) })}
+                      onSaveComm={(rules) => patch.mutate({ id: flowId, comm: rules }, { onSuccess: (saved) => { loadedFor.current = `${saved.id}:${saved.version}`; toast.success(t('comm.saved')) }, onError: (error) => toast.error(errorMessage(error)) })}
                     />
                   </div>
                 </div>

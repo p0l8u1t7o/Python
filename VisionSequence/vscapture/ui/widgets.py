@@ -65,10 +65,14 @@ class StatusDot(QLabel):
 
 
 def shrinkable(combo: QComboBox, chars: int = 8) -> QComboBox:
-    """下拉預設會被最長的選項撐開，導致視窗縮不小；改成依最小內容長度計算並允許省略。"""
+    """下拉預設會被最長的選項撐開，導致視窗縮不小；改成依最小內容長度計算並允許省略。
+
+    水平政策不能用 Ignored：在有 addStretch 的列（主視窗頂列的語言／外觀下拉）裡，Ignored 的 sizeHint 被當成 0，
+    下拉會被壓成 0 px 寬——看得到標籤卻點不到下拉，看起來就是「語言與外觀功能沒作用」。
+    Expanding 在表單裡照樣撐滿欄寬，在頂列則拿到依 chars 算出的最小內容寬度。"""
     combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
     combo.setMinimumContentsLength(chars)
-    combo.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+    combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
     return combo
 
 

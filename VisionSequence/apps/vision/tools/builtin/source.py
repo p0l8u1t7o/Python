@@ -206,7 +206,8 @@ class StereoGrabTool(Tool):
             {"value": "ng", "label": "Mark NG and use the timeout branch"},
         ]),
     ]
-    inputs: list[Port] = []
+    # 接了影像就不開來源：範本樣本圖、批次測試與從影片建立樣本都是「影像已經在手上」的情況
+    inputs = [Port("image", "Left image (optional)", "image", required=False), Port("image_right", "Right image (optional)", "image", required=False)]
     outputs = [
         Port("image", "Left image", "image"),
         Port("image_right", "Right image", "image"),
@@ -216,10 +217,20 @@ class StereoGrabTool(Tool):
     ]
 
     def execute(self, ctx: ToolContext) -> Result:
+        wired = ctx.image("image")
+        if isinstance(wired, np.ndarray):
+            wired_right = ctx.image("image_right")
+            warnings = [] if isinstance(wired_right, np.ndarray) else ["No right image is wired; the left image stands in for both views (disparity 0)"]
+            right = wired_right if isinstance(wired_right, np.ndarray) else wired.copy()
+            return Result(
+                outputs={"image": wired, "image_right": right, "dt_ms": None, "captured_at": None},
+                message=f"left {wired.shape[1]}x{wired.shape[0]}, right {right.shape[1]}x{right.shape[0]} (wired)",
+                detail={"warnings": warnings} if warnings else {},
+            )
         left_id = ctx.param("left")
         right_id = ctx.param("right")
         if not left_id or not right_id:
-            raise ToolError("Choose both stereo sources")
+            raise ToolError("Choose both stereo sources, or wire the left image in")
         timeout = max(0.05, ctx.number("timeout_ms", 1000) / 1000.0)
         from apps.vision.capture.grabber import capture_grabber_for_source
 

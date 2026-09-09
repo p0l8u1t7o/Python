@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
+    QFileDialog,
     QFormLayout,
     QHBoxLayout,
     QLabel,
@@ -116,6 +117,9 @@ class RecordingPanel(QWidget):
         self.max_minutes.setDecimals(1)
         self.max_minutes.setSingleStep(1.0)
         self.server_folder = QLineEdit()
+        # 資料夾用檔案總管挑，不必手打路徑（打錯一個字元錄影就落到別處）
+        self.folder_browse = QPushButton()
+        self.server_folder_browse = QPushButton()
         self.auto_upload = QCheckBox()
         self.folder_label = QLabel()
         self.codec_label = QLabel()
@@ -147,12 +151,12 @@ class RecordingPanel(QWidget):
         self.form = QFormLayout()
         self.form.setContentsMargins(0, 0, 0, 0)
         self.form.setSpacing(8)
-        self.form.addRow(self.folder_label, self.folder)
+        self.form.addRow(self.folder_label, self._folder_row(self.folder, self.folder_browse))
         self.form.addRow(self.codec_label, self.codec)
         self.form.addRow(self.fps_divisor_label, self.fps_divisor)
         self.form.addRow(self.scale_label, self.scale)
         self.form.addRow(self.max_minutes_label, self.max_minutes)
-        self.form.addRow(self.server_folder_label, self.server_folder)
+        self.form.addRow(self.server_folder_label, self._folder_row(self.server_folder, self.server_folder_browse))
         self.form.addRow(self.auto_upload_label, self.auto_upload)
         root.addLayout(self.form)
         root.addWidget(self.file_list)
@@ -162,6 +166,8 @@ class RecordingPanel(QWidget):
 
         for widget in (self.folder, self.server_folder):
             widget.textChanged.connect(self._apply)
+        self.folder_browse.clicked.connect(lambda: self._browse(self.folder, "recording.chooseFolder"))
+        self.server_folder_browse.clicked.connect(lambda: self._browse(self.server_folder, "recording.chooseServerFolder"))
         for widget in (self.codec, self.scale):
             widget.currentIndexChanged.connect(self._apply)
         self.fps_divisor.valueChanged.connect(self._apply)
@@ -203,6 +209,23 @@ class RecordingPanel(QWidget):
         cfg.auto_upload = self.auto_upload.isChecked()
         self.refresh_files()
         self.changed.emit()
+
+    @staticmethod
+    def _folder_row(edit: QLineEdit, button: QPushButton) -> QWidget:
+        row = QWidget()
+        lay = QHBoxLayout(row)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(6)
+        lay.addWidget(edit, 1)
+        lay.addWidget(button)
+        return row
+
+    def _browse(self, edit: QLineEdit, title_key: str) -> None:
+        """開檔案總管選資料夾；起始位置＝欄位目前的值（空的就用預設錄影資料夾）。"""
+        start = edit.text().strip() or str(default_recording_dir())
+        chosen = QFileDialog.getExistingDirectory(self, tr(title_key), start, QFileDialog.Option.ShowDirsOnly)
+        if chosen:
+            edit.setText(str(Path(chosen)))
 
     def _folder_path(self) -> Path:
         cfg = self.engine.cfg.recording
@@ -300,5 +323,9 @@ class RecordingPanel(QWidget):
         self.refresh_files_btn.setText(tr("recording.refreshFiles"))
         self.upload_file_btn.setText(tr("recording.uploadSelected"))
         self.cancel_upload_btn.setText(tr("recording.cancelUpload"))
+        self.folder_browse.setText(tr("recording.browse"))
+        self.server_folder_browse.setText(tr("recording.browse"))
+        self.folder_browse.setToolTip(tr("recording.chooseFolder"))
+        self.server_folder_browse.setToolTip(tr("recording.chooseServerFolder"))
         self.folder.setToolTip(tr("recording.folderHint"))
         self.server_folder.setToolTip(tr("recording.serverFolderHint"))

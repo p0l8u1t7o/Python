@@ -114,6 +114,11 @@ def instantiate(graph: dict[str, Any], *, source_id: int | None, prefix: str = "
                 node["params"] = {"images": json.loads(json.dumps(samples)), "mode": "cycle", "index": 1, "convert": params.get("convert", "keep")}
             else:
                 params["source_id"] = source_id if source_id is not None else ""
+        # 雙視野取像的兩個來源也用同一個佔位：選了來源就兩邊都填它（右來源之後再改），樣本模式留空、由接進來的樣本圖驅動
+        if node.get("type") == "stereo_grab":
+            for key in ("left", "right"):
+                if params.get(key) == SOURCE_PLACEHOLDER:
+                    params[key] = source_id if source_id is not None else ""
     for edge in out.get("edges", []):
         if rename:
             edge["source"] = rename.get(edge["source"], edge["source"])
