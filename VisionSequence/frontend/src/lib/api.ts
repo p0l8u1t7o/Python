@@ -5,6 +5,7 @@
  */
 
 import { logActivity } from '@/lib/activity'
+import type { FixedImageDesc, Region } from '@/lib/types'
 
 /** API 基底：獨立部署前端時以 VITE_API_BASE_URL 指向後端（含 /api）；同源時走 /api（dev 由 Vite 代理、正式由 whitenoise 同站服務）。 */
 export const BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '/api'
@@ -88,6 +89,19 @@ export function withKey(url: string): string {
 export function fixedImageUrl(id: string, w = 0): string {
   if (!id) return ''
   return withKey(w ? `${BASE_URL}/vision/fixed-images/${encodeURIComponent(id)}/thumb?w=${w}` : `${BASE_URL}/vision/fixed-images/${encodeURIComponent(id)}`)
+}
+
+export function fixedImageFromRef(body: { ref: string; name?: string; region?: Region | null }): Promise<FixedImageDesc> {
+  return api.post<FixedImageDesc>('/vision/fixed-images/from-ref', body)
+}
+
+export interface TeachContourResult {
+  model: Record<string, unknown>
+  points: [number, number][]
+}
+
+export function teachContourFromImage(flowId: number, body: { ref: string; roi?: Region | null; simplify?: number }): Promise<TeachContourResult> {
+  return api.post<TeachContourResult>(`/vision/flows/${flowId}/teach-contour`, body)
 }
 
 /** 快取影像的網址。max = 最長邊（0 = 原圖）。 */

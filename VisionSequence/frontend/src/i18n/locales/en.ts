@@ -2263,6 +2263,18 @@ const enExtra3 = {
       codeAdminOnly: 'Only administrators can edit scripts; you can read and run approved ones',
       jsonInvalid: 'Malformed JSON',
     },
+    images: {
+      addFromImage: 'Add from current image',
+      drawRegion: 'Draw a rectangle, then add it',
+      noImage: 'No image available yet; run a preview first',
+      addedFromImage: 'Added {{w}}×{{h}} image',
+    },
+    teachContour: {
+      action: 'Teach contour from current image',
+      noImage: 'No image available yet; run a preview first',
+      teaching: 'Teaching contour',
+      taught: 'Contour taught from {{count}} points',
+    },
     toast: {
       saved: 'Flow saved',
       previewDone: 'Preview finished: {{status}} ({{ms}} ms)',
@@ -2469,6 +2481,9 @@ const enExtra3 = {
     value: 'Value',
     on: 'On',
     off: 'Off',
+    loading: 'Loading',
+    nestedChildHidden: 'Nested child interfaces are not shown',
+    childDashboardNotFound: 'Dashboard not found',
     widgetTypes: {
       image: 'Image',
       images: 'Images',
@@ -2492,6 +2507,7 @@ const enExtra3 = {
       clock: 'Clock',
       log: 'Log',
       device_status: 'Device status',
+      child: 'Child dashboard',
     },
     actions: {
       run_once: 'Run once',
@@ -2542,6 +2558,7 @@ const enExtra3 = {
     tabs: 'Tabs',
     rules: 'Rules',
     imageItems: 'Images',
+    pickDashboard: 'Choose a dashboard',
     moveUp: 'Move up',
     moveDown: 'Move down',
     add: 'Add',
@@ -2579,6 +2596,7 @@ const enExtra3 = {
       lower: 'Lower limit',
       upper: 'Upper limit',
       fixed_image_id: 'Fixed image ID',
+      dashboard_id: 'Dashboard',
       timezone: 'Timezone',
       format: 'Format',
     },
@@ -2615,6 +2633,7 @@ const enExtra3 = {
       clock: 'Station clock.',
       log: 'Recent run messages.',
       device_status: 'Station, lock and worker state.',
+      child: 'Embeds another dashboard one level deep.',
     },
   },
 }

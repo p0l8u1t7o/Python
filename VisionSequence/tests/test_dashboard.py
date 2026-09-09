@@ -111,6 +111,25 @@ class DashboardValidationTests(TestCase):
         })
         self.assertEqual(dashboard.flows_of(raw), {3, 4, 5})
 
+    def test_flows_of_expands_child_dashboards_one_level_only(self):
+        grandchild = Dashboard.objects.create(name="Grandchild", layout=layout(8))
+        child_layout = layout(7)
+        child_layout["widgets"].append({"id": "grandchild", "type": "child", "cell": "a", "props": {"dashboard_id": grandchild.id}})
+        child = Dashboard.objects.create(name="Child", layout=child_layout)
+        raw = layout(3)
+        raw["widgets"].append({"id": "child", "type": "child", "cell": "a", "props": {"dashboard_id": child.id}})
+
+        self.assertEqual(dashboard.flows_of(raw), {3, 7})
+
+    def test_child_widget_preserves_missing_dashboard_id(self):
+        raw = layout(3)
+        raw["widgets"].append({"id": "child", "type": "child", "cell": "a", "props": {"dashboard_id": 9999}})
+
+        shown = dashboard.effective(raw)
+
+        child = next(widget for widget in shown["widgets"] if widget["id"] == "child")
+        self.assertEqual(child["props"]["dashboard_id"], 9999)
+
 
 class WidgetRoundTripTests(SimpleTestCase):
     """每一種 widget 存進去都要讀得回來。
@@ -123,7 +142,7 @@ class WidgetRoundTripTests(SimpleTestCase):
     def _sample(kind, constraint):
         return {
             "text": "x", "int": 1, "number": 1.0, "bool": True, "any": 1, "flow_id": 1,
-            "color": "#112233", "choice": (constraint or ("",))[0], "children": [],
+            "dashboard_id": 1, "color": "#112233", "choice": (constraint or ("",))[0], "children": [],
             "tabs": [], "columns": ["value"], "rules": [], "image_items": [],
         }[kind]
 

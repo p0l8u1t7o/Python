@@ -25,6 +25,8 @@ export interface InspectorActions {
   /** 正在框選範本的參數 key */
   templateKey: string | null
   hasImage: boolean
+  addImageFromCurrent?: (paramKey: string) => void
+  teachContourFromCurrent?: () => void
 }
 
 function describeRegion(region: Region): string {
@@ -47,7 +49,7 @@ function describeRegion(region: Region): string {
 }
 
 /** 固定影像清單：縮圖格、多檔上傳（POST /vision/fixed-images）、移除；值是描述子陣列。 */
-export function ImagesField({ label, hint, required, value, onChange, readOnly }: { label: string; hint?: string; required?: boolean; value: unknown; onChange: (v: unknown) => void; readOnly?: boolean }) {
+export function ImagesField({ label, hint, required, value, onChange, readOnly, onAddFromImage, addFromImageTitle }: { label: string; hint?: string; required?: boolean; value: unknown; onChange: (v: unknown) => void; readOnly?: boolean; onAddFromImage?: () => void; addFromImageTitle?: string }) {
   const { t } = useTranslation()
   const toast = useToast()
   const input = useRef<HTMLInputElement>(null)
@@ -95,6 +97,11 @@ export function ImagesField({ label, hint, required, value, onChange, readOnly }
       {!readOnly ? (
         <div className="mt-1.5 flex flex-wrap gap-1.5">
           <Button size="xs" icon={<ImagePlus size={12} />} loading={busy} onClick={() => input.current?.click()} data-testid="images-upload">{t('editor.params.uploadPictures')}</Button>
+          {onAddFromImage ? (
+            <Button size="xs" icon={<Scan size={12} />} onClick={onAddFromImage} title={addFromImageTitle} disabled={addFromImageTitle !== undefined} data-testid="images-add-current">
+              {t('editor.images.addFromImage')}
+            </Button>
+          ) : null}
           <input ref={input} type="file" className="hidden" accept="image/*" multiple onChange={(e) => { void upload(e.target.files); e.target.value = '' }} />
         </div>
       ) : null}
@@ -231,7 +238,16 @@ export function ParamField({ param, value, onChange, actions }: { param: ToolPar
       )
 
     case 'json':
-      return <JsonField label={label} hint={help} value={value} onChange={onChange} mono />
+      return (
+        <div className="space-y-1.5">
+          <JsonField label={label} hint={help} value={value} onChange={onChange} mono />
+          {param.key === 'model' && actions.teachContourFromCurrent ? (
+            <Button size="xs" icon={<Scan size={12} />} disabled={!actions.hasImage} title={actions.hasImage ? undefined : t('editor.teachContour.noImage')} onClick={actions.teachContourFromCurrent} data-testid="teach-contour-current">
+              {t('editor.teachContour.action')}
+            </Button>
+          ) : null}
+        </div>
+      )
 
     case 'code':
       // Python 腳本只有管理員能編輯；一般使用者看得到、能執行已核准的腳本
@@ -247,7 +263,7 @@ export function ParamField({ param, value, onChange, actions }: { param: ToolPar
       )
 
     case 'images':
-      return <ImagesField label={label} hint={help} required={param.required} value={value} onChange={onChange} readOnly={!auth.isEngineer} />
+      return <ImagesField label={label} hint={help} required={param.required} value={value} onChange={onChange} readOnly={!auth.isEngineer} onAddFromImage={actions.addImageFromCurrent ? () => actions.addImageFromCurrent?.(param.key) : undefined} addFromImageTitle={actions.hasImage ? undefined : t('editor.images.noImage')} />
 
     case 'asset': {
       const accept = param.accept || 'image'

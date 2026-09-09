@@ -100,6 +100,15 @@ def _model_payload(value: Any, image_shape: tuple[int, ...] | None = None) -> di
     }
 
 
+def teach_contour_model(image: np.ndarray, roi: dict[str, Any] | None = None, simplify: float = 2.0) -> tuple[dict[str, Any] | None, list[list[float]]]:
+    """把教導輪廓包成 edge_model_defect 執行期自動教導使用的同一份 model JSON。"""
+    points = teach_contour(image, roi=roi, simplify=simplify)
+    if len(points) < 3:
+        return None, points
+    model = _model_payload({"version": 1, "image_size": [image.shape[1], image.shape[0]], "closed": True, "points": points})
+    return model, points
+
+
 def _reference_model(ctx: ToolContext, roi: dict[str, Any] | None) -> tuple[dict[str, Any] | None, bool]:
     """從 reference 固定影像自動教一次輪廓模型；只回本次結果，不寫回節點參數。"""
     refs = ctx.param("reference") or []
@@ -110,10 +119,8 @@ def _reference_model(ctx: ToolContext, roi: dict[str, Any] | None) -> tuple[dict
     image = fixed_images.load(str(image_id or ""))
     if image is None:
         raise ToolError("The reference picture is missing; add it again")
-    points = teach_contour(image, roi=roi, simplify=ctx.number("teach_simplify", 2.0))
-    if len(points) < 3:
-        return None, True
-    return _model_payload({"version": 1, "image_size": [image.shape[1], image.shape[0]], "closed": True, "points": points}), True
+    model, _points = teach_contour_model(image, roi=roi, simplify=ctx.number("teach_simplify", 2.0))
+    return model, True
 
 
 def step_flags(values: np.ndarray, threshold: float) -> np.ndarray:

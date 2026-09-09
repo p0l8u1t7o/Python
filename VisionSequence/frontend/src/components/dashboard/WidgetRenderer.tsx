@@ -24,6 +24,7 @@ import { ImageStaticWidget } from './widgets/ImageStaticWidget'
 import { ClockWidget } from './widgets/ClockWidget'
 import { LogWidget } from './widgets/LogWidget'
 import { DeviceStatusWidget } from './widgets/DeviceStatusWidget'
+import { ChildWidget } from './widgets/ChildWidget'
 
 const RENDERERS: Record<DashboardWidgetType, (props: DashboardWidgetProps) => ReactNode> = {
   image: ImageWidget,
@@ -48,6 +49,7 @@ const RENDERERS: Record<DashboardWidgetType, (props: DashboardWidgetProps) => Re
   clock: ClockWidget,
   log: LogWidget,
   device_status: DeviceStatusWidget,
+  child: ChildWidget,
 }
 
 export function WidgetRenderer(props: DashboardWidgetProps) {

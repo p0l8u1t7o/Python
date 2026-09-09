@@ -98,7 +98,7 @@ describe('optional text props', () => {
     // 驗的是「填好之後每一種 widget 都過得了自己的驗證」。
     const sample: Record<string, unknown> = {
       text: 'x', int: 1, number: 1, bool: true, any: 1, flow_id: 1, color: '#112233',
-      children: [], tabs: [], columns: ['value'], rules: [], image_items: [],
+      dashboard_id: 1, children: [], tabs: [], columns: ['value'], rules: [], image_items: [],
     }
     for (const type of DASHBOARD_WIDGET_TYPES) {
       const props: Record<string, unknown> = { ...defaultProps(type) }

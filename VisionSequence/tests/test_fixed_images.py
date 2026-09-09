@@ -176,6 +176,46 @@ class FixedImageApiTests(TestCase):
         self.assertEqual(r["Content-Type"], "image/jpeg")
         self.assertEqual(self.client.get(f"/api/vision/fixed-images/{'q' * 20}/thumb?token={token}").status_code, 404)
 
+    def test_upload_from_ref_accepts_rect_region(self):
+        image_store.put("t:fixed:rect", np.full((20, 30, 3), 90, np.uint8), flow_id=0, run_id="t", pinned=True)
+
+        r = self.client.post(
+            "/api/vision/fixed-images/from-ref",
+            data=json.dumps({"ref": "t:fixed:rect", "region": {"shape": "rect", "x": 4, "y": 3, "w": 10, "h": 8}}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(r.status_code, 201, r.content)
+        body = r.json()
+        self.assertEqual(body["width"], 10)
+        self.assertEqual(body["height"], 8)
+
+    def test_upload_from_ref_accepts_rotated_rect_region(self):
+        image_store.put("t:fixed:rot", np.full((40, 50, 3), 90, np.uint8), flow_id=0, run_id="t", pinned=True)
+
+        r = self.client.post(
+            "/api/vision/fixed-images/from-ref",
+            data=json.dumps({"ref": "t:fixed:rot", "region": {"shape": "rotated_rect", "cx": 25, "cy": 20, "w": 12, "h": 6, "angle": 15}}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(r.status_code, 201, r.content)
+        body = r.json()
+        self.assertEqual(body["width"], 12)
+        self.assertEqual(body["height"], 6)
+
+    def test_upload_from_ref_rejects_region_outside_picture(self):
+        image_store.put("t:fixed:outside", np.full((20, 30, 3), 90, np.uint8), flow_id=0, run_id="t", pinned=True)
+
+        r = self.client.post(
+            "/api/vision/fixed-images/from-ref",
+            data=json.dumps({"ref": "t:fixed:outside", "region": {"shape": "rect", "x": 24, "y": 2, "w": 10, "h": 8}}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(r.status_code, 422)
+        self.assertEqual(r.json()["error"]["code"], "bad_region")
+
     def test_template_instantiates_with_sample_pictures_and_runs(self):
         from apps.vision import demo
 

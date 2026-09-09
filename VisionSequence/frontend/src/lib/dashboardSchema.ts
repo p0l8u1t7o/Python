@@ -6,6 +6,7 @@ export type DashboardPropKind =
   | 'int'
   | 'number'
   | 'flow_id'
+  | 'dashboard_id'
   | 'choice'
   | 'color'
   | 'text'
@@ -66,6 +67,7 @@ export const WIDGET_SCHEMA = {
   clock: { props: { timezone: { kind: 'text', defaultValue: '' }, format: { kind: 'text', defaultValue: 'HH:mm:ss' } }, sourceKinds: DEVICE_SOURCES },
   log: { props: { rows: { kind: 'int', defaultValue: 20, range: [1, 200] } }, sourceKinds: ['status'] },
   device_status: { props: {}, sourceKinds: DEVICE_SOURCES },
+  child: { props: { dashboard_id: { kind: 'dashboard_id', required: true }, title: { kind: 'text', defaultValue: '' } }, sourceKinds: [] },
 } as const satisfies Record<DashboardWidgetType, DashboardWidgetSchema>
 
 export const DASHBOARD_WIDGET_TYPES = Object.keys(WIDGET_SCHEMA) as DashboardWidgetType[]
@@ -197,6 +199,7 @@ function checkValue(value: unknown, path: string, field: string, spec: Dashboard
   if (spec.kind === 'int') checkInt(value, path, spec.range ?? [Number.MIN_SAFE_INTEGER, Number.MAX_SAFE_INTEGER], errors, widgetId, field)
   if (spec.kind === 'number' && value !== null && ((typeof value !== 'number' && typeof value !== 'string') || !Number.isFinite(Number(value)))) errors.push({ path, message: `${field} must be a number`, widgetId })
   if (spec.kind === 'flow_id' && value !== null && !positiveInt(value)) errors.push({ path, message: `${field} must be a positive integer`, widgetId })
+  if (spec.kind === 'dashboard_id' && !positiveInt(value)) errors.push({ path, message: `${field} must be a positive integer`, widgetId })
   if (spec.kind === 'choice' && !spec.choices?.includes(String(value))) errors.push({ path, message: `${field} must be one of ${(spec.choices ?? []).join(', ')}`, widgetId })
   if (spec.kind === 'color' && (typeof value !== 'string' || !/^#[0-9A-Fa-f]{6}$/.test(value))) errors.push({ path, message: `${field} must be a #rrggbb color`, widgetId })
   // 選填的文字屬性（時鐘時區、群組標題）允許空字串：後端存檔時本來就會把它補成空字串，
@@ -277,6 +280,7 @@ function checkImageItems(value: unknown, path: string, field: string, errors: Da
 function requiredValue(spec: DashboardPropSpec): unknown {
   if (spec.kind === 'choice') return spec.choices?.[0] ?? ''
   if (spec.kind === 'columns') return ['width']
+  if (spec.kind === 'dashboard_id') return 1
   if (spec.kind === 'any') return ''
   if (spec.kind === 'color') return '#22c55e'
   return ''

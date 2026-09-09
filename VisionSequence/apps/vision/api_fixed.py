@@ -19,6 +19,7 @@ from apps.accounts.security import authenticate, principal, require_feature
 from apps.core.errors import NotFound, PermissionDenied, ValidationError
 from apps.vision import fixed_images
 from apps.vision.images import store
+from apps.vision.tools import roi
 
 router = Router(tags=["fixed-images"])
 
@@ -52,6 +53,23 @@ def fixed_image_from_ref(request: HttpRequest):
     image = store.get(ref) if ref else None
     if image is None:
         raise NotFound("The picture is no longer in the cache; upload it as a file instead", code="image_gone")
+    region = (body or {}).get("region")
+    if region is not None:
+        if not isinstance(region, dict):
+            raise ValidationError("The region must be an object", code="bad_region")
+        try:
+            x0, y0, x1, y1 = roi.extent(region)
+            h, w = image.shape[:2]
+            if x0 < 0 or y0 < 0 or x1 > w or y1 > h or x1 <= x0 or y1 <= y0:
+                raise ValidationError("The region is outside the picture", code="bad_region")
+            cropped = roi.crop(image, region, upright=True).image
+        except ValidationError:
+            raise
+        except Exception as exc:
+            raise ValidationError("The region is not valid", code="bad_region") from exc
+        if cropped.size == 0:
+            raise ValidationError("The region is empty", code="bad_region")
+        image = cropped
     try:
         return 201, fixed_images.store(image, str((body or {}).get("name") or ref.replace(":", "_")))
     except fixed_images.FixedImageError as exc:

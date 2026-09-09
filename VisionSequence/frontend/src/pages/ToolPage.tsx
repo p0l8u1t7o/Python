@@ -23,7 +23,7 @@ import { formatValue } from '@/components/editor/ResultsPanel'
 import { iconFor } from '@/components/editor/ToolNode'
 import { Button, DetailRow, ErrorState, LoadingState, Modal, StatusBadge, Switch, TextInput } from '@/components/ui'
 import { ImageViewer } from '@/components/viewer/ImageViewer'
-import { imageUrl } from '@/lib/api'
+import { fixedImageFromRef, imageUrl, teachContourFromImage } from '@/lib/api'
 import { createDebouncedCall, type DebouncedCall } from '@/lib/debounce'
 import { useConfirm } from '@/lib/useConfirm'
 import { useRegisterAssistantContext } from '@/lib/assistantContext'
@@ -79,6 +79,10 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
   const entryRef = useRef<{ key: string; json: string; dirty: boolean } | null>(null)
   const [templateKey, setTemplateKey] = useState<string | null>(null)
   const [templateRegion, setTemplateRegion] = useState<Region | null>(null)
+  const [addImageKey, setAddImageKey] = useState<string | null>(null)
+  const [addImageRegion, setAddImageRegion] = useState<Region | null>(null)
+  const [addingImage, setAddingImage] = useState(false)
+  const [teachingContour, setTeachingContour] = useState(false)
   const [templateName, setTemplateName] = useState('')
   const [askTemplateName, setAskTemplateName] = useState(false)
   const scratchInput = useRef<HTMLInputElement>(null)
@@ -260,6 +264,8 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
         setRoiEditingKey(null)
         setTemplateKey(null)
         setTemplateRegion(null)
+        setAddImageKey(null)
+        setAddImageRegion(null)
       }
     }
     document.addEventListener('keydown', onKeyDown)
@@ -303,7 +309,17 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
     templateFromImage: (key) => {
       setTemplateKey(key || null)
       setTemplateRegion(null)
+      setAddImageKey(null)
+      setAddImageRegion(null)
     },
+    addImageFromCurrent: readOnly ? undefined : (key) => {
+      setAddImageKey(key || null)
+      setAddImageRegion(null)
+      setTemplateKey(null)
+      setTemplateRegion(null)
+      setRoiEditingKey(null)
+    },
+    teachContourFromCurrent: !readOnly && node?.type === 'edge_model_defect' ? () => void teachContour() : undefined,
   }
   async function createTemplate() {
     if (!templateKey || !templateRegion || !input?.ref || !node) return
@@ -317,6 +333,39 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
       setTemplateName('')
     } catch (error) {
       toast.error(errorMessage(error))
+    }
+  }
+
+  async function addFixedImageFromCurrent() {
+    if (!addImageKey || !addImageRegion || !input?.ref || !node) return
+    setAddingImage(true)
+    try {
+      const desc = await fixedImageFromRef({ ref: input.ref, region: addImageRegion, name: `${node.label || node.id} ${addImageKey}` })
+      const current = Array.isArray(node.params?.[addImageKey]) ? node.params?.[addImageKey] as unknown[] : []
+      onChange({ params: { ...(node.params ?? {}), [addImageKey]: [...current, desc] } })
+      toast.success(t('editor.images.addedFromImage', { w: desc.width, h: desc.height }))
+      setAddImageKey(null)
+      setAddImageRegion(null)
+    } catch (error) {
+      toast.error(errorMessage(error))
+    } finally {
+      setAddingImage(false)
+    }
+  }
+
+  async function teachContour() {
+    if (!input?.ref || !node) return
+    setTeachingContour(true)
+    try {
+      const roi = node.params?.roi && typeof node.params.roi === 'object' ? node.params.roi as Region : null
+      const simplify = typeof node.params?.teach_simplify === 'number' ? node.params.teach_simplify : undefined
+      const result = await teachContourFromImage(flowId, { ref: input.ref, roi, simplify })
+      onChange({ params: { ...(node.params ?? {}), model: result.model } })
+      toast.success(t('editor.teachContour.taught', { count: result.points.length }))
+    } catch (error) {
+      toast.error(errorMessage(error))
+    } finally {
+      setTeachingContour(false)
     }
   }
 
@@ -336,6 +385,8 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
     ? { roi: roiValue, roiShapes: roiParam.shapes.length ? roiParam.shapes : undefined, onRoiChange: (region: Region) => onChange({ params: { ...(node.params ?? {}), [roiParam.key]: region } }) }
     : templateKey
       ? { roi: templateRegion, roiShapes: ['rect' as const], onRoiChange: setTemplateRegion }
+      : addImageKey
+        ? { roi: addImageRegion, roiShapes: ['rect' as const, 'rotated_rect' as const], onRoiChange: setAddImageRegion }
       : {}
   const status = report?.status
   const badge = report ? { text: `${t(`status.${status}`)} · ${Math.round(report.duration_ms)} ms`, tone: (status === 'ok' ? 'ok' : status === 'ng' || status === 'error' ? 'ng' : 'neutral') as 'ok' | 'ng' | 'neutral' } : null
@@ -392,6 +443,13 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
                 <div className="absolute right-2 bottom-2 flex items-center gap-1.5 rounded-lg border border-brand bg-surface/95 px-2 py-1 text-[11px]">
                   <span className="text-brand">{t('editor.viewer.templateHint')}</span>
                   <Button size="xs" variant="primary" icon={<Check size={12} />} disabled={!templateRegion} onClick={() => setAskTemplateName(true)}>{t('editor.viewer.templateCreate')}</Button>
+                </div>
+              ) : null}
+              {addImageKey ? (
+                <div className="absolute right-2 bottom-2 flex items-center gap-1.5 rounded-lg border border-brand bg-surface/95 px-2 py-1 text-[11px]">
+                  <span className="text-brand">{t('editor.images.drawRegion')}</span>
+                  <Button size="xs" variant="ghost" onClick={() => { setAddImageKey(null); setAddImageRegion(null) }}>{t('common.cancel')}</Button>
+                  <Button size="xs" variant="primary" icon={<Check size={12} />} loading={addingImage} disabled={!addImageRegion} onClick={() => void addFixedImageFromCurrent()}>{t('editor.images.addFromImage')}</Button>
                 </div>
               ) : null}
               {roiEditingKey ? (
@@ -532,6 +590,11 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
             </span>
           ) : null}
           {previewError ? <span className="text-[11px] text-critical" data-testid="tool-preview-error">{previewError}</span> : null}
+          {teachingContour ? (
+            <span className="flex items-center gap-1 text-[11px] text-brand" data-testid="tool-teaching-contour">
+              <Loader2 size={12} className="animate-spin" /> {t('editor.teachContour.teaching')}
+            </span>
+          ) : null}
         </aside>
 
       </div>

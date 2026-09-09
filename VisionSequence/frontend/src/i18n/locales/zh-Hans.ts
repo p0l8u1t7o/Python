@@ -943,6 +943,18 @@ const zhHans = {
       connectionHint: '从清单选连接名称，或自行输入（也可填 id）',
       connectionNone: '尚无连接：到「外部集成」的 Modbus 或 TCP 页创建',
     },
+    images: {
+      addFromImage: '从当前图像加入',
+      drawRegion: '框选矩形后加入',
+      noImage: '当前没有可用图像，请先试运行',
+      addedFromImage: '已加入 {{w}}×{{h}} 图像',
+    },
+    teachContour: {
+      action: '从当前图像教导轮廓',
+      noImage: '当前没有可用图像，请先试运行',
+      teaching: '正在教导轮廓',
+      taught: '已用 {{count}} 个点教导轮廓',
+    },
     toast: {
       saved: '流程已保存',
       previewDone: '试执行完成：{{status}}（{{ms}} ms）',
@@ -2565,6 +2577,9 @@ const zhHans = {
     value: '值',
     on: '开',
     off: '关',
+    loading: '载入中',
+    nestedChildHidden: '不显示嵌套子界面',
+    childDashboardNotFound: '找不到 Dashboard',
     widgetTypes: {
       image: '影像',
       images: '多影像',
@@ -2588,6 +2603,7 @@ const zhHans = {
       clock: '时钟',
       log: '记录',
       device_status: '设备状态',
+      child: '子 Dashboard',
     },
     actions: {
       run_once: '执行一次',
@@ -2605,9 +2621,10 @@ const zhHans = {
     catalog: 'Widget 目录', properties: '属性', advanced: '高级', preview: '预览', templateMenu: '模板', applyTemplate: '应用模板', templateConfirm: '应用模板会取代当前版面。', undo: '撤销', redo: '重做', rows: '行数', cols: '列数', splitCell: '拆分格子', dropHere: '将 widget 放到这里', selectWidget: '请在画布选择 widget。', jsonHint: '只有视觉控制无法表达变更时才编辑原始 JSON。', applyJson: '应用 JSON', advancedClosed: '打开高级抽屉以编辑原始 JSON。', designPreview: '设计预览', widget: 'Widget', widgetId: 'Widget ID', cell: '格子', layout: '版面', defaultFlow: '默认流程', noDefaultFlow: '无默认流程', themeJson: 'Theme JSON', source: '数据来源', sourceFlow: '流程', useDefaultFlow: '使用版面默认', sourceKind: '类型', sourceKey: 'Key', freeInput: '选择或手动输入', props: '属性', noProps: '此 widget 没有属性。', tabs: '分页', rules: '规则', imageItems: '图像', moveUp: '上移', moveDown: '下移', add: '新增', remove: '删除',
     bars: { top: '顶栏', bottom: '底栏', left: '左侧栏', right: '右侧栏' },
     sourceKinds: { output: '输出', variable: '变量', image: '图像', status: '状态', counts: '计数', spc: '测量', device: '设备' },
-    propsLabels: { node: '节点', port: '端口', overlays: '标记', crosshair: '十字线', history: '历史', items: '项目', columns: '列', flow_id: '流程', template: '模板文字', action: '动作', recipe: '配方', variable: '变量', value: '值', value2: '第二值', url: 'URL', scope: '范围', editable: '可编辑', key: 'Key', op: '运算符', color: '颜色', color_true: '成立颜色', color_false: '不成立颜色', title: '标题', children: '子项', tabs: '分页', rows: '行数', points: '点数', lower: '下限', upper: '上限', fixed_image_id: '固定图像 ID', timezone: '时区', format: '格式' },
+    pickDashboard: '选择 Dashboard',
+    propsLabels: { node: '节点', port: '端口', overlays: '标记', crosshair: '十字线', history: '历史', items: '项目', columns: '列', flow_id: '流程', template: '模板文字', action: '动作', recipe: '配方', variable: '变量', value: '值', value2: '第二值', url: 'URL', scope: '范围', editable: '可编辑', key: 'Key', op: '运算符', color: '颜色', color_true: '成立颜色', color_false: '不成立颜色', title: '标题', children: '子项', tabs: '分页', rows: '行数', points: '点数', lower: '下限', upper: '上限', fixed_image_id: '固定图像 ID', dashboard_id: 'Dashboard', timezone: '时区', format: '格式' },
     templates: { empty: { title: '空白', description: '不含 widget 的干净网格。' }, default: { title: '默认', description: '服务器默认 Dashboard 版面。' }, singleFlowBench: { title: '单流程检测台', description: '单一流程的图像、判定、统计与运行控制。' }, dualFlowCompare: { title: '双流程对照', description: '两个图像区、个别判定与共用设备面板。' }, measurementBoard: { title: '测量看板', description: '控制图、表格与当日生产统计。' }, operatorPanel: { title: '操作员面板', description: '控制按钮、参数编辑、变量与灯号。' }, multiImageWall: { title: '多图像墙', description: '多相机图像网格，搭配判定与时钟。' }, deviceStatus: { title: '设备状态', description: '站台状态、锁定、时钟与当前运行状态。' } },
-    widgetPurpose: { image: '最新检测图像，可显示标记。', images: '同一格中的多个图像位置。', run_control: '运行与连续模式控制。', run_status: '最新运行状态字段。', verdict: '大型 OK/NG 判定。', text: '由输出或设备字段组成的文字。', button: 'Dashboard 动作按钮。', switch: '布尔变量开关。', param: '流程参数编辑器。', variable: '流程或站台变量编辑器。', traffic_light: '按最新运行状态显示灯号。', conditional_light: '由比较规则驱动的单一灯号。', group: '嵌套 widget 组。', tabs: '分页式嵌套 widget。', table: '具名输出表格。', line_chart: '具名输出的测量趋势。', stats: '今日总数与良率。', pie: '今日结果分布。', image_static: '固定储存图像。', clock: '站台时钟。', log: '近期运行消息。', device_status: '站台、锁定与工作池状态。' },
+    widgetPurpose: { image: '最新检测图像，可显示标记。', images: '同一格中的多个图像位置。', run_control: '运行与连续模式控制。', run_status: '最新运行状态字段。', verdict: '大型 OK/NG 判定。', text: '由输出或设备字段组成的文字。', button: 'Dashboard 动作按钮。', switch: '布尔变量开关。', param: '流程参数编辑器。', variable: '流程或站台变量编辑器。', traffic_light: '按最新运行状态显示灯号。', conditional_light: '由比较规则驱动的单一灯号。', group: '嵌套 widget 组。', tabs: '分页式嵌套 widget。', table: '具名输出表格。', line_chart: '具名输出的测量趋势。', stats: '今日总数与良率。', pie: '今日结果分布。', image_static: '固定储存图像。', clock: '站台时钟。', log: '近期运行消息。', device_status: '站台、锁定与工作池状态。', child: '嵌入另一个 Dashboard，深度限一层。' },
   },
   stationTeach: {
     title: '站台参数卡',

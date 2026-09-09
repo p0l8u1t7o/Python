@@ -31,8 +31,10 @@ from apps.core.errors import Conflict, NotFound, PermissionDenied, ValidationErr
 from apps.vision import __version__, demo, retention, summary, trace
 from apps.vision.api import _decode_upload, _visible_flows
 from apps.vision.graph import validate_graph
+from apps.vision.images import store as image_store
 from apps.vision.models import FlowTemplate, ImageSource
 from apps.vision.runner import get_flow, runner
+from apps.vision.tools.builtin import edge_defect
 
 router = Router(tags=["more"])
 
@@ -253,6 +255,12 @@ class BatchSourceIn(Schema):
     graph: dict[str, Any] | None = None
 
 
+class TeachContourIn(Schema):
+    ref: str
+    roi: dict[str, Any] | None = None
+    simplify: float = 2.0
+
+
 @router.post("/flows/{flow_id}/batch-source")
 def batch_from_source(request: HttpRequest, flow_id: int, payload: BatchSourceIn):
     require_feature(request, "batch")
@@ -268,6 +276,24 @@ def batch_from_source(request: HttpRequest, flow_id: int, payload: BatchSourceIn
     if not images:
         raise ValidationError("The source returned no image", code="no_frame")
     return _batch_run(request, flow_id, images, payload.graph)
+
+
+@router.post("/flows/{flow_id}/teach-contour")
+def teach_contour_from_ref(request: HttpRequest, flow_id: int, payload: TeachContourIn):
+    require_feature(request, "flows.edit")
+    flow = get_flow(flow_id)
+    if not _visible_flows(request).filter(pk=flow.pk).exists():
+        raise NotFound(f"Flow {flow_id} not found", code="flow_not_found")
+    image = image_store.get(payload.ref)
+    if image is None:
+        raise NotFound("The picture is no longer in the cache", code="no_such_image")
+    try:
+        model, points = edge_defect.teach_contour_model(image, roi=payload.roi, simplify=payload.simplify)
+    except Exception as exc:
+        raise ValidationError("The teaching region is not valid", code="bad_region") from exc
+    if model is None:
+        raise ValidationError("No closed contour could be taught from the picture", code="no_contour")
+    return {"model": model, "points": points}
 
 
 # ---------------------------------------------------------------------------

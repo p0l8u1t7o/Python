@@ -42,6 +42,22 @@ export const DASHBOARD_LAYOUT = {
 
 export const DASHBOARD = { id: 1, name: 'Line status dashboard', is_default: true, owner_name: 'admin', updated_at: '2026-01-01T00:00:00Z', widget_count: 3, layout: DASHBOARD_LAYOUT }
 
+export const DASHBOARD_CHILD_LAYOUT = {
+  rows: 1,
+  cols: 1,
+  cells: [
+    { id: 'main', row: 1, col: 1, row_span: 1, col_span: 1 },
+  ],
+  bars: { top: false, bottom: false, left: false, right: false },
+  default_flow_id: 1,
+  widgets: [
+    { id: 'child_verdict', type: 'verdict', cell: 'main', props: {}, source: { flow_id: 1, kind: 'status' } },
+  ],
+  theme: {},
+}
+
+export const DASHBOARD_CHILD = { id: 2, name: 'Child station panel', is_default: false, owner_name: 'admin', updated_at: '2026-01-01T00:00:00Z', widget_count: 1, layout: DASHBOARD_CHILD_LAYOUT }
+
 export const DL_PROJECT = {
   id: 1,
   name: 'Fast part',
@@ -118,10 +134,12 @@ export function routes(path: string, body?: unknown): unknown {
   if (path.startsWith('/vision/spc/alerts')) return { items: [], cached: false }
   if (path.startsWith('/vision/summary')) return { station_id: 'ST01', version: '1.0.0', hours: 24, locked: false, totals: { total: 0, ok: 0, ng: 0, failed: 0, yield: null }, flows: [] }
   if (path.startsWith('/vision/audit')) return { items: [{ id: 1, at: '2026-01-01T00:00:00Z', actor: 'admin', actor_kind: 'user', action: 'flow.update', target_type: 'flow', target_id: '1', target_name: '示範流程', summary: 'threshold 60 → 46', detail: {}, ip: '127.0.0.1' }], total: 1, limit: 50, offset: 0, actions: ['flow.update'], actors: ['admin'] }
-  if (path === '/vision/dashboards') return { items: [DASHBOARD] }
+  if (path === '/vision/dashboards') return { items: [DASHBOARD, DASHBOARD_CHILD] }
   if (path === '/vision/dashboards/default') return DASHBOARD
   if (/\/vision\/dashboards\/\d+\/data$/.test(path)) return DASHBOARD_DATA
+  if (path === '/vision/dashboards/2') return DASHBOARD_CHILD
   if (/\/vision\/dashboards\/\d+$/.test(path)) return DASHBOARD
+  if (/\/vision\/flows\/\d+\/teach-contour$/.test(path)) return { model: { version: 1, image_size: [640, 480], closed: true, points: [[10, 10], [30, 10], [30, 30], [10, 30]] }, points: [[10, 10], [30, 10], [30, 30], [10, 30]] }
   if (/\/vision\/flows\/\d+\/preview$/.test(path)) return { ...RUNS[0], id: 'preview-1', persisted: false }
   if (/\/vision\/flows\/\d+$/.test(path)) return FLOW
   if (/\/vision\/flows\/\d+\/versions/.test(path)) return { items: [], current: 1, keep: 50 }
@@ -144,6 +162,7 @@ export function routes(path: string, body?: unknown): unknown {
   if (/\/vision\/flows\/\d+\/board$/.test(path)) return { flow: { id: 1, name: 'demo', title: 'Line 1' }, config: { title: 'Line 1', image: '', overlays: true, values: [{ key: 'width', unit: 'mm', low: 1, high: 2 }], variables: [], show_verdict: true, show_counts: true }, run: null, values: [{ key: 'width', label: 'width', unit: 'mm', value: null, text: '', ok: null, present: false }], variables: { lot: 'A17' }, counts: { date: '2026-09-06', total: 10, ok: 9, ng: 1, failed: 0, yield: 90 }, stats: {} }
   if (/\/vision\/flows\/\d+\/variables$/.test(path)) return { flow_id: 1, items: { parts: 12, lot: 'A17' }, station: { shift: 'day' } }
   if (path.startsWith('/vision/variables')) return { items: { shift: 'day' } }
+  if (path === '/vision/fixed-images/from-ref') return { id: 'fixed-crop', name: 'Crop', width: 32, height: 24, channels: 3, size: 128 }
   if (path.startsWith('/vision/fixed-images')) return { items: [{ id: 'fixed-1', name: 'Reference' }], count: 1, bytes: 128, orphans: [] }
   if (path.startsWith('/vision/calibration/robot/signals')) {
     return {

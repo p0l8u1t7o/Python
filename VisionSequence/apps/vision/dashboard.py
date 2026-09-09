@@ -29,6 +29,7 @@ WIDGET_TYPES = (
     "clock",
     "log",
     "device_status",
+    "child",
 )
 SOURCE_KINDS = ("output", "variable", "image", "status", "counts", "spc", "device")
 ACTION_CHOICES = ("run_once", "continuous_start", "continuous_stop", "activate_recipe", "set_variable", "navigate", "lock", "unlock")
@@ -85,6 +86,7 @@ WIDGET_PROPS: dict[str, dict[str, tuple[str, Any, Any]]] = {
     "clock": {"timezone": ("text", "", None), "format": ("text", "HH:mm:ss", None)},
     "log": {"rows": ("int", 20, (1, 200))},
     "device_status": {},
+    "child": {"dashboard_id": ("dashboard_id", _REQUIRED, None), "title": ("text", "", None)},
 }
 
 FLOW_WIDGET_TYPES = {
@@ -158,6 +160,10 @@ def effective(layout: Any) -> dict[str, Any]:
 
 def flows_of(layout: Any) -> set[int]:
     cfg = effective(layout)
+    return _flows_of_effective(cfg, include_children=True)
+
+
+def _flows_of_effective(cfg: dict[str, Any], *, include_children: bool) -> set[int]:
     default_flow = cfg.get("default_flow_id")
     found: set[int] = set()
     for widget in cfg.get("widgets") or []:
@@ -174,6 +180,17 @@ def flows_of(layout: Any) -> set[int]:
                 fid = item.get("flow_id") if isinstance(item, dict) else None
                 if isinstance(fid, int) and fid > 0:
                     found.add(fid)
+    if include_children:
+        child_ids = sorted({
+            widget.get("props", {}).get("dashboard_id")
+            for widget in cfg.get("widgets") or []
+            if widget.get("type") == "child" and isinstance(widget.get("props", {}).get("dashboard_id"), int)
+        })
+        if child_ids:
+            from apps.vision.models import Dashboard
+
+            for child_layout in Dashboard.objects.filter(pk__in=child_ids).values_list("layout", flat=True):
+                found |= _flows_of_effective(effective(child_layout), include_children=False)
     return found
 
 
@@ -349,6 +366,10 @@ def _check_value(value: Any, field: str, kind: str, constraint: Any, *, strict: 
             raise DashboardError(f"{field} must be a number")
         return value
     if kind == "flow_id":
+        if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+            raise DashboardError(f"{field} must be a positive integer")
+        return value
+    if kind == "dashboard_id":
         if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
             raise DashboardError(f"{field} must be a positive integer")
         return value

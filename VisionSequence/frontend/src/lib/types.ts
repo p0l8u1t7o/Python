@@ -366,6 +366,7 @@ export type DashboardWidgetType =
   | 'clock'
   | 'log'
   | 'device_status'
+  | 'child'
 
 export type DashboardSourceKind = 'output' | 'variable' | 'image' | 'status' | 'counts' | 'spc' | 'device'
 export type DashboardAction =

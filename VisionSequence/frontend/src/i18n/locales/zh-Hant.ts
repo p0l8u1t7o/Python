@@ -943,6 +943,18 @@ const zhHant = {
       connectionHint: '從清單選連線名稱，或自行輸入（也可填 id）',
       connectionNone: '尚無連線：到「外部整合」的 Modbus 或 TCP 頁建立',
     },
+    images: {
+      addFromImage: '從目前影像加入',
+      drawRegion: '框選矩形後加入',
+      noImage: '目前沒有可用影像，請先試執行',
+      addedFromImage: '已加入 {{w}}×{{h}} 影像',
+    },
+    teachContour: {
+      action: '從目前影像教導輪廓',
+      noImage: '目前沒有可用影像，請先試執行',
+      teaching: '正在教導輪廓',
+      taught: '已用 {{count}} 個點教導輪廓',
+    },
     toast: {
       saved: '流程已儲存',
       previewDone: '試執行完成：{{status}}（{{ms}} ms）',
@@ -2565,6 +2577,9 @@ const zhHant = {
     value: '值',
     on: '開',
     off: '關',
+    loading: '載入中',
+    nestedChildHidden: '不顯示巢狀子介面',
+    childDashboardNotFound: '找不到 Dashboard',
     widgetTypes: {
       image: '影像',
       images: '多影像',
@@ -2588,6 +2603,7 @@ const zhHant = {
       clock: '時鐘',
       log: '紀錄',
       device_status: '裝置狀態',
+      child: '子 Dashboard',
     },
     actions: {
       run_once: '執行一次',
@@ -2638,6 +2654,7 @@ const zhHant = {
     tabs: '分頁',
     rules: '規則',
     imageItems: '影像',
+    pickDashboard: '選擇 Dashboard',
     moveUp: '上移',
     moveDown: '下移',
     add: '新增',
@@ -2675,6 +2692,7 @@ const zhHant = {
       lower: '下限',
       upper: '上限',
       fixed_image_id: '固定影像 ID',
+      dashboard_id: 'Dashboard',
       timezone: '時區',
       format: '格式',
     },
@@ -2711,6 +2729,7 @@ const zhHant = {
       clock: '站台時鐘。',
       log: '近期執行訊息。',
       device_status: '站台、鎖定與工作池狀態。',
+      child: '嵌入另一個 Dashboard，深度限一層。',
     },
   },
   stationTeach: {

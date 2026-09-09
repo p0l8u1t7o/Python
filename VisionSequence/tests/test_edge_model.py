@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import json
+
 import cv2
 import numpy as np
 from django.conf import settings
-from django.test import SimpleTestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 
 from apps.vision import fixed_images
+from apps.vision.images import store as image_store
+from apps.vision.models import Flow
 from apps.vision.tools import base
-from apps.vision.tools.builtin.edge_defect import teach_contour
+from apps.vision.tools.builtin.edge_defect import teach_contour, teach_contour_model
 from tests._helpers import run_tool, temp_dir
 
 
@@ -66,6 +70,42 @@ class TeachContourTests(SimpleTestCase):
         teach_contour(img)
 
         self.assertTrue(np.array_equal(img, before))
+
+
+class TeachContourApiTests(TestCase):
+    def test_endpoint_returns_same_model_as_runtime_auto_teach(self):
+        flow = Flow.objects.create(name="edge-flow", graph={"nodes": [], "edges": []})
+        image = np.full((120, 140), BG, np.uint8)
+        cv2.rectangle(image, (30, 25), (105, 90), FG, -1)
+        image = cv2.GaussianBlur(image, (0, 0), 0.7)
+        image_store.put("t:edge:img", image, flow_id=flow.id, run_id="t", pinned=True)
+        expected_model, expected_points = teach_contour_model(image, simplify=2.0)
+
+        r = self.client.post(
+            f"/api/vision/flows/{flow.id}/teach-contour",
+            data=json.dumps({"ref": "t:edge:img", "simplify": 2.0}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(r.status_code, 200, r.content)
+        body = r.json()
+        self.assertEqual(body["model"], expected_model)
+        self.assertEqual(body["points"], expected_points)
+        self.assertGreaterEqual(len(body["points"]), 4)
+        self.assertIs(body["model"]["closed"], True)
+        self.assertEqual(set(body["model"].keys()), {"version", "image_size", "closed", "points"})
+
+    def test_endpoint_reports_missing_ref(self):
+        flow = Flow.objects.create(name="edge-flow", graph={"nodes": [], "edges": []})
+
+        r = self.client.post(
+            f"/api/vision/flows/{flow.id}/teach-contour",
+            data=json.dumps({"ref": "missing:edge:img"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(r.status_code, 404)
+        self.assertEqual(r.json()["error"]["code"], "no_such_image")
 
 
 class EdgeModelDefectTests(SimpleTestCase):

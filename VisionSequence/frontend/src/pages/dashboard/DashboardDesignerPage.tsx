@@ -14,7 +14,7 @@ import { cloneDashboardTemplate, DASHBOARD_TEMPLATES } from '@/lib/dashboardTemp
 import { errorMessage } from '@/lib/errors'
 import { api } from '@/lib/api'
 import { useConfirm } from '@/lib/useConfirm'
-import { useDashboard, useDashboardData, useDashboardMutations, useFlow, useFlows, useToolTypes } from '@/lib/queries'
+import { useDashboard, useDashboardData, useDashboardMutations, useDashboards, useFlow, useFlows, useToolTypes } from '@/lib/queries'
 import type { DashboardCell, DashboardLayout, DashboardSourceKind, DashboardWidget, DashboardWidgetSource, DashboardWidgetType, Flow, ToolCatalogue } from '@/lib/types'
 import { useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
@@ -31,6 +31,7 @@ const ICONS: Partial<Record<DashboardWidgetType, ReactNode>> = {
   stats: <Grid3X3 className="size-4" />,
   pie: <Grid3X3 className="size-4" />,
   image_static: <Grid3X3 className="size-4" />,
+  child: <PanelRight className="size-4" />,
 }
 
 export function DashboardDesignerPage() {
@@ -511,7 +512,9 @@ function PropertiesPanel({ layout, widget, onWidget, onLayout }: { layout: Dashb
   const flowVariables = useVariables(effectiveFlowId)
   const stationVariables = useStationVariables()
   const fixedImages = useFixedImages()
+  const dashboards = useDashboards()
   const flowOptions = (flows.data?.items ?? []).map((flow) => ({ value: String(flow.id), label: flow.name }))
+  const dashboardOptions = (dashboards.data?.items ?? []).map((item) => ({ value: String(item.id), label: item.name }))
   const allowedSources = WIDGET_SCHEMA[widget.type].sourceKinds
   const sourceKind = widget.source?.kind ?? allowedSources[0] ?? 'output'
   const sourceOptions = allowedSources.length ? allowedSources : DASHBOARD_SOURCE_KINDS
@@ -547,14 +550,14 @@ function PropertiesPanel({ layout, widget, onWidget, onLayout }: { layout: Dashb
       <section className="space-y-3" data-testid="dash-design-props">
         <h2 className="text-sm font-semibold text-heading">{t('dashboardDesign.props')}</h2>
         {Object.entries(WIDGET_SCHEMA[widget.type].props).length ? Object.entries(WIDGET_SCHEMA[widget.type].props).map(([name, spec]) => (
-          <PropField key={name} name={name} spec={spec} value={widget.props?.[name]} flowOptions={flowOptions} otherWidgets={otherWidgets} onChange={(value) => patchProps(name, value)} />
+          <PropField key={name} name={name} spec={spec} value={widget.props?.[name]} flowOptions={flowOptions} dashboardOptions={dashboardOptions} otherWidgets={otherWidgets} onChange={(value) => patchProps(name, value)} />
         )) : <p className="text-sm text-muted">{t('dashboardDesign.noProps')}</p>}
       </section>
     </div>
   )
 }
 
-function PropField({ name, spec, value, flowOptions, otherWidgets, onChange }: { name: string; spec: DashboardPropSpec; value: unknown; flowOptions: { value: string; label: string }[]; otherWidgets: DashboardWidget[]; onChange: (value: unknown) => void }) {
+function PropField({ name, spec, value, flowOptions, dashboardOptions, otherWidgets, onChange }: { name: string; spec: DashboardPropSpec; value: unknown; flowOptions: { value: string; label: string }[]; dashboardOptions: { value: string; label: string }[]; otherWidgets: DashboardWidget[]; onChange: (value: unknown) => void }) {
   const { t } = useTranslation()
   const label = t(`dashboardDesign.propsLabels.${name}`, { defaultValue: name })
   if (spec.kind === 'bool') return <Field label={label}><Switch checked={value === undefined ? Boolean(spec.defaultValue) : value === true} label={label} onChange={onChange} /></Field>
@@ -562,6 +565,7 @@ function PropField({ name, spec, value, flowOptions, otherWidgets, onChange }: {
   if (spec.kind === 'choice') return <Select label={label} value={String(value ?? spec.defaultValue ?? '')} options={(spec.choices ?? []).map((choice) => ({ value: choice, label: choice }))} onChange={(event) => onChange(event.target.value)} />
   if (spec.kind === 'color') return <div className="grid grid-cols-[3rem_minmax(0,1fr)] items-end gap-2"><input type="color" value={typeof value === 'string' ? value : String(spec.defaultValue ?? '#22c55e')} onChange={(event) => onChange(event.target.value)} className="h-9 w-12 rounded border border-line bg-surface" aria-label={label} /><TextInput label={label} value={typeof value === 'string' ? value : String(spec.defaultValue ?? '')} onChange={(event) => onChange(event.target.value)} /></div>
   if (spec.kind === 'flow_id') return <Select label={label} value={value ? String(value) : ''} placeholder={t('dashboardDesign.useDefaultFlow')} options={flowOptions} onChange={(event) => onChange(event.target.value ? Number(event.target.value) : null)} />
+  if (spec.kind === 'dashboard_id') return <Select label={label} value={value ? String(value) : ''} placeholder={t('dashboardDesign.pickDashboard')} options={dashboardOptions} onChange={(event) => onChange(event.target.value ? Number(event.target.value) : null)} />
   if (spec.kind === 'children') return <ChildrenEditor label={label} value={Array.isArray(value) ? value : []} widgets={otherWidgets} onChange={onChange} />
   if (spec.kind === 'columns') return <StringListEditor label={label} value={Array.isArray(value) ? value : []} onChange={onChange} />
   if (spec.kind === 'tabs') return <TabsEditor value={Array.isArray(value) ? value : []} widgets={otherWidgets} onChange={onChange} />
