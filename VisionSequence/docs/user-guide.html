@@ -488,6 +488,13 @@
 <li data-n="2">What each plugin file mounted (tools, sources, writers, trainers), disabled ones and load errors with the pip hint.</li>
 <li data-n="3">Connections whose kind comes from a plugin.</li>
 </ol></figcaption></figure>
+<figure class="shot"><img src="img/integration-devices.jpg" alt="Integration › Device connections"><figcaption><b>Integration › Device connections</b>
+<ol class="callouts">
+<li data-n="1"><strong>New connection</strong>: serial port, UDP, a local TCP text server or a light controller; a light controller preset fills the command templates, the saved configuration stays the source of truth.</li>
+<li data-n="2">Each connection with its kind, settings and live state; the state of a light controller shows the last brightness per channel and the last command sent.</li>
+<li data-n="3"><strong>Export</strong> and <strong>Import</strong> move every connection and rule table between stations with secrets masked.</li>
+</ol></figcaption></figure>
+<p>Line-based equipment (barcode readers, older hosts, light controllers) lives here; each received line runs through the same station rules as the TCP command port, and flows drive lights with <code>set_light</code>, <code>io_output</code> and <code>multi_light_grab</code>.</p>
 <p>See <a href="automation.html">Automation</a>, <a href="modbus.html">Modbus</a>, <a href="capture-client.html">Capture client</a> and <a href="plugins.html">Plugins</a>.</p>
 
 <h2 id="lock">16. The engine lock</h2>

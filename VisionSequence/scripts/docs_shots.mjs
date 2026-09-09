@@ -9,7 +9,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { chromium } from 'playwright'
+import { chromium } from '../frontend/node_modules/playwright/index.mjs'  // 從 scripts/ 解析不到 frontend 的套件，走相對路徑
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const IMG = path.resolve(here, '..', 'docs', 'img')
@@ -214,6 +214,8 @@ try {
   // 17 整合：擷取端與外掛
   await go('/integration/capture', '[data-testid="integration-info"]')
   await capture(page, 'integration-capture', [{ target: T('Download capture client'), label: 'download' }, { target: 'main table' }])
+  await go('/integration/devices', '[data-testid="integration-info"]')
+  await capture(page, 'integration-devices', [{ target: '[data-testid="conn-create"]' }, { target: 'main table' }, { target: '[data-testid="conn-export"]' }])
   await go('/integration/plugins', '[data-testid="integration-info"]')
   await capture(page, 'integration-plugins', [{ target: page.getByRole('button', { name: 'Rescan' }), label: 'Rescan' }, { target: 'main table' }, { target: page.getByRole('tab', { name: 'Connections' }), label: 'Connections tab' }])
   // 18 使用者、操作紀錄、設定、說明

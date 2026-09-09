@@ -24,3 +24,4 @@ audit: 1=[data-testid="audit-action"] | 2=[data-testid="audit-search"] | 3=[data
 settings: 1=[data-testid="profile-display-name"] | 2=password | 3=language | 4=[data-testid="theme-picker"]
 help: 1=Quick start tab | 2=Glossary tab | 3=Tool catalogue tab | 4=[data-testid="help-quickstart"]
 lock-banner: 1=[data-testid="lock-banner"] | 2=[data-testid="card-run"]
+integration-devices: 1=New connection | 2=connections | 3=Export
