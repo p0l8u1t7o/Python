@@ -8,6 +8,7 @@ Runner 的工作執行緒經 `CaptureGrabber` 呼叫 `request_frame()`／`wait_f
 from __future__ import annotations
 
 import hmac
+import hashlib
 import itertools
 import logging
 import os
@@ -17,6 +18,7 @@ import threading
 import time
 from dataclasses import dataclass
 from multiprocessing import shared_memory
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -214,6 +216,32 @@ class _Pending:
         self.sent_at = time.perf_counter()
 
 
+@dataclass
+class _UploadState:
+    id: str
+    filename: str
+    final_path: Path
+    part_path: Path
+    size: int
+    sha256: str
+    received: int = 0
+    digest: Any = None
+
+
+def videos_root() -> Path:
+    """伺服端影片根目錄；同機直接寫入與協定上傳都掃這裡。"""
+    root = Path(settings.DATA_DIR) / "videos"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _safe_video_name(name: str) -> str:
+    cleaned = os.path.basename(str(name or "").replace("\\", "/"))
+    if not cleaned or cleaned in (".", ".."):
+        raise ProtocolError("Invalid upload filename", code="bad_upload")
+    return cleaned
+
+
 #: 連線序號產生器（見 ClientSession.session_id）。
 _SESSION_SEQ = itertools.count(1)
 
@@ -256,6 +284,7 @@ class ClientSession(threading.Thread):
         self._payload_buf = bytearray(0)
         self._missed_pings = 0
         self._closed = threading.Event()
+        self._uploads: dict[str, _UploadState] = {}
 
     # ---- 執行緒主體 ----
     def run(self) -> None:
@@ -337,7 +366,7 @@ class ClientSession(threading.Thread):
             "ok": True, "protocol": P.PROTOCOL_VERSION, "server": "VisionSequence", "server_version": CLIENT_PROTO_PKG_VERSION, "name": self.name_,
             "local": self.local, "prefer": {"encoding": P.ENCODING_NAMES[self.prefer_encoding], "shm": self.local},
             "max_frame_bytes": self.hub.max_frame_bytes(), "heartbeat_s": P.HEARTBEAT_S, "stream": wanted,
-            "update": self._update_payload(),
+            "update": self._update_payload(), "features": {"upload": True},
         }))
         self.sock.settimeout(P.HEARTBEAT_S)
         for cid, on in wanted.items():
@@ -420,8 +449,12 @@ class ClientSession(threading.Thread):
         if hlen > P.MAX_CONTROL_BYTES or plen > self.hub.max_frame_bytes():
             raise ProtocolError("The message is too large", code="too_large")
         header = self._recv_bytes(hlen) if hlen else bytearray()
+        payload = bytearray()
         if plen:
-            self._drain(plen)
+            if mtype == MsgType.UPLOAD_DATA:
+                payload = bytearray(self._payload(plen))
+            else:
+                self._drain(plen)
         if mtype == MsgType.PING:
             self.send(MsgType.PONG, req_id)
         elif mtype == MsgType.PONG:
@@ -447,6 +480,12 @@ class ClientSession(threading.Thread):
             self._resolve(req_id, result=P.loads_json(header))
         elif mtype == MsgType.UPDATE_PULL:
             self._on_update_pull(req_id, P.loads_json(header))
+        elif mtype == MsgType.UPLOAD_BEGIN:
+            self._on_upload_begin(req_id, P.loads_json(header))
+        elif mtype == MsgType.UPLOAD_DATA:
+            self._on_upload_data(req_id, P.loads_json(header), payload)
+        elif mtype == MsgType.UPLOAD_END:
+            self._on_upload_end(req_id, P.loads_json(header))
         elif mtype == MsgType.ERROR:
             body = P.loads_json(header)
             code = str(body.get("code") or "error")
@@ -495,6 +534,85 @@ class ClientSession(threading.Thread):
             self.send(MsgType.UPDATE_DATA, req_id, P.dumps_json({"offset": offset, "eof": True, "error": str(exc)}))
             return
         self.send(MsgType.UPDATE_DATA, req_id, P.dumps_json({"offset": offset, "eof": eof}), chunk)
+
+    # ---- 錄影上傳 ----
+    def _on_upload_begin(self, req_id: int, body: dict[str, Any]) -> None:
+        upload_id = str(body.get("id") or "")
+        filename = _safe_video_name(str(body.get("filename") or ""))
+        size = max(0, int(body.get("size") or 0))
+        sha = str(body.get("sha256") or "")
+        folder = videos_root() / self.name_
+        folder.mkdir(parents=True, exist_ok=True)
+        final = folder / filename
+        stale_prefix = f".{filename}."
+        for stale in folder.iterdir():
+            if stale.is_file() and stale.name.startswith(stale_prefix) and stale.name.endswith(".part"):
+                try:
+                    stale.unlink()
+                except OSError:
+                    pass
+        part = folder / f".{filename}.{upload_id}.part"
+        state = _UploadState(upload_id, filename, final, part, size, sha, digest=hashlib.sha256())
+        self._uploads[upload_id] = state
+        try:
+            part.write_bytes(b"")
+        except OSError as exc:
+            self._uploads.pop(upload_id, None)
+            self._try_send_error(req_id, "upload_failed", str(exc))
+
+    def _on_upload_data(self, req_id: int, body: dict[str, Any], payload: bytes | bytearray) -> None:
+        upload_id = str(body.get("id") or "")
+        state = self._uploads.get(upload_id)
+        if state is None:
+            self._try_send_error(req_id, "upload_failed", "Upload was not started")
+            return
+        offset = int(body.get("offset") or 0)
+        if offset != state.received:
+            self._try_send_error(req_id, "upload_failed", "Upload offset mismatch")
+            return
+        try:
+            with state.part_path.open("ab") as fh:
+                fh.write(payload)
+            state.digest.update(payload)
+            state.received += len(payload)
+        except OSError as exc:
+            self._uploads.pop(upload_id, None)
+            try:
+                state.part_path.unlink()
+            except OSError:
+                pass
+            self._try_send_error(req_id, "upload_failed", str(exc))
+
+    def _on_upload_end(self, req_id: int, body: dict[str, Any]) -> None:
+        upload_id = str(body.get("id") or "")
+        state = self._uploads.pop(upload_id, None)
+        if state is None:
+            return
+        if body.get("cancel"):
+            try:
+                state.part_path.unlink()
+            except OSError:
+                pass
+            return
+        digest = state.digest.hexdigest()
+        if state.received != state.size or (state.sha256 and digest != state.sha256):
+            try:
+                state.part_path.unlink()
+            except OSError:
+                pass
+            self._try_send_error(req_id, "upload_failed", "Upload checksum mismatch")
+            return
+        try:
+            if state.final_path.exists():
+                state.final_path.unlink()
+            os.replace(state.part_path, state.final_path)
+            log.info("擷取端 %s 上傳影片完成：%s", self.name_, state.final_path)
+        except OSError as exc:
+            try:
+                state.part_path.unlink()
+            except OSError:
+                pass
+            self._try_send_error(req_id, "upload_failed", str(exc))
 
     def _on_frame(self, mtype: int, req_id: int, hdr: FrameHeader, plen: int) -> None:
         started = time.perf_counter()
@@ -835,6 +953,12 @@ class ClientSession(threading.Thread):
             except (BufferError, OSError):
                 pass
             self.shm = None
+        for state in list(self._uploads.values()):
+            try:
+                state.part_path.unlink()
+            except OSError:
+                pass
+        self._uploads.clear()
         if self.registered:
             log.info("擷取端 %s 斷線（%s）", self.name_, self.close_reason)
             _publish("source_lost", client=self.name_, reason=self.close_reason)

@@ -28,7 +28,7 @@ from ninja import File, Form, Router, UploadedFile
 from apps.accounts.security import authenticate, principal, require_admin, require_feature
 from apps.core import audit
 from apps.core.errors import NotFound, ValidationError
-from apps.vision.dl import base as dl_base, devices, jobs, quick, retrieval, yolo_runtime
+from apps.vision.dl import base as dl_base, devices, jobs, quick, retrieval, video, yolo_runtime
 from apps.vision.dl.base import SampleRef, TrainError
 from apps.vision.images import encode_image
 from apps.vision.models import Asset, DlDatasetVersion, DlProject, DlSample
@@ -860,6 +860,34 @@ def quick_register(request: HttpRequest, project_id: int):
         device=str(body.get("device") or ""),
         asset_name=str(body.get("asset_name") or ""),
     )
+
+
+@router.post("/dl/projects/{project_id}/video-extract", response={202: dict})
+def video_extract_start(request: HttpRequest, project_id: int):
+    require_feature(request, "dl")
+    principal(request).can_execute()
+    body = _body(request)
+    path = str(body.get("video_path") or "")
+    if not path and body.get("video"):
+        from apps.vision.capture.api import _video_path
+
+        path = str(_video_path(str(body.get("video"))))
+    params = body.get("params") if isinstance(body.get("params"), dict) else {}
+    return 202, video.start(project_id, path, params)
+
+
+@router.get("/dl/projects/{project_id}/video-extract/status")
+def video_extract_status(request: HttpRequest, project_id: int, log_from: int = -1):
+    job = video.status(None if log_from < 0 else log_from)
+    if job and int(job.get("project_id") or 0) != project_id:
+        return {"job": None}
+    return {"job": job}
+
+
+@router.post("/dl/projects/{project_id}/video-extract/stop")
+def video_extract_stop(request: HttpRequest, project_id: int):
+    require_feature(request, "dl")
+    return {"cancelled": video.stop()}
 
 
 @router.get("/dl/train/status")

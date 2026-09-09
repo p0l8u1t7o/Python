@@ -37,6 +37,7 @@ import type {
   DlSuggestion,
   DlTrainerDef,
   DlTrainJob,
+  DlVideoExtractJob,
   Dashboard,
   DashboardData,
   DashboardLayout,
@@ -82,6 +83,7 @@ import type {
   TriggerRule,
   VisionRuntimeSettings,
   VisionSettingsStatus,
+  VisionVideo,
 } from './types'
 
 export const keys = {
@@ -1255,6 +1257,24 @@ export function useDlTrainStatus(active = true) {
   })
 }
 
+export function useVisionVideos() {
+  return useQuery({
+    queryKey: ['vision', 'videos'],
+    queryFn: () => api.get<{ items: VisionVideo[] }>('/vision/videos'),
+    select: (data) => data.items,
+  })
+}
+
+export function useDlVideoExtractStatus(projectId: number | null, active = true) {
+  return useQuery({
+    queryKey: ['dl', 'video-extract-status', projectId],
+    queryFn: () => api.get<{ job: DlVideoExtractJob | null }>(`/vision/dl/projects/${projectId}/video-extract/status`),
+    select: (data) => data.job,
+    enabled: projectId !== null,
+    refetchInterval: (query) => (active && (query.state.data as DlVideoExtractJob | null | undefined)?.status === 'running' ? 700 : false),
+  })
+}
+
 export function useDlMutations() {
   const client = useQueryClient()
   const invalidateProjects = () => void client.invalidateQueries({ queryKey: ['dl', 'projects'] })
@@ -1361,6 +1381,18 @@ export function useDlMutations() {
     mutationFn: ({ projectId, params, method, maxSamples }: { projectId: number; params?: Record<string, unknown>; method?: 'model' | 'sam'; maxSamples?: number }) =>
       api.post<{ items: DlSuggestion[]; remaining?: number; method?: string; model?: string }>(`/vision/dl/projects/${projectId}/auto-label`, { params, method, max_samples: maxSamples }),
   })
+  const startVideoExtract = useMutation({
+    mutationFn: ({ projectId, video, video_path, params }: { projectId: number; video?: string; video_path?: string; params: Record<string, unknown> }) =>
+      api.post<DlVideoExtractJob>(`/vision/dl/projects/${projectId}/video-extract`, { video, video_path, params }),
+    onSuccess: (_, v) => {
+      invalidateProject(v.projectId)
+      void client.invalidateQueries({ queryKey: ['dl', 'video-extract-status', v.projectId] })
+    },
+  })
+  const stopVideoExtract = useMutation({
+    mutationFn: ({ projectId }: { projectId: number }) => api.post<{ stopped: boolean }>(`/vision/dl/projects/${projectId}/video-extract/stop`, {}),
+    onSuccess: (_, v) => void client.invalidateQueries({ queryKey: ['dl', 'video-extract-status', v.projectId] }),
+  })
   const startTrain = useMutation({
     mutationFn: ({ projectId, params, device, asset_name }: { projectId: number; params: Record<string, unknown>; device: string; asset_name: string }) =>
       api.post<DlTrainJob>(`/vision/dl/projects/${projectId}/train`, { params, device, asset_name }),
@@ -1394,5 +1426,5 @@ export function useDlMutations() {
     mutationFn: (body: { providers?: string[]; train_device?: string }) => api.patch<DlDevices>('/vision/dl/settings', body),
     onSuccess: () => void client.invalidateQueries({ queryKey: ['dl', 'devices'] }),
   })
-  return { createProject, patchProject, removeProject, uploadSamples, addRetrievalItems, removeRetrievalItem, fromSource, setLabel, setShapes, setSplit, autoSplit, freezeVersion, removeVersion, datasetExport, datasetImport, samPoint, removeSample, bulkLabels, autoLabel, startTrain, quickRegister, cancelTrain, saveModel, discardModel, patchSettings }
+  return { createProject, patchProject, removeProject, uploadSamples, addRetrievalItems, removeRetrievalItem, fromSource, setLabel, setShapes, setSplit, autoSplit, freezeVersion, removeVersion, datasetExport, datasetImport, samPoint, removeSample, bulkLabels, autoLabel, startVideoExtract, stopVideoExtract, startTrain, quickRegister, cancelTrain, saveModel, discardModel, patchSettings }
 }

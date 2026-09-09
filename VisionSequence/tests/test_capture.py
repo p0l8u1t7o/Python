@@ -7,10 +7,12 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import socket
 import threading
 import time
 from multiprocessing import shared_memory
+from pathlib import Path
 from unittest import mock
 
 import numpy as np
@@ -128,6 +130,19 @@ class FakeCaptureClient(threading.Thread):
 
     def pull_update(self, offset, length, req_id=77):
         self.send(MsgType.UPDATE_PULL, req_id, P.dumps_json({"offset": offset, "length": length}))
+
+    def upload_file(self, name: str, data: bytes, *, cancel: bool = False):
+        upload_id = f"up-{len(data)}-{int(cancel)}"
+        self.send(MsgType.UPLOAD_BEGIN, 0, P.dumps_json({"id": upload_id, "filename": name, "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}))
+        if cancel:
+            self.send(MsgType.UPLOAD_END, 0, P.dumps_json({"id": upload_id, "filename": name, "cancel": True}))
+            return
+        offset = 0
+        while offset < len(data):
+            chunk = data[offset : offset + 65536]
+            self.send(MsgType.UPLOAD_DATA, 0, P.dumps_json({"id": upload_id, "offset": offset}), chunk)
+            offset += len(chunk)
+        self.send(MsgType.UPLOAD_END, 0, P.dumps_json({"id": upload_id, "filename": name, "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}))
 
     def push(self, cid="cam0", img=None):
         chan = [c["id"] for c in self.channels].index(cid)
@@ -758,6 +773,61 @@ class CaptureApiTests(TestCase):
         manifest = {"version": "0.2.0", "filename": zip_path.name, "size": len(blob), "sha256": hashlib.sha256(blob).hexdigest(), "built_at": "2026-09-04T00:00:00Z"}
         (tmp / "downloads" / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
         build.invalidate()
+        with override_settings(DATA_DIR=tmp), mock.patch.object(P, "UPDATE_CHUNK_BYTES", 64 * 1024):
+            old = self.connect(name="oldver", version="0.1.0")
+            self.assertTrue(_wait(lambda: old.welcome is not None))
+            info = old.welcome["update"]
+            self.assertTrue(info["available"])
+            self.assertEqual((info["version"], info["size"], info["sha256"]), ("0.2.0", len(blob), manifest["sha256"]))
+            newer = self.connect(name="newver", version="9.9.9")
+            self.assertTrue(_wait(lambda: newer.welcome is not None))
+            self.assertFalse(newer.welcome["update"]["available"])
+            got = bytearray()
+            while True:
+                want = len(old.chunks) + 1
+                old.pull_update(len(got), 64 * 1024)
+                self.assertTrue(_wait(lambda w=want: len(old.chunks) >= w, 3.0), "no UPDATE_DATA")
+                head, chunk = old.chunks[-1]
+                self.assertEqual(head["offset"], len(got))
+                got.extend(chunk)
+                if head["eof"]:
+                    break
+            self.assertEqual(bytes(got), blob)
+            self.assertEqual(hashlib.sha256(got).hexdigest(), manifest["sha256"])
+            with mock.patch.object(P, "HEARTBEAT_S", 0.2):
+                bumped = self.connect(name="watch", version="0.1.0")
+                self.assertTrue(_wait(lambda: bumped.welcome is not None))
+                zip2 = tmp / "downloads" / "VisionSequenceCapture-0.3.0-win64.zip"
+                zip2.write_bytes(blob)
+                (tmp / "downloads" / "manifest.json").write_text(json.dumps({**manifest, "version": "0.3.0", "filename": zip2.name}), encoding="utf-8")
+                build.invalidate()
+                self.assertTrue(_wait(lambda: any(u.get("version") == "0.3.0" for u in bumped.updates), 5.0))
+        build.invalidate()
+
+    def test_video_upload_over_capture_connection(self):
+        c = self.connect(name="up1")
+        data = bytes(range(251)) * 820
+        c.upload_file("sample.avi", data)
+        dest = Path(settings.DATA_DIR) / "videos" / "up1" / "sample.avi"
+        self.assertTrue(_wait(lambda: dest.is_file(), 3.0), str(dest))
+        self.assertEqual(hashlib.sha256(dest.read_bytes()).hexdigest(), hashlib.sha256(data).hexdigest())
+        c.upload_file("cancel.avi", b"x" * 200_000, cancel=True)
+        time.sleep(0.2)
+        self.assertFalse((Path(settings.DATA_DIR) / "videos" / "up1" / "cancel.avi").exists())
+        self.assertEqual(list((Path(settings.DATA_DIR) / "videos" / "up1").glob("*.part")), [])
+        import tempfile
+
+        from apps.vision.capture import build
+
+        tmp = Path(tempfile.mkdtemp(prefix="vs-upd-upload-"))
+        (tmp / "downloads").mkdir()
+        blob = bytes(range(256)) * 900
+        zip_path = tmp / "downloads" / "VisionSequenceCapture-0.2.0-win64.zip"
+        zip_path.write_bytes(blob)
+        manifest = {"version": "0.2.0", "filename": zip_path.name, "size": len(blob), "sha256": hashlib.sha256(blob).hexdigest(), "built_at": "2026-09-04T00:00:00Z"}
+        (tmp / "downloads" / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        build.invalidate()
+        got = bytearray()
         with override_settings(DATA_DIR=tmp), mock.patch.object(P, "UPDATE_CHUNK_BYTES", 64 * 1024):
             old = self.connect(name="oldver", version="0.1.0")
             self.assertTrue(_wait(lambda: old.welcome is not None))

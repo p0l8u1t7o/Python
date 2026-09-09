@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Qt, Signal, Slot
@@ -18,7 +19,7 @@ from vscapture.config import ChannelConfig, new_channel_id
 from vscapture.engine import CaptureEngine
 from vscapture.i18n import tr
 from vscapture.ui.bridge import EngineBridge
-from vscapture.ui.widgets import channel_state_label, confirm, dot_icon, hline, muted, shrinkable, state_color
+from vscapture.ui.widgets import channel_state_label, confirm, dot_icon, fmt_bytes, hline, muted, shrinkable, state_color, warn
 
 
 class ChannelsPanel(QGroupBox):
@@ -85,16 +86,21 @@ class ChannelsPanel(QGroupBox):
         self.close_btn = QPushButton()
         self.start_btn = QPushButton()
         self.stop_btn = QPushButton()
+        self.record_btn = QPushButton()
+        self.upload_btn = QPushButton()
         self.open_btn.clicked.connect(lambda: self._camera_op("open"))
         self.close_btn.clicked.connect(lambda: self._camera_op("close"))
         self.start_btn.clicked.connect(lambda: self._camera_op("start"))
         self.stop_btn.clicked.connect(lambda: self._camera_op("stop"))
+        self.record_btn.clicked.connect(self.toggle_recording)
+        self.upload_btn.clicked.connect(self.upload_recording)
         ops_grid = QGridLayout()
         ops_grid.setSpacing(6)
-        for i, b in enumerate((self.open_btn, self.close_btn, self.start_btn, self.stop_btn)):
+        for i, b in enumerate((self.open_btn, self.close_btn, self.start_btn, self.stop_btn, self.record_btn, self.upload_btn)):
             ops_grid.addWidget(b, i // 2, i % 2)
         self.state_label = QLabel("—")
         self.state_label.setProperty("role", "strong")
+        self.record_label = muted("")
         self.error_label = muted("")
         self.error_label.setProperty("role", "error")
 
@@ -110,6 +116,7 @@ class ChannelsPanel(QGroupBox):
                 lay.addWidget(hline())
             lay.addLayout(ops_grid)
             lay.addWidget(self.state_label)
+            lay.addWidget(self.record_label)
             lay.addWidget(self.error_label)
         lay.addStretch(1)
         self._set_form_enabled(False)
@@ -130,6 +137,8 @@ class ChannelsPanel(QGroupBox):
         self.close_btn.setText(tr("channels.closeCam"))
         self.start_btn.setText(tr("channels.start"))
         self.stop_btn.setText(tr("channels.stop"))
+        self.record_btn.setText(tr("channels.recordStart"))
+        self.upload_btn.setText(tr("channels.uploadRecording"))
         self.set_backends(self._backends)
         self.refresh_list()
 
@@ -208,7 +217,7 @@ class ChannelsPanel(QGroupBox):
         self.selected.emit(ch.id if ch else "")
 
     def _set_form_enabled(self, enabled: bool) -> None:
-        for w in (self.name, self.backend, self.device, self.scan_btn, self.enabled, self.preview, self.open_btn, self.close_btn, self.start_btn, self.stop_btn, self.remove_btn):
+        for w in (self.name, self.backend, self.device, self.scan_btn, self.enabled, self.preview, self.open_btn, self.close_btn, self.start_btn, self.stop_btn, self.record_btn, self.upload_btn, self.remove_btn):
             w.setEnabled(enabled)
 
     def _load_form(self, ch: Channel | None) -> None:
@@ -219,6 +228,7 @@ class ChannelsPanel(QGroupBox):
                 self.name.clear()
                 self.device.clear()
                 self.state_label.setText("—")
+                self.record_label.clear()
                 self.error_label.clear()
                 return
             self._set_form_enabled(True)
@@ -247,6 +257,55 @@ class ChannelsPanel(QGroupBox):
         self.close_btn.setEnabled(is_open)
         self.start_btn.setEnabled(state == "open")
         self.stop_btn.setEnabled(state == "running")
+        self._update_recording(ch)
+
+    def _update_recording(self, ch: Channel) -> None:
+        rec = self.engine.recording_status()["items"].get(ch.id) or {}
+        active = bool(rec.get("active"))
+        self.record_btn.setText(tr("channels.recordStop") if active else tr("channels.recordStart"))
+        state = ch.state.value
+        self.record_btn.setEnabled(ch.cfg.enabled and state in ("open", "running"))
+        path = str(rec.get("path") or "")
+        self.upload_btn.setEnabled(bool(path) and not active and self.engine.transport.state.value == "connected")
+        if active or rec.get("path"):
+            self.record_label.setText(tr(
+                "channels.recordingStatus",
+                duration=rec.get("duration_s", 0),
+                size=fmt_bytes(rec.get("bytes", 0)),
+                fps=rec.get("actual_fps", 0),
+                dropped=rec.get("dropped", 0),
+            ))
+            self.record_label.setToolTip(str(rec.get("fallback_reason") or rec.get("path") or ""))
+        else:
+            self.record_label.setText(tr("channels.recordingIdle"))
+            self.record_label.setToolTip("")
+
+    def upload_recording(self) -> None:
+        ch = self.current_channel()
+        if ch is None:
+            return
+        rec = self.engine.recording_status()["items"].get(ch.id) or {}
+        path = str(rec.get("path") or "")
+        if not path:
+            return
+        self.upload_btn.setEnabled(False)
+        self.upload_btn.setText(tr("channels.uploading"))
+
+        def done(_result: object) -> None:
+            self.upload_btn.setText(tr("channels.uploadRecording"))
+            self.refresh_recording()
+
+        def failed(message: str) -> None:
+            self.upload_btn.setText(tr("channels.uploadRecording"))
+            self.refresh_recording()
+            warn(self, tr("channels.uploadRecording"), message)
+
+        self.bridge.run_async(self.engine.transport.upload_file, Path(path), on_done=done, on_error=failed)
+
+    def refresh_recording(self) -> None:
+        ch = self.current_channel()
+        if ch is not None:
+            self._update_recording(ch)
 
     @Slot(object)
     def on_channel_event(self, data: dict[str, Any]) -> None:
@@ -389,3 +448,12 @@ class ChannelsPanel(QGroupBox):
         for b in (self.open_btn, self.close_btn, self.start_btn, self.stop_btn):
             b.setEnabled(False)
         self.bridge.run_async(fn, on_done=lambda _r: self._update_state(ch), on_error=lambda m: (self.error_label.setText(m), self._update_state(ch)))
+
+    def toggle_recording(self) -> None:
+        ch = self.current_channel()
+        if ch is None:
+            return
+        active = bool((self.engine.recording_status()["items"].get(ch.id) or {}).get("active"))
+        fn = self.engine.stop_recording if active else self.engine.start_recording
+        self.record_btn.setEnabled(False)
+        self.bridge.run_async(lambda: fn([ch.id]), on_done=lambda _r: self._update_state(ch), on_error=lambda m: (self.error_label.setText(m), self._update_state(ch)))

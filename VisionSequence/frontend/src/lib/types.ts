@@ -562,6 +562,15 @@ export interface CaptureClient {
 export interface CaptureClients { listening: boolean; host: string; port: number; items: CaptureClient[] }
 export interface CaptureDownloadInfo { available: boolean; version: string; filename: string; size: number; sha256: string; built_at: string | null; url: string }
 
+export interface VisionVideo {
+  name: string
+  path: string
+  size: number
+  duration_s: number
+  source: string
+  created_at: string
+}
+
 export interface SourceKind {
   kind: string
   label: string
@@ -1132,6 +1141,25 @@ export interface DlTrainJob {
   logs: string[]
   log_from: number
   log_next: number
+}
+
+export interface DlVideoExtractJob {
+  id: string
+  project_id: number
+  video_path: string
+  status: 'running' | 'done' | 'failed' | 'cancelled'
+  progress: number
+  stage: string
+  frame: number
+  total_frames: number
+  saved: number
+  duplicates: number
+  per_class: Record<string, number>
+  recent: string[]
+  logs: string[]
+  log_from: number
+  log_next: number
+  error: string
 }
 
 export interface DlQuickRegisterResult {

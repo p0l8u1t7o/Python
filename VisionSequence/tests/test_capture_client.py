@@ -17,6 +17,8 @@ from pathlib import Path
 from unittest import mock
 
 import numpy as np
+import cv2
+from django.conf import settings
 from django.test import SimpleTestCase
 
 from apps.vision.capture.hub import CaptureError, hub
@@ -31,6 +33,7 @@ from vscapture.engine import CaptureEngine
 from vscapture.config import AppConfig, ChannelConfig, ConfigError, ConnectionConfig, DeliveryConfig, Roi
 from vscapture.frames import BufferPool, Frame, FrameSlot, crop_roi, encode, frame_item, prepare
 from vscapture.protocol import Encoding
+from vscapture.recorder import RecordConfig, Recorder
 from vscapture.transport.sender import item_bytes
 from vscapture import i18n, metrics, params, update
 from vscapture.shm import ShmRing, plan_slots
@@ -71,13 +74,18 @@ class ConfigTests(SimpleTestCase):
         self.assertEqual(configmod.load(tmp / "missing.json"), AppConfig())
 
     def test_ui_and_update_fields(self):
-        cfg = configmod.AppConfig.from_dict({"connection": {"auto_update": "auto", "shm_max_mb": 256, "idle_stop_s": 30}, "ui": {"language": "en", "theme": "light"}})
+        cfg = configmod.AppConfig.from_dict({
+            "connection": {"auto_update": "auto", "shm_max_mb": 256, "idle_stop_s": 30},
+            "ui": {"language": "en", "theme": "light"},
+            "recording": {"codec": "H264", "fps_divisor": 2, "scale": 0.5, "max_minutes": 1.0, "auto_upload": True},
+        })
         self.assertEqual((cfg.connection.auto_update, cfg.connection.shm_max_mb, cfg.connection.idle_stop_s), ("auto", 256, 30.0))
         self.assertEqual(configmod.AppConfig().connection.idle_stop_s, 60.0)
         self.assertEqual((cfg.ui.language, cfg.ui.theme), ("en", "light"))
+        self.assertEqual((cfg.recording.codec, cfg.recording.fps_divisor, cfg.recording.scale, cfg.recording.auto_upload), ("H264", 2, 0.5, True))
         blank = configmod.AppConfig()
         self.assertEqual((blank.connection.auto_update, blank.ui.language, blank.ui.theme), ("notify", "zh-Hant", "dark"))
-        for bad in ({"connection": {"auto_update": "always"}}, {"ui": {"language": "fr"}}, {"ui": {"theme": "neon"}}):
+        for bad in ({"connection": {"auto_update": "always"}}, {"ui": {"language": "fr"}}, {"ui": {"theme": "neon"}}, {"recording": {"codec": "VP9"}}):
             with self.assertRaises(ConfigError):
                 configmod.AppConfig.from_dict(bad)
 
@@ -283,6 +291,65 @@ class ChannelTests(SimpleTestCase):
             ch.stop_thread()
 
 
+class RecorderTests(SimpleTestCase):
+    def test_fake_camera_records_readable_video(self):
+        with tempfile.TemporaryDirectory(prefix="vsc-rec-") as tmp:
+            ch = Channel(ChannelConfig(id="rec", backend="fake", device_id="fake:0"))
+            ch.start_thread()
+            try:
+                ch.open()
+                ch.start()
+                self.assertTrue(_wait_true(lambda: ch.slot.seq >= 3, 3.0))
+                rec = Recorder("rec", ch.latest_frame_for_recording, RecordConfig(folder=tmp, codec="MJPG", fps_divisor=2, scale=0.5), nominal_fps=30)
+                rec.start()
+                time.sleep(1.5)
+                rec.stop()
+                st = rec.status.to_dict()
+                self.assertFalse(st["active"])
+                self.assertTrue(Path(st["path"]).is_file(), st)
+                cap = cv2.VideoCapture(st["path"])
+                try:
+                    frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+                    self.assertGreaterEqual(frames, 8)
+                    ok, frame = cap.read()
+                    self.assertTrue(ok)
+                    self.assertEqual(frame.shape[:2], (240, 320))
+                finally:
+                    cap.release()
+                self.assertGreater(st["actual_fps"], 0)
+            finally:
+                ch.stop_thread()
+
+    def test_h264_falls_back_to_mjpg_when_writer_does_not_open(self):
+        with tempfile.TemporaryDirectory(prefix="vsc-rec-") as tmp:
+            frame = Frame(1, time.time_ns(), np.zeros((32, 48, 3), np.uint8))
+
+            class FakeWriter:
+                def __init__(self, path, fourcc, fps, size):
+                    self.path = path
+                    self._opened = path.endswith(".avi")
+                    if self._opened:
+                        Path(path).write_bytes(b"RIFF")
+
+                def isOpened(self):
+                    return self._opened
+
+                def write(self, _arr):
+                    pass
+
+                def release(self):
+                    pass
+
+            rec = Recorder("h", lambda: frame, RecordConfig(folder=tmp, codec="H264"), nominal_fps=30)
+            with mock.patch.object(cv2, "VideoWriter", FakeWriter):
+                rec.start()
+                self.assertTrue(_wait_true(lambda: rec.status.frames >= 1, 1.0))
+                rec.stop()
+            st = rec.status.to_dict()
+            self.assertEqual(st["codec"], "MJPG")
+            self.assertIn("H264", st["fallback_reason"])
+
+
 class ShmRingTests(SimpleTestCase):
     def test_slot_rules_and_attach(self):
         from multiprocessing import shared_memory
@@ -383,6 +450,41 @@ class TransportLoopbackTests(SimpleTestCase):
         self.engine.disconnect()
         self.assertTrue(_wait(lambda: hub.get("loop-pc") is None, 3.0))
         self.assertEqual(self.engine.transport.state, ConnState.DISCONNECTED)
+
+    def test_upload_file_to_hub_and_cancel(self):
+        self.engine.connect()
+        self.assertTrue(_wait(lambda: self.engine.transport.state == ConnState.CONNECTED, 5.0), self.engine.transport.state_detail)
+        with tempfile.TemporaryDirectory(prefix="vsc-upload-") as tmp:
+            src = Path(tmp) / "clip.avi"
+            blob = bytes(range(251)) * 820
+            src.write_bytes(blob)
+            progress = []
+            result = self.engine.transport.upload_file(src, on_progress=lambda got, total: progress.append((got, total)))
+            self.assertTrue(result["ok"], result)
+            dest = Path(settings.DATA_DIR) / "videos" / "loop-pc" / "clip.avi"
+            self.assertTrue(_wait(lambda: dest.is_file(), 3.0), str(dest))
+            self.assertEqual(hashlib.sha256(dest.read_bytes()).hexdigest(), hashlib.sha256(blob).hexdigest())
+            self.assertTrue(progress)
+
+            cancel_src = Path(tmp) / "cancel.avi"
+            cancel_src.write_bytes(b"x" * 200_000)
+            cancel = threading.Event()
+            cancel.set()
+            cancelled = self.engine.transport.upload_file(cancel_src, cancel=cancel)
+            self.assertTrue(cancelled["cancelled"], cancelled)
+            cancel_dest = Path(settings.DATA_DIR) / "videos" / "loop-pc" / "cancel.avi"
+            time.sleep(0.2)
+            self.assertFalse(cancel_dest.exists())
+            self.assertEqual(list((Path(settings.DATA_DIR) / "videos" / "loop-pc").glob("*.part")), [])
+
+    def test_upload_requires_server_feature(self):
+        with tempfile.TemporaryDirectory(prefix="vsc-upload-") as tmp:
+            src = Path(tmp) / "clip.avi"
+            src.write_bytes(b"x")
+            self.engine.transport.state = ConnState.CONNECTED
+            self.engine.transport.welcome = {"features": {}}
+            with self.assertRaisesRegex(RuntimeError, "does not support video upload"):
+                self.engine.transport.upload_file(src)
 
     def test_remote_mode_uses_tcp_payload(self):
         self.engine.cfg.connection.local_mode = "off"

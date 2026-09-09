@@ -3,4 +3,4 @@
 本檔零依賴：伺服端只 import `vscapture.protocol`（共用的線上協定），桌面程式本體在 `vscapture.app`。
 """
 
-__version__ = "0.2.2"
+__version__ = "0.2.3"

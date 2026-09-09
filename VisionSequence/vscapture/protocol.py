@@ -60,6 +60,9 @@ class MsgType(IntEnum):
     SLOT_FREE = 0x12
     CHANNEL_SET = 0x13
     CHANNEL_RESULT = 0x14
+    UPLOAD_BEGIN = 0x15
+    UPLOAD_DATA = 0x16
+    UPLOAD_END = 0x17
 
 
 class Encoding(IntEnum):
@@ -124,6 +127,9 @@ def pack_message(mtype: int, req_id: int = 0, header: bytes = b"", payload: byte
 
 #: 自動更新每次拉的區塊大小（走同一條已驗證的連線，不必另開埠）。
 UPDATE_CHUNK_BYTES = 1 << 20
+
+#: 錄影檔上傳每次送出的區塊大小（控制通道；不進影格傳送路徑）。
+UPLOAD_CHUNK_BYTES = 1 << 20
 
 
 def version_tuple(value: str) -> tuple[int, ...]:

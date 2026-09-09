@@ -24,6 +24,8 @@ THEMES = ("dark", "light")
 AUTO_UPDATE_MODES = ("off", "notify", "auto")  # 不檢查／通知我（預設）／自動下載並安裝
 LANGUAGES = ("zh-Hant", "zh-Hans", "en")  # 與網頁相同
 THEMES = ("dark", "light")
+RECORD_CODECS = ("MJPG", "H264", "HEVC")
+RECORD_SCALES = (1.0, 0.5, 0.25)
 
 
 class ConfigError(ValueError):
@@ -235,10 +237,40 @@ class UiConfig:
 
 
 @dataclass
+class RecordingConfig:
+    folder: str = ""
+    codec: str = "MJPG"
+    fps_divisor: int = 1
+    scale: float = 1.0
+    max_minutes: float = 0.0
+    server_folder: str = ""
+    auto_upload: bool = False
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any], path: str = "recording") -> RecordingConfig:
+        codec = str(_pick(d, "codec", "MJPG", path, str)).upper()
+        if codec not in RECORD_CODECS:
+            raise ConfigError(f"只能是 {'、'.join(RECORD_CODECS)}", f"{path}.codec")
+        scale = float(_pick(d, "scale", 1.0, path, float))
+        if scale not in RECORD_SCALES:
+            raise ConfigError("只能是 1.0、0.5、0.25", f"{path}.scale")
+        return cls(
+            folder=str(_pick(d, "folder", "", path, str) or ""),
+            codec=codec,
+            fps_divisor=max(1, int(_pick(d, "fps_divisor", 1, path, int))),
+            scale=scale,
+            max_minutes=max(0.0, float(_pick(d, "max_minutes", 0.0, path, float))),
+            server_folder=str(_pick(d, "server_folder", "", path, str) or ""),
+            auto_upload=bool(_pick(d, "auto_upload", False, path, bool)),
+        )
+
+
+@dataclass
 class AppConfig:
     version: int = 1
     connection: ConnectionConfig = field(default_factory=ConnectionConfig)
     ui: UiConfig = field(default_factory=UiConfig)
+    recording: RecordingConfig = field(default_factory=RecordingConfig)
     log_level: str = "INFO"
     channels: list[ChannelConfig] = field(default_factory=list)
 
@@ -254,7 +286,8 @@ class AppConfig:
             seen.add(c.id)
         return cls(
             version=int(d.get("version") or 1), connection=ConnectionConfig.from_dict(d.get("connection") or {}),
-            ui=UiConfig.from_dict(d.get("ui") or {}), log_level=str(d.get("log_level") or "INFO").upper(), channels=channels,
+            ui=UiConfig.from_dict(d.get("ui") or {}), recording=RecordingConfig.from_dict(d.get("recording") or {}),
+            log_level=str(d.get("log_level") or "INFO").upper(), channels=channels,
         )
 
     def to_dict(self) -> dict[str, Any]:

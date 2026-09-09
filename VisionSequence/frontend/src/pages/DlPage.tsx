@@ -12,6 +12,7 @@ import { Legend, Line, LineChart, ResponsiveContainer, Tooltip as ChartTooltip, 
 
 import { ClassifyWorkspace } from '@/components/dl/ClassifyWorkspace'
 import { ShapeWorkspace } from '@/components/dl/ShapeWorkspace'
+import { VideoExtractPanel } from '@/components/dl/VideoExtractPanel'
 import { ParamField, type InspectorActions } from '@/components/editor/ParamField'
 import { Page } from '@/components/layout/AppShell'
 import { Badge, Button, Card, CardBody, ConfirmDialog, EmptyState, LoadingState, Modal, PageHeader, Panel, SegmentedControl, Select, TextInput } from '@/components/ui'
@@ -957,6 +958,7 @@ export function DlPage() {
               {!project.data.classes.length ? (
                 <p className="rounded-md bg-warning-soft px-3 py-2 text-xs text-warning">{t('dl.classesFirst')}</p>
               ) : null}
+              <VideoExtractPanel project={project.data} />
               {samples.isLoading ? <LoadingState /> : (samples.data ?? []).length ? (
                 <ShapeWorkspace key={project.data.id} project={project.data} samples={samples.data ?? []} suggestions={suggestions}
                   onSave={saveShapes} onAcceptSuggestion={acceptOneSuggestion} onEditClasses={() => setEditingClasses(true)}

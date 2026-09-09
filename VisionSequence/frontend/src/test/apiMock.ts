@@ -156,6 +156,7 @@ export function routes(path: string, body?: unknown): unknown {
   if (path.startsWith('/vision/capture/download/info')) return { available: false, version: '', filename: '', size: 0, sha256: '', built_at: null, url: '/api/vision/capture/download' }
   if (path.startsWith('/vision/capture/clients')) return { listening: true, host: '0.0.0.0', port: 9100, items: [{ name: 'line-pc', address: '127.0.0.1:50000', version: '0.1.0', hostname: 'LINE-PC', connected_at: '2026-01-01T00:00:00', local: true, prefer_encoding: 'raw', shm: true, channels: [{ id: 'cam1', label: '產線相機 1', driver: 'basler', index: 0, width: 1280, height: 960, channels: 1, dtype: 'u8', pixel_format: 'Mono8', roi: { x: 0, y: 0, w: 1280, h: 960 }, full: { w: 1280, h: 960 }, mode: 'on_demand', enabled: true, streaming: false, seq: 12, last_frame_age_ms: 120, encoding: 'shm', shm: true, last_error: '', in_use_by: [], fps: 9.5, bytes_per_s: 0, frames: 12 }] }] }
   if (path.startsWith('/vision/capture')) return {}
+  if (path.startsWith('/vision/videos')) return { items: [{ name: 'line-pc/demo.avi', path: 'C:\\data\\videos\\line-pc\\demo.avi', size: 204800, duration_s: 2.5, source: 'line-pc', created_at: '2026-01-01T00:00:00Z' }] }
   if (path.startsWith('/vision/sources/kinds')) return { items: [{ kind: 'folder', label: '資料夾', fields: ['path'] }, { kind: 'capture', label: '擷取端相機', fields: ['client', 'channel', 'mode', 'timeout_ms', 'fresh', 'encoding'] }] }
   if (path.startsWith('/vision/sources')) return { items: [{ id: 1, name: '範例：圓孔量測', kind: 'folder', group: '範例', config: { path: 'x' }, status: { count: 2 }, is_enabled: true }, { id: 2, name: '產線相機', kind: 'capture', group: '', config: { client: 'old-pc', channel: 'cam1', mode: 'on_demand' }, status: { open: false, connected: false, last_error: '' }, is_enabled: true }] }
   if (path.startsWith('/vision/fs')) return { path: 'x', parent: null, dirs: [], files: ['a.png', 'b.png'] }
@@ -255,6 +256,9 @@ export function routes(path: string, body?: unknown): unknown {
   if (path.startsWith('/vision/agent/autotune')) return { graph: { nodes: [], edges: [] }, rationale: '', provider: 'autotune', changes: [], before: { ok: 0, ng: 0, failed: 0 }, after: null, items: [], applied: false }
   if (path.startsWith('/vision/agent/skills')) return { items: [{ key: 'platform', label: '平台規則', category: 'guide', curated: true }] }
   if (/\/vision\/dl\/projects\/\d+\/quick-register$/.test(path)) return { job_id: 'job123', labeled: 2, skipped: 0, params: { model: 'n', epochs: 20, imgsz: 320, batch: 4 } }
+  if (/\/vision\/dl\/projects\/\d+\/video-extract\/status$/.test(path)) return { job: null }
+  if (/\/vision\/dl\/projects\/\d+\/video-extract\/stop$/.test(path)) return { stopped: true }
+  if (/\/vision\/dl\/projects\/\d+\/video-extract$/.test(path)) return { id: 'video-job', project_id: 1, video_path: 'demo.avi', status: 'running', progress: 0.1, stage: 'running', frame: 1, total_frames: 10, saved: 0, duplicates: 0, per_class: {}, recent: [], logs: [], log_from: 0, log_next: 0, error: '' }
   if (/\/vision\/dl\/projects\/\d+\/samples$/.test(path)) return { items: DL_SAMPLES }
   if (/\/vision\/dl\/projects\/\d+\/versions$/.test(path)) return { items: [] }
   if (/\/vision\/dl\/projects\/\d+$/.test(path)) return DL_PROJECT

@@ -11,6 +11,7 @@ from typing import Any, Callable
 from vscapture import __version__, config as configmod, update as updatemod
 from vscapture.channel import Channel
 from vscapture.config import AppConfig, ChannelConfig
+from vscapture.recorder import RecordConfig, Recorder
 from vscapture.transport.client import TransportClient
 from vscapture.update import UpdateInfo
 
@@ -65,6 +66,7 @@ class CaptureEngine:
         self.ui_visible = True
         self._idle_thread: threading.Thread | None = None
         self._idle_stop = threading.Event()
+        self._recorders: dict[str, Recorder] = {}
         self.events.subscribe(self._on_own_event)
 
     # ---- 省電：閒置時停止取像 ----
@@ -85,6 +87,9 @@ class CaptureEngine:
         if self.ui_visible and ch.cfg.preview:
             return True
         if self.transport.is_streaming(ch.id):
+            return True
+        rec = self._recorders.get(ch.id)
+        if rec is not None and rec.status.active:
             return True
         idle_s = float(self.cfg.connection.idle_stop_s or 0)
         return idle_s <= 0 or (time.perf_counter() - ch.last_request) < idle_s
@@ -187,6 +192,7 @@ class CaptureEngine:
             self._idle_thread.join(timeout=3.0)
             self._idle_thread = None
         self._update_cancel.set()
+        self.stop_recording()
         self.transport.stop()
         # 先叫所有通道停，再一起等：逐條 stop_thread(join=True) 會讓每條的 5 秒逾時累加，
         # 四個通道最糟要 20 秒才關得掉（使用者看到的就是「視窗不見了，行程還在」）。
@@ -276,9 +282,93 @@ class CaptureEngine:
     def hello_channels(self) -> list[dict[str, Any]]:
         return [self.channels[cid].hello_dict() for cid in self._order if cid in self.channels]
 
+    # ---- 錄影 ----
+    def _record_cfg(self) -> RecordConfig:
+        raw = self.cfg.recording
+        return RecordConfig(
+            folder=raw.folder, codec=raw.codec, fps_divisor=raw.fps_divisor, scale=raw.scale,
+            max_minutes=raw.max_minutes, server_folder=raw.server_folder, auto_upload=raw.auto_upload,
+        )
+
+    @staticmethod
+    def _nominal_fps(ch: Channel) -> float:
+        if ch.cfg.params.fps:
+            return float(ch.cfg.params.fps)
+        try:
+            specs = ch.params()
+            spec = specs.get("fps")
+            if spec is not None and spec.value:
+                return float(spec.value)
+        except Exception:  # noqa: BLE001
+            pass
+        return 30.0
+
+    def start_recording(self, channel_ids: list[str] | tuple[str, ...] | None = None) -> dict[str, Any]:
+        """開始錄影；每通道一個 Recorder 執行緒，只讀最新影格並自行丟幀。"""
+        ids = list(channel_ids or self._order)
+        started: list[str] = []
+        errors: dict[str, str] = {}
+        for cid in ids:
+            ch = self.channels.get(cid)
+            if ch is None:
+                errors[cid] = "No such channel"
+                continue
+            if not ch.cfg.enabled:
+                errors[cid] = "Channel disabled"
+                continue
+            try:
+                if ch.idle_paused:
+                    ch.resume_idle()
+                elif ch.state.value == "open":
+                    ch.start()
+            except Exception as exc:  # noqa: BLE001
+                errors[cid] = str(exc)
+                continue
+            rec = self._recorders.get(cid)
+            if rec is not None and rec.status.active:
+                started.append(cid)
+                continue
+            rec = Recorder(cid, ch.latest_frame_for_recording, self._record_cfg(), nominal_fps=self._nominal_fps(ch))
+            self._recorders[cid] = rec
+            rec.start()
+            started.append(cid)
+        self.events.emit("recording", {"items": self.recording_status()["items"], "started": started, "errors": errors})
+        return {"started": started, "errors": errors}
+
+    def _auto_upload_recording(self, path: str) -> None:
+        """錄完自動上傳；走傳輸控制佇列，不插入影格傳送路徑。"""
+        if not path:
+            return
+        try:
+            self.transport.upload_file(Path(path))
+        except Exception as exc:  # noqa: BLE001
+            log.warning("recording auto upload failed: %s", exc)
+
+    def stop_recording(self, channel_ids: list[str] | tuple[str, ...] | None = None) -> dict[str, Any]:
+        ids = list(channel_ids or list(self._recorders))
+        stopped: list[str] = []
+        for cid in ids:
+            rec = self._recorders.get(cid)
+            if rec is None:
+                continue
+            rec.stop()
+            stopped.append(cid)
+            path = rec.status.path
+            if self.cfg.recording.auto_upload and path and not self.cfg.recording.server_folder:
+                threading.Thread(target=self._auto_upload_recording, args=(path,), name=f"vsc-upload-{cid}", daemon=True).start()
+        self.events.emit("recording", {"items": self.recording_status()["items"], "stopped": stopped})
+        return {"stopped": stopped}
+
+    def recording_status(self) -> dict[str, Any]:
+        return {"items": {cid: rec.status.to_dict() for cid, rec in sorted(self._recorders.items())}}
+
     # ---- 設定 ----
     def save_config(self) -> Path:
         return configmod.save(self.cfg, self.config_path)
 
     def status(self) -> dict[str, Any]:
-        return {"connection": self.transport.stats(), "channels": [self.channels[cid].stats() for cid in self._order if cid in self.channels]}
+        return {
+            "connection": self.transport.stats(),
+            "channels": [self.channels[cid].stats() for cid in self._order if cid in self.channels],
+            "recording": self.recording_status(),
+        }

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from typing import Any
 
+import cv2
 from django.conf import settings
 from django.http import FileResponse, HttpRequest, HttpResponse
 from ninja import Router, Schema
@@ -11,7 +14,7 @@ from ninja import Router, Schema
 from apps.accounts.security import authenticate, principal, require_feature
 from apps.core.errors import APIError, NotFound, ServiceUnavailable
 from apps.vision.capture import build
-from apps.vision.capture.hub import CaptureError, hub
+from apps.vision.capture.hub import CaptureError, hub, videos_root
 from apps.vision.images import encode_image
 
 router = Router(tags=["capture"])
@@ -19,6 +22,46 @@ router = Router(tags=["capture"])
 
 class ChannelParamsIn(Schema):
     params: dict[str, Any] = {}
+
+
+VIDEO_EXTS = (".avi", ".mp4", ".mov", ".mkv")
+
+
+def _video_duration(path: Path) -> float:
+    cap = cv2.VideoCapture(str(path))
+    try:
+        if not cap.isOpened():
+            return 0.0
+        fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+        frames = float(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0.0)
+        return frames / fps if fps > 0 else 0.0
+    finally:
+        cap.release()
+
+
+def _video_item(path: Path) -> dict[str, Any]:
+    root = videos_root()
+    rel = path.relative_to(root).as_posix()
+    stat = path.stat()
+    parts = rel.split("/", 1)
+    return {
+        "name": rel,
+        "path": str(path),
+        "size": stat.st_size,
+        "duration_s": round(_video_duration(path), 2),
+        "source": parts[0] if len(parts) > 1 else "",
+        "created_at": stat.st_mtime,
+    }
+
+
+def _video_path(name: str) -> Path:
+    root = videos_root().resolve()
+    target = (root / str(name or "").replace("\\", "/")).resolve()
+    if root != target and root not in target.parents:
+        raise NotFound("Video not found", code="video_not_found")
+    if not target.is_file() or target.suffix.lower() not in VIDEO_EXTS:
+        raise NotFound("Video not found", code="video_not_found")
+    return target
 
 
 def download_info() -> dict[str, Any]:
@@ -33,6 +76,28 @@ def download_info() -> dict[str, Any]:
 @router.get("/capture/clients")
 def list_clients(request: HttpRequest):
     return {"listening": hub.listening, "host": hub.host or settings.VISION["CAPTURE_HOST"], "port": hub.port or settings.VISION["CAPTURE_PORT"], "items": hub.clients()}
+
+
+@router.get("/videos")
+def list_videos(request: HttpRequest):
+    require_feature(request, "dl")
+    root = videos_root()
+    items = []
+    for path in sorted(root.rglob("*"), key=lambda p: p.stat().st_mtime if p.is_file() else 0, reverse=True):
+        if path.is_file() and path.suffix.lower() in VIDEO_EXTS and not path.name.startswith("."):
+            items.append(_video_item(path))
+    return {"items": items}
+
+
+@router.delete("/videos/{name}", response={204: None})
+def delete_video(request: HttpRequest, name: str):
+    require_feature(request, "dl")
+    path = _video_path(name)
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+    return 204, None
 
 
 @router.get("/capture/download/info")

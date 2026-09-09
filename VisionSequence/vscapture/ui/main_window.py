@@ -21,7 +21,7 @@ from vscapture.logs import log_dir
 from vscapture.ui.bridge import EngineBridge
 from vscapture.ui.channels_panel import ChannelsPanel
 from vscapture.ui.connection_panel import ConnectionForm, ConnectionStatus
-from vscapture.ui.dialogs import SettingsDialog
+from vscapture.ui.dialogs import RecordingPanel, SettingsDialog
 from vscapture.ui.delivery_panel import DeliveryPanel
 from vscapture.ui.live_view import LivePanel
 from vscapture.ui.log_panel import LogPanel
@@ -113,6 +113,7 @@ class MainWindow(QMainWindow):
         self.live = LivePanel(engine, bridge)
         self.params = ParamsPanel(engine, bridge)
         self.delivery = DeliveryPanel(engine, bridge)
+        self.recording = RecordingPanel(engine, bridge)
         self.params_box = QGroupBox()
         pl = QVBoxLayout(self.params_box)
         pl.setContentsMargins(9, 9, 9, 9)
@@ -156,6 +157,7 @@ class MainWindow(QMainWindow):
         self.connection_dialog = SettingsDialog(self, self.connection_form, "connection.title", min_size=(420, 300))
         self.channels_dialog = SettingsDialog(self, self.channels_edit, "channels.editTitle", min_size=(440, 420))
         self.delivery_dialog = SettingsDialog(self, self.delivery, "delivery.tab", min_size=(420, 380))
+        self.recording_dialog = SettingsDialog(self, self.recording, "recording.tab", min_size=(480, 360))
         self.connection_dialog.closed.connect(self._on_connection_dialog_closed)
 
         self._build_menu()
@@ -192,6 +194,7 @@ class MainWindow(QMainWindow):
         self.params.dirty.connect(self.mark_dirty)
         self.params.save_requested.connect(self.save_config)
         self.delivery.dirty.connect(self.mark_dirty)
+        self.recording.changed.connect(self.mark_dirty)
 
         self.connection_form.load_from(engine.cfg.connection)
         self.connection.show_target(engine.cfg.connection)
@@ -293,6 +296,7 @@ class MainWindow(QMainWindow):
         self.connection_action.setText(tr("menu.connectionSettings"))
         self.channels_action.setText(tr("menu.channelSettings"))
         self.delivery_action.setText(tr("menu.deliverySettings"))
+        self.recording_action.setText(tr("menu.recordingSettings"))
         self.view_menu.setTitle(tr("menu.view"))
         self.help_menu.setTitle(tr("menu.help"))
         self.save_action.setText(tr("menu.save"))
@@ -302,9 +306,9 @@ class MainWindow(QMainWindow):
         self.log_action.setText(tr("menu.log"))
         self.update_action.setText(tr("menu.checkUpdate"))
         self.about_action.setText(tr("menu.about"))
-        for panel in (self.connection, self.connection_form, self.channels, self.channels_edit, self.live, self.params, self.delivery, self.log_panel, self.banner):
+        for panel in (self.connection, self.connection_form, self.channels, self.channels_edit, self.live, self.params, self.delivery, self.recording, self.log_panel, self.banner):
             panel.retranslate()
-        for dialog in (self.connection_dialog, self.channels_dialog, self.delivery_dialog):
+        for dialog in (self.connection_dialog, self.channels_dialog, self.delivery_dialog, self.recording_dialog):
             dialog.retranslate()
         self.connection.show_target(self.engine.cfg.connection)
         if self.tray is not None:
@@ -360,7 +364,9 @@ class MainWindow(QMainWindow):
         self.channels_action.triggered.connect(self.open_channel_settings)
         self.delivery_action = QAction("", self)
         self.delivery_action.triggered.connect(self.open_delivery_settings)
-        for action in (self.connection_action, self.channels_action, self.delivery_action):
+        self.recording_action = QAction("", self)
+        self.recording_action.triggered.connect(self.open_recording_settings)
+        for action in (self.connection_action, self.channels_action, self.delivery_action, self.recording_action):
             self.settings_menu.addAction(action)
         self.view_menu = bar.addMenu("")
         self.log_action = QAction("", self)
@@ -392,6 +398,11 @@ class MainWindow(QMainWindow):
     def open_delivery_settings(self) -> None:
         self.delivery.set_channel(self.engine.channels.get(self.channels.current_id()))
         self.delivery_dialog.open_dialog()
+
+    @Slot()
+    def open_recording_settings(self) -> None:
+        self.recording.load_from(self.engine.cfg.recording)
+        self.recording_dialog.open_dialog()
 
     def _on_connection_dialog_closed(self) -> None:
         """關掉設定視窗就把欄位寫回設定，狀態卡上的「要連誰」也跟著更新。"""
@@ -468,6 +479,7 @@ class MainWindow(QMainWindow):
             self.theme_box.setCurrentIndex(max(0, self.theme_box.findData(self.engine.cfg.ui.theme)))
             self.channels.refresh_list()
             self.channels_edit.refresh_list()
+            self.recording.load_from(self.engine.cfg.recording)
             self._dirty = False
             self.setWindowTitle(tr("app.title"))
             self.status_bar.showMessage(tr("dialog.reloaded"), 4000)
@@ -526,6 +538,8 @@ class MainWindow(QMainWindow):
     def _refresh_stats(self) -> None:
         self.connection.update_stats(self.engine.transport.stats())
         self.live.refresh_buttons()
+        self.channels.refresh_recording()
+        self.channels_edit.refresh_recording()
 
     def _restore_geometry(self) -> None:
         raw = self.engine.cfg.ui.window_geometry

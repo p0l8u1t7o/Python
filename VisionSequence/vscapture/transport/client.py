@@ -13,7 +13,9 @@ import time
 import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
 from enum import Enum
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
+import hashlib
 
 from vscapture import protocol as P
 from vscapture.cameras.base import CameraParamError
@@ -227,7 +229,7 @@ class TransportClient:
         hello = {
             "protocol": P.PROTOCOL_VERSION, "name": self.cfg.client_name, "version": self.version, "auth": self.cfg.api_key,
             "hostname": socket.gethostname(), "pid": __import__("os").getpid(), "machine_id": self._machine_id,
-            "features": {"lz4": P.lz4_available(), "shm": True, "jpeg": True, "channel_set": True}, "channels": self.engine.hello_channels(),
+            "features": {"lz4": P.lz4_available(), "shm": True, "jpeg": True, "channel_set": True, "upload": True}, "channels": self.engine.hello_channels(),
         }
         sock.sendall(P.pack_json(MsgType.HELLO, hello, 1))
         sock.settimeout(P.HELLO_TIMEOUT_S)
@@ -554,6 +556,43 @@ class TransportClient:
             return fut.result(timeout)
         finally:
             self._pulls.pop(req_id, None)
+
+    def upload_file(self, path: str | Path, *, cancel: threading.Event | None = None, on_progress=None) -> dict[str, Any]:
+        """把錄影檔逐塊上傳到伺服端；走已驗證連線的控制佇列，不進影格路徑。"""
+        if self.state != ConnState.CONNECTED:
+            raise RuntimeError("Not connected")
+        features = self.welcome.get("features") if isinstance(self.welcome.get("features"), dict) else {}
+        if not bool(features.get("upload")):
+            raise RuntimeError("The server does not support video upload; update the server")
+        src = Path(path)
+        size = src.stat().st_size
+        digest = hashlib.sha256()
+        with src.open("rb") as fh:
+            for chunk in iter(lambda: fh.read(P.UPLOAD_CHUNK_BYTES), b""):
+                digest.update(chunk)
+        sha = digest.hexdigest()
+        upload_id = uuid.uuid4().hex
+        header = {"id": upload_id, "filename": src.name, "size": size, "sha256": sha, "chunk": P.UPLOAD_CHUNK_BYTES}
+        self.queue.put_control(P.pack_json(MsgType.UPLOAD_BEGIN, header, self._next_req()))
+        sent = 0
+        try:
+            with src.open("rb") as fh:
+                while True:
+                    if cancel is not None and cancel.is_set():
+                        self.queue.put_control(P.pack_json(MsgType.UPLOAD_END, {"id": upload_id, "filename": src.name, "cancel": True}, self._next_req()))
+                        return {"ok": False, "cancelled": True, "sent": sent, "size": size}
+                    chunk = fh.read(P.UPLOAD_CHUNK_BYTES)
+                    if not chunk:
+                        break
+                    self.queue.put_control(P.pack_message(MsgType.UPLOAD_DATA, self._next_req(), P.dumps_json({"id": upload_id, "offset": sent}), chunk))
+                    sent += len(chunk)
+                    if callable(on_progress):
+                        on_progress(sent, size)
+            self.queue.put_control(P.pack_json(MsgType.UPLOAD_END, {"id": upload_id, "filename": src.name, "size": size, "sha256": sha}, self._next_req()))
+            return {"ok": True, "cancelled": False, "sent": sent, "size": size, "sha256": sha}
+        except Exception:
+            self.queue.put_control(P.pack_json(MsgType.UPLOAD_END, {"id": upload_id, "filename": src.name, "cancel": True}, self._next_req()))
+            raise
 
     def _on_test_result(self, req_id: int, body: dict[str, Any]) -> None:
         entry = self._tests.pop(req_id, None)

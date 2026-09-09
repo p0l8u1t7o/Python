@@ -243,6 +243,10 @@ class Channel:
                 return latest
         return self.slot.wait_for(max(min_seq + 1, self.slot.seq + 1 if after_request else 0), timeout)
 
+    def latest_frame_for_recording(self) -> Frame | None:
+        """錄影執行緒的唯讀入口：只拿最新影格，不排相機命令、不影響取像迴圈。"""
+        return self.slot.latest()
+
     def params(self) -> dict[str, ParamSpec]:
         cam = self.camera
         if cam is None:
