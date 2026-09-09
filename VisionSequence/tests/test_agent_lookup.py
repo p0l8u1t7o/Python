@@ -112,6 +112,16 @@ class LookupTests(TestCase):
         tool = lookup.dispatch(self.admin_p, "get_tool", {"key": "blob"})
         self.assertIn("min_area", tool["skill"])
         self.assertIn("No tool", lookup.dispatch(self.admin_p, "get_tool", {"key": "nope"})["error"])
+        # 以一句話找工具：關鍵詞表沒列的說法也靠工具技能段的檢索找得到
+        found = lookup.dispatch(self.admin_p, "search_tools", {"query": "兩台相機各拍一半拼成一張"})
+        self.assertIn("stitch_images", [it["key"] for it in found["items"]])
+        self.assertIn("required", lookup.dispatch(self.admin_p, "search_tools", {})["error"])
+        # 範本目錄：可用關鍵字過濾，每筆帶用到的工具
+        gallery = lookup.dispatch(self.admin_p, "list_templates", {})
+        self.assertGreaterEqual(gallery["total"], 30)
+        conveyor = lookup.dispatch(self.admin_p, "list_templates", {"query": "conveyor"})
+        self.assertTrue(conveyor["items"] and all("conveyor" in f"{it['key']} {it['name']}".lower() for it in conveyor["items"]))
+        self.assertIn("track_objects", conveyor["items"][0]["tools"])
         self.assertIn("items", lookup.dispatch(self.admin_p, "list_plugins", {}))
         self.assertIn("items", lookup.dispatch(self.admin_p, "capture_clients", {}))
 

@@ -209,6 +209,43 @@ def h_get_tool(p: Any, args: dict[str, Any]) -> dict[str, Any]:
         return {"error": f"No tool '{key}'"}
 
 
+def h_search_tools(_principal: Any, args: dict[str, Any]) -> dict[str, Any]:
+    """依一句話找相關工具（說明索引的工具技能段做檢索，中文可）：回 key／名稱／分類／一句話說明。"""
+    q = str(args.get("query") or "").strip()
+    if not q:
+        return {"error": "query is required"}
+    from apps.vision.tools import base as tools
+
+    try:
+        limit = max(1, min(12, int(args.get("limit") or 8)))
+    except (TypeError, ValueError):
+        limit = 8
+    items = []
+    for key in skills.retrieved_tools(q, k=limit):
+        t = tools.get(key)
+        items.append({"key": key, "label": t.label, "category": t.category, "description": (t.description or "")[:200]})
+    return {"items": items}
+
+
+def h_list_templates(_principal: Any, args: dict[str, Any]) -> dict[str, Any]:
+    """內建範本目錄（名稱／說明／分類／用到的工具），可用關鍵字過濾（比對 key、名稱、說明與工具 key）。"""
+    from apps.vision import demo
+    from apps.vision.api_more import SOURCE_PLACEHOLDER
+
+    q = str(args.get("query") or "").strip().lower()
+    items = []
+    for key, name, desc, category, builder in demo.BUILTIN_TEMPLATES:
+        try:
+            used = sorted({str(n.get("type", "")) for n in builder(SOURCE_PLACEHOLDER).get("nodes", []) if n.get("type") not in ("note", "", None)})
+        except Exception:  # noqa: BLE001 - 範本建不出來（例如缺示範資產）就只列名稱
+            used = []
+        hay = f"{key} {name} {desc} {' '.join(used)}".lower()
+        if q and not all(term in hay for term in q.split()):
+            continue
+        items.append({"key": key, "name": name, "description": desc, "category": category, "tools": used})
+    return {"items": items[:60], "total": len(items)}
+
+
 def h_camera_optics(_principal: Any, args: dict[str, Any]) -> dict[str, Any]:
     """相機／鏡頭選型的算式：給什麼算什麼（焦距、視野、需要的像素、景深、曝光上限、頻寬與介面）。"""
     from apps.vision.agent import optics
@@ -228,6 +265,10 @@ LOOKUPS: list[Lookup] = [
     Lookup("capture_clients", "Connected capture clients and their camera channels.", _obj({}), h_capture_clients, feature="sources"),
     Lookup("search_docs", "Search the documentation and the interface map for a phrase (any language).", _obj({"query": {"type": "string"}}, ["query"]), h_search_docs),
     Lookup("get_tool", "A tool's full skill text: parameters, ports and tuning guidance.", _obj({"key": {"type": "string", "description": "tool type, e.g. blob"}}, ["key"]), h_get_tool),
+    Lookup("search_tools", "Find the tools relevant to a task described in one sentence (any language): key, name, category and a one-line description. Use get_tool for the full parameters.",
+           _obj({"query": {"type": "string"}, "limit": {"type": "integer"}}, ["query"]), h_search_tools),
+    Lookup("list_templates", "The built-in example templates (gallery): key, name, description, category and the tools each one uses. Optional keyword filter.",
+           _obj({"query": {"type": "string"}}), h_list_templates),
     Lookup("camera_optics",
            "Camera, lens and lighting arithmetic for choosing hardware: give any of field of view, working distance, smallest feature, "
            "sensor format, focal length, f-number, frame rate, belt speed — it returns the focal length (and the nearest stock lens), "
