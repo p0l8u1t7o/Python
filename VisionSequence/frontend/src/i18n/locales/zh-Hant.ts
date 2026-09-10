@@ -2765,6 +2765,17 @@ export default { ...zhHant, inspect: {
   "dependencies": "任務仍被使用",
   "dependenciesHint": "請先在進階流程解除下列步驟的相依連線，再移除此任務。",
   "customHint": "此任務有自訂連線或步驟，請到進階流程編輯。",
+  "openAdvanced": "在進階流程開啟",
+  "disabled": "已停用",
+  "reasons": {
+    "role_missing": "缺少必要的任務步驟。",
+    "unexpected_node": "此任務多了額外步驟。",
+    "tool_changed": "任務步驟使用的工具已變更。",
+    "managed_edge_changed": "任務內部連線已變更。",
+    "managed_edge_missing": "缺少任務內部連線。",
+    "public_input_changed": "任務輸入來源已變更或缺失。",
+    "schema_version_unknown": "尚不支援此任務規格版本。"
+  },
   "staleHint": "設定已變更，請重新試執行。",
   "needsCalibration": "使用毫米前請先選擇標定。",
   "openCalibration": "開啟標定",

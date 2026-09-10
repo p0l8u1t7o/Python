@@ -7,6 +7,7 @@ export const INSPECT_KINDS: InspectKind[] = [{
   fields: [
     { key: 'roi', label: 'Region', kind: 'roi', role: 'find', param: 'roi', required: true, default: null, shapes: ['annulus'] },
     { key: 'nominal', label: 'Nominal', kind: 'number', role: 'tol', param: 'nominal', required: true, default: 100 },
+    { key: 'upper_tol', label: 'Upper tolerance', kind: 'number', role: 'tol', param: 'upper_tol', required: true, default: 2 },
     { key: 'unit', label: 'Unit', kind: 'select', role: 'tol', param: 'unit', default: 'px', options: [{ value: 'px', label: 'Pixels' }, { value: 'mm', label: 'Millimetres' }] },
     { key: 'calibration', label: 'Calibration', kind: 'asset', role: 'find', param: 'calibration', default: '', accept: 'calibration' },
     { key: 'result_name', label: 'Result name', kind: 'output_key', role: 'tol', param: 'name', default: '' },
@@ -17,7 +18,7 @@ export const INSPECT_GRAPH: FlowGraph = {
   nodes: [
     { id: 'camera', type: 'image_source', params: { source_id: 1 } },
     { id: 'd_find', type: 'find_circle', params: { roi: { shape: 'annulus', cx: 200, cy: 200, r_inner: 40, r_outer: 60 }, calibration: '' }, meta: { inspect: { task_id: 'd', role: 'find', kind: 'measure_diameter', schema_version: 1, required: true } } },
-    { id: 'd_tol', type: 'tolerance_judge', params: { nominal: 100, unit: 'px', name: 'Diameter' }, meta: { inspect: { task_id: 'd', role: 'tol', kind: 'measure_diameter', schema_version: 1, required: true } } },
+    { id: 'd_tol', type: 'tolerance_judge', params: { nominal: 100, upper_tol: 2, unit: 'px', name: 'Diameter' }, meta: { inspect: { task_id: 'd', role: 'tol', kind: 'measure_diameter', schema_version: 1, required: true } } },
   ], edges: [{ source: 'camera', source_handle: 'image', target: 'd_find', target_handle: 'image' }, { source: 'd_find', source_handle: 'diameter', target: 'd_tol', target_handle: 'value' }],
 }
 
@@ -28,10 +29,10 @@ function inspectMock(path: string, body?: unknown) {
   if (path.endsWith('/read')) {
     const find = graph.nodes.find((node) => node.id === 'd_find')
     const tol = graph.nodes.find((node) => node.id === 'd_tol')
-    return { tasks: find && tol ? [{ task_id: 'd', kind: 'measure_diameter', version: 1, required: true, nodes: { find: 'd_find', tol: 'd_tol' }, fields: { roi: find.params?.roi, calibration: find.params?.calibration ?? '', nominal: tol.params?.nominal, unit: tol.params?.unit, result_name: tol.params?.name }, custom: false, reasons: [] }] : [], shared: [{ id: 'camera', type: 'image_source' }], loose: [] }
+    return { tasks: find && tol ? [{ task_id: 'd', kind: 'measure_diameter', version: 1, required: true, nodes: { find: 'd_find', tol: 'd_tol' }, fields: { roi: find.params?.roi, calibration: find.params?.calibration ?? '', nominal: tol.params?.nominal, upper_tol: tol.params?.upper_tol, unit: tol.params?.unit, result_name: tol.params?.name }, disabled: find.enabled === false || tol.enabled === false, custom: false, reasons: [] }] : [], shared: [{ id: 'camera', type: 'image_source' }], loose: graph.nodes.filter((node) => !node.meta?.inspect && node.type !== 'image_source').map(({ id, type }) => ({ id, type })) }
   }
   if (path.endsWith('/evidence')) return { items: [{ task_id: 'd', verdict: 'pass', valid: true, detected: true, value: 99.9, unit: 'px', reason: '', overlays: [], node_id: 'd_tol' }] }
-  if (path.endsWith('/remove')) return { graph, removed: false, dependencies: [{ target: 'camera', target_handle: 'image' }] }
+  if (path.endsWith('/remove')) return { graph, removed: false, dependencies: [{ target: 'camera', title: 'Downstream camera', target_handle: 'image' }] }
   if (path.endsWith('/update')) {
     const next = structuredClone(graph)
     for (const field of INSPECT_KINDS[0].fields) {
@@ -369,6 +370,7 @@ export function installApiMock() {
     const actual = await importOriginal<typeof import('@/lib/api')>()
     return {
       ...actual,
+      request: vi.fn(async (path: string, options?: { body?: unknown }) => routes(path, options?.body)),
       api: {
         get: vi.fn(async (path: string) => routes(path)),
         post: vi.fn(async (path: string, body?: unknown) => routes(path, body)),

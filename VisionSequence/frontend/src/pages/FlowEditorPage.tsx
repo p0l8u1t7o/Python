@@ -12,7 +12,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, useBlocker, useNavigate, useParams } from 'react-router-dom'
+import { Link, useBlocker, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   ReactFlowProvider,
   addEdge,
@@ -234,6 +234,8 @@ export function topoOrder(graphNodes: GraphNode[], graphEdges: GraphEdge[]): str
 
 function EditorInner({ flowId }: { flowId: number }) {
   const { t } = useTranslation()
+  const [searchParams] = useSearchParams()
+  const focusedFromUrl = useRef('')
   const toast = useToast()
   const auth = useAuth()
   const { screenToFlowPosition, fitView, setCenter, getZoom } = useReactFlow()
@@ -874,6 +876,17 @@ function EditorInner({ flowId }: { flowId: number }) {
     },
     [expandTaskForNode, setNodes, fitView],
   )
+
+  // 等草稿節點載入後才聚焦；同一個網址只處理一次，避免重繪搶走選取。
+  useEffect(() => {
+    const id = searchParams.get('focus')
+    if (!id) { focusedFromUrl.current = ''; return }
+    const key = `${flowId}:${id}`
+    if (focusedFromUrl.current === key || !graphNodes.some((node) => node.id === id)) return
+    focusedFromUrl.current = key
+    setRightTab('inspector')
+    focusNode(id)
+  }, [flowId, searchParams, graphNodes, focusNode])
 
   const centerSearchNode = useCallback(
     (id: string) => {

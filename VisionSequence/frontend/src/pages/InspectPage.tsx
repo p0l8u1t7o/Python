@@ -10,7 +10,7 @@ import { ImageViewer } from '@/components/viewer/ImageViewer'
 import { fixedImageFromRef, imageUrl } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
 import { getSession, setDraft, updateSession, useFlowSession } from '@/lib/flowDraft'
-import { INSPECT_DOTS, inspectGraphHash, inspectionDefaults, inspectionParam, inspectionStale, inspectionStatus, inspectionValue, missingInspectionFields } from '@/lib/inspect'
+import { INSPECT_DOTS, forgetInspectionRun, inspectGraphHash, inspectionAdvancedPath, inspectionDefaults, inspectionEditableKind, inspectionOverall, inspectionParam, inspectionReasonKey, inspectionRemovalGraph, inspectionRunFor, inspectionStale, inspectionStatus, inspectionValue, missingInspectionFields, rememberInspectionRun } from '@/lib/inspect'
 import { inspectionEvidence, readInspection, removeInspection, teachInspectionPose, useFlow, useFlowMutations, useInspectKinds, usePreviewFlow, useScratchImage, useSources, useToolTypes, writeInspection } from '@/lib/queries'
 import type { FlowGraph, ImageRef, InspectDependency, InspectKind, InspectList, InspectReading, Region, RoiShape, RunReport } from '@/lib/types'
 import { useConfirm } from '@/lib/useConfirm'
@@ -31,6 +31,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
   const preview = usePreviewFlow()
   const upload = useScratchImage()
   const session = useFlowSession(flowId)
+  const cachedRun = useRef(inspectionRunFor(flowId, session.previewRun))
   const { confirm, dialog } = useConfirm()
   const { showConflict, dialog: conflictDialog } = useSaveConflictDialog()
   const [list, setList] = useState<InspectList>(EMPTY_LIST)
@@ -40,9 +41,9 @@ function InspectPageInner({ flowId }: { flowId: number }) {
   const [values, setValues] = useState<Record<string, unknown>>({})
   const [busy, setBusy] = useState(false)
   const [pending, setPending] = useState(false)
-  const [readings, setReadings] = useState<InspectReading[]>([])
-  const [run, setRun] = useState<RunReport | null>(null)
-  const [runHash, setRunHash] = useState<string | null>(null)
+  const [readings, setReadings] = useState<InspectReading[]>(cachedRun.current?.readings ?? [])
+  const [run, setRun] = useState<RunReport | null>(cachedRun.current?.report ?? null)
+  const [runHash, setRunHash] = useState<string | null>(cachedRun.current?.hash ?? null)
   const [dependencies, setDependencies] = useState<InspectDependency[] | null>(null)
   const [roiKey, setRoiKey] = useState<string | null>('roi')
   const [advancedRoi, setAdvancedRoi] = useState<{ nodeId: string; key: string; shapes: RoiShape[] } | null>(null)
@@ -62,7 +63,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
   const graph = session.draft?.graph
   const editorPath = `/flows/${flowId}`
   const task = list.tasks.find((item) => item.task_id === selected)
-  const kind = kinds.data?.items.find((item) => item.kind === (newKind ?? task?.kind))
+  const kind = newKind ? kinds.data?.items.find((item) => item.kind === newKind) : inspectionEditableKind(task, kinds.data?.items ?? [])
   const stale = Boolean(runHash && (pending || busy || (graph && inspectionStale(graph, runHash))))
   const reading = readings.find((item) => item.task_id === selected)
   const status = inspectionStatus(reading, stale, task?.custom)
@@ -174,8 +175,10 @@ function InspectPageInner({ flowId }: { flowId: number }) {
     if (!task || readOnly) return
     await flushEdits()
     if (!await confirm(t('inspect.deleteConfirm'), { title: t('inspect.remove') })) return
-    const result = await removeInspection(currentGraph(), task.task_id)
-    if (result.removed) putGraph(result.graph)
+    const before = currentGraph()
+    const result = await removeInspection(before, task.task_id)
+    const next = inspectionRemovalGraph(before, result)
+    if (next !== before) putGraph(next)
     else setDependencies(result.dependencies)
   }
 
@@ -198,6 +201,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
     const report = await preview.mutateAsync({ flowId, graph: snapshot, reuse_image_ref: session.scratch?.ref ?? (reuse ? image?.ref : null), analysis: false })
     const result = await inspectionEvidence(snapshot, report)
     if (!alive.current) return
+    rememberInspectionRun(flowId, snapshot, report, result.items)
     updateSession(flowId, { previewRun: report }); setRun(report); setReadings(result.items); setRunHash(inspectGraphHash(snapshot))
   }
   async function teachPose() {
@@ -225,7 +229,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
           baseline.current = details.updated_at
           const current = getSession(flowId).draft
           if (current) setDraft(flowId, { ...current, graph: details.graph, baseVersion: details.version, dirty: false })
-          setRunHash(null); setReadings([]); setRun(null)
+          forgetInspectionRun(flowId); setRunHash(null); setReadings([]); setRun(null)
         }, overwrite: saveWithBaseline,
       })) throw error
     }
@@ -286,7 +290,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
   async function uploadImage(file: File) {
     updateSession(flowId, { scratch: await upload.mutateAsync({ flowId, file }) })
     if (!readOnly && !currentGraph().nodes.some((node) => ['image_source', 'fixed_image', 'stereo_grab', 'multi_light_grab'].includes(node.type) && node.params?.role !== 'reference')) await changeSource('')
-    setRunHash(null); setReadings([]); setRun(null)
+    forgetInspectionRun(flowId); setRunHash(null); setReadings([]); setRun(null)
   }
   async function saveCrop() {
     if (!image?.ref || !cropKey || !cropRegion) return
@@ -312,7 +316,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
       <Button icon={<Play size={14} />} loading={preview.isPending} disabled={locked || !auth.can('flows.run') || busy || Boolean(newKind) || pending && formInvalid} onClick={() => void action(() => runPreview())} data-testid="inspect-run">{t('inspect.run')}</Button>
       <Button icon={<Save size={14} />} loading={patch.isPending} disabled={readOnly || busy || Boolean(newKind) || formInvalid} onClick={() => void action(save)} data-testid="inspect-save">{t('inspect.save')}</Button>
       {dirty ? <span className="text-xs text-warning">{t('inspect.unsaved')}</span> : null}
-      <span className={`rounded px-2 py-1 text-xs ${stale ? 'text-muted' : run?.status === 'ok' ? 'text-ok' : 'text-warning'}`} data-testid="inspect-overall">{stale ? t('inspect.status.stale') : run ? String(run.outputs.judge ?? run.status.toUpperCase()) : '—'}</span>
+      <span className={`rounded px-2 py-1 text-xs ${stale ? 'text-muted' : run?.status === 'ok' ? 'text-ok' : 'text-warning'}`} data-testid="inspect-overall">{stale ? t('inspect.status.stale') : inspectionOverall(run, stale)}</span>
       <Link className="btn-secondary" to={editorPath}>{t('inspect.advancedFlow')}</Link>
       <div className="flex w-full flex-wrap items-center gap-2 text-xs">
         <label>{t('inspect.source')} <select className="input !w-48" value={String(source?.params?.source_id ?? '')} disabled={readOnly || busy} onChange={(event) => void action(() => changeSource(event.target.value))} data-testid="inspect-source">
@@ -320,7 +324,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
         </select></label>
         <Button size="sm" icon={<ImageUp size={14} />} loading={upload.isPending} onClick={() => uploadInput.current?.click()}>{t('inspect.upload')}</Button>
         <input ref={uploadInput} className="hidden" type="file" accept="image/*" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void action(() => uploadImage(file)) }} />
-        {session.scratch ? <Button size="xs" onClick={() => { updateSession(flowId, { scratch: null }); setRunHash(null); setReadings([]); setRun(null) }}>{session.scratch.name} · {t('inspect.clearImage')}</Button> : null}
+        {session.scratch ? <Button size="xs" onClick={() => { updateSession(flowId, { scratch: null }); forgetInspectionRun(flowId); setRunHash(null); setReadings([]); setRun(null) }}>{session.scratch.name} · {t('inspect.clearImage')}</Button> : null}
         <label><input type="checkbox" checked={reuse} onChange={(event) => setReuse(event.target.checked)} /> {t('inspect.reuseImage')}</label>
         {locked ? <span className="text-warning">{t('inspect.locked')}</span> : null}
       </div>
@@ -336,15 +340,14 @@ function InspectPageInner({ flowId }: { flowId: number }) {
           const state = inspectionStatus(readings.find((row) => row.task_id === item.task_id), stale, item.custom)
           return <li key={item.task_id}><button className={`flex w-full items-center gap-2 rounded p-2 text-left text-sm ${selected === item.task_id && !newKind ? 'bg-brand-soft' : 'hover:bg-surface-muted'}`} onClick={() => void action(() => selectTask(item.task_id))} data-testid="inspect-task">
             <span className={`size-2.5 shrink-0 rounded-full ${INSPECT_DOTS[state]}`} title={t(`inspect.status.${state}`)} />
-            <span className="min-w-0"><span className="block truncate">{String(item.fields.result_name || kinds.data?.items.find((entry) => entry.kind === item.kind)?.label || item.kind)}</span><span className="block text-xs text-muted">{t(`inspect.status.${state}`)}</span></span>
-          </button></li>
+            <span className="min-w-0"><span className="block truncate">{String(item.fields.result_name || kinds.data?.items.find((entry) => entry.kind === item.kind)?.label || item.kind)}</span><span className="block text-xs text-muted">{t(`inspect.status.${state}`)}{item.disabled ? ` · ${t('inspect.disabled')}` : ''}</span></span>
+          </button>{item.custom ? <ul className="space-y-1 px-2 pb-2 text-xs text-warning" data-testid="inspect-custom-reasons">{item.reasons.map((reason, index) => <li key={index}><Link to={inspectionAdvancedPath(flowId, graph, { ...item, reasons: [reason] })}>{t(inspectionReasonKey(reason.code))}</Link></li>)}</ul> : null}</li>
         })}</ul>
-        {!list.tasks.length ? <p className="my-3 text-xs text-muted">{list.loose.length ? t('inspect.advancedOnly') : t('inspect.noTasks')}</p> : null}
+        {!list.tasks.length ? <div className="my-3 text-xs text-muted"><p>{list.loose.length ? t('inspect.advancedOnly') : t('inspect.noTasks')}</p>{list.loose.length ? <Link className="mt-2 block text-brand" to={editorPath}>{t('inspect.openAdvanced')}</Link> : null}</div> : null}
         <Link className="mt-4 block text-xs text-brand" to={editorPath}>{t('inspect.otherSteps', { count: list.loose.length })}</Link>
       </aside>
       <section className="w-full shrink-0 space-y-4 overflow-y-auto border-r border-line bg-surface p-4 md:w-[340px] xl:w-[380px]" data-testid="inspect-form">
-        {kind ? <><h2 className="font-semibold">{kind.label}</h2><p className="text-xs text-muted">{kind.help_text}</p>
-          {task?.custom && !newKind ? <div><p className="text-warning">{t('inspect.customHint')}</p>{task.reasons.map((reason, index) => <p key={index} className="mt-1 text-xs">{reason.detail}</p>)}<Link className="btn-secondary mt-3" to={editorPath}>{t('inspect.advancedFlow')}</Link></div> : <>
+        {task?.custom && !newKind ? <div data-testid="inspect-custom"><p className="text-warning">{t('inspect.customHint')}</p>{task.reasons.map((reason, index) => <p key={index} className="mt-1 text-xs">{t(inspectionReasonKey(reason.code))}</p>)}<Link className="btn-secondary mt-3" to={inspectionAdvancedPath(flowId, graph, task)}>{t('inspect.openAdvanced')}</Link><Button className="mt-3" variant="danger" disabled={readOnly || busy} onClick={() => void action(deleteTask)}>{t('inspect.remove')}</Button></div> : kind ? <><h2 className="font-semibold">{kind.label}</h2><p className="text-xs text-muted">{kind.help_text}</p>
             <fieldset disabled={readOnly || busy} className="space-y-4">
               {kind.fields.map((field) => <div key={field.key} data-field={field.key}>
                 {field.key === 'locator' ? <label className="label">{field.label}<select className="input" value={String(values.locator ?? '')} onChange={(event) => changeField('locator', event.target.value)}><option value="">{t('common.none')}</option>{list.tasks.filter((entry) => entry.kind === 'locate_part' && entry.task_id !== selected && !entry.custom).map((entry) => <option key={entry.task_id} value={entry.task_id}>{String(entry.fields.result_name || entry.task_id)}</option>)}</select></label> : <ParamField param={inspectionParam(field)} value={values[field.key]} onChange={(value) => changeField(field.key, value)} actions={actions} />}
@@ -353,7 +356,6 @@ function InspectPageInner({ flowId }: { flowId: number }) {
             {needsCalibration ? <p className="text-sm text-warning" role="alert">{t('inspect.needsCalibration')} <Link className="underline" to="/calibration">{t('inspect.openCalibration')}</Link></p> : null}
             {unsupportedLocator ? <p className="text-sm text-warning">{t('inspect.templateOnly')}</p> : null}
             {newKind ? <div className="flex gap-2"><Button icon={<Plus size={14} />} disabled={readOnly || formInvalid || busy} onClick={() => void action(createTask)} data-testid="inspect-create">{t('inspect.add')}</Button><Button onClick={() => { setNewKind(null); setValues(task?.fields ?? {}) }}>{t('common.cancel')}</Button></div> : null}
-          </>}
           {!newKind && !task?.custom ? <details><summary className="cursor-pointer text-sm font-medium">{t('inspect.advanced')}</summary><fieldset disabled={readOnly || busy} className="space-y-4 pt-3">{taskNodes.map((node) => <section key={node.id}><h3 className="mb-2 text-sm font-semibold">{node.label || defs.get(node.type)?.label || node.type}</h3>{defs.get(node.type)?.params.filter((param) => !param.visible_when || param.visible_when.in.includes(node.params?.[param.visible_when.param])).map((param) => <div className="mb-3" key={param.key}><ParamField param={param} value={node.params?.[param.key] ?? param.default} actions={{ ...actions, addImageFromCurrent: undefined,
             roiEditingKey: advancedRoi?.nodeId === node.id ? advancedRoi.key : null,
             setRoiEditing: (key) => { setRoiKey(null); setAdvancedRoi(key ? { nodeId: node.id, key, shapes: param.shapes } : null) },
@@ -380,7 +382,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
       <p className="mb-3 text-sm">{t('inspect.dependenciesHint')}</p><ul>{dependencies?.map((item, index) => {
         const node = graph.nodes.find((entry) => entry.id === item.target)
         const port = defs.get(node?.type ?? '')?.inputs.find((entry) => entry.key === item.target_handle)
-        return <li key={index}>{node?.label || defs.get(node?.type ?? '')?.label || item.target} · {port?.label || item.target_handle}</li>
+        return <li key={index}>{item.title || node?.label || defs.get(node?.type ?? '')?.label || item.target} · {port?.label || item.target_handle}</li>
       })}</ul>
     </Modal>
   </div>

@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createMemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
-import { FLOW, installApiMock } from './apiMock'
+import { FLOW, INSPECT_GRAPH, installApiMock } from './apiMock'
 import { renderPage } from './render'
 import { expandOnDrop } from '@/lib/nodeGroups'
 import { AuthProvider } from '@/providers/AuthProvider'
@@ -35,6 +35,118 @@ function renderDataPage(ui: React.ReactElement, route: string, path: string) {
 }
 
 describe('pages render (smoke)', () => {
+  it.each([
+    ['managed_edge_missing', 'tol', 'd_tol', 'An internal task connection is missing.', 'measure_diameter'],
+    ['unexpected_node', 'extra', 'extra', 'An extra step was added to this task.', 'measure_diameter'],
+    ['schema_version_unknown', 'find', 'd_find', 'This task schema version is not supported.', 'future_task'],
+  ])('InspectPage hides custom fields and links %s to its problem node', async (code, role, nodeId, message, kind) => {
+    const { InspectPage } = await import('@/pages/InspectPage')
+    const { api } = await import('@/lib/api')
+    const { clearSession, setDraft } = await import('@/lib/flowDraft')
+    const { readInspection } = await import('@/lib/queries')
+    clearSession(6)
+    const graph = structuredClone(INSPECT_GRAPH)
+    if (code === 'unexpected_node') graph.nodes.push({ id: 'extra', type: 'blur', params: {} })
+    if (code === 'managed_edge_missing') graph.edges = graph.edges.filter((edge) => edge.target !== 'd_tol')
+    const response = await readInspection(INSPECT_GRAPH)
+    response.tasks[0] = { ...response.tasks[0], kind, custom: true, reasons: [{ code, role, node_id: nodeId, detail: 'Server detail' }] }
+    setDraft(6, { baseVersion: 1, graph, name: 'Custom flow', description: '', dirty: true })
+    const original = vi.mocked(api.post).getMockImplementation()!
+    await vi.mocked(api.post).withImplementation(async (path, body) => path === '/vision/inspect/read' ? response : original(path, body), async () => {
+      renderDataPage(<InspectPage />, '/flows/6/inspect', '/flows/:flowId/inspect')
+      expect(await screen.findByTestId('inspect-custom')).toBeInTheDocument()
+      expect(within(screen.getByTestId('inspect-custom-reasons')).getByText(message)).toHaveAttribute('href', `/flows/6?focus=${nodeId}`)
+      expect(screen.getByRole('link', { name: 'Open in advanced flow' })).toHaveAttribute('href', `/flows/6?focus=${nodeId}`)
+      expect(screen.queryByLabelText('Nominal')).not.toBeInTheDocument()
+      expect(screen.queryByText('Server detail')).not.toBeInTheDocument()
+    })
+  })
+
+  it('InspectPage rereads a returned advanced draft and retains stale readings until rerun', async () => {
+    const { InspectPage } = await import('@/pages/InspectPage')
+    const { api } = await import('@/lib/api')
+    const { clearSession, getSession, setDraft } = await import('@/lib/flowDraft')
+    clearSession(6)
+    const first = renderDataPage(<InspectPage />, '/flows/6/inspect', '/flows/:flowId/inspect')
+    await screen.findByTestId('inspect-task')
+    fireEvent.click(screen.getByTestId('inspect-run'))
+    await waitFor(() => expect(screen.getByTestId('inspect-reading')).toHaveTextContent('99.9'))
+    first.unmount()
+    const draft = structuredClone(getSession(6).draft!)
+    draft.graph.nodes[1].position = { x: 800, y: 50 }
+    draft.graph.nodes[1].params!.smoothing = 7
+    draft.graph.nodes[2].params!.upper_tol = 5
+    draft.dirty = true
+    setDraft(6, draft)
+    renderDataPage(<InspectPage />, '/flows/6/inspect', '/flows/:flowId/inspect')
+    expect(await screen.findByLabelText('Upper tolerance')).toHaveValue(5)
+    expect(api.post).toHaveBeenCalledWith('/vision/inspect/read', { graph: draft.graph })
+    expect(screen.getByTestId('inspect-overall')).toHaveTextContent('Stale')
+    expect(screen.getByTestId('inspect-reading').querySelector('.line-through')).toHaveTextContent('99.9')
+    fireEvent.click(screen.getByTestId('inspect-run'))
+    await waitFor(() => expect(screen.getByTestId('inspect-overall')).not.toHaveTextContent('Stale'))
+    expect(screen.getByTestId('inspect-reading').querySelector('.line-through')).toBeNull()
+    expect(getSession(6).draft!.graph).toEqual(draft.graph)
+  })
+
+  it('InspectPage blocked removal shows dependency titles and ports without changing the graph', async () => {
+    const { InspectPage } = await import('@/pages/InspectPage')
+    const { clearSession, getSession } = await import('@/lib/flowDraft')
+    clearSession(6)
+    renderDataPage(<InspectPage />, '/flows/6/inspect', '/flows/:flowId/inspect')
+    await screen.findByTestId('inspect-task')
+    const before = structuredClone(getSession(6).draft!.graph)
+    fireEvent.click(screen.getByRole('button', { name: 'Remove task' }))
+    const confirm = await screen.findByRole('dialog')
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Confirm' }))
+    expect(await screen.findByText('Downstream camera · image')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /force/i })).not.toBeInTheDocument()
+    expect(getSession(6).draft!.graph).toEqual(before)
+  })
+
+  it('InspectPage identifies advanced-only flows and counts unmarked notes as other steps', async () => {
+    const { InspectPage } = await import('@/pages/InspectPage')
+    const { clearSession, setDraft } = await import('@/lib/flowDraft')
+    clearSession(6)
+    setDraft(6, { baseVersion: 1, name: 'Advanced', description: '', dirty: true, graph: { nodes: [INSPECT_GRAPH.nodes[0], { id: 'note', type: 'note', params: {} }], edges: [] } })
+    renderDataPage(<InspectPage />, '/flows/6/inspect', '/flows/:flowId/inspect')
+    expect(await screen.findByText('This flow was created in the advanced editor.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Other steps (1)' })).toHaveAttribute('href', '/flows/6')
+    expect(screen.getByRole('link', { name: 'Open in advanced flow' })).toHaveAttribute('href', '/flows/6')
+  })
+
+  it('FlowEditorPage focuses a node from the URL after the draft loads', async () => {
+    localStorage.removeItem('vs.editorCollapsed.v1')
+    const { FlowEditorPage } = await import('@/pages/FlowEditorPage')
+    const { clearSession } = await import('@/lib/flowDraft')
+    clearSession(3)
+    const view = renderDataPage(<FlowEditorPage />, '/flows/3?focus=judge_dia', '/flows/:flowId')
+    await screen.findByTestId('editor-toolbar')
+    await waitFor(() => expect(view.container.querySelector('.react-flow__node.selected[data-id="judge_dia"]')).toBeInTheDocument())
+    localStorage.removeItem('vs.editorCollapsed.v1')
+  })
+
+  it('InspectPage successful removal retains the source and unrelated advanced steps', async () => {
+    const { InspectPage } = await import('@/pages/InspectPage')
+    const { api } = await import('@/lib/api')
+    const { clearSession, getSession, setDraft } = await import('@/lib/flowDraft')
+    clearSession(6)
+    const graph = structuredClone(INSPECT_GRAPH)
+    const extra = { id: 'note', type: 'note', params: { text: 'Keep this note' } }
+    graph.nodes.push(extra)
+    setDraft(6, { graph, baseVersion: 1, name: 'Flow', description: '', dirty: true })
+    const remaining = { nodes: [graph.nodes[0], extra], edges: [] }
+    const original = vi.mocked(api.post).getMockImplementation()!
+    await vi.mocked(api.post).withImplementation(async (path, body) => path === '/vision/inspect/remove' ? { graph: remaining, removed: true, dependencies: [] } : original(path, body), async () => {
+      renderDataPage(<InspectPage />, '/flows/6/inspect', '/flows/:flowId/inspect')
+      await screen.findByTestId('inspect-task')
+      fireEvent.click(screen.getByRole('button', { name: 'Remove task' }))
+      fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Confirm' }))
+      await waitFor(() => expect(screen.queryByTestId('inspect-task')).not.toBeInTheDocument())
+      expect(getSession(6).draft!.graph).toEqual(remaining)
+    })
+  })
+
   it('InspectPage renders tasks and viewer, edits through the translator, and saves with a version baseline', async () => {
     const { InspectPage } = await import('@/pages/InspectPage')
     const { api } = await import('@/lib/api')

@@ -125,7 +125,8 @@ export interface InspectTask {
   nodes: Record<string, string>
   fields: Record<string, unknown>
   custom: boolean
-  reasons: { code: string; role: string; detail: string }[]
+  disabled?: boolean
+  reasons: { code: string; role: string; node_id?: string; detail: string }[]
 }
 
 export interface InspectList {
@@ -149,6 +150,7 @@ export interface InspectReading {
 export interface InspectDependency {
   task_id?: string
   target: string
+  title?: string
   target_handle: string
   source?: string
   source_handle?: string

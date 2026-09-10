@@ -2647,6 +2647,17 @@ const inspectStage6 = { inspect: {
   "dependencies": "Task is in use",
   "dependenciesHint": "Disconnect these dependent steps in the advanced flow before removing this task.",
   "customHint": "This task has custom connections or steps. Edit it in the advanced flow.",
+  "openAdvanced": "Open in advanced flow",
+  "disabled": "Disabled",
+  "reasons": {
+    "role_missing": "A required task step is missing.",
+    "unexpected_node": "An extra step was added to this task.",
+    "tool_changed": "A task step uses a different tool.",
+    "managed_edge_changed": "An internal task connection has changed.",
+    "managed_edge_missing": "An internal task connection is missing.",
+    "public_input_changed": "A task input source has changed or is missing.",
+    "schema_version_unknown": "This task schema version is not supported."
+  },
   "staleHint": "Settings have changed. Try running again.",
   "needsCalibration": "Select a calibration before using millimetres.",
   "openCalibration": "Open calibration",

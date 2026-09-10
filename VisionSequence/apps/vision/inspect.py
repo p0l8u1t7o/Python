@@ -15,6 +15,10 @@ from apps.vision.tools import base as tools
 TASK_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 SUMMARY_ID = "inspection_summary"
 SUMMARY_TASK_ID = "summary"
+CUSTOM_REASON_CODES = frozenset({
+    "role_missing", "unexpected_node", "tool_changed", "managed_edge_changed",
+    "managed_edge_missing", "public_input_changed", "schema_version_unknown",
+})
 
 
 def build(graph: dict[str, Any], task: dict[str, Any], ctx: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -51,11 +55,11 @@ def read(graph: dict[str, Any]) -> dict[str, Any]:
                 shared.append({"id": node["id"], "type": node["type"], "kind": "summary"})
             else:
                 piles.setdefault(marker["task_id"], []).append(node)
-        elif node.get("type") in ("image_source", "fixed_image", "stereo_grab", "multi_light_grab", "note"):
+        elif node.get("type") in ("image_source", "fixed_image", "stereo_grab", "multi_light_grab"):
             shared.append({"id": node["id"], "type": node.get("type")})
         else:
             loose.append({"id": node.get("id"), "type": node.get("type")})
-    tasks = [_read_task(task_id, pile, edges) for task_id, pile in sorted(piles.items())]
+    tasks = [_read_task(task_id, pile, edges, nodes) for task_id, pile in sorted(piles.items())]
     return {"tasks": tasks, "shared": shared, "loose": loose}
 
 
@@ -69,12 +73,12 @@ def update(graph: dict[str, Any], task: dict[str, Any]) -> dict[str, Any]:
     if not nodes:
         raise ValidationError(f"Inspection task '{task_id}' was not found", code="task_not_found")
     marker = inspect_marker(nodes[0]) or {}
-    definition = get_definition(str(marker.get("kind") or task.get("kind") or ""), int(marker.get("schema_version") or task.get("version") or 1))
-    supplied = dict(task.get("fields") if isinstance(task.get("fields"), dict) else {})
-    supplied.update({k: task[k] for k in definition.fields if k in task})
-    current = _read_task(task_id, nodes, out.get("edges", []))
+    current = _read_task(task_id, nodes, out.get("edges", []), out["nodes"])
     if current["custom"]:
         raise ValidationError("Edit this custom task in the advanced flow", code="custom_task")
+    definition = get_definition(current["kind"], current["version"])
+    supplied = dict(task.get("fields") if isinstance(task.get("fields"), dict) else {})
+    supplied.update({k: task[k] for k in definition.fields if k in task})
     fields = {**current["fields"], **supplied}
     if definition.kind == "measure_diameter" and "calibration" in supplied and "unit" not in supplied:
         fields["unit"] = "mm" if fields.get("calibration") else "px"
@@ -82,6 +86,15 @@ def update(graph: dict[str, Any], task: dict[str, Any]) -> dict[str, Any]:
         fields["required"] = task["required"]
     old_nodes, old_edges = definition.build({"task_id": task_id, "fields": current["fields"]}, {})
     new_nodes, new_edges = definition.build({"task_id": task_id, "fields": fields}, {})
+    # 節點名稱不是任務歸屬；進階畫布改名後仍以角色對應原本節點。
+    actual_ids = {f"{task_id}_{role}": nid for role, nid in current["nodes"].items()}
+    for generated in (old_nodes, new_nodes):
+        for node in generated:
+            node["id"] = actual_ids.get(node["id"], node["id"])
+    for generated in (old_edges, new_edges):
+        for link in generated:
+            link["source"] = actual_ids.get(link["source"], link["source"])
+            link["target"] = actual_ids.get(link["target"], link["target"])
     before = {inspect_marker(n)["role"]: n for n in old_nodes}
     after = {inspect_marker(n)["role"]: n for n in new_nodes}
     removed_ids = {str(n["id"]) for n in nodes if inspect_marker(n)["role"] not in after}
@@ -172,12 +185,24 @@ def evidence(graph: dict[str, Any], report: Any) -> list[dict[str, Any]]:
         if task.get("kind") == "summary":
             continue
         task_id = task["task_id"]
+        if task["disabled"]:
+            nid = next(n["id"] for n in _task_nodes(graph, task_id) if n.get("enabled") is False)
+            readings.append(_reading(task_id, "skipped", False, None, None, task.get("unit", ""), "A task step is disabled", [], nid))
+            continue
+        if task["custom"]:
+            reason = task["reasons"][0]
+            readings.append(_reading(task_id, "skipped", False, None, None, task.get("unit", ""), "Review this custom task in the advanced flow", [], reason["node_id"]))
+            continue
         roles = task.get("nodes") or {}
         find_id = roles.get("find")
         tol_id = roles.get("tol")
         align_id = roles.get("align")
         role_ids = [nid for nid in roles.values() if nid]
         reports = {nid: nodes.get(nid, {}) for nid in role_ids}
+        missing = [nid for nid, row in reports.items() if not row]
+        if missing:
+            readings.append(_reading(task_id, "skipped", False, None, None, task.get("unit", ""), "No run result is available for this task step", [], missing[0]))
+            continue
         skipped = [nid for nid, row in reports.items() if row.get("status") == "skipped"]
         errors = [nid for nid, row in reports.items() if row.get("status") == "error"]
         overlays = [ov for row in reports.values() for ov in (row.get("overlays") or [])]
@@ -283,8 +308,9 @@ def _connect_image_inputs(graph: dict[str, Any], definition: task_base.TaskDefin
 
 def _connect_locator(graph: dict[str, Any], task_id: str, locator_id: str) -> None:
     target_ids = {str(n["id"]) for n in _task_nodes(graph, task_id)}
-    previous = _locator_for(task_id, graph.get("edges", []))
-    managed = {(f"{previous}_align", "transform", tools.TRANSFORM_IN), (f"{previous}_find", "found", FLOW_IN)} if previous else set()
+    previous = _locator_for(task_id, graph.get("edges", []), graph.get("nodes", []))
+    previous_roles = {inspect_marker(n)["role"]: n["id"] for n in _task_nodes(graph, previous)} if previous else {}
+    managed = {(previous_roles.get("align"), "transform", tools.TRANSFORM_IN), (previous_roles.get("find"), "found", FLOW_IN)} if previous else set()
     graph["edges"] = [
         e for e in graph.get("edges", [])
         if not (str(e.get("target")) in target_ids and (str(e.get("source")), str(e.get("source_handle") or ""), str(e.get("target_handle") or "")) in managed)
@@ -318,8 +344,6 @@ def _place_nodes(graph: dict[str, Any], nodes: list[dict[str, Any]]) -> None:
 
 
 def _maintain_summary(graph: dict[str, Any]) -> None:
-    graph["nodes"] = [n for n in graph.get("nodes", []) if str(n.get("id")) != SUMMARY_ID]
-    graph["edges"] = [e for e in graph.get("edges", []) if str(e.get("source")) != SUMMARY_ID and str(e.get("target")) != SUMMARY_ID]
     tasks = read({k: v for k, v in graph.items() if k in ("nodes", "edges")})["tasks"]
     required: list[tuple[str, task_base.PortRef]] = []
     for task in tasks:
@@ -330,24 +354,38 @@ def _maintain_summary(graph: dict[str, Any]) -> None:
         except ValidationError:
             continue
         if definition.pass_port is not None:
-            required.append((task["task_id"], definition.pass_port))
+            required.append((task["nodes"][definition.pass_port.role], definition.pass_port))
     if not required:
+        graph["nodes"] = [n for n in graph.get("nodes", []) if n.get("id") != SUMMARY_ID]
+        graph["edges"] = [e for e in graph.get("edges", []) if e.get("source") != SUMMARY_ID and e.get("target") != SUMMARY_ID]
         return
-    graph.setdefault("nodes", []).append({
-        "id": SUMMARY_ID,
-        "type": "inspection_summary",
-        "params": {"expected_count": len(required)},
-        "meta": {"inspect": {"task_id": SUMMARY_TASK_ID, "role": "summary", "kind": "summary", "schema_version": 1, "required": False}},
-        "position": {"x": 120 + len(graph.get("nodes", [])) * 220, "y": 360},
-    })
-    for task_id, ref in required:
-        graph.setdefault("edges", []).append(task_base.edge(f"{task_id}_{ref.role}", ref.port, SUMMARY_ID, "results"))
+    summary = next((n for n in graph.get("nodes", []) if n.get("id") == SUMMARY_ID), None)
+    if summary is None:
+        summary = {
+            "id": SUMMARY_ID,
+            "type": "inspection_summary",
+            "params": {"expected_count": len(required)},
+            "meta": {"inspect": {"task_id": SUMMARY_TASK_ID, "role": "summary", "kind": "summary", "schema_version": 1, "required": False}},
+            "position": {"x": 120 + len(graph.get("nodes", [])) * 220, "y": 360},
+        }
+        graph.setdefault("nodes", []).append(summary)
+    else:
+        summary.setdefault("params", {})["expected_count"] = len(required)
+    expected = {(node_id, ref.port) for node_id, ref in required}
+    task_ids = {nid for task in tasks for nid in task["nodes"].values()}
+    graph["edges"] = [e for e in graph.get("edges", []) if not (
+        e.get("target") == SUMMARY_ID and e.get("target_handle") == "results"
+        and e.get("source") in task_ids and (e.get("source"), e.get("source_handle")) not in expected
+    )]
+    for node_id, ref in required:
+        if not any(e.get("source") == node_id and e.get("source_handle") == ref.port and e.get("target") == SUMMARY_ID and e.get("target_handle") == "results" for e in graph["edges"]):
+            graph["edges"].append(task_base.edge(node_id, ref.port, SUMMARY_ID, "results"))
 
 
-def _read_task(task_id: str, nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> dict[str, Any]:
+def _read_task(task_id: str, nodes: list[dict[str, Any]], edges: list[dict[str, Any]], all_nodes: list[dict[str, Any]]) -> dict[str, Any]:
     first = inspect_marker(nodes[0]) or {}
     kind = str(first.get("kind") or "")
-    version = int(first.get("schema_version") or 1)
+    version = first.get("schema_version", 1)
     roles = {inspect_marker(n)["role"]: str(n["id"]) for n in nodes if inspect_marker(n)}
     item: dict[str, Any] = {
         "task_id": task_id,
@@ -357,21 +395,26 @@ def _read_task(task_id: str, nodes: list[dict[str, Any]], edges: list[dict[str, 
         "nodes": roles,
         "fields": {},
         "custom": False,
+        "disabled": any(n.get("enabled") is False for n in nodes),
         "reasons": [],
     }
     try:
+        if not isinstance(version, int) or isinstance(version, bool) or version < 1:
+            raise ValueError("Unsupported task schema")
         definition = get_definition(kind, version)
-    except ValidationError:
+        if any((inspect_marker(n).get("kind"), inspect_marker(n).get("schema_version", 1)) != (kind, version) for n in nodes):
+            raise ValueError("Inconsistent task schema")
+    except (ValidationError, ValueError, TypeError):
         item["custom"] = True
-        item["reasons"].append({"code": "unknown_kind", "role": "", "detail": kind})
+        item["reasons"].append(_reason("schema_version_unknown", str(first.get("role") or ""), str(nodes[0]["id"]), "This task schema is not supported"))
         return item
-    _read_fields(item, definition, nodes, edges)
-    item["reasons"] = _custom_reasons(task_id, definition, nodes, edges)
+    _read_fields(item, definition, nodes, edges, all_nodes)
+    item["reasons"] = _custom_reasons(task_id, definition, nodes, edges, all_nodes)
     item["custom"] = bool(item["reasons"])
     return item
 
 
-def _read_fields(item: dict[str, Any], definition: task_base.TaskDefinition, nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> None:
+def _read_fields(item: dict[str, Any], definition: task_base.TaskDefinition, nodes: list[dict[str, Any]], edges: list[dict[str, Any]], all_nodes: list[dict[str, Any]]) -> None:
     by_role = {inspect_marker(n)["role"]: n for n in nodes if inspect_marker(n)}
     fields = item["fields"]
     for key, spec in definition.fields.items():
@@ -379,7 +422,7 @@ def _read_fields(item: dict[str, Any], definition: task_base.TaskDefinition, nod
             fields[key] = item["required"]
             continue
         if key == "locator":
-            fields[key] = _locator_for(item["task_id"], edges)
+            fields[key] = _locator_for(item["task_id"], edges, all_nodes)
             continue
         node = by_role.get(spec.role or "")
         params = node.get("params") if node else {}
@@ -400,12 +443,13 @@ def _read_fields(item: dict[str, Any], definition: task_base.TaskDefinition, nod
         fields["allow_rotation"] = bool(((by_role.get("align") or {}).get("params") or {}).get("use_angle", False))
 
 
-def _locator_for(task_id: str, edges: list[dict[str, Any]]) -> str:
+def _locator_for(task_id: str, edges: list[dict[str, Any]], nodes: list[dict[str, Any]]) -> str:
+    by_id = {str(n["id"]): inspect_marker(n) or {} for n in nodes}
     for e in edges:
-        if str(e.get("target")).startswith(f"{task_id}_") and str(e.get("target_handle") or "") == tools.TRANSFORM_IN:
-            source = str(e.get("source"))
-            if source.endswith("_align"):
-                return source[:-6]
+        if by_id.get(str(e.get("target")), {}).get("task_id") == task_id and e.get("target_handle") == tools.TRANSFORM_IN:
+            source = by_id.get(str(e.get("source")), {})
+            if source.get("kind") == "locate_part" and source.get("role") == "align":
+                return str(source["task_id"])
     return ""
 
 
@@ -414,43 +458,71 @@ def _published_name(node: dict[str, Any] | None, port: str) -> str:
     return str(publish.get(port) or "") if isinstance(publish, dict) else ""
 
 
-def _custom_reasons(task_id: str, definition: task_base.TaskDefinition, nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> list[dict[str, str]]:
+def _reason(code: str, role: str, node_id: str, detail: str) -> dict[str, str]:
+    """原因代碼是封閉集合，前端只翻譯這些鍵。"""
+    assert code in CUSTOM_REASON_CODES
+    return {"code": code, "role": role, "node_id": node_id, "detail": detail}
+
+
+def _custom_reasons(task_id: str, definition: task_base.TaskDefinition, nodes: list[dict[str, Any]], edges: list[dict[str, Any]], all_nodes: list[dict[str, Any]]) -> list[dict[str, str]]:
     reasons: list[dict[str, str]] = []
-    fields = _fields_for_reason(definition, nodes, edges, task_id)
+    item = {"task_id": task_id, "required": True, "fields": {}}
+    _read_fields(item, definition, nodes, edges, all_nodes)
+    fields = item["fields"]
     expected_roles = dict(definition.roles)
     if definition.kind == "measure_diameter" and fields.get("mode") == "roundness" and fields.get("unit") == "mm":
         expected_roles["scale"] = "calibration"
-    role_types = {inspect_marker(n)["role"]: str(n.get("type")) for n in nodes if inspect_marker(n)}
+    by_role = {inspect_marker(n)["role"]: n for n in nodes}
+    ids = {str(n["id"]) for n in nodes}
+    roles = {str(n["id"]): inspect_marker(n)["role"] for n in nodes}
+    def role_id(role: str) -> str:
+        return str(by_role[role]["id"]) if role in by_role else f"{task_id}_{role}"
     for role, tool_key in expected_roles.items():
-        if role not in role_types:
-            reasons.append({"code": "missing_role", "role": role, "detail": f"Missing {role}"})
-        elif role_types[role] != tool_key and not (definition.kind == "measure_diameter" and role == "tol" and role_types[role] in ("tolerance_judge", "gdt_measure")):
-            reasons.append({"code": "role_type_changed", "role": role, "detail": f"Expected {tool_key}, got {role_types[role]}"})
-    for role in sorted(set(role_types) - set(expected_roles)):
-        reasons.append({"code": "unexpected_role", "role": role, "detail": f"Unexpected role {role}"})
-    expected = {(f"{task_id}_{e.source_role}", e.source_port, f"{task_id}_{e.target_role}", e.target_port) for e in definition.edges_for(fields)}
+        if role not in by_role:
+            reasons.append(_reason("role_missing", role, "", f"The task is missing its {role} step"))
+        elif by_role[role]["type"] != tool_key and not (definition.kind == "measure_diameter" and role == "tol" and by_role[role]["type"] in ("tolerance_judge", "gdt_measure")):
+            reasons.append(_reason("tool_changed", role, role_id(role), f"The tool used for the {role} step has changed"))
+    seen_roles: set[str] = set()
+    for node in nodes:
+        role = inspect_marker(node)["role"]
+        if role not in expected_roles or role in seen_roles:
+            reasons.append(_reason("unexpected_node", role, str(node["id"]), "The task contains an extra step"))
+        seen_roles.add(role)
+    expected = {(role_id(e.source_role), e.source_port, role_id(e.target_role), e.target_port) for e in definition.edges_for(fields)}
     actual = {
         (str(e.get("source")), str(e.get("source_handle") or ""), str(e.get("target")), str(e.get("target_handle") or ""))
         for e in edges
-        if str(e.get("source")).startswith(f"{task_id}_") and str(e.get("target")).startswith(f"{task_id}_")
+        if str(e.get("source")) in ids and str(e.get("target")) in ids
     }
     for entry in sorted(expected - actual):
-        reasons.append({"code": "managed_edge_changed", "role": entry[2].removeprefix(f"{task_id}_"), "detail": f"Missing {entry[0]}.{entry[1]} -> {entry[2]}.{entry[3]}"})
+        reasons.append(_reason("managed_edge_missing", roles.get(entry[2], ""), entry[2] if entry[2] in ids else "", f"Missing {entry[0]}.{entry[1]} -> {entry[2]}.{entry[3]}"))
     for entry in sorted(actual - expected):
-        reasons.append({"code": "managed_edge_changed", "role": entry[2].removeprefix(f"{task_id}_"), "detail": f"Unexpected {entry[0]}.{entry[1]} -> {entry[2]}.{entry[3]}"})
-    allowed_inputs = {(f"{task_id}_{p.role}", p.port) for p in definition.public_inputs}
+        reasons.append(_reason("managed_edge_changed", roles[entry[2]], entry[2], f"Unexpected {entry[0]}.{entry[1]} -> {entry[2]}.{entry[3]}"))
+    allowed_inputs = {(role_id(p.role), p.port) for p in definition.public_inputs}
+    by_id = {str(n["id"]): n for n in all_nodes}
     for e in edges:
         target = (str(e.get("target")), str(e.get("target_handle") or ""))
         source = str(e.get("source"))
-        if target[0].startswith(f"{task_id}_") and not source.startswith(f"{task_id}_") and target not in allowed_inputs:
-            reasons.append({"code": "unexpected_input", "role": target[0].removeprefix(f"{task_id}_"), "detail": f"Unexpected input into {target[0]}.{target[1]}"})
+        if target[0] in ids and source not in ids:
+            if target not in allowed_inputs or not _allowed_source(by_id.get(source), str(e.get("source_handle") or ""), target[1]):
+                reasons.append(_reason("public_input_changed", roles[target[0]], target[0], f"Unexpected input {source}.{e.get('source_handle') or ''} -> {target[0]}.{target[1]}"))
+    for target, port in sorted(allowed_inputs):
+        if port == "image" and target in ids and not any(e.get("target") == target and e.get("target_handle") == port for e in edges):
+            reasons.append(_reason("public_input_changed", roles[target], target, f"Missing image input for {target}.{port}"))
     return reasons
 
 
-def _fields_for_reason(definition: task_base.TaskDefinition, nodes: list[dict[str, Any]], edges: list[dict[str, Any]], task_id: str) -> dict[str, Any]:
-    item = {"task_id": task_id, "required": True, "fields": {}}
-    _read_fields(item, definition, nodes, edges)
-    return item["fields"]
+def _allowed_source(node: dict[str, Any] | None, port_key: str, target_port: str) -> bool:
+    """只接受公開輸入宣告的影像、區域、位置修正與控制來源。"""
+    if node is None or not tools.has(str(node.get("type"))):
+        return False
+    tool = tools.get(str(node["type"]))
+    port = tools.implicit_output(port_key) or next((p for p in (*tool.outputs, *tools.case_ports(tool, node)) if p.key == port_key), None)
+    if port is None:
+        return False
+    if target_port == tools.TRANSFORM_IN:
+        return port.semantic == "transform"
+    return port.type == {"image": "image", "roi": "roi", FLOW_IN: "flow"}.get(target_port)
 
 
 def _external_users(graph: dict[str, Any], node_ids: set[str]) -> list[dict[str, str]]:
@@ -461,7 +533,8 @@ def _external_users(graph: dict[str, Any], node_ids: set[str]) -> list[dict[str,
         source = str(e.get("source"))
         target = str(e.get("target"))
         if source in node_ids and target not in node_ids:
-            marker = inspect_marker(node_by_id.get(target, {}))
+            target_node = node_by_id.get(target, {})
+            marker = inspect_marker(target_node)
             if marker and marker.get("kind") == "summary":
                 continue
             if marker and marker.get("task_id"):
@@ -469,9 +542,9 @@ def _external_users(graph: dict[str, Any], node_ids: set[str]) -> list[dict[str,
                 if tid in seen_tasks:
                     continue
                 seen_tasks.add(tid)
-                deps.append({"task_id": tid, "target": target, "target_handle": str(e.get("target_handle") or "")})
+                deps.append({"task_id": tid, "target": target, "title": str(target_node.get("label") or target), "target_handle": str(e.get("target_handle") or "")})
                 continue
-            deps.append({"source": source, "source_handle": str(e.get("source_handle") or ""), "target": target, "target_handle": str(e.get("target_handle") or "")})
+            deps.append({"source": source, "source_handle": str(e.get("source_handle") or ""), "target": target, "title": str(target_node.get("label") or target), "target_handle": str(e.get("target_handle") or "")})
     return deps
 
 
@@ -493,9 +566,14 @@ def _report_nodes(report: Any) -> dict[str, dict[str, Any]]:
 
 
 def _skipped_by_locator(graph: dict[str, Any], task_id: str, nodes: dict[str, dict[str, Any]]) -> bool:
+    target_ids = {str(n["id"]) for n in _task_nodes(graph, task_id)}
+    markers = {str(n["id"]): inspect_marker(n) or {} for n in graph.get("nodes", [])}
     for e in graph.get("edges", []):
-        if str(e.get("target")).startswith(f"{task_id}_") and str(e.get("target_handle") or "") == FLOW_IN:
+        if str(e.get("target")) in target_ids and str(e.get("target_handle") or "") == FLOW_IN:
             src = str(e.get("source"))
+            marker = markers.get(src, {})
+            if marker.get("kind") != "locate_part" or marker.get("role") != "find":
+                continue
             row = nodes.get(src, {})
             if row.get("branch") == "not_found" or row.get("status") == "ng":
                 return True

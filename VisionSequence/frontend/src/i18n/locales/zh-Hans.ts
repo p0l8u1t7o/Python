@@ -2659,6 +2659,17 @@ export default { ...zhHans, inspect: {
   "dependencies": "任务仍被使用",
   "dependenciesHint": "请先在高级流程解除下列步骤的依赖连线，再移除此任务。",
   "customHint": "此任务有自定义连线或步骤，请到高级流程编辑。",
+  "openAdvanced": "在高级流程打开",
+  "disabled": "已停用",
+  "reasons": {
+    "role_missing": "缺少必要的任务步骤。",
+    "unexpected_node": "此任务多了额外步骤。",
+    "tool_changed": "任务步骤使用的工具已变更。",
+    "managed_edge_changed": "任务内部连线已变更。",
+    "managed_edge_missing": "缺少任务内部连线。",
+    "public_input_changed": "任务输入来源已变更或缺失。",
+    "schema_version_unknown": "尚不支持此任务规格版本。"
+  },
   "staleHint": "设置已更改，请重新试执行。",
   "needsCalibration": "使用毫米前请先选择标定。",
   "openCalibration": "打开标定",

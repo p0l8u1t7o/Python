@@ -74,6 +74,156 @@ def diameter_task(task_id: str = "diam", *, edge_name: str = "outer", nominal: f
 
 
 class InspectTranslatorTests(SimpleTestCase):
+    def test_advanced_position_and_unmanaged_parameter_remain_editable(self):
+        graph = inspect.build(base_graph(), diameter_task("d"))
+        graph["nodes"][1]["position"] = {"x": 999, "y": -100}
+        graph["nodes"][1]["params"]["smoothing"] = 7
+        self.assertFalse(inspect.read(graph)["tasks"][0]["custom"])
+        updated = inspect.update(graph, {"task_id": "d", "fields": {"upper_tol": 5}})
+        expected = copy.deepcopy(graph)
+        next(n for n in expected["nodes"] if n["id"] == "d_tol")["params"]["upper_tol"] = 5
+        self.assertEqual(updated, expected)
+
+    def test_missing_internal_edge_has_structured_reason_and_update_is_blocked(self):
+        from apps.core.errors import ValidationError
+
+        graph = inspect.build(base_graph(), diameter_task("d"))
+        graph["edges"] = [e for e in graph["edges"] if not (e["source"] == "d_find" and e["target"] == "d_tol")]
+        task = inspect.read(graph)["tasks"][0]
+        self.assertEqual(task["reasons"], [{"code": "managed_edge_missing", "role": "tol", "node_id": "d_tol", "detail": "Missing d_find.diameter -> d_tol.value"}])
+        before = copy.deepcopy(graph)
+        with self.assertRaises(ValidationError) as caught:
+            inspect.update(graph, {"task_id": "d", "fields": {"upper_tol": 9}})
+        self.assertEqual(caught.exception.code, "custom_task")
+        self.assertEqual(graph, before)
+
+    def test_inserted_blur_is_unexpected_node_and_extra_edge_is_reported(self):
+        graph = inspect.build(base_graph(), diameter_task("d"))
+        graph["nodes"].append({"id": "extra", "type": "blur", "params": {}, "meta": {"inspect": {"task_id": "d", "role": "extra", "kind": "measure_diameter", "schema_version": 1, "required": True}}})
+        graph["edges"].append(edge("d_find", "extra", "_image", "image"))
+        reasons = inspect.read(graph)["tasks"][0]["reasons"]
+        self.assertIn({"code": "unexpected_node", "role": "extra", "node_id": "extra", "detail": "The task contains an extra step"}, reasons)
+        self.assertIn("managed_edge_changed", {r["code"] for r in reasons})
+
+    def test_public_output_consumers_and_tolerance_diff_preserve_advanced_graph(self):
+        graph = inspect.build(base_graph(), diameter_task("d"))
+        for node_id, tool_key, port in (("d_formula", "formula", "a"), ("text", "format_text", "a"), ("plc", "write_modbus", "values")):
+            graph["nodes"].append({"id": node_id, "type": tool_key, "label": "External consumer", "params": {}})
+            graph["edges"].append(edge("d_find", node_id, "diameter", port))
+        validate_graph(graph)
+        self.assertFalse(inspect.read(graph)["tasks"][0]["custom"])
+        updated = inspect.update(graph, {"task_id": "d", "fields": {"upper_tol": 5}})
+        diff = graphdiff.diff(graph, updated)
+        self.assertEqual(diff["params"], [{"node": "d_tol", "type": "tolerance_judge", "param": "upper_tol", "before": 2, "after": 5}])
+        self.assertEqual(updated["edges"], graph["edges"])
+        expected = copy.deepcopy(graph)
+        next(n for n in expected["nodes"] if n["id"] == "d_tol")["params"]["upper_tol"] = 5
+        self.assertEqual(updated, expected)
+        blocked = inspect.remove(graph, "d")
+        self.assertFalse(blocked["removed"])
+        self.assertEqual(blocked["graph"], graph)
+        self.assertEqual({(d["target"], d["title"], d["target_handle"]) for d in blocked["dependencies"]}, {("d_formula", "External consumer", "a"), ("text", "External consumer", "a"), ("plc", "External consumer", "values")})
+
+    def test_unknown_schema_and_missing_or_changed_roles_are_custom(self):
+        original = inspect.build(base_graph(), diameter_task("d"))
+        for version in (99, "future", None):
+            graph = copy.deepcopy(original)
+            for node in graph["nodes"]:
+                if (inspect.inspect_marker(node) or {}).get("task_id") == "d":
+                    node["meta"]["inspect"]["schema_version"] = version
+            task = inspect.read(graph)["tasks"][0]
+            self.assertTrue(task["custom"])
+            self.assertEqual(task["reasons"][0]["code"], "schema_version_unknown")
+        for mutation, code in (("missing", "role_missing"), ("tool", "tool_changed"), ("kind", "schema_version_unknown")):
+            graph = copy.deepcopy(original)
+            find = next(n for n in graph["nodes"] if n["id"] == "d_find")
+            if mutation == "missing":
+                graph["nodes"].remove(find)
+            elif mutation == "tool":
+                find["type"] = "blob"
+            else:
+                find["meta"]["inspect"]["kind"] = "future_task"
+            reasons = inspect.read(graph)["tasks"][0]["reasons"]
+            self.assertIn(code, {r["code"] for r in reasons})
+            for reason in reasons:
+                self.assertEqual(set(reason), {"code", "role", "node_id", "detail"})
+                self.assertIn(reason["code"], inspect.CUSTOM_REASON_CODES)
+
+    def test_public_input_missing_wrong_source_and_undeclared_port_are_custom(self):
+        original = inspect.build(base_graph(), diameter_task("d"))
+        for mutation in ("missing", "wrong_source", "undeclared"):
+            graph = copy.deepcopy(original)
+            graph["edges"] = [e for e in graph["edges"] if e["source"] != "src"]
+            if mutation == "wrong_source":
+                graph["nodes"].append({"id": "number", "type": "formula", "params": {}})
+                graph["edges"].append(edge("number", "d_find", "value", "image"))
+            elif mutation == "undeclared":
+                graph["edges"].append(edge("src", "d_tol", "image", "value"))
+            self.assertIn("public_input_changed", {r["code"] for r in inspect.read(graph)["tasks"][0]["reasons"]})
+
+    def test_renamed_nodes_are_matched_by_role_and_preserved_by_update(self):
+        graph = inspect.build(base_graph(), diameter_task("d"))
+        renamed = {"d_find": "circle", "d_tol": "judge"}
+        for node in graph["nodes"]:
+            node["id"] = renamed.get(node["id"], node["id"])
+        for link in graph["edges"]:
+            for key in ("source", "target"):
+                link[key] = renamed.get(link[key], link[key])
+        self.assertFalse(inspect.read(graph)["tasks"][0]["custom"])
+        updated = inspect.update(graph, {"task_id": "d", "fields": {"calibration": "scale"}})
+        self.assertEqual([n["id"] for n in updated["nodes"]], [n["id"] for n in graph["nodes"]])
+        self.assertFalse(inspect.read(updated)["tasks"][0]["custom"])
+
+    def test_disabled_task_and_missing_report_cannot_reuse_passing_evidence(self):
+        graph = inspect.build(base_graph(), diameter_task("d"))
+        report = run_graph(graph, annulus_image())
+        self.assertEqual(inspect.evidence(graph, report)[0]["verdict"], "pass")
+        for node_id in ("d_find", "d_tol"):
+            disabled = copy.deepcopy(graph)
+            next(n for n in disabled["nodes"] if n["id"] == node_id)["enabled"] = False
+            self.assertTrue(inspect.read(disabled)["tasks"][0]["disabled"])
+            for result in (report, run_graph(disabled, annulus_image())):
+                reading = inspect.evidence(disabled, result)[0]
+                self.assertEqual(reading["verdict"], "skipped")
+                self.assertEqual(reading["node_id"], node_id)
+                self.assertIn("disabled", reading["reason"])
+                self.assertIsNone(reading["value"])
+        self.assertEqual(inspect.evidence(graph, {"nodes": {}})[0]["verdict"], "skipped")
+
+    def test_only_actual_locator_branches_explain_skipped_renamed_steps(self):
+        graph = inspect.build(base_graph(), {"kind": "locate_part", "task_id": "loc", "fields": {"template_images": []}})
+        graph = inspect.build(graph, diameter_task("d", locator="loc"))
+        for node in graph["nodes"]:
+            if node["id"] == "d_find":
+                node["id"] = "circle"
+        for link in graph["edges"]:
+            for key in ("source", "target"):
+                if link[key] == "d_find":
+                    link[key] = "circle"
+        rows = {n["id"]: {"status": "ok", "outputs": {}} for n in graph["nodes"]}
+        rows["loc_find"] = {"status": "ng", "branch": "not_found"}
+        rows["circle"] = rows["d_tol"] = {"status": "skipped"}
+        reading = next(r for r in inspect.evidence(graph, {"nodes": rows}) if r["task_id"] == "d")
+        self.assertEqual(reading["verdict"], "locate_failed")
+        next(n for n in graph["nodes"] if n["id"] == "loc_find")["meta"]["inspect"]["kind"] = "another_task"
+        reading = next(r for r in inspect.evidence(graph, {"nodes": rows}) if r["task_id"] == "d")
+        self.assertEqual(reading["verdict"], "skipped")
+
+    def test_remove_without_dependents_keeps_source_locator_other_task_and_loose_nodes(self):
+        graph = inspect.build(base_graph(), {"kind": "locate_part", "task_id": "loc", "fields": {"template_images": []}})
+        graph = inspect.build(graph, diameter_task("d", locator="loc"))
+        graph = inspect.build(graph, diameter_task("other"))
+        graph["nodes"].append({"id": "note", "type": "note", "params": {}})
+        self.assertIn("note", {n["id"] for n in inspect.read(graph)["loose"]})
+        result = inspect.remove(graph, "d")
+        self.assertTrue(result["removed"])
+        self.assertEqual(result["dependencies"], [])
+        expected = copy.deepcopy(graph)
+        expected["nodes"] = [n for n in expected["nodes"] if n["id"] not in {"d_find", "d_tol"}]
+        expected["edges"] = [e for e in expected["edges"] if e["source"] not in {"d_find", "d_tol"} and e["target"] not in {"d_find", "d_tol"}]
+        next(n for n in expected["nodes"] if n["id"] == "inspection_summary")["params"]["expected_count"] = 1
+        self.assertEqual(result["graph"], expected)
+
     def test_calibration_rewire_preserves_published_alias_and_advanced_parameters(self):
         graph = inspect.build(base_graph(), diameter_task("d"))
         find = next(n for n in graph["nodes"] if n["id"] == "d_find")
@@ -189,7 +339,7 @@ class InspectTranslatorTests(SimpleTestCase):
         broken["edges"] = [e for e in broken["edges"] if not (e["source"] == "d_find" and e["target"] == "d_tol")]
         task = inspect.read(broken)["tasks"][0]
         self.assertTrue(task["custom"])
-        self.assertEqual(task["reasons"][0]["code"], "managed_edge_changed")
+        self.assertEqual(task["reasons"][0]["code"], "managed_edge_missing")
         with_formula = copy.deepcopy(graph)
         with_formula["nodes"].append({"id": "f", "type": "formula", "params": {"expression": "a"}})
         with_formula["edges"].append(edge("d_tol", "f", "in_spec", "a"))
