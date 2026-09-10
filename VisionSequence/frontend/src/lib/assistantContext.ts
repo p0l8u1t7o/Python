@@ -7,9 +7,9 @@
 import { useEffect, useSyncExternalStore } from 'react'
 
 import type { Suggestion } from '@/lib/batch'
-import type { FlowGraph, RunReport } from '@/lib/types'
+import type { FlowGraph, Region, RunReport } from '@/lib/types'
 
-export type AssistantKind = 'flow_editor' | 'tool' | 'batch' | 'golden' | 'agent' | 'dl' | 'sources' | 'assets' | 'dashboard' | 'page'
+export type AssistantKind = 'inspect' | 'flow_editor' | 'tool' | 'batch' | 'golden' | 'agent' | 'dl' | 'sources' | 'assets' | 'dashboard' | 'page'
 
 /** 頁面現況快照：純資料、可 JSON 化；欄位由各頁自訂，後端只當文字脈絡用。 */
 export type PageSnapshot = Record<string, unknown>
@@ -36,6 +36,12 @@ export interface AssistantContext {
   describe?: () => PageSnapshot | null
   /** 流程編輯器：選取並捲到某個節點（助手回覆的「前往」動作） */
   focusNode?: (nodeId: string) => void
+  /** 提案只疊在影像上，不寫入任何節點。 */
+  showProposals?: (regions: Region[]) => void
+  proposalTasks?: (ids: string[]) => void
+  /** 套用前先等待頁面內尚未完成的欄位變更。 */
+  prepareGraph?: () => Promise<void>
+  runInspection?: () => Promise<void>
 }
 
 let current: AssistantContext | null = null

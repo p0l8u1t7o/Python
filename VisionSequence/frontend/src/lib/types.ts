@@ -100,6 +100,23 @@ export interface InspectMeta {
   required: boolean
 }
 
+/** 對話提案獨立於流程圖，確認後才交給核心翻譯器。 */
+export interface TaskDraftValue {
+  value: unknown
+  status: 'confirmed' | 'assumed' | 'missing'
+  source: 'user' | 'rule' | 'llm' | 'default'
+  note: string
+}
+export interface TaskDraft {
+  draft_id: string
+  op: 'add' | 'update' | 'remove' | 'answer' | 'run'
+  kind: string
+  task_id?: string
+  fields: Record<string, TaskDraftValue>
+  regions: { field: string; region: Region | null; status: TaskDraftValue['status']; source: TaskDraftValue['source'] }[]
+  note?: string
+}
+
 export interface InspectField extends Omit<ToolParam, 'visible_when' | 'group'> {
   role: string | null
   param: string | null

@@ -24,6 +24,20 @@ log = logging.getLogger("vision.agent")
 _MAX_SIDE = 1024
 
 
+def tasklist(settings, message: str, kinds: list[dict], current: dict, history: list, lang: str) -> dict:
+    """清單任務只提供核心欄位規格，不允許供應商產生節點或接線。"""
+    system = (
+        "Translate the request into inspection task proposals. Return JSON only: "
+        '{"drafts":[{"op":"add|update|remove|answer|run","kind":"catalogue kind",'
+        '"task_id":"existing id for update/remove","fields":{"field_key":"value"}}]}. '
+        "Never output a graph, nodes, or edges. Use only the supplied field definitions. "
+        "Preserve engineering specifications. Do not invent calibration or convert units. "
+        "All inferred values require user confirmation. Field specifications:\n" + json.dumps(kinds, ensure_ascii=False)
+    )
+    text = json.dumps({"message": message, "current": current, "history": history[-6:], "lang": lang}, ensure_ascii=False)
+    return parse_reply(providers.complete(settings, system, [], text, json_mode=True))
+
+
 def system_prompt() -> str:
     """穩定的 system：平台規則＋設計原則＋精簡工具目錄（skills.py 組裝，可快取）。"""
     return "你是工業機器視覺流程設計專家，在 VisionSequence 平台上依規則設計可執行的檢測流程。\n\n" + skills.build_system(skills.epoch())

@@ -62,6 +62,8 @@ export interface ImageViewerProps {
   imageWidth: number
   imageHeight: number
   overlays?: Overlay[]
+  /** 尚未確認的候選區域，只畫虛線，不進入 ROI 編輯或流程圖。 */
+  proposals?: Region[]
   roi?: Region | null
   roiShapes?: RoiShape[]
   onRoiChange?: (region: Region) => void
@@ -106,6 +108,7 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
     imageWidth,
     imageHeight,
     overlays,
+    proposals,
     roi,
     roiShapes,
     onRoiChange,
@@ -175,6 +178,7 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
 
   // 讓原生事件處理器讀到最新 props / state，而不用每次都重新綁定監聽
   const latest = useRef({
+    proposals,
     overlays: overlayLimitInfo.overlays,
     roi,
     onRoiChange,
@@ -195,6 +199,7 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
     imageHeight,
   })
   latest.current = {
+    proposals,
     overlays: overlayLimitInfo.overlays,
     roi,
     onRoiChange,
@@ -348,6 +353,28 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
     const e = env()
     const L = latest.current
     if (L.showOverlays && L.overlays && L.overlays.length > 0) drawOverlays(ctx, e, L.overlays)
+    for (const proposal of L.proposals ?? []) {
+      if (Object.entries(proposal).some(([key, value]) => key !== 'shape' && (typeof value !== 'number' || !Number.isFinite(value)))) continue
+      const vp = vpRef.current
+      ctx.save()
+      const origin = toScreen(vp, 0, 0)
+      const unit = toScreen(vp, 1, 0)
+      const scale = unit[0] - origin[0]
+      ctx.translate(origin[0], origin[1]); ctx.scale(scale, scale)
+      ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 2 / scale; ctx.setLineDash([6 / scale, 4 / scale])
+      ctx.beginPath()
+      if (proposal.shape === 'rect') ctx.rect(proposal.x, proposal.y, proposal.w, proposal.h)
+      else if (proposal.shape === 'rotated_rect') {
+        ctx.translate(proposal.cx, proposal.cy); ctx.rotate(proposal.angle * Math.PI / 180)
+        ctx.rect(-proposal.w / 2, -proposal.h / 2, proposal.w, proposal.h)
+      } else if (proposal.shape === 'circle') ctx.arc(proposal.cx, proposal.cy, Math.max(0, proposal.r), 0, Math.PI * 2)
+      else if (proposal.shape === 'annulus') {
+        ctx.arc(proposal.cx, proposal.cy, Math.max(0, proposal.r_outer), 0, Math.PI * 2)
+        ctx.moveTo(proposal.cx + proposal.r_inner, proposal.cy)
+        ctx.arc(proposal.cx, proposal.cy, Math.max(0, proposal.r_inner), 0, Math.PI * 2)
+      }
+      ctx.stroke(); ctx.restore()
+    }
     const region = liveRoiRef.current ?? L.roi ?? null
     if (region) {
       const drag = dragRef.current
@@ -633,7 +660,7 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
     // 父層回流新的 roi 後，放掉本地暫存
     if (!dragRef.current) liveRoiRef.current = null
     schedule(false, true)
-  }, [overlayLimitInfo.overlays, roi, showOverlays, editMode, crosshairEnabled, crosshair, schedule])
+  }, [overlayLimitInfo.overlays, proposals, roi, showOverlays, editMode, crosshairEnabled, crosshair, schedule])
 
   // ---------------- 互動 ----------------
 

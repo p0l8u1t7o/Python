@@ -42,7 +42,7 @@ from apps.accounts.security import principal, require_feature
 from apps.core.errors import NotFound, ValidationError
 from apps.vision.agent import chats, consult as consult_mod
 from apps.vision.agent import help as help_mod
-from apps.vision.agent import jobs, loop, memory, notes, providers, service, skills
+from apps.vision.agent import jobs, loop, memory, notes, providers, service, skills, tasklist
 from apps.vision.models import AgentSession, AgentSkill, Flow
 from apps.vision.api import _decode_upload
 from apps.vision.images import store
@@ -122,6 +122,37 @@ class ChatIn(Schema):
     mode: str = "auto"
     context: ChatContext = ChatContext()
     history: list[dict[str, Any]] = []
+
+
+class TaskListProposeIn(Schema):
+    message: str
+    graph: dict[str, Any]
+    flow_id: int | None = None
+    image_ref: str = ""
+    history: list[dict[str, Any]] = []
+    lang: str = "en"
+
+
+class TaskListApplyIn(Schema):
+    graph: dict[str, Any]
+    drafts: list[dict[str, Any]]
+    confirmations: dict[str, Any] = {}
+
+
+@router.post("/agent/tasklist/propose")
+def propose_tasklist(request: HttpRequest, payload: TaskListProposeIn):
+    require_feature(request, "agent")
+    if not payload.message.strip():
+        raise ValidationError("The message cannot be empty", code="empty_message")
+    return tasklist.propose(payload.message, payload.lang, payload.graph, _settings_for(request),
+                            image=store.get(payload.image_ref) if payload.image_ref else None, history=payload.history)
+
+
+@router.post("/agent/tasklist/apply")
+def apply_tasklist(request: HttpRequest, payload: TaskListApplyIn):
+    require_feature(request, "agent")
+    require_feature(request, "flows.edit")
+    return tasklist.apply(payload.graph, payload.drafts, payload.confirmations)
 
 
 class MemoryIn(Schema):
@@ -683,6 +714,8 @@ def chat_intent(message: str, context: ChatContext, mode: str) -> str:
     low = message.lower()
     is_question = any(m in low for m in _QUESTION_MARKERS)
     wants_edit = any(m in low for m in _EDIT_MARKERS) and not is_question
+    if context.kind in ("flow_editor", "inspect") and context.graph is not None and not is_question and tasklist.is_request(message, context.graph):
+        return "tasklist"
     if context.kind in ("flow_editor", "tool") and context.graph and wants_edit:
         return "edit"
     if context.kind == "batch" and context.batch_run_id is not None:
@@ -718,6 +751,11 @@ def agent_chat(request: HttpRequest, payload: ChatIn):
         deleted = notes.forget_facts(p.user, text)
         return {"kind": "help", "answer": notes.confirmation("forget", text, deleted, ctx.lang), "provider": "memory", "sources": [], "warnings": [], "actions": [], "lookups": []}
     intent = chat_intent(message, ctx, payload.mode)
+    if intent == "tasklist":
+        require_feature(request, "agent")
+        result = tasklist.propose(message, ctx.lang, ctx.graph, settings,
+                                  image=store.get(ctx.image_ref) if ctx.image_ref else None, history=payload.history)
+        return {"kind": "tasklist", "answer": "", **result}
     if intent != "help":
         # 使用說明問答不動引擎、也不需要助手權限；修改／諮詢／調整會試執行，要有 agent
         p = require_feature(request, "agent")

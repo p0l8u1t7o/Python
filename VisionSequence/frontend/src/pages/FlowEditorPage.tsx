@@ -281,6 +281,7 @@ function EditorInner({ flowId }: { flowId: number }) {
   const [roiEditingKey, setRoiEditingKey] = useState<string | null>(null)
   const [templateKey, setTemplateKey] = useState<string | null>(null)
   const [templateRegion, setTemplateRegion] = useState<Region | null>(null)
+  const [proposals, setProposals] = useState<Region[]>([])
   const [templateName, setTemplateName] = useState('')
   const [askTemplateName, setAskTemplateName] = useState(false)
   const [askReset, setAskReset] = useState(false)
@@ -982,6 +983,7 @@ function EditorInner({ flowId }: { flowId: number }) {
     kind: 'flow_editor', flowId, flowName: meta.name, imageRef: lastSourceRef, execLocked, getGraph: currentGraph,
     applyGraph: (g, why) => { pushHistory(); restoreGraph(g); toast.success(why ? `${t('agent.applied')}: ${why}` : t('agent.applied')) },
     describe: () => snapshotRef.current(), focusNode: (id) => setSelectedId(id),
+    showProposals: setProposals,
   }, [flowId, meta.name, lastSourceRef, execLocked])
   /** 固定的來源影像：暫存影像優先，其次「用上次影像重跑」。 */
   const pinnedRef = scratch?.ref ?? (reuseImage ? lastSourceRef : null)
@@ -1577,7 +1579,7 @@ function EditorInner({ flowId }: { flowId: number }) {
                   const image = gridImages[index]
                   return (
                     <div key={index} className="relative min-h-0 min-w-0 overflow-hidden rounded-md border border-line bg-viewer" data-testid="editor-grid-cell">
-                      <ImageViewer
+                      <ImageViewer proposals={proposals}
                         src={image?.ref ? imageUrl(image.ref, 1200) : null}
                         imageWidth={image?.width ?? 0}
                         imageHeight={image?.height ?? 0}
@@ -1619,7 +1621,7 @@ function EditorInner({ flowId }: { flowId: number }) {
             ) : (
               <>
                 <div className="relative min-w-0 flex-1" data-testid="viewer-main">
-                  <ImageViewer
+                  <ImageViewer proposals={proposals}
                     src={view.ref ? imageUrl(view.ref, 1600) : null}
                     imageWidth={view.width}
                     imageHeight={view.height}
@@ -1638,7 +1640,7 @@ function EditorInner({ flowId }: { flowId: number }) {
                 {split && outputView ? (
                   <div className="relative min-w-0 flex-1 border-l border-line" data-testid="viewer-after">
                     {/* 沒有影像輸出的步驟（blob／比較…）：與工具頁一致，右邊顯示「標記疊在輸入影像上」而不是空白 */}
-                    <ImageViewer
+                    <ImageViewer proposals={proposals}
                       src={outputView.ref ? imageUrl(outputView.ref, 1600) : null}
                       imageWidth={outputView.width}
                       imageHeight={outputView.height}

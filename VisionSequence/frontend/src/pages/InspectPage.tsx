@@ -11,6 +11,7 @@ import { fixedImageFromRef, imageUrl, teachContourFromImage } from '@/lib/api'
 import { GeometrySourceField } from '@/components/inspect/GeometrySourceField'
 import { inspectionFieldVisible } from '@/lib/inspect'
 import { errorMessage } from '@/lib/errors'
+import { useRegisterAssistantContext } from '@/lib/assistantContext'
 import { getSession, setDraft, updateSession, useFlowSession } from '@/lib/flowDraft'
 import { INSPECT_DOTS, forgetInspectionRun, inspectGraphHash, inspectionAdvancedPath, inspectionDefaults, inspectionEditableKind, inspectionOverall, inspectionParam, inspectionReasonKey, inspectionRemovalGraph, inspectionRunFor, inspectionStale, inspectionStatus, inspectionValue, missingInspectionFields, rememberInspectionRun } from '@/lib/inspect'
 import { inspectionEvidence, readInspection, removeInspection, teachInspectionPose, useFlow, useFlowMutations, useInspectKinds, usePreviewFlow, useScratchImage, useSources, useToolTypes, writeInspection } from '@/lib/queries'
@@ -53,6 +54,8 @@ function InspectPageInner({ flowId }: { flowId: number }) {
   const [cropRegion, setCropRegion] = useState<Region | null>(null)
   const [reuse, setReuse] = useState(true)
   const [operationError, setOperationError] = useState<string | null>(null)
+  const [proposals, setProposals] = useState<Region[]>([])
+  const [proposalTasks, setProposalTasks] = useState<string[]>([])
   const uploadInput = useRef<HTMLInputElement>(null)
   const baseline = useRef<string | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -205,6 +208,12 @@ function InspectPageInner({ flowId }: { flowId: number }) {
     rememberInspectionRun(flowId, snapshot, report, result.items)
     updateSession(flowId, { previewRun: report }); setRun(report); setReadings(result.items); setRunHash(inspectGraphHash(snapshot))
   }
+  useRegisterAssistantContext({
+    kind: 'inspect', flowId, flowName: flow.data?.name, imageRef: image?.ref, execLocked: locked,
+    getGraph: currentGraph, applyGraph: readOnly ? undefined : (next) => putGraph(next),
+    prepareGraph: flushEdits, showProposals: setProposals, proposalTasks: setProposalTasks,
+    runInspection: auth.can('flows.run') && !locked ? () => runPreview() : undefined,
+  }, [flowId, flow.data?.name, image?.ref, locked, readOnly, graph, pending, busy, reuse, auth.me])
   async function teachPose() {
     if (!task || !run || stale || readOnly) return
     const result = await teachInspectionPose(currentGraph(), task.task_id, run)
@@ -341,6 +350,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
           const state = inspectionStatus(readings.find((row) => row.task_id === item.task_id), stale, item.custom)
           return <li key={item.task_id}><button className={`flex w-full items-center gap-2 rounded p-2 text-left text-sm ${selected === item.task_id && !newKind ? 'bg-brand-soft' : 'hover:bg-surface-muted'}`} onClick={() => void action(() => selectTask(item.task_id))} data-testid="inspect-task">
             <span className={`size-2.5 shrink-0 rounded-full ${INSPECT_DOTS[state]}`} title={t(`inspect.status.${state}`)} />
+            {proposalTasks.includes(item.task_id) && <span className="size-2 shrink-0 rounded-full bg-warning" title={t('assistant.tasklist.status.assumed')} />}
             <span className="min-w-0"><span className="block truncate">{String(item.fields.result_name || kinds.data?.items.find((entry) => entry.kind === item.kind)?.label || item.kind)}</span><span className="block text-xs text-muted">{t(`inspect.status.${state}`)}{item.disabled ? ` · ${t('inspect.disabled')}` : ''}</span></span>
           </button>{item.custom ? <ul className="space-y-1 px-2 pb-2 text-xs text-warning" data-testid="inspect-custom-reasons">{item.reasons.map((reason, index) => <li key={index}><Link to={inspectionAdvancedPath(flowId, graph, { ...item, reasons: [reason] })}>{t(inspectionReasonKey(reason.code))}</Link></li>)}</ul> : null}</li>
         })}</ul>
@@ -369,7 +379,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
         </> : <p className="text-sm text-muted">{t('inspect.chooseTask')}</p>}
       </section>
       <section className="flex min-h-[420px] min-w-0 flex-1 flex-col" data-testid="inspect-viewer">
-        <div className="min-h-[300px] flex-1"><ImageViewer src={image?.ref ? imageUrl(image.ref, 1600) : null} imageWidth={image?.width ?? 0} imageHeight={image?.height ?? 0} overlays={reading?.overlays ?? []}
+        <div className="min-h-[300px] flex-1"><ImageViewer proposals={proposals} src={image?.ref ? imageUrl(image.ref, 1600) : null} imageWidth={image?.width ?? 0} imageHeight={image?.height ?? 0} overlays={reading?.overlays ?? []}
           roi={cropKey ? cropRegion : advancedRoi ? graph.nodes.find((node) => node.id === advancedRoi.nodeId)?.params?.[advancedRoi.key] as Region | null : activeRoi ? values[activeRoi.key] as Region | null : null} roiShapes={cropKey ? ['rect'] : advancedRoi?.shapes ?? activeRoi?.shapes}
           onRoiChange={!readOnly && !busy && (!task?.custom || Boolean(newKind)) ? cropKey ? setCropRegion : advancedRoi ? (region) => void action(() => changeNodeParam(advancedRoi.nodeId, advancedRoi.key, region)) : activeRoi ? (region) => changeField(activeRoi.key, region) : undefined : undefined}
           className="h-full w-full" stateKey={`inspect:${flowId}`} toolbar /></div>

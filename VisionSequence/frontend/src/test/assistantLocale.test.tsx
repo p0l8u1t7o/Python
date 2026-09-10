@@ -9,6 +9,7 @@ installApiMock()
 vi.mock('@/lib/screenshot', () => ({ captureScreenshot: vi.fn(async () => 'data:image/jpeg;base64,QUJD'), base64Of: (s: string) => s.split(',')[1] ?? s }))
 
 import { AssistantDock } from '@/components/assistant/AssistantDock'
+import { TaskListCard } from '@/components/assistant/TaskListCard'
 import i18n from '@/i18n'
 import { clearActivity, logActivity, setShareEnabled } from '@/lib/activity'
 import { api } from '@/lib/api'
@@ -41,6 +42,15 @@ describe.each(Object.keys(EXPECT))('assistant dock in %s', (lang) => {
     await i18n.changeLanguage(lang)
   })
   afterAll(async () => { await i18n.changeLanguage('en') })
+
+  it('renders the task list card and assumption actions in this language', async () => {
+    renderPage(<TaskListCard flowId={1} context={{ kind: 'inspect', flowId: 1 }} onChange={() => {}} drafts={[{ draft_id: 'd', kind: 'count_objects', op: 'add', fields: { min_count: { value: 5, status: 'assumed', source: 'rule', note: '' } }, regions: [] }]} />)
+    const card = screen.getByTestId('assistant-tasklist')
+    expect(card.textContent).toContain(i18n.t('assistant.tasklist.status.assumed'))
+    expect(card.textContent).toContain(i18n.t('assistant.tasklist.confirm'))
+    expect(card.textContent).toContain(i18n.t('assistant.tasklist.discard'))
+    expect(card.textContent).not.toMatch(RAW_KEY)
+  })
 
   it('shows every piece of the assistant from the dictionary', async () => {
     const original = vi.mocked(api.get).getMockImplementation()!

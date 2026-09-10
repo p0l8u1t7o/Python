@@ -37,6 +37,26 @@ def _q(qid: str, text: str, kind: str = "text", *, options: list[tuple[str, str]
     return q
 
 
+def tasklist_questions(drafts: list[dict], kinds: dict) -> list[dict]:
+    """沿用三題格式，題目由缺失欄位與核心規格產生。"""
+    questions = []
+    for draft in drafts:
+        specs = {f["key"]: f for f in kinds.get(draft["kind"], {}).get("fields", [])}
+        values = {k: v.get("value") for k, v in draft["fields"].items()}
+        for key, item in draft["fields"].items():
+            spec = specs.get(key)
+            if item["status"] != "missing" or spec is None:
+                continue
+            if any(values.get(k, specs[k].get("default")) not in (v if isinstance(v, list) else [v]) for k, v in (spec.get("visible_when") or {}).items()):
+                continue
+            kind = {"select": "choice", "range": "number"}.get(spec["kind"], spec["kind"])
+            questions.append(_q(f"{draft['draft_id']}:{key}", f"Provide {spec['label'].lower()}.", kind if kind in QUESTION_KINDS else "text",
+                                options=[(o["value"], o["label"]) for o in spec.get("options", [])], hint=item.get("note", "")))
+            if len(questions) == 3:
+                return questions
+    return questions
+
+
 def answers_to_text(answers: list[dict[str, Any]]) -> str:
     """把問答轉成意圖解析看得懂的補充句。"""
     parts: list[str] = []

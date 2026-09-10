@@ -10,6 +10,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowRight, Bot, Brain, Camera, Check, ExternalLink, Eye, EyeOff, History, Lightbulb, Monitor, MonitorOff, Plus, Send, Sparkles, Square, ThumbsDown, ThumbsUp, Trash2, X } from 'lucide-react'
 
 import { AgentTimeline } from '@/components/agent/AgentTimeline'
+import { TaskListCard } from './TaskListCard'
 import { Badge, Button } from '@/components/ui'
 import { useAgentJob } from '@/lib/agentJob'
 import { activityPayload, logActivity, recentActivity, setActivityRoute, setShareEnabled, shareEnabled, subscribeActivity } from '@/lib/activity'
@@ -23,12 +24,12 @@ import { dismissHint, hintFor, shouldShow, type Hint } from '@/lib/hints'
 import { pageSnapshot, screenSummary, setIntegrationTab } from '@/lib/screen'
 import { base64Of, captureScreenshot } from '@/lib/screenshot'
 import { sectionOf } from '@/pages/integration/sections'
-import type { FlowGraph, RunReport } from '@/lib/types'
+import type { FlowGraph, InspectKind, RunReport, TaskDraft } from '@/lib/types'
 import { useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
 
 type Mode = 'auto' | 'help' | 'edit' | 'consult' | 'tune'
-type ReplyKind = 'help' | 'edit' | 'consult' | 'tune'
+type ReplyKind = 'help' | 'edit' | 'consult' | 'tune' | 'tasklist'
 
 interface Source { title: string; page: string; heading: string; url: string; snippet: string; kind: string }
 /** 回覆附的捷徑：前往頁面（可指定分頁）、在編輯器聚焦節點、開該節點的工具頁。 */
@@ -43,6 +44,8 @@ interface MemoryList { facts: MemoryItem[]; qa: MemoryItem[]; limits: { facts: n
 interface ChatSummary { id: number; title: string; count: number; updated_at: string | null }
 interface EditResult { graph: FlowGraph; rationale: string; provider: string; changes: string[]; report: RunReport | null; applied: boolean }
 interface ChatReply {
+  drafts?: TaskDraft[]
+  kinds?: InspectKind[]
   kind: ReplyKind
   answer: string
   provider: string
@@ -58,6 +61,7 @@ interface ChatReply {
 }
 
 export interface ChatMessage {
+  tasklist?: { drafts: TaskDraft[]; flowId: number | null; kinds?: InspectKind[] }
   id: string
   role: 'user' | 'assistant'
   text: string
@@ -102,7 +106,7 @@ function persist(open: boolean, messages: ChatMessage[], sessionId: number | nul
 const uid = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`
 
 export function contextPayload(ctx: AssistantContext, pathname = ctx.route ?? '') {
-  const wantsGraph = ctx.kind === 'flow_editor' || ctx.kind === 'tool' || ctx.kind === 'batch'
+  const wantsGraph = ctx.kind === 'inspect' || ctx.kind === 'flow_editor' || ctx.kind === 'tool' || ctx.kind === 'batch'
   // 分享關閉時只送頁面種類與流程／節點識別，不送畫面快照與操作軌跡
   const share = shareEnabled()
   const page = share ? { ...pageSnapshot(pathname), ...(ctx.describe?.() ?? {}) } : null
@@ -294,7 +298,9 @@ export function AssistantDock() {
           : { task: 'tune', batch_run_id: payload.batch_run_id, instruction: text, graph: payload.graph })
         return
       }
-      if (r.kind === 'edit' && r.result) {
+      if (r.kind === 'tasklist') {
+        push({ role: 'assistant', text: r.answer || '', kind: 'tasklist', warnings: r.warnings, tasklist: { drafts: r.drafts ?? [], kinds: r.kinds, flowId: ctx.flowId ?? null }, contextKind: ctx.kind })
+      } else if (r.kind === 'edit' && r.result) {
         const er = r.result as EditResult
         push({ role: 'assistant', text: r.answer, kind: 'edit', provider: r.provider, edit: er.applied ? { graph: er.graph, changes: er.changes, flowId: ctx.flowId ?? null } : undefined, contextKind: ctx.kind })
       } else if (r.kind === 'tune') {
@@ -319,6 +325,11 @@ export function AssistantDock() {
     if (jobs.running) void jobs.cancel()
     else abortRef.current?.abort()
   }
+
+  const proposalIds = messages.flatMap((m) => m.tasklist && m.tasklist.flowId === ctx.flowId ? m.tasklist.drafts.filter((d) => d.task_id && Object.values(d.fields).some((v) => v.status === 'assumed')).map((d) => d.task_id!) : []).join('|')
+  useEffect(() => {
+    ctx.proposalTasks?.(proposalIds ? proposalIds.split('|') : [])
+  }, [ctx.proposalTasks, proposalIds])
 
   async function takeShot() {
     setShotBusy(true)
@@ -369,7 +380,7 @@ export function AssistantDock() {
   const modes: Mode[] = ['auto', 'help', ...(ctx.kind === 'flow_editor' || ctx.kind === 'tool' ? ['edit' as const] : []), ...(ctx.kind === 'batch' && ctx.batchRunId ? ['consult' as const, 'tune' as const] : [])]
   const quick = (t(`assistant.quick.${ctx.kind}`, { returnObjects: true, defaultValue: [] }) as string[] | string)
   const quickList = Array.isArray(quick) ? quick : (t('assistant.quick.page', { returnObjects: true }) as string[])
-  const ctxLabel = `${t(`assistant.ctx.${ctx.kind}`)}${ctx.flowName ? ` · ${ctx.flowName}` : ''}${ctx.nodeType ? ` · ${ctx.nodeType}` : ''}${ctx.batchRunId ? ` · #${ctx.batchRunId}` : ''}`
+  const ctxLabel = `${t(ctx.kind === 'inspect' ? 'assistant.tasklist.context' : `assistant.ctx.${ctx.kind}`)}${ctx.flowName ? ` · ${ctx.flowName}` : ''}${ctx.nodeType ? ` · ${ctx.nodeType}` : ''}${ctx.batchRunId ? ` · #${ctx.batchRunId}` : ''}`
 
   return (
     <>
@@ -482,6 +493,7 @@ export function AssistantDock() {
             {messages.map((m) => (
               <div key={m.id} className={`rounded-lg px-2.5 py-2 ${m.role === 'user' ? 'ml-8 bg-brand-soft' : 'mr-4 bg-surface-muted'}`} data-testid={`assistant-msg-${m.role}`}>
                 <p className="whitespace-pre-wrap leading-relaxed">{m.text}</p>
+                {m.tasklist?.drafts.length ? <TaskListCard drafts={m.tasklist.drafts} kinds={m.tasklist.kinds} flowId={m.tasklist.flowId} context={ctx} onChange={(drafts) => setMessages((list) => list.map((entry) => entry.id === m.id ? { ...entry, tasklist: { ...m.tasklist!, drafts } } : entry))} /> : null}
                 {m.provider ? <p className="mt-1 text-[10px] text-subtle">{m.provider}{m.kind ? ` · ${t(`assistant.mode.${m.kind}`)}` : ''}</p> : null}
                 {m.warnings?.length ? <ul className="mt-1 list-disc pl-4 text-[11px] text-warning">{m.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul> : null}
                 {m.sources?.length ? (

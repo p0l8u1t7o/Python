@@ -65,6 +65,12 @@ PAGE = agent_api.ChatContext(kind="page", route="/sources")
 
 #: (訊息, 脈絡, 期望意圖)
 INTENT_CORPUS = [
+    ("新增外徑 70±0.5 px", EDITOR, "tasklist"), ("measure outer diameter 70±0.5 px", EDITOR, "tasklist"),
+    ("新增外圈缺口檢測", agent_api.ChatContext(kind="inspect", graph=GRAPH), "tasklist"),
+    ("add count 5", agent_api.ChatContext(kind="inspect", graph=GRAPH), "tasklist"),
+    ("如何新增外徑檢測？", agent_api.ChatContext(kind="inspect", graph=GRAPH), "help"),
+    ("How do I measure diameter?", EDITOR, "help"),
+    ("run again", agent_api.ChatContext(kind="inspect", graph=GRAPH), "tasklist"),
     ("把 二值化 的 threshold 改成 80", EDITOR, "edit"), ("停用去雜訊", EDITOR, "edit"), ("刪除結果影像", EDITOR, "edit"), ("在找圓後面加公差判定 ±0.5", EDITOR, "edit"),
     ("門檻放寬一點", EDITOR, "edit"), ("誤判太多了", EDITOR, "edit"), ("期望數量改為 4", EDITOR, "edit"), ("Set blob min_area to 40", EDITOR, "edit"), ("把顏色比對換成顏色範圍", EDITOR, "edit"),
     ("新增一個判定步驟", TOOL, "edit"), ("min_area 調到 60", TOOL, "edit"),

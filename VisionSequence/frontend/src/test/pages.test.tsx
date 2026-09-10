@@ -35,6 +35,22 @@ function renderDataPage(ui: React.ReactElement, route: string, path: string) {
 }
 
 describe('pages render (smoke)', () => {
+  it('shows task proposals from the assistant in inspect context', async () => {
+    const { AssistantDock } = await import('@/components/assistant/AssistantDock')
+    const { api } = await import('@/lib/api')
+    const { setAssistantContext } = await import('@/lib/assistantContext')
+    localStorage.clear()
+    setAssistantContext({ kind: 'inspect', flowId: 1, getGraph: () => INSPECT_GRAPH })
+    vi.mocked(api.post).mockResolvedValueOnce({ kind: 'tasklist', drafts: [{ draft_id: 'count', kind: 'count_objects', op: 'add', fields: { min_count: { value: 5, status: 'assumed', source: 'llm', note: '' } }, regions: [] }] })
+    const view = renderPage(<AssistantDock />, { route: '/flows/1/inspect' })
+    fireEvent.click(screen.getByTestId('assistant-toggle'))
+    fireEvent.change(screen.getByTestId('assistant-input'), { target: { value: 'add count 5' } })
+    fireEvent.keyDown(screen.getByTestId('assistant-input'), { key: 'Enter' })
+    expect(await screen.findByTestId('assistant-tasklist')).toHaveTextContent('Assumption')
+    const call = vi.mocked(api.post).mock.calls.find(([path]) => path === '/vision/agent/chat')
+    expect(call?.[1]).toMatchObject({ context: { kind: 'inspect', graph: INSPECT_GRAPH } })
+    view.unmount(); setAssistantContext(null); localStorage.clear()
+  })
   it.each(INSPECT_KINDS.filter((item) => item.kind !== 'measure_diameter'))('offers $kind and renders its active form', async (kind) => {
     const { InspectPage } = await import('@/pages/InspectPage')
     const { clearSession } = await import('@/lib/flowDraft')
