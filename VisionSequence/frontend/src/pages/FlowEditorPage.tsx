@@ -50,7 +50,8 @@ import { createHistory, pushHistory as pushEditHistory, redoHistory, undoHistory
 import { getSession, setDraft, updateSession, useFlowSession } from '@/lib/flowDraft'
 import { flowGraphSignature, shouldSaveDraftVersion } from '@/lib/flowAutoVersion'
 import { searchNodes } from '@/lib/nodeSearch'
-import { readEditorGridView, readFlowDescriptionPanelCollapsed, readFlowDraftAutoVersion, writeEditorGridView, writeFlowDescriptionPanelCollapsed } from '@/lib/localState'
+import { readEditorCollapsedTasks, readEditorGridView, readFlowDescriptionPanelCollapsed, readFlowDraftAutoVersion, writeEditorCollapsedTasks, writeEditorGridView, writeFlowDescriptionPanelCollapsed } from '@/lib/localState'
+import { collapseView, expandOnDrop, groupsOf, taskIdFromGroupNodeId, taskKindLabel, type NodeGroup } from '@/lib/nodeGroups'
 import { GRID_COUNTS, bindGridCell, gridCellImage, gridPlacement, normalizeGridLayout, setGridCount, type GridBinding, type GridCount, type GridLayout } from '@/lib/gridView'
 import { countFolderPreviewFiles, countPreviewSequenceResult, createPreviewSequenceState, findPreviewSequenceSource, graphForPreviewSequenceItem, isPreviewSequenceDone, nextPreviewSequenceIndex, previewSequenceStatusLabel, type PreviewSequenceSource, type PreviewSequenceState } from '@/lib/previewSequence'
 import { describeReport, useRegisterAssistantContext } from '@/lib/assistantContext'
@@ -106,6 +107,40 @@ export interface ViewTarget {
   nodeId: string | null
   hasInput: boolean
   hasOutput: boolean
+}
+
+function TaskGroupInspector({ flowId, group, nodes, defs, onExpand, onFocus }: { flowId: number; group: NodeGroup; nodes: GraphNode[]; defs: Map<string, ToolTypeDef>; onExpand: (taskId: string) => void; onFocus: (nodeId: string) => void }) {
+  const { t } = useTranslation()
+  const byId = new Map(nodes.map((node) => [node.id, node]))
+  return (
+    <div className="space-y-3 p-3" data-testid="group-inspector">
+      <div>
+        <p className="text-sm font-semibold text-heading">{group.label}</p>
+        <p className="mt-0.5 text-xs text-muted">{taskKindLabel(group.kind, (key, fallback) => t(key, { defaultValue: fallback }))}</p>
+      </div>
+      <Button size="sm" variant="primary" className="w-full" onClick={() => onExpand(group.task_id)} data-testid="group-inspector-expand">
+        {t('editor.groups.expand')}
+      </Button>
+      <Link to={`/flows/${flowId}/inspect?task=${encodeURIComponent(group.task_id)}`} className="block text-xs text-brand hover:underline" data-testid="group-open-inspect">
+        {t('editor.groups.openInspect')}
+      </Link>
+      <div className="border-t border-line pt-3">
+        <p className="mb-2 text-xs font-semibold text-heading">{t('editor.groups.nodeList')}</p>
+        <div className="space-y-1">
+          {group.node_ids.map((id) => {
+            const node = byId.get(id)
+            const def = node ? defs.get(node.type) : undefined
+            return (
+              <button key={id} type="button" className="flex w-full items-center justify-between gap-2 rounded px-2 py-1 text-left text-xs hover:bg-surface-muted" onClick={() => { onExpand(group.task_id); window.setTimeout(() => onFocus(id), 30) }}>
+                <span className="min-w-0 truncate">{node?.label || def?.label || id}</span>
+                <span className="shrink-0 font-mono text-[10px] text-subtle">{id}</span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export function firstImageOutput(report: NodeReport | undefined): { ref: string | null; width: number; height: number } | null {
@@ -253,6 +288,9 @@ function EditorInner({ flowId }: { flowId: number }) {
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchActive, setSearchActive] = useState(0)
+  const [collapsedTasks, setCollapsedTasks] = useState<Set<string>>(() => new Set(readEditorCollapsedTasks(flowId)))
+  const [groupPositions, setGroupPositions] = useState<Map<string, { x: number; y: number }>>(new Map())
+  const groupDragStart = useRef<{ id: string; taskId: string; position: { x: number; y: number } } | null>(null)
   const [sequenceIntervalMs, setSequenceIntervalMs] = useState(SEQUENCE_DEFAULT_INTERVAL_MS)
   const [sequenceRun, setSequenceRun] = useState<SequenceRun | null>(null)
   const searchInput = useRef<HTMLInputElement>(null)
@@ -273,6 +311,8 @@ function EditorInner({ flowId }: { flowId: number }) {
 
   useEffect(() => {
     setGridLayout(normalizeGridLayout(readEditorGridView(flowId)))
+    setCollapsedTasks(new Set(readEditorCollapsedTasks(flowId)))
+    setGroupPositions(new Map())
   }, [flowId])
 
   useEffect(() => {
@@ -401,9 +441,32 @@ function EditorInner({ flowId }: { flowId: number }) {
   const nodeOrder = useMemo(() => topoOrder(graphNodes, graphEdges), [graphNodes, graphEdges])
   const selectedCount = useMemo(() => nodes.filter((n) => n.selected).length, [nodes])
   const searchResults = useMemo(() => searchNodes(graphNodes, defs, searchQuery), [graphNodes, defs, searchQuery])
+  const taskGroups = useMemo(
+    () => groupsOf({ nodes: graphNodes, edges: graphEdges }, defs, (key, fallback) => t(key, { defaultValue: fallback })),
+    [graphNodes, graphEdges, defs, t],
+  )
+  const taskGroupById = useMemo(() => new Map(taskGroups.map((group) => [group.task_id, group])), [taskGroups])
+  const taskByNodeId = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const group of taskGroups) for (const id of group.node_ids) map.set(id, group.task_id)
+    return map
+  }, [taskGroups])
+  const storeCollapsedTasks = useCallback(
+    (tasks: Set<string>) => {
+      const valid = new Set(Array.from(tasks).filter((taskId) => taskGroupById.has(taskId)))
+      setCollapsedTasks(valid)
+      writeEditorCollapsedTasks(flowId, Array.from(valid))
+      setGroupPositions(new Map())
+    },
+    [flowId, taskGroupById],
+  )
   useEffect(() => {
     if (searchActive !== 0 && searchActive >= searchResults.length) setSearchActive(0)
   }, [searchActive, searchResults.length])
+  useEffect(() => {
+    const valid = new Set(Array.from(collapsedTasks).filter((taskId) => taskGroupById.has(taskId)))
+    if (valid.size !== collapsedTasks.size) storeCollapsedTasks(valid)
+  }, [collapsedTasks, taskGroupById, storeCollapsedTasks])
 
   const problemMap = useMemo(() => graphProblems(graphNodes, graphEdges, defs), [graphNodes, graphEdges, defs])
   const boardOutputNames = useMemo(() => Array.from(new Set(graphNodes.filter((n) => n.type === 'output' || n.type === 'format_text').map((n) => String(n.params?.name ?? '')).filter(Boolean))), [graphNodes])
@@ -439,6 +502,46 @@ function EditorInner({ flowId }: { flowId: number }) {
       }),
     [edges, activeRun],
   )
+  const expandTask = useCallback(
+    (taskId: string) => {
+      const next = new Set(collapsedTasks)
+      next.delete(taskId)
+      storeCollapsedTasks(next)
+      setSelectedId(null)
+    },
+    [collapsedTasks, storeCollapsedTasks],
+  )
+  const collapseTask = useCallback(
+    (taskId: string) => {
+      if (!taskGroupById.has(taskId)) return
+      const next = new Set(collapsedTasks)
+      next.add(taskId)
+      storeCollapsedTasks(next)
+      setSelectedId(`group:${taskId}`)
+    },
+    [collapsedTasks, storeCollapsedTasks, taskGroupById],
+  )
+  const expandTaskForNode = useCallback(
+    (nodeId: string) => {
+      const taskId = taskByNodeId.get(nodeId)
+      if (!taskId || !collapsedTasks.has(taskId)) return
+      const next = new Set(collapsedTasks)
+      next.delete(taskId)
+      storeCollapsedTasks(next)
+    },
+    [collapsedTasks, storeCollapsedTasks, taskByNodeId],
+  )
+  const displayView = useMemo(() => {
+    const view = collapseView(decoratedNodes, decoratedEdges, collapsedTasks, { nodes: graphNodes, edges: graphEdges }, defs, activeRun?.nodes ?? null, expandTask)
+    return {
+      ...view,
+      nodes: view.nodes.map((node) => {
+        const position = groupPositions.get(node.id)
+        const selected = node.type === 'group' ? node.id === selectedId : node.selected
+        return position || selected !== node.selected ? { ...node, ...(position ? { position } : {}), selected } : node
+      }),
+    }
+  }, [activeRun, collapsedTasks, decoratedEdges, decoratedNodes, defs, expandTask, graphEdges, graphNodes, groupPositions, selectedId])
 
   // ---- 離開攔截（到工具頁／參數卡不算離開：草稿會帶過去；其他路由如流程列表、別的流程都要問） ----
   const toolPagePrefix = `/flows/${flowId}/tools/`
@@ -727,17 +830,19 @@ function EditorInner({ flowId }: { flowId: number }) {
   /** 選取一個步驟並把畫布帶到它（步驟清單、錯誤區塊「前往該步驟」）。 */
   const focusNode = useCallback(
     (id: string) => {
+      expandTaskForNode(id)
       setSelectedId(id)
       setNodes((list) => list.map((n) => ({ ...n, selected: n.id === id })))
       window.setTimeout(() => void fitView({ nodes: [{ id }], ...FOCUS_OPTIONS }), 30)
     },
-    [setNodes, fitView],
+    [expandTaskForNode, setNodes, fitView],
   )
 
   const centerSearchNode = useCallback(
     (id: string) => {
       const node = nodesRef.current.find((item) => item.id === id)
       if (!node) return
+      expandTaskForNode(id)
       setSelectedId(id)
       setRightTab('inspector')
       setNodes((list) => list.map((item) => ({ ...item, selected: item.id === id })))
@@ -745,7 +850,7 @@ function EditorInner({ flowId }: { flowId: number }) {
       const height = node.height ?? 72
       void setCenter(node.position.x + width / 2, node.position.y + height / 2, { duration: 300, zoom: Math.min(Math.max(getZoom(), 0.8), 1.2) })
     },
-    [getZoom, setCenter, setNodes],
+    [expandTaskForNode, getZoom, setCenter, setNodes],
   )
 
   // ---- 存檔／執行 ----
@@ -1101,6 +1206,8 @@ function EditorInner({ flowId }: { flowId: number }) {
 
   // ---- 影像視窗 ----
   const selected = selectedId ? payloads.current.get(selectedId) : undefined
+  const selectedTaskId = selectedId ? taskIdFromGroupNodeId(selectedId) : null
+  const selectedGroup = selectedTaskId ? taskGroupById.get(selectedTaskId) ?? null : null
   const selectedDef = selected ? defs.get(selected.type) : undefined
   // ROI 編輯／範本框選一律在「輸入影像」上（ROI 座標系）。
   const effectiveMode = roiEditingKey || templateKey ? 'input' : viewMode
@@ -1193,6 +1300,73 @@ function EditorInner({ flowId }: { flowId: number }) {
   }, [recentRuns])
 
   const nodeStatuses = useMemo(() => new Map(Object.entries(activeRun?.nodes ?? {}).map(([id, r]) => [id, r.status])), [activeRun])
+  const onDisplayNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      const ordinary: NodeChange[] = []
+      const groupChanges: NodeChange[] = []
+      for (const change of changes) {
+        if ('id' in change && taskIdFromGroupNodeId(change.id)) groupChanges.push(change)
+        else ordinary.push(change)
+      }
+      if (groupChanges.length) {
+        setGroupPositions((current) => {
+          const next = new Map(current)
+          for (const change of groupChanges) {
+            if (change.type === 'position' && change.position) next.set(change.id, { x: Math.round(change.position.x), y: Math.round(change.position.y) })
+          }
+          return next
+        })
+      }
+      if (ordinary.length) {
+        onNodesChange(ordinary)
+        if (ordinary.some(isEdit)) setDirty(true)
+      }
+    },
+    [onNodesChange],
+  )
+  const onDisplayEdgesChange = useCallback(
+    (changes: EdgeChange[]) => {
+      const ordinary = changes.filter((change) => {
+        if (!('id' in change)) return true
+        const edge = displayView.edges.find((item) => item.id === change.id)
+        return edge ? !taskIdFromGroupNodeId(edge.source) && !taskIdFromGroupNodeId(edge.target) : true
+      })
+      if (!ordinary.length) return
+      onEdgesChange(ordinary)
+      if (ordinary.some(isEdit)) setDirty(true)
+    },
+    [displayView.edges, onEdgesChange],
+  )
+  const onDisplayNodeDragStart = useCallback(
+    (_event: MouseEvent | TouchEvent, node: Node) => {
+      pushHistory()
+      const taskId = taskIdFromGroupNodeId(node.id)
+      groupDragStart.current = taskId ? { id: node.id, taskId, position: { x: node.position.x, y: node.position.y } } : null
+    },
+    [pushHistory],
+  )
+  const onDisplayNodeDragStop = useCallback(
+    (_event: MouseEvent | TouchEvent, node: Node) => {
+      const taskId = taskIdFromGroupNodeId(node.id)
+      const start = groupDragStart.current
+      groupDragStart.current = null
+      if (!taskId || !start || start.id !== node.id) return
+      setGroupPositions((current) => {
+        const next = new Map(current)
+        next.delete(node.id)
+        return next
+      })
+      const delta = { x: Math.round(node.position.x - start.position.x), y: Math.round(node.position.y - start.position.y) }
+      if (delta.x === 0 && delta.y === 0) return
+      const graph = expandOnDrop(currentGraph(), taskId, delta)
+      payloads.current = new Map(graph.nodes.map((item) => [item.id, item]))
+      setNodes(toFlowNodes(graph, defs))
+      setEdges(toFlowEdges(graph, defs))
+      setSelectedId(`group:${taskId}`)
+      setDirty(true)
+    },
+    [currentGraph, defs, setEdges, setNodes],
+  )
 
   if (catalogue.isPending || flow.isPending) return <LoadingState />
   if (catalogue.isError || flow.isError) return <ErrorState error={flow.error ?? catalogue.error} onRetry={() => void flow.refetch()} />
@@ -1250,6 +1424,12 @@ function EditorInner({ flowId }: { flowId: number }) {
         onUndo={undo}
         onRedo={redo}
         onAutoLayout={autoLayout}
+        taskGroupCount={taskGroups.length}
+        collapsedTaskCount={collapsedTasks.size}
+        onToggleTaskGroups={() => {
+          storeCollapsedTasks(collapsedTasks.size ? new Set() : new Set(taskGroups.map((group) => group.task_id)))
+          setSelectedId(null)
+        }}
         resetting={clearRecent.isPending}
         onReset={() => setAskReset(true)}
         onClearResults={clearResults}
@@ -1483,16 +1663,10 @@ function EditorInner({ flowId }: { flowId: number }) {
               interaction={interaction}
               onInteractionChange={(mode) => { setInteraction(mode); storeInteractionMode(mode) }}
               onAutoLayout={autoLayout}
-              nodes={decoratedNodes}
-              edges={decoratedEdges}
-              onNodesChange={(changes) => {
-                onNodesChange(changes)
-                if (changes.some(isEdit)) setDirty(true)
-              }}
-              onEdgesChange={(changes) => {
-                onEdgesChange(changes)
-                if (changes.some(isEdit)) setDirty(true)
-              }}
+              nodes={displayView.nodes}
+              edges={displayView.edges}
+              onNodesChange={onDisplayNodesChange}
+              onEdgesChange={onDisplayEdgesChange}
               onConnect={onConnect}
               onConnectEnd={onConnectEnd}
               isValidConnection={isValidConnection}
@@ -1504,9 +1678,11 @@ function EditorInner({ flowId }: { flowId: number }) {
                 // 雙擊步驟卡片直接開工具頁（與右鍵「開啟工具頁」同一路徑：離開時 cleanup 會把草稿寫進 store）
                 setSelectedId(node.id)
                 if (node.type === 'tool' && payloads.current.has(node.id)) navigate(`/flows/${flowId}/tools/${encodeURIComponent(node.id)}`)
+                else if (node.type === 'group') expandTask(taskIdFromGroupNodeId(node.id) ?? '')
                 else setRightTab('results')
               }}
-              onNodeDragStart={() => pushHistory()}
+              onNodeDragStart={onDisplayNodeDragStart}
+              onNodeDragStop={onDisplayNodeDragStop}
               onNodeContextMenu={(e, node) => {
                 e.preventDefault()
                 const payload = payloads.current.get(node.id)
@@ -1561,6 +1737,8 @@ function EditorInner({ flowId }: { flowId: number }) {
                     {t('editor.deleteSelected', { count: selectedCount })}
                   </Button>
                 </div>
+              ) : selectedGroup ? (
+                <TaskGroupInspector flowId={flowId} group={selectedGroup} nodes={graphNodes} defs={defs} onExpand={expandTask} onFocus={focusNode} />
               ) : selected ? (
                 <Inspector flowId={flowId} node={selected} definition={selectedDef} edges={graphEdges} graph={{ nodes: graphNodes, edges: graphEdges }} defs={defs} onChange={(p) => patchNode(selected.id, p)} onGraphChange={applyGraphChange} onDelete={() => void deleteNodes([selected.id])} />
               ) : (
@@ -1683,6 +1861,7 @@ function EditorInner({ flowId }: { flowId: number }) {
         onOpenTool={(node) => navigate(`/flows/${flowId}/tools/${encodeURIComponent(node.id)}`)}
         onRunTo={execLocked ? undefined : (node) => void doPreview(node.id)}
         onDuplicate={duplicateNode}
+        onCollapseTask={(node) => collapseTask(node.meta?.inspect?.task_id ?? '')}
         onToggleEnabled={(node) => patchNode(node.id, { enabled: node.enabled === false })}
         onDelete={(node) => void deleteNodes([node.id])}
         onCopyParams={copyParams}

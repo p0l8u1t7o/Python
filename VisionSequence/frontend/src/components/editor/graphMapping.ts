@@ -188,7 +188,9 @@ export function toFlowEdges(graph: FlowGraph, defs: Map<string, ToolTypeDef>): E
 }
 
 export function graphFrom(flowNodes: Node[], flowEdges: Edge[], payloads: Map<string, GraphNode>): FlowGraph {
-  const nodes: GraphNode[] = flowNodes.map((node) => {
+  const persistedNodes = flowNodes.filter((node) => node.type !== 'group' && payloads.has(node.id))
+  const persistedIds = new Set(persistedNodes.map((node) => node.id))
+  const nodes: GraphNode[] = persistedNodes.map((node) => {
     const payload = payloads.get(node.id)
     const decoration = DECORATION_TYPES.has(payload?.type ?? '')
     const width = node.width ?? payload?.width
@@ -201,13 +203,15 @@ export function graphFrom(flowNodes: Node[], flowEdges: Edge[], payloads: Map<st
       ...(decoration && height ? { height: Math.round(height) } : {}),
     }
   })
-  const edges: GraphEdge[] = flowEdges.map((edge) => ({
-    id: edge.id,
-    source: edge.source,
-    target: edge.target,
-    source_handle: edge.sourceHandle ?? '',
-    target_handle: edge.targetHandle ?? '',
-  }))
+  const edges: GraphEdge[] = flowEdges
+    .filter((edge) => persistedIds.has(edge.source) && persistedIds.has(edge.target))
+    .map((edge) => ({
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      source_handle: edge.sourceHandle ?? '',
+      target_handle: edge.targetHandle ?? '',
+    }))
   return { nodes, edges }
 }
 

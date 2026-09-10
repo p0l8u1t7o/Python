@@ -13,10 +13,11 @@ import { useTranslation } from 'react-i18next'
 
 import { SegmentedControl } from '@/components/ui'
 import { FlowEdge } from './FlowEdge'
+import { GroupNode } from './GroupNode'
 import { NoteNode, ToolNode } from './ToolNode'
 import { ZoomSlider } from './ZoomSlider'
 
-const NODE_TYPES = { tool: ToolNode, note: NoteNode }
+const NODE_TYPES = { tool: ToolNode, note: NoteNode, group: GroupNode }
 const EDGE_TYPES = { flow: FlowEdge }
 
 export type InteractionMode = 'select' | 'pan'

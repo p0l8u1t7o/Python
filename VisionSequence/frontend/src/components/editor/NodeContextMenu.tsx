@@ -4,7 +4,7 @@
  */
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ClipboardCopy, ClipboardPaste, Copy, Eye, EyeOff, SlidersHorizontal, Trash2, Play } from 'lucide-react'
+import { ClipboardCopy, ClipboardPaste, Copy, Eye, EyeOff, Layers2, SlidersHorizontal, Trash2, Play } from 'lucide-react'
 
 import type { GraphNode } from '@/lib/types'
 
@@ -21,6 +21,7 @@ export interface NodeContextMenuProps {
   /** 只跑到這一步（含上游）；試執行被鎖定時不給 */
   onRunTo?: (node: GraphNode) => void
   onDuplicate: (node: GraphNode) => void
+  onCollapseTask?: (node: GraphNode) => void
   onToggleEnabled: (node: GraphNode) => void
   onDelete: (node: GraphNode) => void
   onCopyParams: (node: GraphNode) => void
@@ -78,6 +79,7 @@ export function NodeContextMenu(p: NodeContextMenuProps) {
       <p className="truncate px-2 py-1 text-[11px] font-medium text-muted">{node.label || node.type}</p>
       {!isNote ? item(t('nodeMenu.openTool'), <SlidersHorizontal size={13} />, () => p.onOpenTool(node)) : null}
       {!isNote && p.onRunTo ? item(t('nodeMenu.runTo'), <Play size={13} />, () => p.onRunTo?.(node), { disabled: node.enabled === false, title: t('nodeMenu.runToHint') }) : null}
+      {!isNote && node.type !== 'image_source' && node.type !== 'fixed_image' && node.meta?.inspect?.task_id && p.onCollapseTask ? item(t('nodeMenu.collapseTask'), <Layers2 size={13} />, () => p.onCollapseTask?.(node)) : null}
       {item(t('nodeMenu.duplicate'), <Copy size={13} />, () => p.onDuplicate(node))}
       {!isNote ? item(node.enabled === false ? t('nodeMenu.enable') : t('nodeMenu.disable'), node.enabled === false ? <Eye size={13} /> : <EyeOff size={13} />, () => p.onToggleEnabled(node)) : null}
       {!isNote ? (

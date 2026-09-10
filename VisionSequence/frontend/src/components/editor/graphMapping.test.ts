@@ -55,6 +55,19 @@ describe('graphMapping', () => {
     expect(back.nodes[0].params?._publish).toEqual({ value: 'diameter' })
   })
 
+  it('does not persist display-only group nodes or synthetic group edges', () => {
+    const nodes = [
+      ...toFlowNodes(graph, defs),
+      { id: 'group:t1', type: 'group', position: { x: 120, y: 80 }, data: {} },
+    ]
+    const edges = [
+      ...toFlowEdges(graph, defs),
+      { id: 'group-edge', source: 'group:t1', target: 'g', sourceHandle: 'member:m:image', targetHandle: 'image' },
+    ]
+    const back = graphFrom(nodes, edges, new Map(graph.nodes.map((node) => [node.id, node])))
+    expect(back).toEqual(graph)
+  })
+
   it('auto-connects inserted image tools from the selected node', () => {
     const source: FlowGraph = { nodes: [{ id: 'src', type: 'image_source' }, { id: 'f', type: 'filter' }, { id: 'm', type: 'measure' }], edges: [] }
     expect(autoConnectOnInsert(source, 'm', 'f', defs)).toMatchObject({ source: 'f', source_handle: 'image', target: 'm', target_handle: 'image' })

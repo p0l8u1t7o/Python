@@ -131,7 +131,7 @@ export function graphProblems(
 
 export type ConnectRejection =
   | { code: 'incompatible'; values: Record<string, unknown> }
-  | { code: 'flowOnly' | 'singleInput' | 'noteTarget' | 'cycle'; values: Record<string, unknown> }
+  | { code: 'flowOnly' | 'singleInput' | 'noteTarget' | 'cycle' | 'groupCollapsed'; values: Record<string, unknown> }
 
 /**
  * onConnect 用：檢查一條新邊是否合法。回 null 表示可以連。
@@ -142,6 +142,7 @@ export function checkConnection(
   edges: GraphEdge[],
   defs: Map<string, ToolTypeDef>,
 ): ConnectRejection | null {
+  if (conn.source.startsWith('group:') || conn.target.startsWith('group:')) return { code: 'groupCollapsed', values: {} }
   const sourceNode = nodes.get(conn.source)
   const targetNode = nodes.get(conn.target)
   if (!sourceNode || !targetNode) return { code: 'incompatible', values: {} }

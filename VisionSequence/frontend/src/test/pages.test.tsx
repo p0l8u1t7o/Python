@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { installApiMock } from './apiMock'
 import { renderPage } from './render'
+import { expandOnDrop } from '@/lib/nodeGroups'
 import { AuthProvider } from '@/providers/AuthProvider'
 import { ThemeProvider } from '@/providers/ThemeProvider'
 import { ToastProvider } from '@/providers/ToastProvider'
@@ -181,6 +182,37 @@ describe('pages render (smoke)', () => {
     const button = await screen.findByTestId('editor-clear-results')
     fireEvent.click(button)
     expect(button).toBeInTheDocument()
+  })
+
+  it('FlowEditorPage collapses inspection task groups and expands them', async () => {
+    localStorage.removeItem('vs.editorCollapsed.v1')
+    const { FlowEditorPage } = await import('@/pages/FlowEditorPage')
+    const view = renderDataPage(<FlowEditorPage />, '/flows/3', '/flows/:flowId')
+    await screen.findByTestId('editor-toolbar')
+    expect(screen.queryByTestId('group-node')).toBeNull()
+    fireEvent.click(await screen.findByTestId('btn-toggle-groups'))
+    await waitFor(() => expect(screen.getAllByTestId('group-node')).toHaveLength(2))
+    expect(view.container.querySelectorAll('.react-flow__node')).toHaveLength(3)
+    fireEvent.click(screen.getAllByTestId('group-expand')[0])
+    await waitFor(() => expect(screen.getAllByTestId('group-node')).toHaveLength(1))
+    fireEvent.click(screen.getByTestId('btn-toggle-groups'))
+    await waitFor(() => expect(screen.queryByTestId('group-node')).toBeNull())
+  })
+
+  it('FlowEditorPage group drag applies the group delta to member coordinates', () => {
+    const graph = {
+      nodes: [
+        { id: 'camera', type: 'image_source', position: { x: 0, y: 0 } },
+        { id: 'find', type: 'blob', position: { x: 100, y: 50 }, meta: { inspect: { task_id: 'task-a', role: 'find', kind: 'measure_diameter', schema_version: 1, required: true } } },
+        { id: 'judge', type: 'in_range', position: { x: 300, y: 70 }, meta: { inspect: { task_id: 'task-a', role: 'judge', kind: 'measure_diameter', schema_version: 1, required: true } } },
+      ],
+      edges: [{ id: 'e1', source: 'find', target: 'judge', source_handle: 'count', target_handle: 'value' }],
+    }
+    const moved = expandOnDrop(graph, 'task-a', { x: 25, y: -10 })
+    expect(moved.nodes.find((node) => node.id === 'find')?.position).toEqual({ x: 125, y: 40 })
+    expect(moved.nodes.find((node) => node.id === 'judge')?.position).toEqual({ x: 325, y: 60 })
+    expect(moved.nodes.find((node) => node.id === 'camera')?.position).toEqual({ x: 0, y: 0 })
+    expect(moved.edges).toEqual(graph.edges)
   })
 
   it('FlowEditorPage shows published outputs for a selected node', async () => {

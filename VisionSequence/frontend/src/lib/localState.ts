@@ -5,7 +5,7 @@
 export const USER_SCOPED_KEYS = ['vs.token', 'vs.apiKey', 'vs.assistant.v1', 'vs.assistant.share', 'vs.tcpHistory'] as const
 export const USER_SCOPED_SESSION_KEYS = ['vs.assistant.hints.dismissed'] as const
 /** 說明用：這些故意保留 */
-export const DEVICE_SCOPED_KEYS = ['vs.theme', 'vs.language', 'vs.sidebar', 'vs.navOpen', 'vs.favoriteTools', 'vs.editorLayout', 'vs.canvasMode', 'vs.overlayLimit', 'vs.viewerState.v1', 'vs.editorGridView.v1', 'vs.toolAutoPreview.v1', 'vs.flowDraftAutoVersion.v1', 'vs.flowDescriptionPanelCollapsed.v1'] as const
+export const DEVICE_SCOPED_KEYS = ['vs.theme', 'vs.language', 'vs.sidebar', 'vs.navOpen', 'vs.favoriteTools', 'vs.editorLayout', 'vs.canvasMode', 'vs.overlayLimit', 'vs.viewerState.v1', 'vs.editorGridView.v1', 'vs.toolAutoPreview.v1', 'vs.flowDraftAutoVersion.v1', 'vs.flowDescriptionPanelCollapsed.v1', 'vs.editorCollapsed.v1'] as const
 
 export interface ViewerLocalState {
   crosshair: boolean
@@ -24,6 +24,7 @@ const EDITOR_GRID_VIEW_KEY = 'vs.editorGridView.v1'
 const TOOL_AUTO_PREVIEW_KEY = 'vs.toolAutoPreview.v1'
 const FLOW_DRAFT_AUTO_VERSION_KEY = 'vs.flowDraftAutoVersion.v1'
 const FLOW_DESCRIPTION_PANEL_KEY = 'vs.flowDescriptionPanelCollapsed.v1'
+const EDITOR_COLLAPSED_KEY = 'vs.editorCollapsed.v1'
 
 function readRecord(key: string): Record<string, unknown> {
   try {
@@ -129,6 +130,17 @@ export function readFlowDescriptionPanelCollapsed(): boolean {
 
 export function writeFlowDescriptionPanelCollapsed(value: boolean): void {
   writeBoolean(FLOW_DESCRIPTION_PANEL_KEY, value)
+}
+
+export function readEditorCollapsedTasks(flowId: number): string[] {
+  const item = readRecord(EDITOR_COLLAPSED_KEY)[String(flowId)]
+  return Array.isArray(item) ? item.filter((value): value is string => typeof value === 'string') : []
+}
+
+export function writeEditorCollapsedTasks(flowId: number, taskIds: string[]): void {
+  const record = readRecord(EDITOR_COLLAPSED_KEY)
+  record[String(flowId)] = Array.from(new Set(taskIds)).sort()
+  writeRecord(EDITOR_COLLAPSED_KEY, record)
 }
 
 export function clearUserState(): void {

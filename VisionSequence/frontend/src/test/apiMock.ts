@@ -11,6 +11,28 @@ export const ME = {
 
 export const FLOW = { id: 1, name: '示範流程', description: 'Inspect the sample part and publish width.', version: 1, is_enabled: true, continuous_interval_ms: 0, timeout_s: 0, concurrency: 1, stop_on_ng: false, owner_id: 1, owner_name: 'admin', recipe_count: 0, commissioned: false, stats: { last_status: 'ok', total: 3, ok: 3, ng: 0, failed: 0, avg_ms: 5, last_ms: 5, running: false, continuous: false, queued: 0 }, graph: { nodes: [{ id: 'camera', type: 'image_source', label: 'Camera', params: { source_id: 1 } }, { id: 'thr', type: 'threshold', label: 'Threshold', params: { method: 'fixed', threshold: 60 } }, { id: 'judge_out', type: 'output', params: { name: 'judge' } }, { id: 'width_out', type: 'output', params: { name: 'width' } }], edges: [] }, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }
 export const FLOW_SIDE = { ...FLOW, id: 2, name: '側面流程', graph: { ...FLOW.graph, nodes: FLOW.graph.nodes.map((node) => node.id === 'thr' ? { ...node, params: { method: 'fixed', threshold: 80 } } : node) } }
+export const FLOW_GROUPED = {
+  ...FLOW,
+  id: 3,
+  name: 'Grouped inspection',
+  description: '',
+  commissioned: true,
+  graph: {
+    nodes: [
+      { id: 'camera', type: 'image_source', label: 'Camera', params: { source_id: 1 }, position: { x: 0, y: 0 } },
+      { id: 'find_dia', type: 'blob', label: 'Find diameter', params: {}, position: { x: 300, y: 0 }, meta: { inspect: { task_id: 'diameter', role: 'find', kind: 'measure_diameter', schema_version: 1, required: true } } },
+      { id: 'judge_dia', type: 'in_range', label: 'Judge diameter', params: {}, position: { x: 560, y: 0 }, meta: { inspect: { task_id: 'diameter', role: 'judge', kind: 'measure_diameter', schema_version: 1, required: true } } },
+      { id: 'find_count', type: 'blob', label: 'Find parts', params: {}, position: { x: 300, y: 180 }, meta: { inspect: { task_id: 'count', role: 'find', kind: 'count_objects', schema_version: 1, required: true } } },
+      { id: 'judge_count', type: 'in_range', label: 'Judge count', params: {}, position: { x: 560, y: 180 }, meta: { inspect: { task_id: 'count', role: 'judge', kind: 'count_objects', schema_version: 1, required: true } } },
+    ],
+    edges: [
+      { id: 'e1', source: 'camera', source_handle: 'image', target: 'find_dia', target_handle: 'image' },
+      { id: 'e2', source: 'find_dia', source_handle: 'count', target: 'judge_dia', target_handle: 'value' },
+      { id: 'e3', source: 'camera', source_handle: 'image', target: 'find_count', target_handle: 'image' },
+      { id: 'e4', source: 'find_count', source_handle: 'count', target: 'judge_count', target_handle: 'value' },
+    ],
+  },
+}
 export const TEACH_PARAM = { key: 'threshold', label: 'Threshold', kind: 'number', required: false, default: 128, help_text: '', options: [], unit: '', minimum: 0, maximum: 255, step: 1, visible_when: null, shapes: [], accept: '', group: '', teach: true }
 export const STATION_TEACH_ROWS = [
   { id: '1:thr:threshold', flow_id: 1, flow_name: FLOW.name, flow_version: 1, node_id: 'thr', node_label: 'Threshold', tool_type: 'threshold', tool_label: 'Threshold', tool_category: 'preprocess', param: TEACH_PARAM, value: 60 },
@@ -134,6 +156,7 @@ export function routes(path: string, body?: unknown): unknown {
   if (path.startsWith('/vision/spc/alerts')) return { items: [], cached: false }
   if (path.startsWith('/vision/summary')) return { station_id: 'ST01', version: '1.0.0', hours: 24, locked: false, totals: { total: 0, ok: 0, ng: 0, failed: 0, yield: null }, flows: [] }
   if (path.startsWith('/vision/audit')) return { items: [{ id: 1, at: '2026-01-01T00:00:00Z', actor: 'admin', actor_kind: 'user', action: 'flow.update', target_type: 'flow', target_id: '1', target_name: '示範流程', summary: 'threshold 60 → 46', detail: {}, ip: '127.0.0.1' }], total: 1, limit: 50, offset: 0, actions: ['flow.update'], actors: ['admin'] }
+  if (/\/vision\/flows\/3$/.test(path)) return FLOW_GROUPED
   if (path === '/vision/dashboards') return { items: [DASHBOARD, DASHBOARD_CHILD] }
   if (path === '/vision/dashboards/default') return DASHBOARD
   if (/\/vision\/dashboards\/\d+\/data$/.test(path)) return DASHBOARD_DATA
@@ -152,6 +175,8 @@ export function routes(path: string, body?: unknown): unknown {
     { key: 'image_source', label: 'Image source', description: 'Acquire image', category: 'source', category_label: 'Source', icon: 'Camera', params: [{ key: 'source_id', label: 'Source', kind: 'source', required: false, default: null, help_text: '', options: [], unit: '', minimum: null, maximum: null, step: null, visible_when: null, shapes: [], accept: '', group: '' }], inputs: [], outputs: [{ key: 'image', label: 'Image', type: 'image' }], heavy: false },
     { key: 'threshold', label: 'Threshold', description: 'Binary threshold', category: 'preprocess', category_label: 'Pre-processing', icon: 'SlidersHorizontal', params: [TEACH_PARAM], inputs: [{ key: 'image', label: 'Image', type: 'image' }], outputs: [{ key: 'image', label: 'Image', type: 'image' }], heavy: false },
     { key: 'grayscale', label: '灰階', description: '轉灰階', category: 'preprocess', category_label: '影像前處理', icon: 'Box', params: [], inputs: [{ key: 'image', label: '影像', type: 'image' }], outputs: [{ key: 'image', label: '影像', type: 'image' }], heavy: false },
+    { key: 'blob', label: 'Find objects', description: 'Find connected objects', category: 'detect', category_label: 'Detection', icon: 'ScanSearch', params: [], inputs: [{ key: 'image', label: 'Image', type: 'image' }], outputs: [{ key: 'count', label: 'Count', type: 'number' }, { key: 'image', label: 'Image', type: 'image' }], heavy: false },
+    { key: 'in_range', label: 'Check range', description: 'Check a numeric range', category: 'logic', category_label: 'Logic', icon: 'BetweenHorizontalStart', params: [], inputs: [{ key: 'value', label: 'Value', type: 'number' }], outputs: [{ key: 'pass', label: 'Pass', type: 'flow' }, { key: 'fail', label: 'Fail', type: 'flow' }], heavy: false },
   ], categories: [{ key: 'source', label: 'Source' }, { key: 'preprocess', label: '影像前處理' }] }
   if (path.startsWith('/vision/capture/download/info')) return { available: false, version: '', filename: '', size: 0, sha256: '', built_at: null, url: '/api/vision/capture/download' }
   if (path.startsWith('/vision/capture/clients')) return { listening: true, host: '0.0.0.0', port: 9100, items: [{ name: 'line-pc', address: '127.0.0.1:50000', version: '0.1.0', hostname: 'LINE-PC', connected_at: '2026-01-01T00:00:00', local: true, prefer_encoding: 'raw', shm: true, channels: [{ id: 'cam1', label: '產線相機 1', driver: 'basler', index: 0, width: 1280, height: 960, channels: 1, dtype: 'u8', pixel_format: 'Mono8', roi: { x: 0, y: 0, w: 1280, h: 960 }, full: { w: 1280, h: 960 }, mode: 'on_demand', enabled: true, streaming: false, seq: 12, last_frame_age_ms: 120, encoding: 'shm', shm: true, last_error: '', in_use_by: [], fps: 9.5, bytes_per_s: 0, frames: 12 }] }] }

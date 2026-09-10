@@ -8,7 +8,7 @@
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { BarChart3, BookOpen, ChevronDown, Download, Eraser, FlaskConical, Gem, HelpCircle, ImageUp, Keyboard, LayoutTemplate, Lock, Network, Pause, Play, Plug, PowerOff, Radio, Redo2, Save, SlidersHorizontal, Square, TriangleAlert, Undo2, X } from 'lucide-react'
+import { BarChart3, BookOpen, ChevronDown, Download, Eraser, FlaskConical, Gem, HelpCircle, ImageUp, Keyboard, Layers2, LayoutTemplate, Lock, Network, Pause, Play, Plug, PowerOff, Radio, Redo2, Save, SlidersHorizontal, Square, TriangleAlert, Undo2, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { CapacityPill } from '@/components/layout/AppShell'
@@ -60,6 +60,9 @@ export interface EditorToolbarProps {
   onUndo: () => void
   onRedo: () => void
   onAutoLayout: () => void
+  taskGroupCount?: number
+  collapsedTaskCount?: number
+  onToggleTaskGroups?: () => void
   resetting: boolean
   onReset: () => void
   onClearResults: () => void
@@ -184,6 +187,11 @@ export function EditorToolbar(p: EditorToolbarProps) {
           <IconButton label={t('editor.undo')} onClick={p.onUndo} size="sm"><Undo2 size={15} /></IconButton>
           <IconButton label={t('editor.redo')} onClick={p.onRedo} size="sm"><Redo2 size={15} /></IconButton>
           <IconButton label={t('editor.autoLayoutHint')} onClick={p.onAutoLayout} size="sm"><Network size={15} /></IconButton>
+          {p.onToggleTaskGroups ? (
+            <Button size="sm" icon={<Layers2 size={14} />} disabled={!p.taskGroupCount} onClick={p.onToggleTaskGroups} title={t('editor.groups.toggleHint')} data-testid="btn-toggle-groups">
+              {p.collapsedTaskCount ? t('editor.groups.expandAll') : t('editor.groups.collapseTasks')}
+            </Button>
+          ) : null}
           {canTeach ? <Link to={`/flows/${p.flowId}/teach`} className="btn-icon" title={t('editor.teach')} aria-label={t('editor.teach')} data-testid="btn-teach"><SlidersHorizontal size={15} /></Link> : null}
           <Link to={`/flows/${p.flowId}/golden`} className="btn-icon" title={t('editor.golden')} aria-label={t('editor.golden')} data-testid="btn-golden"><Gem size={15} /></Link>
           {p.onExport ? <IconButton label={t('editor.export')} title={t('flows.exportHint')} onClick={p.onExport} size="sm" data-testid="btn-export"><Download size={15} /></IconButton> : null}
