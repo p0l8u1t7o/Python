@@ -83,6 +83,30 @@ class ArchivePolicyTests(TestCase):
         self.assertEqual(archive.pick_refs(_Report(), {"pictures": "result"}), ["run1:a:image"])
         self.assertEqual(len(archive.pick_refs(_Report(), {"pictures": "all"})), 3)  # _image 直通埠不算
 
+    def test_pick_refs_and_capture_use_types_with_arbitrary_ids(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+
+        from apps.vision.board import ACQUIRE_TYPES
+
+        report = SimpleNamespace(id="r1", archive_policy={"pictures": "result"}, nodes={
+            nid: SimpleNamespace(outputs={"image": {"ref": f"r1:{nid}:image"}}) for nid in ("n3", "draw", "n7")
+        })
+        for kind in ACQUIRE_TYPES:
+            with self.subTest(kind=kind):
+                types = {"n3": kind, "draw": "threshold", "n7": "filter"}
+                self.assertEqual(archive.pick_refs(report, report.archive_policy, types), ["r1:n3:image"])
+                types["n7"] = "draw_result"
+                self.assertEqual(archive.pick_refs(report, report.archive_policy, types), ["r1:n3:image", "r1:n7:image"])
+                self.assertEqual(archive.pick_refs(report, report.archive_policy, types, "draw"), ["r1:n3:image", "r1:draw:image"])
+                cache = Mock()
+                cache.get.return_value = np.zeros((2, 2), np.uint8)
+                self.assertEqual(list(archive.capture(report, cache, types=types)), ["r1:n3:image", "r1:n7:image"])
+        self.assertEqual(archive.pick_refs(report, report.archive_policy, {}), ["r1:n7:image"])
+        report.nodes.pop("n7")
+        self.assertEqual(archive.pick_refs(report, report.archive_policy, {"n3": "multi_light_grab", "draw": "threshold"}), ["r1:n3:image"])
+        self.assertEqual(len(archive.pick_refs(report, {"pictures": "all"}, {})), 2)
+
     def test_pick_refs_keeps_source_and_draw_result(self):
         class _Node:
             def __init__(self, outputs):
@@ -128,6 +152,20 @@ class ArchiveRunTests(TransactionTestCase):
         row = self._run(mode="off")
         self.assertEqual(row.images, {})
         self.assertEqual(archive.stats()["files"], 0)
+
+    def test_runner_passes_node_types_and_configured_image_to_archive(self):
+        from unittest.mock import patch
+
+        graph = graph_for(self.source.id, ng=False)
+        graph["nodes"][0]["id"] = "n3"
+        graph["nodes"][1]["id"] = "draw"
+        graph["edges"][0].update(source="n3", target="draw")
+        flow = Flow.objects.create(name="typed-archive", graph=graph, archive_policy={"mode": "all"}, board={"image": "draw"})
+        self.addCleanup(runner.forget, flow.id)
+        with patch.object(archive, "capture", wraps=archive.capture) as capture, patch.object(persister, "submit"):
+            runner.run_sync(flow, trigger="api")
+        self.assertEqual(capture.call_args.kwargs["types"], {"n3": "image_source", "draw": "grayscale", "j": "judge"})
+        self.assertEqual(capture.call_args.kwargs["node_id"], "draw")
 
     def test_ng_run_is_archived_and_readable_after_the_cache_drops_it(self):
         row = self._run(mode="ng", ng=True)

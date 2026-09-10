@@ -303,7 +303,8 @@ def _slim_graph(key: str, graph: dict[str, Any]) -> dict[str, Any]:
         _remove_grayscale_passthrough(out)
     _remove_formula_diameter(out)
     _simplify_concentricity_edges(out)
-    _remove_fixture_roi(out)
+    if key != "shape_locate":
+        _remove_fixture_roi(out)
     _remove_default_outputs(out)
     _remove_compare_judges(out)
     _remove_leaf_draws(out)
@@ -1984,11 +1985,14 @@ def label_map_count_flow(source_id: Any) -> dict[str, Any]:
         _node("ok", "judge", 3, 0, "OK", verdict="ok"),
         _node("ng", "judge", 3, 1, "NG: missing colour", verdict="ng", label="colour_count"),
         _node("out", "output", 2, 1, "Output class count", name="colour_blob_count"),
+        _node("mask", "label_to_mask", 2, 2, "Select red label", values="1"),
+        _node("pixels", "pixel_count", 3, 2, "Red area", min_count=2000, _publish={"count": "red_pixels"}),
     ]
     edges = [
         _edge("src", "seg"), _edge("seg", "lbl", "labels", "labels"),
         _edge("lbl", "ok", "ok", "_flow"), _edge("lbl", "ng", "ng", "_flow"),
         _edge("lbl", "out", "count", "value"),
+        _edge("seg", "mask", "labels", "labels"), _edge("mask", "pixels", "mask", "image"),
     ]
     return {"nodes": nodes, "edges": edges}
 
@@ -2140,16 +2144,74 @@ def outputs_bundle_flow(source_id: Any) -> dict[str, Any]:
         _node("save", "save_image", 7, 1, "Save rejects", folder="", format="png", condition="ng", split_by_judge=True, filename="{run_id:.8}"),
         _node("send", "send_image", 7, 2, "Send result image", connection="image-host", encoding="png", include_values=True, on_error="warn"),
         _node("trig", "trigger_flow", 7, 3, "Trigger audit flow", target_flow_id=target, mode="async", pass_outputs=True, pass_image=False),
+        _node("draw", "draw_result", 6, 1, "Annotated result for export"),
+        _node("area_out", "output", 6, 2, "Publish area at two decimals", name="total_area_px2", decimals=2),
     ]
     edges = [
         _edge("src", "gray"), _edge("gray", "thr"), _edge("thr", "blob"), _edge("blob", "cmp", "count", "value"),
         _edge("cmp", "judge", "result", "value"),
         _edge("judge", "fmt", "verdict", "a"), _edge("blob", "fmt", "count", "b"),
         _edge("fmt", "log", "text", "a"),
-        _edge("src", "save", "image", "image"), _edge("judge", "save", "verdict", "param:prefix"),
-        _edge("src", "send", "image", "image"), _edge("judge", "send", "verdict", "param:name"),
+        _edge("src", "draw", "image", "image"), _edge("blob", "draw", "_overlays", "overlays"),
+        _edge("judge", "draw", "_overlays", "overlays"),
+        _edge("draw", "save", "image", "image"), _edge("judge", "save", "verdict", "param:prefix"),
+        _edge("draw", "send", "image", "image"), _edge("judge", "send", "verdict", "param:name"),
+        _edge("blob", "area_out", "total_area", "value"),
     ]
     return {"nodes": nodes, "edges": edges}
+
+
+def point_fitting_flow(source_id: Any) -> dict[str, Any]:
+    """三項點集量測；第四張缺直線，對應公差被跳過時由彙總拒收。"""
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("circle_edge", "contour_find", 1, 0, "Circle boundary", roi={"shape": "rect", "x": 100, "y": 70, "w": 300, "h": 300}, threshold_method="fixed", threshold=128, approx=False),
+        _node("ellipse_edge", "contour_find", 1, 1, "Ellipse boundary", roi={"shape": "rect", "x": 550, "y": 110, "w": 340, "h": 220}, threshold_method="fixed", threshold=128, approx=False),
+        _node("line_edge", "find_line", 1, 2, "Straight edge points", roi={"shape": "rect", "x": 170, "y": 470, "w": 650, "h": 60}, num_calipers=40),
+        _node("circle", "fit_circle_points", 2, 0, "Fit circular boundary"),
+        _node("ellipse", "fit_ellipse_points", 2, 1, "Fit elliptical boundary"),
+        _node("line", "fit_line_points", 2, 2, "Fit straight boundary"),
+        _node("tol_circle", "tolerance_judge", 3, 0, "Circle diameter", nominal=200, lower_tol=-3, upper_tol=3, name="circle_diameter", unit="px"),
+        _node("tol_ellipse", "tolerance_judge", 3, 1, "Ellipse major axis", nominal=280, lower_tol=-4, upper_tol=4, name="ellipse_major", unit="px"),
+        _node("tol_line", "in_range", 3, 2, "Line residual", low=0, high=1, on_false="reject"),
+        _node("area", "formula", 3, 3, "Area from fitted radius", expression="a*a*3.141592653589793", _publish={"value": "fitted_area_px2"}),
+        _node("summary", "inspection_summary", 4, 1, "All three measurements required", expected_count=3),
+    ]
+    edges = [_edge("src", key, "image", "image") for key in ("circle_edge", "ellipse_edge", "line_edge")]
+    for kind, port in (("circle", "contours"), ("ellipse", "contours"), ("line", "points")):
+        edges.extend([_edge(f"{kind}_edge", kind, port, port), _edge(f"{kind}_edge", kind, "found", "_flow")])
+    edges.extend([
+        _edge("circle", "tol_circle", "diameter", "value"), _edge("ellipse", "tol_ellipse", "major", "value"),
+        _edge("line", "tol_line", "residual_rms", "value"), _edge("circle", "area", "r", "a"),
+        _edge("tol_circle", "summary", "in_spec", "results"), _edge("tol_ellipse", "summary", "in_spec", "results"),
+        _edge("tol_line", "summary", "result", "results"),
+    ])
+    return {"nodes": nodes, "edges": edges}
+
+
+def polar_edge_check_flow(source_id: Any) -> dict[str, Any]:
+    """把圓周展開成直邊，僅將缺口中心映回原圖。"""
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("unwrap", "polar_unwrap", 1, 0, "Unwrap rim", roi={"shape": "annulus", "cx": 500, "cy": 350, "r_inner": 220, "r_outer": 280}, angle_step="1", direction="cw"),
+        _node("edge", "edge_defect", 2, 0, "Find chips in the strip", roi={"shape": "rect", "x": 1, "y": 20, "w": 357, "h": 20}, calipers=180, search=35, polarity="light_to_dark", threshold=3, min_width=2, fracture_run=2, max_defects=0),
+        _node("defects", "defects_to_geometry", 3, 0, "Chip centres", output="centres"),
+        _node("restore", "polar_restore", 4, 0, "Chips on original rim"),
+    ]
+    edges = [
+        _edge("src", "unwrap", "image", "image"), _edge("unwrap", "edge", "image", "image"),
+        _edge("edge", "defects", "defects", "defects"), _edge("defects", "restore", "points", "points"),
+        _edge("unwrap", "restore", "mapping", "mapping"), _edge("src", "restore", "image", "image"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def absence_check_flow(source_id: Any) -> dict[str, Any]:
+    """禁區內應無異物；第四張刻意放入亮色物件。"""
+    return {"nodes": [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("check", "blob", 1, 0, "Keep the exclusion zone clear", roi={"shape": "rect", "x": 200, "y": 150, "w": 600, "h": 400}, threshold_method="fixed", threshold=128, polarity="bright", min_area=100, expected="absent"),
+    ], "edges": [_edge("src", "check", "image", "image")]}
 
 
 def _demo_model(name: str) -> tuple[str, dict[str, Any]]:
@@ -2294,6 +2356,9 @@ def builtin_fixed_ids() -> set[str]:
 #: 範本畫廊的內建範本目錄：(key, 名稱, 說明, 分類, builder)。
 #: builder 在 request 時才呼叫（範例資產 id 由 _demo_asset 現查，seed 過就開箱即用）。
 BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
+    ("point_fitting", "Fit geometry from edge points", "Fit a line, circle and ellipse from measured boundaries; require all three results and calculate circular area", "measure", point_fitting_flow),
+    ("polar_edge_check", "Unwrap and restore rim defects", "Inspect a straightened rim and map only detected chip centres back to the original image", "quality", polar_edge_check_flow),
+    ("absence_check", "Keep an exclusion zone clear", "Reject foreign objects inside a region that must remain empty", "quality", absence_check_flow),
     ("register_count", "Count parts by registration", "Register one cropped part and accept exactly three matches, without training. Requires the deep learning pack.", "count", register_count_flow),
     ("hole_count", "Hole count", "Grayscale, denoise, threshold, morphology, blob count, number check, OK/NG — with a named output and a result image", "count", hole_count_flow),
     ("exposure", "Exposure check", "Downscale, Otsu threshold, range check, OK/NG", "quality", brightness_gate_flow),
@@ -2393,6 +2458,9 @@ BUILTIN_TEMPLATES = tuple(
 #: builtin 範本 key → 對應的樣本集名稱（`Example: <demo_images.SAMPLE_SETS 的標籤>`）。
 #: **每個內建範本都要有一組**：範本畫廊預設把取像節點換成帶著這些圖的固定影像，載入即可試執行。
 TEMPLATE_SAMPLE_SOURCES: dict[str, str] = {
+    "point_fitting": "Example: fitted boundaries",
+    "polar_edge_check": "Example: polar rim chips",
+    "absence_check": "Example: clear exclusion zone",
     "register_count": "Example: registered parts",
     "hole_count": "Example: plate holes",
     "exposure": "Example: exposure",

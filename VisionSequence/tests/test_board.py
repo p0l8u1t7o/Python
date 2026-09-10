@@ -73,6 +73,19 @@ class BuildTests(TestCase):
         out = board.build(self.flow, run)
         self.assertEqual(out["run"]["image"]["ref"], "r1:draw:image")
 
+    def test_acquisition_types_work_with_arbitrary_ids_and_precedence(self):
+        run = self.run_dict()
+        run["nodes"] = {"n3": run["nodes"]["src"], "draw": run["nodes"]["blur"]}
+        for kind in board.ACQUIRE_TYPES:
+            with self.subTest(kind=kind):
+                self.flow.graph = {"nodes": [{"id": "n3", "type": kind}, {"id": "draw", "type": "threshold"}], "edges": []}
+                self.assertEqual(board.build(self.flow, run)["run"]["image"]["ref"], "r1:src:image")
+        run["nodes"]["n7"] = {"outputs": {"image": {"ref": "r1:n7:image", "width": 64, "height": 48}}}
+        self.flow.graph["nodes"].append({"id": "n7", "type": "draw_result"})
+        self.assertEqual(board.build(self.flow, run)["run"]["image"]["ref"], "r1:n7:image")
+        self.flow.board = {"image": "draw"}
+        self.assertEqual(board.build(self.flow, run)["run"]["image"]["ref"], "r1:blur:image")
+
     def test_configured_board_picks_image_formats_and_judges_tolerance(self):
         self.flow.board = {"title": "Line 1", "image": "src", "overlays": False, "show_counts": False,
                            "values": [{"key": "width", "label": "Width", "unit": "mm", "decimals": 1, "low": 9.8, "high": 10.2},

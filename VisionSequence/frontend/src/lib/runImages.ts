@@ -13,7 +13,8 @@ export interface RunImage {
   height: number
 }
 
-const SOURCE_NODE_IDS = new Set(['src', 'source', 'camera', 'grab', 'stereo_grab'])
+export const ACQUIRE_TYPES = new Set(['image_source', 'fixed_image', 'stereo_grab', 'multi_light_grab'])
+export const SOURCE_NODE_IDS = new Set(['src', 'source', 'camera', 'grab', 'stereo_grab'])
 
 function asImage(value: unknown): RunImage | null {
   if (value && typeof value === 'object' && 'ref' in value && 'width' in value) {
@@ -24,29 +25,34 @@ function asImage(value: unknown): RunImage | null {
 }
 
 /** The representative frame: result image when present, otherwise the acquisition frame. */
-export function lastImage(run: RunReport): RunImage | null {
+export function lastImage(run: RunReport, types?: Record<string, string>): RunImage | null {
   const reports = Object.values(run.nodes ?? {})
   for (const [id, report] of Object.entries(run.nodes ?? {})) {
-    if (id === 'draw' || id === 'draw_result') {
-      for (const value of Object.values(report.outputs ?? {})) {
+    if (types ? types[id] === 'draw_result' : id === 'draw' || id === 'draw_result') {
+      const outputs = report.outputs ?? {}
+      for (const key of types ? ['image', ...Object.keys(outputs).filter((key) => key !== '_image')] : Object.keys(outputs)) {
+        const value = outputs[key]
         const image = asImage(value)
         if (image) return image
       }
     }
   }
   for (const [id, report] of Object.entries(run.nodes ?? {})) {
-    if (SOURCE_NODE_IDS.has(id)) {
-      for (const [key, value] of Object.entries(report.outputs ?? {})) {
-        if (key === '_image') continue
+    if (types ? ACQUIRE_TYPES.has(types[id]) : SOURCE_NODE_IDS.has(id)) {
+      const outputs = report.outputs ?? {}
+      for (const key of types ? ['image', ...Object.keys(outputs).filter((key) => key !== '_image')] : Object.keys(outputs).filter((key) => key !== '_image')) {
+        const value = outputs[key]
         const image = asImage(value)
         if (image) return image
       }
     }
   }
-  for (const skipThru of [true, false]) {
+  for (const skipThru of types ? [true] : [true, false]) {
     for (let i = reports.length - 1; i >= 0; i -= 1) {
-      for (const [key, value] of Object.entries(reports[i].outputs ?? {})) {
+      const outputs = reports[i].outputs ?? {}
+      for (const key of types ? ['image', ...Object.keys(outputs)] : Object.keys(outputs)) {
         if (skipThru && key === '_image') continue
+        const value = outputs[key]
         const image = asImage(value)
         if (image) return image
       }

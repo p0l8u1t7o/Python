@@ -338,6 +338,9 @@ export default {
     },
   },
   templates: {
+    point_fitting: { name: '由边缘点拟合几何', description: '由测量边界拟合直线、圆与椭圆，要求三项结果完整并计算圆面积' },
+    polar_edge_check: { name: '展开并还原圆周缺陷', description: '检查展开后的直边，仅将检出的缺口中心映回原图' },
+    absence_check: { name: '禁区异物检查', description: '区域应保持无物体，出现异物即判 NG' },
     list_postprocess: { name: 'Blob 结果排序与挑选', description: '按面积过滤 blob 清单、扫描顺序排序、挑出最大件、分级并合并中心点' },
     boxes_cleanup: { name: '重叠匹配合并与禁区排除', description: 'template_match 的多个结果先合并、按尺寸与分数过滤，再检查是否压到禁区' },
     array_placement: { name: '元件阵列缺位检查', description: '把 blob 中心校正成 3 x 4 阵列，回报缺格位置并判定 OK/NG' },

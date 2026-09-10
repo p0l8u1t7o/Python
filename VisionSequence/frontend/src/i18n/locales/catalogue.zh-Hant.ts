@@ -338,6 +338,9 @@ export default {
     },
   },
   templates: {
+    point_fitting: { name: '由邊緣點擬合幾何', description: '由量測邊界擬合直線、圓與橢圓，要求三項結果完整並計算圓面積' },
+    polar_edge_check: { name: '展開並還原圓周缺陷', description: '檢查展開後的直邊，僅將檢出的缺口中心映回原圖' },
+    absence_check: { name: '禁區異物檢查', description: '區域應保持無物件，出現異物即判 NG' },
     list_postprocess: { name: 'Blob 結果排序與挑選', description: '依面積過濾 blob 清單、掃描順序排序、挑出最大件、分級並合併中心點' },
     boxes_cleanup: { name: '重疊匹配合併與禁區排除', description: 'template_match 的多個結果先合併、依尺寸與分數過濾，再檢查是否壓到禁區' },
     array_placement: { name: '元件陣列缺位檢查', description: '把 blob 中心校正成 3 x 4 陣列，回報缺格位置並判定 OK/NG' },

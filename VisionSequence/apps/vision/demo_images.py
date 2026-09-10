@@ -1169,8 +1169,54 @@ def output_bundle_parts() -> list[np.ndarray]:
     return out
 
 
+def fitted_boundaries() -> list[np.ndarray]:
+    """奇數尺寸的圓、橢圓與直邊；第四張缺少直邊。"""
+    y, x = np.mgrid[:701, :1001]
+    out = []
+    for i in range(4):
+        img = _canvas(1001, 701, 35)
+        circle = (x - 250) ** 2 + (y - 220) ** 2 <= 100 ** 2
+        ellipse = ((x - 720) / 140) ** 2 + ((y - 220) / 70) ** 2 <= 1
+        img[circle | ellipse] = 210
+        if i != 3:
+            img[500:600, 150:850] = 210
+        out.append(_noise(img, 1, 2100 + i))
+    return out
+
+
+def polar_rim_chips() -> list[np.ndarray]:
+    """解析式圓盤真值；第四張在順時針 40 度附近有 10 px 深缺口。"""
+    y, x = np.mgrid[:701, :1001]
+    radius = np.hypot(x - 500, y - 350)
+    angle = np.degrees(np.arctan2(y - 350, x - 500))
+    out = []
+    for i in range(4):
+        img = _canvas(1001, 701, 35)
+        foreground = radius <= 250
+        if i == 3:
+            foreground &= ~((radius > 240) & (angle >= 28) & (angle <= 52))
+        img[foreground] = 210
+        out.append(_noise(img, 1, 2200 + i))
+    return out
+
+
+def clear_exclusion_zone() -> list[np.ndarray]:
+    """框外物件不影響禁區；第四張有框內異物。"""
+    out = []
+    for i in range(4):
+        img = _canvas(1001, 701, 35)
+        img[60:110, 80 + i * 100:140 + i * 100] = 210
+        if i == 3:
+            img[280:330, 450:510] = 210
+        out.append(_noise(img, 1, 2300 + i))
+    return out
+
+
 #: key → (顯示名, 產生器)。key 同時是 data/samples/ 下的資料夾名。
 SAMPLE_SETS: dict[str, tuple[str, callable]] = {
+    "fitted_boundaries": ("fitted boundaries", fitted_boundaries),
+    "polar_rim_chips": ("polar rim chips", polar_rim_chips),
+    "clear_exclusion_zone": ("clear exclusion zone", clear_exclusion_zone),
     "registered_parts": ("registered parts", registered_parts),
     "plate_holes": ("plate holes", plate_holes),
     "exposure_frames": ("exposure", exposure_frames),

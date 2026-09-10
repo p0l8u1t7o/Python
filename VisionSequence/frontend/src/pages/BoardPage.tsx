@@ -13,7 +13,7 @@ import { imageUrl } from '@/lib/api'
 import { evaluateValues, runToBoard, type BoardRun, type BoardValue } from '@/lib/board'
 import { useFlowStream } from '@/lib/flowStream'
 import { formatDateTime } from '@/lib/format'
-import { useBoard } from '@/lib/queries'
+import { useBoard, useFlow } from '@/lib/queries'
 
 function Tile({ label, value, tone, unit, big = false, testId }: { label: string; value: string; tone?: 'ok' | 'ng' | 'neutral'; unit?: string; big?: boolean; testId?: string }) {
   const ring = tone === 'ok' ? 'border-ok/70 shadow-[0_0_24px_-8px_var(--color-ok)]' : tone === 'ng' ? 'border-critical/80 shadow-[0_0_24px_-8px_var(--color-critical)]' : 'border-white/10'
@@ -34,13 +34,15 @@ export function BoardPage() {
   const { flowId: raw } = useParams()
   const flowId = Number(raw)
   const board = useBoard(Number.isFinite(flowId) ? flowId : null)
+  const flow = useFlow(Number.isFinite(flowId) ? flowId : null)
+  const types = flow.data ? Object.fromEntries((flow.data.graph.nodes ?? []).map((node) => [node.id, node.type])) : undefined
   const [live, setLive] = useState<{ run: BoardRun; values: BoardValue[] } | null>(null)
   const config = board.data?.config
 
   // 每一片由串流即時進來；設定（公差、要看哪幾個）跟著 GET 來的 config 走
   useFlowStream(Number.isFinite(flowId) ? flowId : null, true, (event) => {
     if (event.type === 'run_finished' && event.flow_id === flowId && event.run) {
-      setLive({ run: runToBoard(event.run, config), values: evaluateValues(config, event.run.outputs as Record<string, unknown>) })
+      setLive({ run: runToBoard(event.run, config, types), values: evaluateValues(config, event.run.outputs as Record<string, unknown>) })
       void board.refetch()
     }
   })

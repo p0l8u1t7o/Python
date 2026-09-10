@@ -648,12 +648,12 @@ class Runner:
         with self._lock:
             rt.pending.pop(run_id, None)  # 結果已在 recent，查詢改走 report()
         record_t0 = time.perf_counter()
-        self._record(rt, report)
+        self._record(rt, report, types={nid: cn.type for nid, cn in compiled.nodes.items()}, image_node=str((flow.board or {}).get("image") or ""))
         report.timing["record_ms"] = round((time.perf_counter() - record_t0) * 1000.0, 3)
         report.timing["total_ms"] = round(float(report.duration_ms) + float(report.timing.get("record_ms") or 0.0), 3)
         return report
 
-    def _record(self, rt: FlowRuntime, report: engine.RunReport) -> None:
+    def _record(self, rt: FlowRuntime, report: engine.RunReport, *, types: dict[str, str] | None = None, image_node: str = "") -> None:
         record_t0 = time.perf_counter()
         s = rt.stats
         s.runs += 1
@@ -679,7 +679,7 @@ class Runner:
             # 封存的影像在這裡只取參照（不複製、不編碼）；編碼與寫檔在持久化執行緒做。
             policy = getattr(report, "archive_policy", None)
             if policy and archive.wanted(policy, report.status, s.runs):
-                report.archive_images = archive.capture(report, store, queue_depth=persister.q.qsize())
+                report.archive_images = archive.capture(report, store, queue_depth=persister.q.qsize(), types=types, node_id=image_node)
             persister.submit(report)
         report.timing["record_ms"] = round((time.perf_counter() - record_t0) * 1000.0, 3)
         report.timing["total_ms"] = round(float(report.duration_ms) + float(report.timing.get("record_ms") or 0.0), 3)

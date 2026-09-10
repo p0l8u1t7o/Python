@@ -74,7 +74,8 @@ function FlowLiveMonitor({ flow, onRun }: { flow: Flow; onRun: (run: RunReport) 
     }
   }, [flow.id])
   // 看板設定指定了節點就顯示那一張，否則最後一張
-  const image = run ? (pickImage(run, flow.board?.image) ?? lastImage(run)) : null
+  const types = Object.fromEntries((flow.graph.nodes ?? []).map((node) => [node.id, node.type]))
+  const image = run ? (pickImage(run, flow.board?.image, types) ?? lastImage(run, types)) : null
   const overlays = useMemo(() => (run ? Object.values(run.nodes).flatMap((n) => n.overlays ?? []) : []), [run])
   if (!image || !run) {
     return (

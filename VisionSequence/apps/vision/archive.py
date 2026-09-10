@@ -31,6 +31,8 @@ from typing import Any
 import numpy as np
 from django.conf import settings
 
+from apps.vision.board import ACQUIRE_TYPES
+
 log = logging.getLogger(__name__)
 
 #: Archive policy modes: never / rejects and failures only / every run.
@@ -107,18 +109,34 @@ def wanted(policy: dict[str, Any], status: str, run_index: int = 0) -> bool:
 # ---------------------------------------------------------------------------
 # Picking the pictures
 # ---------------------------------------------------------------------------
-def pick_refs(report, policy: dict[str, Any]) -> list[str]:
-    """Image refs worth keeping. Prefer result images, otherwise keep the acquisition frame."""
+def pick_refs(report, policy: dict[str, Any], types: dict[str, str] | None = None, node_id: str = "") -> list[str]:
+    """依型別保留取像與代表圖；未提供型別時沿用舊節點名稱退路。"""
     refs: list[str] = []
-    for node_id, node in report.nodes.items():
+    for node in report.nodes.values():
         for port, value in (node.outputs or {}).items():
             if port == "_image" or not isinstance(value, dict):
                 continue
             ref = value.get("ref")
             if isinstance(ref, str) and ref.startswith(f"{report.id}:"):
                 refs.append(ref)
-        _ = node_id
-    if policy.get("pictures") == "all" or len(refs) <= 2:
+    if policy.get("pictures") == "all":
+        return refs
+    if types is not None:
+        def image_of(nid: str) -> str | None:
+            node = report.nodes.get(nid)
+            outputs = (node.outputs or {}) if node else {}
+            for port in ("image", *[key for key in outputs if key != "_image"]):
+                value = outputs.get(port)
+                if isinstance(value, dict) and value.get("ref") in refs:
+                    return value["ref"]
+            return None
+
+        source = next((ref for nid in report.nodes if types.get(nid) in ACQUIRE_TYPES and (ref := image_of(nid))), None)
+        draw = next((ref for nid in report.nodes if types.get(nid) == "draw_result" and (ref := image_of(nid))), None)
+        last = next((ref for nid in reversed(report.nodes) if (ref := image_of(nid))), None)
+        preferred = image_of(node_id) or draw or source or last
+        return list(dict.fromkeys(ref for ref in (source, preferred) if ref))
+    if len(refs) <= 2:
         return refs
     draw = [ref for ref in refs if ":draw:" in ref or ":draw_result:" in ref]
     source = [ref for ref in refs if any(f":{node}:" in ref for node in ("src", "source", "stereo_grab"))]
@@ -128,7 +146,7 @@ def pick_refs(report, policy: dict[str, Any]) -> list[str]:
     return list(dict.fromkeys(picked))
 
 
-def capture(report, store, *, queue_depth: int = 0) -> dict[str, np.ndarray]:
+def capture(report, store, *, queue_depth: int = 0, types: dict[str, str] | None = None, node_id: str = "") -> dict[str, np.ndarray]:
     """Grab the arrays to archive, on the caller's thread. Returns {ref: array} (no copies)."""
     global _dropped
     if queue_depth > QUEUE_LIMIT:
@@ -136,7 +154,7 @@ def capture(report, store, *, queue_depth: int = 0) -> dict[str, np.ndarray]:
             _dropped += 1
         return {}
     out: dict[str, np.ndarray] = {}
-    for ref in pick_refs(report, report.archive_policy):
+    for ref in pick_refs(report, report.archive_policy, types, node_id):
         img = store.get(ref)
         if img is not None:
             out[ref] = img

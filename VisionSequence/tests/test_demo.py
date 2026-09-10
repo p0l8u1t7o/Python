@@ -59,6 +59,7 @@ class DemoSeedTests(TransactionTestCase):
         from apps.vision.runner import runner
 
         expected = {
+            "point_fitting": "ok ok ok ng", "polar_edge_check": "ok ok ok ng", "absence_check": "ok ok ok ng",
             "register_count": "ok ok ok ng",
             "hole_count": "ok ok ok ng", "exposure": "ok ok ok ng",
             "circle_gauge": "ok ok ok ng", "edge_angle": "ok ok ok ng", "golden_compare": "ok ok ok ng", "stat_compare": "ok ok ok ng",
@@ -131,7 +132,7 @@ class DemoSeedTests(TransactionTestCase):
             if _anomaly.backbone_available():
                 expected_models.append("Example: retrieval library (three part types)")
             self.assertEqual([n for n in model_names if "anomaly" not in n], sorted(expected_models))
-            self.assertEqual(len(BUILTIN_TEMPLATES), 68)
+            self.assertEqual(len(BUILTIN_TEMPLATES), 71)
             import importlib.util
             import os
 
@@ -146,6 +147,11 @@ class DemoSeedTests(TransactionTestCase):
             # 每個內建範本都有樣本圖：畫廊預設把取像節點換成帶圖的固定影像，載入就能試執行（沒有「請先選來源」）
             self.assertEqual(set(demo.TEMPLATE_SAMPLE_SETS), {key for key, *_ in BUILTIN_TEMPLATES})
             self.assertEqual(set(TEMPLATE_SAMPLE_SOURCES), set(demo.TEMPLATE_SAMPLE_SETS))
+            covered = {n["type"] for *_, builder in BUILTIN_TEMPLATES for n in builder(SOURCE_PLACEHOLDER)["nodes"]}
+            from apps.vision.tools import base
+
+            builtin = {t.key for t in base.all_types()}
+            self.assertFalse(builtin - covered, f"Missing template tools: {sorted(builtin - covered)}")
             for key, name, _desc, _cat, builder in BUILTIN_TEMPLATES:
                 samples = demo.template_samples(key)
                 self.assertTrue(samples, name)
@@ -171,6 +177,77 @@ class DemoSeedTests(TransactionTestCase):
                     self.assertFalse(errors, f"{name} 有 error 節點: {errors}")
                 finally:
                     flow.delete()
+
+
+class SimplifiedTemplateTests(SimpleTestCase):
+    """新增範本以平台入口驗證接線、缺項與缺陷座標。"""
+
+    def execute_sample(self, key, image, change=None):
+        from apps.vision import engine
+        from apps.vision.graph import compile_graph
+
+        graph = next(builder(SOURCE_PLACEHOLDER) for name, *_, builder in BUILTIN_TEMPLATES if name == key)
+        if change:
+            change(graph)
+        report = engine.execute(compile_graph(validate_graph(graph)), flow_id=0, flow_version=1, trigger="test", grab=lambda _: image,
+                                asset_path=lambda _: None, input_image=image, preview=True)
+        self.assertFalse({nid: n.message for nid, n in report.nodes.items() if n.status == "error"})
+        return report
+
+    def test_fitting_summary_rejects_a_skipped_required_measurement(self):
+        from apps.vision.demo_images import fitted_boundaries
+
+        images = fitted_boundaries()
+        good = self.execute_sample("point_fitting", images[0])
+        self.assertEqual(good.status, "ok")
+        self.assertEqual(good.nodes["summary"].outputs, {"received": 3, "passed": 3, "missing": 0})
+        self.assertAlmostEqual(good.nodes["circle"].outputs["diameter"], 200, delta=2)
+        self.assertAlmostEqual(good.nodes["ellipse"].outputs["major"], 280, delta=2)
+        missing = self.execute_sample("point_fitting", images[3])
+        self.assertEqual(missing.nodes["tol_line"].status, "skipped")
+        self.assertEqual(missing.nodes["summary"].outputs["missing"], 1)
+        self.assertEqual(missing.status, "ng")
+        # 良品只停用一項公差，其他工具都正常；NG 必須來自彙總本身。
+        skipped = self.execute_sample("point_fitting", images[0], lambda g: next(n for n in g["nodes"] if n["id"] == "tol_line").update(enabled=False))
+        self.assertEqual([nid for nid, n in skipped.nodes.items() if n.status == "ng"], ["summary"])
+        self.assertEqual(skipped.status, "ng")
+
+    def test_polar_restores_only_the_chip(self):
+        import math
+
+        from apps.vision.demo_images import polar_rim_chips
+
+        for index, image in enumerate(polar_rim_chips()):
+            with self.subTest(index=index):
+                report = self.execute_sample("polar_edge_check", image)
+                points = report.nodes["restore"].outputs["points"]
+                self.assertEqual(report.status, "ng" if index == 3 else "ok")
+                self.assertEqual(len(points), 1 if index == 3 else 0)
+                for x, y in points:
+                    self.assertAlmostEqual(math.degrees(math.atan2(y - 350, x - 500)), 40, delta=3)
+                    self.assertGreater(math.hypot(x - 500, y - 350), 235)
+                    self.assertLess(math.hypot(x - 500, y - 350), 255)
+
+    def test_absence_samples_reject_only_foreign_objects_inside_the_region(self):
+        from apps.vision.demo_images import clear_exclusion_zone
+
+        reports = [self.execute_sample("absence_check", image) for image in clear_exclusion_zone()]
+        self.assertEqual([r.status for r in reports], ["ok", "ok", "ok", "ng"])
+
+    def test_exported_result_image_waits_for_the_verdict(self):
+        from unittest.mock import patch
+
+        from apps.vision.demo_images import output_bundle_parts
+        from apps.vision.images import store
+
+        with patch.object(demo, "_demo_flow_id", return_value=1):
+            for index, image in enumerate(output_bundle_parts()):
+                with self.subTest(index=index):
+                    report = self.execute_sample("outputs_bundle", image)
+                    self.assertEqual(report.status, "ng" if index == 3 else "ok")
+                    result = store.get(report.nodes["draw"].outputs["image"]["ref"])
+                    self.assertIsNotNone(result)
+                    self.assertEqual(result[5, 5].tolist(), [0, 0, 230] if index == 3 else [0, 200, 0])
 
 
 class TemplateCategoryLabelTests(SimpleTestCase):

@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { evaluateValues, formatValue, pickImage, runToBoard } from '@/lib/board'
+import { ACQUIRE_TYPES, lastImage } from '@/lib/runImages'
 import type { RunReport } from '@/lib/types'
 
 const run: RunReport = {
@@ -16,6 +17,36 @@ const run: RunReport = {
 } as unknown as RunReport
 
 describe('board evaluation', () => {
+  it('uses tool types for arbitrary ids and does not mistake a node named draw for a result', () => {
+    const renamed = { ...run, nodes: { n3: run.nodes.src, draw: run.nodes.blur } }
+    for (const kind of ACQUIRE_TYPES) {
+      const types = { n3: kind, draw: 'threshold' }
+      expect(pickImage(renamed, undefined, types)?.ref).toBe('r1:src:image')
+      expect(lastImage(renamed, types)?.ref).toBe('r1:src:image')
+      expect(runToBoard(renamed, {}, types).image?.ref).toBe('r1:src:image')
+      expect(pickImage(renamed, 'draw', types)?.ref).toBe('r1:blur:image')
+    }
+    const withDraw = { ...renamed, nodes: { ...renamed.nodes, n7: { ...run.nodes.blur, outputs: { image: { ref: 'r1:n7:image', width: 64, height: 48 } } } } }
+    const types = { n3: 'multi_light_grab', draw: 'threshold', n7: 'draw_result' }
+    expect(lastImage(withDraw, types)?.ref).toBe('r1:n7:image')
+    expect(pickImage(withDraw, undefined, types)?.ref).toBe('r1:n7:image')
+    expect(lastImage(renamed)?.ref).toBe('r1:blur:image')
+    expect(lastImage(renamed, {})?.ref).toBe('r1:blur:image')
+  })
+
+  it('prefers the image port and ignores implicit pass-throughs when types are supplied', () => {
+    const report = { ...run, nodes: { n3: { ...run.nodes.src, outputs: {
+      mask: { ref: 'r1:n3:mask', width: 64, height: 48 },
+      image: { ref: 'r1:n3:image', width: 64, height: 48 },
+    } } } }
+    expect(lastImage(report, {})?.ref).toBe('r1:n3:image')
+    expect(pickImage(report, undefined, {})?.ref).toBe('r1:n3:image')
+    const implicit = { ...run, nodes: { n3: { ...run.nodes.src, outputs: { _image: { ref: 'r1:n3:_image', width: 64, height: 48 } } } } }
+    expect(lastImage(implicit, {})).toBeNull()
+    expect(pickImage(implicit, undefined, {})).toBeNull()
+    expect(lastImage(implicit)?.ref).toBe('r1:n3:_image')
+  })
+
   it('shows every named output when nothing is configured', () => {
     const values = evaluateValues(undefined, run.outputs as Record<string, unknown>)
     expect(values.map((v) => v.key)).toEqual(['width', 'height', 'text'])

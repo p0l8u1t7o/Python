@@ -3,6 +3,7 @@
  * 讓 SSE 每來一次 run 就能即時更新，不必每片都回頭打 GET /board。
  */
 import type { RunReport } from '@/lib/types'
+import { ACQUIRE_TYPES, SOURCE_NODE_IDS } from '@/lib/runImages'
 
 export interface BoardValueConfig {
   key: string
@@ -92,10 +93,8 @@ export function evaluateValues(config: BoardConfig | undefined, outputs: Record<
   })
 }
 
-const SOURCE_NODE_IDS = new Set(['src', 'source', 'camera', 'grab', 'stereo_grab'])
-
 /** 指定節點的影像，否則結果圖，再否則取像節點影像。 */
-export function pickImage(run: RunReport, nodeId?: string): { ref: string; width: number; height: number } | null {
+export function pickImage(run: RunReport, nodeId?: string, types?: Record<string, string>): { ref: string; width: number; height: number } | null {
   const nodes = run.nodes ?? {}
   const imageOf = (report: RunReport['nodes'][string]) => {
     const outputs = (report.outputs ?? {}) as Record<string, unknown>
@@ -110,13 +109,13 @@ export function pickImage(run: RunReport, nodeId?: string): { ref: string; width
     if (found) return found
   }
   for (const [id, report] of Object.entries(nodes)) {
-    if (id === 'draw' || id === 'draw_result') {
+    if (types ? types[id] === 'draw_result' : id === 'draw' || id === 'draw_result') {
       const found = imageOf(report)
       if (found) return found
     }
   }
   for (const [id, report] of Object.entries(nodes)) {
-    if (SOURCE_NODE_IDS.has(id)) {
+    if (types ? ACQUIRE_TYPES.has(types[id]) : SOURCE_NODE_IDS.has(id)) {
       const found = imageOf(report)
       if (found) return found
     }
@@ -129,12 +128,12 @@ export function pickImage(run: RunReport, nodeId?: string): { ref: string; width
 }
 
 /** RunReport → 看板的 run 摘要（SSE 事件進來時用，與後端 build() 同形）。 */
-export function runToBoard(run: RunReport, config?: BoardConfig): BoardRun {
+export function runToBoard(run: RunReport, config?: BoardConfig, types?: Record<string, string>): BoardRun {
   const outputs = run.outputs as Record<string, unknown>
   const verdict = (outputs.judge as string | undefined) ?? (run.status === 'ok' ? 'OK' : run.status === 'ng' ? 'NG' : run.status.toUpperCase())
   const overlays = config?.overlays === false ? [] : Object.values(run.nodes ?? {}).flatMap((n) => n.overlays ?? [])
   return {
     id: run.id, status: run.status, verdict, label: String(outputs.judge_label ?? ''), started_at: run.started_at, duration_ms: run.duration_ms,
-    trigger: run.trigger, recipe: run.recipe ?? '', error: run.error ?? '', image: pickImage(run, config?.image), overlays,
+    trigger: run.trigger, recipe: run.recipe ?? '', error: run.error ?? '', image: pickImage(run, config?.image, types), overlays,
   }
 }

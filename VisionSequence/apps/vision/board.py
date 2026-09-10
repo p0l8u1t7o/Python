@@ -27,6 +27,7 @@ from django.utils import timezone
 
 MAX_VALUES = 24
 MAX_VARIABLES = 24
+ACQUIRE_TYPES = frozenset({"image_source", "fixed_image", "stereo_grab", "multi_light_grab"})
 DEFAULT: dict[str, Any] = {"title": "", "image": "", "overlays": True, "values": [], "variables": [], "show_verdict": True, "show_counts": True}
 
 
@@ -133,7 +134,7 @@ def _pick_image(run: dict[str, Any] | None, node_id: str, graph: dict[str, Any] 
     found = first_of_types({"draw_result"})
     if found:
         return found, overlays
-    found = first_of_types({"image_source", "fixed_image", "stereo_grab"})
+    found = first_of_types(ACQUIRE_TYPES)
     if found:
         return found, overlays
     for node in reversed(list(nodes.values())):
