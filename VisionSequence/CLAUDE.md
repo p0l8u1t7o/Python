@@ -52,7 +52,7 @@
 - 測試斷言用英文（介面與訊息的預設就是英文）。
 
 ### 紅線
-- 不重寫引擎、不改 graph JSON 格式、不把 `Flow.graph` 搬出資料庫、不引入 Node.js 服務／微服務、不開第二個 API 行程。
+- 不重寫引擎、不改流程圖（graph JSON）的執行結構與既有欄位語意、不把 `Flow.graph` 搬出資料庫、不引入 Node.js 服務／微服務、不開第二個 API 行程。**2026-09-10 核准的兩個例外**（其他新欄位仍屬紅線）：①節點的 `meta` 命名空間放**不影響引擎**的選填編輯器資料，目前只有 `meta.inspect`（檢測任務標記）；②`params` 裡以底線開頭的鍵保留給平台，目前只有 `_publish`（輸出埠發布成具名輸出）。
 - 使用者可見文案不得出現技術來源字樣（NI Vision／OpenCV／cv2）；`plugins.html` 程式碼範例的 import 是例外。
 
 ### 文件不得落後實作（tests/test_docs_claims.py）

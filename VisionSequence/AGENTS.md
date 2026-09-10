@@ -5,7 +5,8 @@
 
 ## 1. 紅線（違反就整批退回）
 
-- **不重寫引擎、不改 graph JSON 格式、不把 `Flow.graph` 搬出資料庫、不引入 Node.js 服務／微服務、不開第二個 API 行程。**
+- **不重寫引擎、不改流程圖（graph JSON）的執行結構與既有欄位語意、不把 `Flow.graph` 搬出資料庫、不引入 Node.js 服務／微服務、不開第二個 API 行程。**
+  - 2026-09-10 專案負責人核准的兩個例外（其他任何新的節點或連線欄位仍屬紅線）：①節點可以帶正式定義的 `meta` 命名空間，放**不影響引擎**的選填編輯器資料，目前只有 `meta.inspect`（檢測任務標記，規格見 `Temp/Inspect-Design.md` §2）；②`params` 裡以底線開頭的鍵保留給平台，目前只有 `_publish`（把輸出埠發布成具名輸出）。
 - **只能改派工提示詞列出的檔案**；需要動清單以外的檔案（含 `models.py`、migration、`requirements*.txt`、`CLAUDE.md`、`README.md`、`scripts/bench_tools.py`）就**停下來回報**，不要用 fallback 繞過（例如把 model 塞進 api 檔、把測試合併去躲守門）。
 - **不要 git add／commit／stash／checkout／restore／update-index**，也不要對沒改過的檔案做「換行正規化」或格式化——工作樹的每一個變動都要是你被要求的內容。寫入被拒、唯讀沙盒、上游容量錯誤就立刻回報。
 - **不碰未追蹤的目錄**（`frontend/ui-audit/`、`logs/`、`build/`、`data/`）。
