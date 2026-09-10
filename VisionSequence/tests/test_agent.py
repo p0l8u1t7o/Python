@@ -186,6 +186,82 @@ class ServiceTests(TestCase):
         out = service.edit(graph, "幫我泡杯咖啡", None)
         self.assertFalse(out["applied"])
 
+    def _two_circles(self):
+        """外圓（大 ROI）與內圓（小 ROI）的同心度流程：標題裡沒有「外／內」字樣，規則要靠 ROI 大小分辨。"""
+        return {"nodes": [
+            {"id": "src", "type": "image_source", "label": "Acquire", "enabled": True, "params": {"mode": "auto"}, "position": {"x": 0, "y": 0}},
+            {"id": "cap", "type": "find_circle", "label": "Cap circle", "enabled": True, "params": {"roi": {"shape": "annulus", "cx": 200, "cy": 200, "r_inner": 100, "r_outer": 140}, "polarity": "light_to_dark"}, "position": {"x": 200, "y": 0}},
+            {"id": "lbl", "type": "find_circle", "label": "Label circle", "enabled": True, "params": {"roi": {"shape": "annulus", "cx": 200, "cy": 200, "r_inner": 40, "r_outer": 80}, "polarity": "dark_to_light"}, "position": {"x": 200, "y": 180}},
+        ], "edges": [
+            {"id": "e1", "source": "src", "source_handle": "image", "target": "cap", "target_handle": "image"},
+            {"id": "e2", "source": "src", "source_handle": "image", "target": "lbl", "target_handle": "image"},
+        ]}
+
+    @staticmethod
+    def _scene(cx: int, cy: int) -> np.ndarray:
+        im = np.full((400, 400), 40, np.uint8)
+        cv2.circle(im, (cx, cy), 120, 200, -1)
+        cv2.circle(im, (cx, cy), 60, 90, -1)
+        return im
+
+    def test_edit_rules_roi_follows(self):
+        """「內圓心 ROI 再跟著外圓心位移」：加 shape_align 接外圓的 cx／cy，transform 接到內圓的 `_transform`；
+        有影像時參考位置教成實際找到的圓心，工件位移後內圓 ROI 跟著走。"""
+        graph = self._two_circles()
+        out = service.edit(graph, "先找外圓心，內圓心ROI再跟著外圓心位移", self._scene(200, 200))
+        self.assertTrue(out["applied"], out["rationale"])
+        self.assertEqual(len(out["changes"]), 1)
+        align = next(n for n in out["graph"]["nodes"] if n["type"] == "shape_align")
+        edges = {(e["source"], e["source_handle"], e["target"], e["target_handle"]) for e in out["graph"]["edges"]}
+        self.assertIn(("cap", "cx", align["id"], "a"), edges)
+        self.assertIn(("cap", "cy", align["id"], "b"), edges)
+        self.assertIn((align["id"], "transform", "lbl", "_transform"), edges)
+        self.assertFalse(align["params"]["use_angle"])
+        self.assertAlmostEqual(align["params"]["ref_x"], 200, delta=1)  # 教成實際找到的圓心，不是 ROI 中心的預設值而已
+        self.assertAlmostEqual(align["params"]["ref_y"], 200, delta=1)
+        self.assertEqual(out["report"]["status"], "ok")
+        # 工件位移 (+60, −40)：內圓 ROI 跟著走才找得到
+        report = service.trial_run(out["graph"], self._scene(260, 160)).to_dict()
+        self.assertAlmostEqual(report["nodes"][align["id"]]["outputs"]["dx"], 60, delta=1)
+        self.assertAlmostEqual(report["nodes"]["lbl"]["outputs"]["cx"], 260, delta=2)
+        self.assertEqual(report["nodes"]["lbl"]["status"], "ok")
+        # 原圖不被就地修改；同一句再套一次不會長出第二個 shape_align
+        self.assertFalse(any(n["type"] == "shape_align" for n in graph["nodes"]))
+        again = service.edit(out["graph"], "內圓 ROI 跟著外圓", None)
+        self.assertEqual(sum(n["type"] == "shape_align" for n in again["graph"]["nodes"]), 1)
+
+    def test_edit_do_it_uses_history(self):
+        """「請幫我直接修改畫布」本身沒有內容：規則引擎回頭拿對話裡上一句真正的需求。"""
+        graph = self._two_circles()
+        history = [{"role": "user", "text": "先找外圓心，內圓心ROI再跟著外圓心位移"}, {"role": "assistant", "text": "您可以加 shape_align…"}]
+        out = service.edit(graph, "請幫我直接修改畫布", None, history=history)
+        self.assertTrue(out["applied"], out["rationale"])
+        self.assertTrue(any(n["type"] == "shape_align" for n in out["graph"]["nodes"]))
+        self.assertFalse(service.edit(graph, "請幫我直接修改畫布", None)["applied"])
+        # 給 LLM 的指令要附上對話脈絡
+        text = service._edit_feedback("請幫我直接修改畫布", service._history_texts(history, "請幫我直接修改畫布"))
+        self.assertIn("先找外圓心", text)
+        self.assertIn("最新指令：請幫我直接修改畫布", text)
+
+    def test_edit_llm_changes_are_described(self):
+        """LLM 改完的圖用 graphdiff 列出改了什麼；一個都沒改就不給套用。"""
+        from unittest import mock
+
+        graph = self._two_circles()
+        changed = json.loads(json.dumps(graph))
+        changed["nodes"][1]["params"]["polarity"] = "dark_to_light"
+        changed["nodes"][2]["enabled"] = False
+        settings = providers.AgentSettings(provider="gemini", api_key="x", model="m")
+        with mock.patch.object(service, "_try_llm", return_value=((changed, "改好了"), "")):
+            out = service.edit(graph, "改一下", None, settings)
+        self.assertTrue(out["applied"])
+        self.assertEqual(out["provider"], "gemini")
+        self.assertEqual(out["changes"], ["Cap circle：polarity \"light_to_dark\" → \"dark_to_light\"", "停用 Label circle"])
+        with mock.patch.object(service, "_try_llm", return_value=((json.loads(json.dumps(graph)), "沒什麼好改的"), "")):
+            out = service.edit(graph, "改一下", None, settings)
+        self.assertFalse(out["applied"])
+        self.assertEqual(out["changes"], [])
+
     def test_tune_reruns_batch(self):
         imgs = {"a": part_image(5), "b": part_image(4)}
         graph = service.generate([imgs["a"]], [], "應該有 5 個孔")["graph"]

@@ -14,7 +14,7 @@ from typing import Any
 
 import numpy as np
 
-from apps.vision import engine, fixed_images
+from apps.vision import engine, fixed_images, graphdiff
 from apps.vision.agent import analysis as analysis_mod
 from apps.vision.agent import clarify as clarify_mod
 from apps.vision.agent import actions, autotune, intents, llm, memory, providers, synth
@@ -23,6 +23,7 @@ from apps.vision.images import store
 from apps.vision.models import Asset
 from apps.vision.tools import base as tools
 from apps.vision.tools.roi import crop as roi_crop
+from apps.vision.tools.roi import extent as roi_extent
 
 log = logging.getLogger("vision.agent")
 
@@ -406,11 +407,129 @@ def _param_key(node_type: str, name: str) -> str | None:
     return None
 
 
+#: 「<B>（的 ROI）跟著 <A>（位移）」：B 是要跟著走的節點、A 是找位置的節點；一句話可能有好幾個子句，逐句試
+_FOLLOW = re.compile(
+    r"(?:讓|让|把|使)?\s*(?P<b>[^，,。；;：:]+?)\s*(?:的)?\s*(?:ROI|roi|區域|区域|範圍|范围|檢測區|检测区|量測區|量测区)?\s*(?:再|就|要|也|都)?\s*"
+    r"(?:跟著|跟着|跟隨|跟随|follows?|track)\s*(?P<a>[^，,。；;：:]+?)\s*(?:的)?\s*(?:位移|移動|移动|位置|中心|圓心|圆心|走|平移|偏移|動|动)*\s*$",
+)
+#: 「幫我直接修改」這種沒有內容的指令：內容在對話前一句
+_DO_IT = re.compile(r"^(?:請|请|麻煩|麻烦|那|那就|好)?\s*(?:(?:幫我|帮我|直接|就|開始|开始|來|来|現在|现在)\s*)*(?:修改|改|做|套用|執行|执行|處理|处理|動手|动手|apply|do it|go ahead|proceed|make the changes?)"
+                    r"\s*(?:畫布|画布|流程|吧|一下|它|這個|这个|這些|这些|it|them|the flow|the canvas)?\s*[。！!.]*$", re.I)
+_NAME_TAIL = re.compile(r"(?:圓心|圆心|中心|圓|圆|節點|节点|步驟|步骤|工具|的)+$")
+
+
+def _roi_param(node: dict[str, Any]) -> dict[str, Any] | None:
+    roi = (node.get("params") or {}).get("roi")
+    return roi if isinstance(roi, dict) and roi.get("shape") else None
+
+
+def _resolve_follow_target(graph: dict[str, Any], name: str) -> dict[str, Any] | None:
+    """「外圓心」「內圓」這種說法對不到節點標題時，在畫得出 ROI 的節點裡依 ROI 大小挑：外／大＝最大、內／小＝最小。"""
+    name = name.strip()
+    found = _find_nodes(graph, name) or _find_nodes(graph, _NAME_TAIL.sub("", name))
+    found = [n for n in found if n.get("type") != "note"]
+    if found:
+        return found[0]
+    sized: list[tuple[float, dict[str, Any]]] = []
+    for n in graph["nodes"]:
+        roi = _roi_param(n)
+        if roi is None:
+            continue
+        try:
+            x0, y0, x1, y1 = roi_extent(roi)
+        except Exception:  # noqa: BLE001 - 畫壞的區域不擋整條規則
+            continue
+        sized.append(((x1 - x0) * (y1 - y0), n))
+    if len(sized) < 2:
+        return None
+    sized.sort(key=lambda item: item[0])
+    if any(w in name for w in ("外", "大", "outer", "big", "large")):
+        return sized[-1][1]
+    if any(w in name for w in ("內", "内", "小", "inner", "small")):
+        return sized[0][1]
+    return None
+
+
+def _follow_rule(out: dict[str, Any], text: str) -> list[str]:
+    """「<B> 的 ROI 跟著 <A> 位移」→ shape_align（a／b 接 A 的 cx／cy，或 matches）→ B 的 `_transform` 隱含埠。"""
+    for clause in re.split(r"[，,。；;]", text):
+        m = _FOLLOW.search(clause.strip())
+        if not m:
+            continue
+        a = _resolve_follow_target(out, m.group("a"))
+        b = _resolve_follow_target(out, m.group("b"))
+        if a is None or b is None or a["id"] == b["id"]:
+            continue
+        if not (tools.has(a["type"]) and tools.has(b["type"])):
+            continue
+        if not tools._has_roi_param(tools.get(b["type"])):
+            continue
+        outs = {p.key for p in tools.get(a["type"]).outputs}
+        if "matches" in outs:
+            feeds = [("matches", "matches")]
+        elif {"cx", "cy"} <= outs:
+            feeds = [("cx", "a"), ("cy", "b")]
+        else:
+            continue
+        aid = f"align_{a['id']}"
+        ref_x = ref_y = 0.0
+        roi = _roi_param(a)
+        if roi is not None:
+            try:
+                x0, y0, x1, y1 = roi_extent(roi)
+                ref_x, ref_y = round((x0 + x1) / 2, 1), round((y0 + y1) / 2, 1)
+            except Exception:  # noqa: BLE001
+                pass
+        pos_b = b.get("position") or {}
+        align = next((n for n in out["nodes"] if n["id"] == aid), None)
+        if align is None:
+            align = {"id": aid, "type": "shape_align", "label": f"Align: {a.get('label') or a['id']}", "enabled": True,
+                     "params": {"ref_x": ref_x, "ref_y": ref_y, "ref_angle": 0, "use_angle": False},
+                     "position": {"x": float(pos_b.get("x", 0)) - 60, "y": float(pos_b.get("y", 0)) - 150}}
+            out["nodes"].append(align)
+            out["edges"] = [e for e in out["edges"] if e.get("target") != aid]
+            for sh, th in feeds:
+                out["edges"].append({"id": f"e-{a['id']}-{sh}-{aid}-{th}", "source": a["id"], "source_handle": sh, "target": aid, "target_handle": th})
+        # B 原本接的位置修正（若有）換成這一條
+        out["edges"] = [e for e in out["edges"] if not (e.get("target") == b["id"] and e.get("target_handle") == "_transform")]
+        out["edges"].append({"id": f"e-{aid}-transform-{b['id']}-_transform", "source": aid, "source_handle": "transform", "target": b["id"], "target_handle": "_transform"})
+        return [f"{b.get('label') or b['id']} 的 ROI 跟著 {a.get('label') or a['id']} 位移（{aid}.transform → {b['id']}._transform）"]
+    return []
+
+
+def teach_alignment(graph: dict[str, Any], report: dict[str, Any] | None, new_ids: set[str]) -> bool:
+    """試執行過後，把這次新加的 shape_align 的參考位置改成這張影像實際找到的位置（教導＝目前姿態）。回有沒有改。"""
+    if not report:
+        return False
+    nodes = report.get("nodes") or {}
+    by_id = {n["id"]: n for n in graph["nodes"]}
+    changed = False
+    for n in graph["nodes"]:
+        if n.get("type") != "shape_align" or n["id"] not in new_ids:
+            continue
+        src = next((e for e in graph["edges"] if e.get("target") == n["id"] and e.get("target_handle") in ("a", "matches")), None)
+        if src is None or src["source"] not in by_id:
+            continue
+        outs = (nodes.get(src["source"]) or {}).get("outputs") or {}
+        if src.get("target_handle") == "matches":
+            first = next(iter(outs.get("matches") or []), None)
+            cx, cy = (first or {}).get("x"), (first or {}).get("y")
+        else:
+            cx, cy = outs.get("cx"), outs.get("cy")
+        if isinstance(cx, (int, float)) and isinstance(cy, (int, float)) and np.isfinite(cx) and np.isfinite(cy):
+            n["params"]["ref_x"], n["params"]["ref_y"] = round(float(cx), 2), round(float(cy), 2)
+            changed = True
+    return changed
+
+
 def edit_rules(graph: dict[str, Any], instruction: str) -> tuple[dict[str, Any], list[str]]:
-    """離線指令解析：「把 <節點> 的 <參數> 改成 <值>」「停用／啟用 <節點>」「刪除 <節點>」。"""
+    """離線指令解析：「把 <節點> 的 <參數> 改成 <值>」「停用／啟用 <節點>」「刪除 <節點>」「<B> 的 ROI 跟著 <A>」。"""
     out = json.loads(json.dumps(graph))
     changed: list[str] = []
     text = instruction.strip()
+    changed += _follow_rule(out, text)
+    if changed:
+        return out, changed
     m = re.search(r"(?:把|將|将|set)?\s*(.+?)\s*(?:的|'s)\s*(.+?)\s*(?:改成|改為|改为|設為|设为|設成|设成|調成|调成|調到|调到|改到|=|to)\s*([^\s，,。]+)", text)
     if m:
         target, pname, value = m.group(1), m.group(2), m.group(3)
@@ -445,23 +564,78 @@ def edit_rules(graph: dict[str, Any], instruction: str) -> tuple[dict[str, Any],
     return out, changed
 
 
+def describe_changes(old: dict[str, Any], new: dict[str, Any]) -> list[str]:
+    """LLM 改完的圖沒有 changes 清單，使用者看不出畫布哪裡變了：用 graphdiff 逐條列出（新增／刪除／換工具／參數／停用／連線）。"""
+    d = graphdiff.diff(old, new)
+    old_nodes = {n["id"]: n for n in old.get("nodes") or []}
+    new_nodes = {n["id"]: n for n in new.get("nodes") or []}
+    names = {nid: (n.get("label") or nid) for nid, n in {**old_nodes, **new_nodes}.items()}
+    out = [f"新增 {names[nid]}（{new_nodes[nid].get('type')}）" for nid in d["added"]]
+    out += [f"刪除 {names[nid]}" for nid in d["removed"]]
+    out += [f"{names[e['node']]}：{e['before']} → {e['after']}" for e in d["retyped"]]
+    out += [f"{names[e['node']]}：{e['param']} {json.dumps(e['before'], ensure_ascii=False)} → {json.dumps(e['after'], ensure_ascii=False)}" for e in d["params"]]
+    for nid in sorted(set(old_nodes) & set(new_nodes)):
+        before, after = old_nodes[nid].get("enabled", True), new_nodes[nid].get("enabled", True)
+        if before != after:
+            out.append(f"{'啟用' if after else '停用'} {names[nid]}")
+    if d["edges_added"] or d["edges_removed"]:
+        out.append(f"連線 +{d['edges_added']} / -{d['edges_removed']}")
+    return out
+
+
+def _history_texts(history: list[dict[str, Any]] | None, instruction: str) -> list[tuple[str, str]]:
+    """對話紀錄壓成 (role, text)，去掉尾端與這次指令相同的那一則（前端有時會先推進去）。"""
+    rows = [(str(h.get("role") or "user"), str(h.get("text") or "").strip()) for h in (history or []) if isinstance(h, dict)]
+    rows = [(r, t) for r, t in rows if t]
+    if rows and rows[-1][0] == "user" and rows[-1][1] == instruction.strip():
+        rows.pop()
+    return rows[-6:]
+
+
+def _edit_feedback(instruction: str, history: list[tuple[str, str]]) -> str:
+    """給 LLM 的指令：附上最近幾句對話，「請幫我直接修改」才知道要修什麼。"""
+    if not history:
+        return instruction
+    lines = ["對話脈絡（由舊到新，助手的話只是它先前的說明，不一定已經做了）："]
+    for role, text in history:
+        who = "使用者" if role == "user" else "助手"
+        lines.append(f"{who}：{text[:400]}")
+    lines.append(f"最新指令：{instruction}")
+    return "\n".join(lines)
+
+
 def edit(graph: dict[str, Any], instruction: str, image: np.ndarray | None,
-         settings: providers.AgentSettings | None = None) -> dict[str, Any]:
-    """流程頁面的 AI 指令：LLM 可用時整份交給 LLM；否則離線指令解析。有影像就順便試跑。"""
+         settings: providers.AgentSettings | None = None, history: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """流程頁面的 AI 指令：LLM 可用時整份交給 LLM（附對話脈絡）；否則離線指令解析。有影像就順便試跑。
+    「幫我直接修改」這種沒有內容的指令，規則引擎會回頭拿對話裡上一句真正的需求。"""
     settings = settings or providers.server_settings()
+    turns = _history_texts(history, instruction)
     got, llm_reason = _try_llm(settings, None, images=[image] if image is not None else [], regions=[], prompt="", analysis=None,
-                               task="edit", previous_graph=graph, feedback=instruction)
+                               task="edit", previous_graph=graph, feedback=_edit_feedback(instruction, turns))
     if got is not None:
         new_graph, rationale = got
-        provider, changes = settings.provider, []
+        provider, changes = settings.provider, describe_changes(graph, new_graph)
+        if not changes:
+            return {"graph": graph, "rationale": rationale + "\n（沒有改動任何節點、參數或連線，所以沒有東西可套用。）",
+                    "provider": provider, "changes": [], "report": None, "applied": False}
     else:
         new_graph, changes = edit_rules(graph, instruction)
+        if not changes and _DO_IT.match(instruction.strip()):
+            for role, text in reversed(turns):
+                if role == "user":
+                    new_graph, changes = edit_rules(graph, text)
+                    if changes:
+                        break
         if not changes:
-            return {"graph": graph, "rationale": "看不懂這個指令。離線模式支援：「把 <節點> 的 <參數> 改成 <值>」、「停用／啟用 <節點>」、「刪除 <節點>」、「太敏感／漏抓／改成 N 個／±x」；接上 LLM 供應商可用自然語言增刪節點。",
+            return {"graph": graph, "rationale": "看不懂這個指令。離線模式支援：「把 <節點> 的 <參數> 改成 <值>」、「停用／啟用 <節點>」、「刪除 <節點>」、「<節點> 的 ROI 跟著 <節點> 位移」、「太敏感／漏抓／改成 N 個／±x」；接上 LLM 供應商可用自然語言增刪節點。",
                     "provider": "rules", "changes": [], "report": None, "applied": False}
         new_graph = validate_graph(new_graph)
         provider, rationale = "rules", (llm_reason + "\n" if llm_reason else "") + "已調整：" + "、".join(changes)
     report = trial_run(new_graph, image).to_dict(include_node_outputs=True) if image is not None else None
+    # 這次新加的定位補正：參考位置改成這張影像實際找到的位置（教導＝目前姿態），再跑一次讓報告反映最終的圖
+    new_ids = {n["id"] for n in new_graph["nodes"]} - {n["id"] for n in graph["nodes"]}
+    if report is not None and new_ids and teach_alignment(new_graph, report, new_ids):
+        report = trial_run(new_graph, image).to_dict(include_node_outputs=True)
     return {"graph": new_graph, "rationale": rationale, "provider": provider, "changes": changes, "report": report, "applied": True}
 
 

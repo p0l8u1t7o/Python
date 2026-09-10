@@ -63,7 +63,9 @@ def _user_text(task: str, prompt: str, regions: list[dict[str, Any]], analysis: 
     elif task == "refine":
         lines.append(f"原始需求：{prompt}")
     elif task == "edit":
-        lines.append("使用者在流程編輯器裡要你修改目前的流程。")
+        lines.append("使用者在流程編輯器裡要你修改目前的流程。只做指令要求的修改，不要順手改別的節點或參數；"
+                     "指令若是要某個節點的 ROI 跟著另一個節點找到的位置移動，就加一個 shape_align（a／b 接該節點的 cx／cy，或 matches 接 matches；"
+                     "ref_x／ref_y 填目前找到的位置）並把它的 transform 接到那個節點的隱含輸入埠 `_transform`，不要去改它的 roi 參數。")
     elif task == "tune":
         lines.append("使用者跑了一批影像，要你依結果調整流程或參數。")
     for i, r in enumerate(regions, start=1):

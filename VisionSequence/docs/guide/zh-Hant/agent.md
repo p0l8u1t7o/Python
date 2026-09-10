@@ -24,8 +24,10 @@ AI 助手（側欄 `/agent`）讓不熟悉工具鏈的人以三步建立檢測�
 | disable / enable "Denoise" | 切換節點 enabled |
 | delete "Result image" | 移除節點與邊；`image_source` 不可刪 |
 | too many false rejects / it is missing them / make it 4 / ±0.2 | 使用 iterative refinement 的同一參數映射 |
+| 先找外圓心，內圓心 ROI 再跟著外圓心位移 | 新增 `shape_align`，接第一個節點的中心（`cx`／`cy` 或 `matches`），其 `transform` 接到第二個節點的隱含輸入埠 `_transform`；「外／內」對不到節點標題時取 ROI 最大／最小的節點。參考位置由目前影像的試執行教導 |
+| 請幫我直接修改畫布 | 指令本身沒有內容時，沿用對話裡上一句需求 |
 
-連接 LLM provider 後沒有固定語法；模型會收到目前 graph 與工具目錄，只修改必要部分並保留 node id。
+連接 LLM provider 後沒有固定語法；模型會收到目前 graph、工具目錄與近期對話，只修改必要部分並保留 node id。不論由誰改的，回覆都會列出與目前 graph 的差異（新增或移除的步驟、參數與啟用狀態的變更、連線數）；沒有任何改動的回覆不會出現「套用」按鈕。
 
 ### 助手知道哪些螢幕情境 {#situation}
 

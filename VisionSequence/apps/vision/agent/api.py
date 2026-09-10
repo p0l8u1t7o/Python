@@ -667,7 +667,10 @@ _QUESTION_MARKERS = ("？", "?", "如何", "怎麼", "怎样", "怎么", "為什
                      "how ", "what ", "why ", "which ", "where ", "when ", "can i", "should i")
 _EDIT_MARKERS = ("改成", "改為", "改为", "設為", "设为", "設成", "調成", "调成", "調到", "调到", "改到", "改用", "停用", "啟用", "启用", "刪除", "删除", "移除", "新增", "加上", "加入", "加一個", "加一个",
                  "後面加", "前面加", "接上", "把", "換成", "换成", "降低", "提高", "放寬", "放宽", "收緊", "收紧", "調整", "调整", "調高", "調低", "调高", "调低", "誤判", "误判", "漏檢", "漏检",
-                 "期望數量", "期望数量", "公差", "自動調參", "自动调参", "set ", "disable", "enable", "delete", "remove", "add ", "change", "increase", "decrease", "loosen", "tighten", "tune")
+                 "期望數量", "期望数量", "公差", "自動調參", "自动调参", "set ", "disable", "enable", "delete", "remove", "add ", "change", "increase", "decrease", "loosen", "tighten", "tune",
+                 # 接線與位置修正的說法（「內圓心 ROI 再跟著外圓心位移」）、以及「幫我直接修改」這種沒有內容但明確要動手的句子
+                 "跟著", "跟着", "跟隨", "跟随", "位移", "補正", "补正", "接到", "連到", "连到", "串接", "修改", "改一下", "幫我改", "帮我改", "做成", "改掉",
+                 "follow", "wire ", "connect", "modify", "edit ", "apply")
 _DATA_MARKERS = ("張", "张", "命中", "門檻", "门槛", "阈值", "為什麼", "为什么", "哪個參數", "哪个参数", "這次執行", "这次执行", "此次執行", "此次执行", "本次", "影像", "圖像", "图像", "數值", "数值",
                  "誤判", "误判", "漏檢", "漏检", "出錯", "出错", "耗時", "耗时", "慢", "分佈", "分布", "上一次", "改善", "image", "threshold", "mismatch", "this run")
 _DATA_WORDS = re.compile(r"\b(ok|ng|failed)\b")
@@ -725,7 +728,8 @@ def agent_chat(request: HttpRequest, payload: ChatIn):
         if service.agentic(settings):
             return {"kind": "edit", "agentic": True, "answer": "", "provider": settings.provider}
         image = store.get(ctx.image_ref) if ctx.image_ref else None
-        result = service.edit(ctx.graph, message, image, settings)
+        # 帶對話脈絡：「請幫我直接修改」這種句子本身沒有內容，真正的需求在前一句
+        result = service.edit(ctx.graph, message, image, settings, history=payload.history)
         return {"kind": "edit", "answer": result["rationale"], "provider": result["provider"], "result": result}
     if intent in ("consult", "tune"):
         if ctx.batch_run_id is None:

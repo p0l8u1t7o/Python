@@ -15,7 +15,7 @@ The batch page (`/batch` in the sidebar) lets you **pick a flow, run a set of im
 3. "Run with *flow name*": it runs in the background, the run list shows progress, and you can interrupt it. A run against a different flow is labelled with that flow's name.
 4. On the Images tab, label each image OK or NG (or all OK / all NG); the Expected column on the Results tab works too. The hit rate and confusion matrix update immediately.
 5. The Insights tab: missed images, failing nodes, threshold suggestions, named output distributions coloured by expectation, and the trend across runs. "Apply suggestions and re-run" produces a new run directly.
-6. The Tuning tab: the on-site teaching parameters grouped for editing → "Run again" (the new run's parent is the selected one) → the Compare tab, image by image.
+6. The Tuning tab: the on-site teaching parameters grouped for editing → "Run again" (the new run's parent is the selected one) → the Compare tab, image by image. The Compare tab starts with a "Compare … with" picker listing the other finished runs of the same image set; the compare icon on a run in the run list does the same.
 7. The global AI assistant in the bottom-right corner (context = batch page, once a finished run is selected): ask a question (consult) or tune from the data. The Tuning panel also has "Auto-tune". All of them produce a new run.
 8. When it looks right: "Write back to flow" (engineer or administrator), "Save as recipe" (the parameter differences become a FlowRecipe) or "Send to editor" (it becomes the draft).
 

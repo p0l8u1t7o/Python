@@ -1128,7 +1128,7 @@ const en = {
       trend: 'Run history', matchRate: 'Hit rate (%)', vsParent: 'Versus previous run',
       improved: '{{count}} improved', regressed: '{{count}} regressed', changed: '{{count}} changed', paramDiff: 'Parameter changes', slowest: 'Slowest images', nodeTime: 'Slowest nodes',
     },
-    compare: { hint: 'Click the compare icon on another run in the run list to compare it with the selected run', a: 'Base', b: 'Other', changed: 'Changed', improved: 'Improved', regressed: 'Regressed', same: 'Same', onlyChanged: 'Only changed images', sameParams: 'Both runs use the same parameters' },
+    compare: { hint: 'Choose another finished run of this image set above (or click the compare icon on a run in the run list) to see the two results side by side', pick: 'Compare {{run}} with', none: 'Choose a run', needTwo: 'No other finished run of this image set yet', a: 'Base', b: 'Other', changed: 'Changed', improved: 'Improved', regressed: 'Regressed', same: 'Same', onlyChanged: 'Only changed images', sameParams: 'Both runs use the same parameters' },
     tune: {
       hint: 'Edit teach parameters, re-run the same image set and compare; then write back to the flow, save as a recipe or take into the editor',
       noGraph: 'Select a run or a flow first', noTeach: 'This flow has no teach parameters', changes: '{{count}} change(s)', fromRun: 'parameters from run #{{id}}',

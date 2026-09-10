@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowDown, ArrowUp, FolderPlus, ListFilter, Save, Star, Trash2, X } from 'lucide-react'
 
@@ -15,6 +15,7 @@ import {
   saveStationTeachPatches,
   sameStationTeachValue,
   stationTeachKey,
+  stationTeachOptions,
   stationTeachRef,
 } from '@/lib/stationTeach'
 import { useFlowMutations, useFlows, useStationTeachGroupMutations, useStationTeachGroups, useStationTeachParams } from '@/lib/queries'
@@ -64,14 +65,15 @@ export function StationTeachPage() {
   const rows = params.data?.items ?? []
   const groupList = groups.data?.items ?? []
   const activeGroup = groupList.find((group) => group.id === activeGroupId) ?? groupList[0] ?? null
-  const shownRows = useMemo(() => {
-    const base = activeGroup
-      ? activeGroup.items.map((item) => item.resolved).filter((item): item is StationTeachParamItem => Boolean(item))
-      : rows
-    return filterStationTeachItems(base, { flowId, toolType, q })
-  }, [activeGroup, flowId, q, rows, toolType])
-  const flowOptions = useMemo(() => [...new Map(rows.map((row) => [row.flow_id, row.flow_name])).entries()], [rows])
-  const toolOptions = useMemo(() => [...new Map(rows.map((row) => [row.tool_type, row.tool_label])).entries()], [rows])
+  const baseRows = useMemo(() => (activeGroup
+    ? activeGroup.items.map((item) => item.resolved).filter((item): item is StationTeachParamItem => Boolean(item))
+    : rows), [activeGroup, rows])
+  const shownRows = useMemo(() => filterStationTeachItems(baseRows, { flowId, toolType, q }), [baseRows, flowId, q, toolType])
+  // 工具清單跟著選的流程（與群組）變；選中的工具不在新清單裡就回到「全部工具」
+  const { flows: flowOptions, tools: toolOptions } = useMemo(() => stationTeachOptions(baseRows, flowId), [baseRows, flowId])
+  useEffect(() => {
+    if (toolType && !toolOptions.some(([key]) => key === toolType)) setToolType('')
+  }, [toolOptions, toolType])
   const dirtyCount = Object.entries(changes).filter(([key, value]) => {
     const row = rows.find((item) => stationTeachKey(stationTeachRef(item)) === key)
     return row && !sameStationTeachValue(row.value, value)

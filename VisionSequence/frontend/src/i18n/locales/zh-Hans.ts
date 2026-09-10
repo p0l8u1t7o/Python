@@ -2243,7 +2243,7 @@ const zhHans = {
       improved: '改善 {{count}} 张', regressed: '退步 {{count}} 张', changed: '判定改变 {{count}} 张', paramDiff: '参数变动',
       slowest: '最慢影像', nodeTime: '最耗时节点',
     },
-    compare: { hint: '在执行纪录点选另一笔执行的比较图标，即可与目前选取的执行逐张对照', a: '基准', b: '对照', changed: '判定改变', improved: '改善', regressed: '退步', same: '相同', onlyChanged: '只看有变化的影像', sameParams: '两次执行的参数相同' },
+    compare: { hint: '在上方选择此影像集的另一次已完成执行（或在执行纪录点选比较图标），即可与目前选取的执行逐张对照', pick: '将 {{run}} 与下列执行比较', none: '选择一次执行', needTwo: '此影像集尚无其他已完成的执行', a: '基准', b: '对照', changed: '判定改变', improved: '改善', regressed: '退步', same: '相同', onlyChanged: '只看有变化的影像', sameParams: '两次执行的参数相同' },
     tune: {
       hint: '修改现场调机参数后「重新执行」同一影像集比较结果；满意后写回流程、存为配方或带回编辑器',
       noGraph: '请先选择一次执行或流程', noTeach: '此流程没有标记为现场调机的参数', changes: '{{count}} 项变更', fromRun: '参数取自执行 #{{id}}',

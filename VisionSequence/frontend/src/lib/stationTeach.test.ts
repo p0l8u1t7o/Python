@@ -6,6 +6,7 @@ import {
   invalidGroupItems,
   saveStationTeachPatches,
   stationTeachKey,
+  stationTeachOptions,
   stationTeachRef,
 } from './stationTeach'
 import type { Flow, StationTeachGroup, StationTeachParamItem, ToolParam } from './types'
@@ -23,6 +24,12 @@ const flows: Flow[] = [
 ]
 
 describe('station teach helpers', () => {
+  it('tool options follow the selected flow', () => {
+    expect(stationTeachOptions(rows, '')).toEqual({ flows: [[1, 'Front'], [2, 'Side']], tools: [['threshold', 'Threshold'], ['blob', 'Blob analysis']] })
+    expect(stationTeachOptions(rows, 2)).toEqual({ flows: [[1, 'Front'], [2, 'Side']], tools: [['blob', 'Blob analysis']] })
+    expect(stationTeachOptions(rows, 99).tools).toEqual([])
+  })
+
   it('filters by flow, tool and keyword', () => {
     expect(filterStationTeachItems(rows, { flowId: 1, toolType: '', q: '' }).map((row) => row.flow_name)).toEqual(['Front'])
     expect(filterStationTeachItems(rows, { flowId: '', toolType: 'blob', q: '' }).map((row) => row.node_label)).toEqual(['Blob'])

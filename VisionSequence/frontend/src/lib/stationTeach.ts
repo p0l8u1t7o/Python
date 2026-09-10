@@ -63,6 +63,15 @@ export function filterStationTeachItems(items: StationTeachParamItem[], filters:
   })
 }
 
+/** 篩選列的選項：流程清單看全部列；工具清單只看「目前選的流程」裡有的工具，流程換了工具清單跟著變。 */
+export function stationTeachOptions(items: StationTeachParamItem[], flowId: number | ''): { flows: [number, string][]; tools: [string, string][] } {
+  const scoped = flowId === '' ? items : items.filter((item) => item.flow_id === flowId)
+  return {
+    flows: [...new Map(items.map((row) => [row.flow_id, row.flow_name] as [number, string])).entries()],
+    tools: [...new Map(scoped.map((row) => [row.tool_type, row.tool_label] as [string, string])).entries()],
+  }
+}
+
 export function invalidGroupItems(group: StationTeachGroup): StationTeachRef[] {
   return group.items.filter((item) => !item.valid).map((item) => ({ flow_id: item.flow_id, node_id: item.node_id, param: item.param }))
 }

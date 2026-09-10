@@ -28,8 +28,10 @@ Instructions the editor understands offline:
 | disable / enable "Denoise" | Toggles the node's enabled flag |
 | delete "Result image" | Removes the node and its edges (image_source cannot be deleted) |
 | too many false rejects / it is missing them / make it 4 / ±0.2 | The same parameter mapping as iterative refinement |
+| find the outer circle first, then let the inner circle's ROI follow it | Adds a `shape_align` fed by the first node's centre (`cx`/`cy`, or `matches`) and wires its `transform` into the second node's implicit `_transform` port; "outer / inner" that match no node title pick the largest / smallest ROI. The reference position is taught from the current picture's trial run |
+| just do it / please change the canvas | An instruction with no content of its own reuses the previous request from the conversation |
 
-With an LLM provider connected there is no fixed grammar: "add a tolerance judge of ±0.5 after the circle find", "replace the colour comparison with a colour range and a pixel count". The LLM receives the current graph and the tool catalogue, changes only what it needs to and keeps the node ids.
+With an LLM provider connected there is no fixed grammar: "add a tolerance judge of ±0.5 after the circle find", "replace the colour comparison with a colour range and a pixel count". The LLM receives the current graph, the tool catalogue and the recent conversation, changes only what it needs to and keeps the node ids. Whatever produced the change, the reply lists what differs from the current graph (added or removed steps, parameter and enabled changes, link counts); a reply that changes nothing has no "Apply" button.
 
 ### What the assistant knows about your screen {#situation}
 

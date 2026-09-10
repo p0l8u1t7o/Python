@@ -2243,7 +2243,7 @@ const zhHant = {
       improved: '改善 {{count}} 張', regressed: '退步 {{count}} 張', changed: '判定改變 {{count}} 張', paramDiff: '參數變動',
       slowest: '最慢影像', nodeTime: '最耗時節點',
     },
-    compare: { hint: '在執行紀錄點選另一筆執行的比較圖示，即可與目前選取的執行逐張對照', a: '基準', b: '對照', changed: '判定改變', improved: '改善', regressed: '退步', same: '相同', onlyChanged: '只看有變化的影像', sameParams: '兩次執行的參數相同' },
+    compare: { hint: '在上方選擇此影像集的另一次已完成執行（或在執行紀錄點選比較圖示），即可與目前選取的執行逐張對照', pick: '將 {{run}} 與下列執行比較', none: '選擇一次執行', needTwo: '此影像集尚無其他已完成的執行', a: '基準', b: '對照', changed: '判定改變', improved: '改善', regressed: '退步', same: '相同', onlyChanged: '只看有變化的影像', sameParams: '兩次執行的參數相同' },
     tune: {
       hint: '修改現場調機參數後「重新執行」同一影像集比較結果；滿意後寫回流程、存為配方或帶回編輯器',
       noGraph: '請先選擇一次執行或流程', noTeach: '此流程沒有標記為現場調機的參數', changes: '{{count}} 項變更', fromRun: '參數取自執行 #{{id}}',

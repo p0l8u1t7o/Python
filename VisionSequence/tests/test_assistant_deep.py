@@ -68,6 +68,9 @@ INTENT_CORPUS = [
     ("把 二值化 的 threshold 改成 80", EDITOR, "edit"), ("停用去雜訊", EDITOR, "edit"), ("刪除結果影像", EDITOR, "edit"), ("在找圓後面加公差判定 ±0.5", EDITOR, "edit"),
     ("門檻放寬一點", EDITOR, "edit"), ("誤判太多了", EDITOR, "edit"), ("期望數量改為 4", EDITOR, "edit"), ("Set blob min_area to 40", EDITOR, "edit"), ("把顏色比對換成顏色範圍", EDITOR, "edit"),
     ("新增一個判定步驟", TOOL, "edit"), ("min_area 調到 60", TOOL, "edit"),
+    # 接線與位置修正的說法、沒有內容但明確要動手的句子（以前都被當成說明問答）
+    ("先找外圓心，內圓心ROI再跟著外圓心位移", EDITOR, "edit"), ("請幫我直接修改畫布", EDITOR, "edit"), ("讓量測 ROI 跟著定位範本走", TOOL, "edit"),
+    ("為什麼沒有改?", EDITOR, "help"), ("如何讓 ROI 跟著位移？", EDITOR, "help"),
     ("如何在畫布上連接兩個步驟？", EDITOR, "help"), ("blob 的 min_area 是做什麼的", EDITOR, "help"), ("此工具可以接到哪些工具", TOOL, "help"), ("為什麼試執行沒有影像", EDITOR, "help"),
     ("How do I add an ROI?", EDITOR, "help"), ("停用去雜訊會有什麼影響？", EDITOR, "help"), ("此工具的參數各代表什麼？", TOOL, "help"), ("參數該如何調整才不會誤判？", TOOL, "help"),
     ("為什麼第 3 張 NG？", BATCH, "consult"), ("哪個門檻該調？", BATCH, "consult"), ("與上一次相比改善了什麼？", BATCH, "consult"), ("未命中的影像有哪些", BATCH, "consult"),

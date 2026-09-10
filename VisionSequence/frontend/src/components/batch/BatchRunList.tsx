@@ -53,11 +53,12 @@ export function BatchRunList({ runs, selectedId, onSelect, compareId, onCompare,
                     <span className="tnum"><b className="text-ok">{s.ok ?? 0}</b> / <b className="text-warning">{s.ng ?? 0}</b> / <b className="text-critical">{s.failed ?? 0}</b></span>
                     {s.labeled ? <span className="tnum">{t('batchPage.kpi.match')} {fmtPct(s.match_rate)}</span> : null}
                     <span className="tnum">{r.created_at ? new Date(r.created_at).toLocaleString() : ''}</span>
-                    <span className="ml-auto flex items-center gap-0.5 opacity-0 group-hover:opacity-100">
+                    <span className="ml-auto flex items-center gap-0.5">
+                      {/* 比較圖示一直看得到（以前只在 hover 時出現，使用者以為沒有這個功能）；刪除仍只在 hover 時出現 */}
                       {r.status === 'done' && r.id !== selectedId ? (
-                        <button type="button" className={`btn-icon ${compareId === r.id ? 'text-warning' : ''}`} title={compareId === r.id ? t('batchPage.clearCompare') : t('batchPage.compareWith')} onClick={(e) => { e.stopPropagation(); onCompare(compareId === r.id ? null : r.id) }} data-testid="batch-run-compare"><GitCompare size={12} /></button>
+                        <button type="button" className={`btn-icon ${compareId === r.id ? 'text-warning' : 'text-muted'}`} title={compareId === r.id ? t('batchPage.clearCompare') : t('batchPage.compareWith')} onClick={(e) => { e.stopPropagation(); onCompare(compareId === r.id ? null : r.id) }} data-testid="batch-run-compare"><GitCompare size={12} /></button>
                       ) : null}
-                      <button type="button" className="btn-icon text-critical" aria-label={t('common.delete')} onClick={(e) => { e.stopPropagation(); onDelete(r) }}><Trash2 size={12} /></button>
+                      <button type="button" className="btn-icon text-critical opacity-0 group-hover:opacity-100" aria-label={t('common.delete')} onClick={(e) => { e.stopPropagation(); onDelete(r) }}><Trash2 size={12} /></button>
                     </span>
                   </div>
                 )}

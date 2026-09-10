@@ -9,6 +9,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { BarChart3, GitCompare, Images, ListChecks, SlidersHorizontal } from 'lucide-react'
 
 import { BatchComparePanel } from '@/components/batch/BatchCompare'
+import { runTitle } from '@/components/batch/BatchRunList'
 import { BatchImagesGrid } from '@/components/batch/BatchImagesGrid'
 import { BatchInsightsPanel } from '@/components/batch/BatchInsights'
 import { BatchRowPreviewModal } from '@/components/batch/BatchRowPreviewModal'
@@ -220,6 +221,8 @@ export function BatchPage() {
     { value: 'tune' as const, label: t('batchPage.tabs.tune'), icon: SlidersHorizontal },
   ]
   const currentRun: BatchRun | null = run.data ?? null
+  // 可以拿來比較的：同一個影像集、已完成、不是目前選的那一次
+  const compareCandidates = useMemo(() => runItems.filter((r) => r.status === 'done' && r.id !== runId), [runItems, runId])
   const currentSet: BatchSet | null = set.data ?? null
   //: 全域 AI 助手：選定一次已完成的執行後可資料諮詢／依資料調整，建議可套進調參面板、新執行自動選中
   const snapshotRef = useRef<() => Record<string, unknown>>(() => ({}))
@@ -277,7 +280,21 @@ export function BatchPage() {
                 : <EmptyState title={currentSet ? t('batchPage.noRuns') : t('batchPage.noSets')} compact />) : null}
               {tab === 'images' ? (currentSet ? <BatchImagesGrid set={currentSet} run={currentRun} onLabel={(i, e) => void label(i, e)} onBulk={(e) => void bulkLabel(e)} onPreview={setPreviewIndex} canManage={canManage} /> : <EmptyState title={t('batchPage.noSets')} compact />) : null}
               {tab === 'insights' ? (currentRun && currentSet ? <BatchInsightsPanel insights={insights.data} runs={runItems} set={currentSet} run={currentRun} onApply={apply} onPreview={setPreviewIndex} /> : <EmptyState title={t('batchPage.noRuns')} compact />) : null}
-              {tab === 'compare' ? <BatchComparePanel compare={compare} onPreview={setPreviewIndex} /> : null}
+              {tab === 'compare' ? (
+                <div className="space-y-3">
+                  {currentRun ? (
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <label className="label mb-0" htmlFor="batch-compare-with">{t('batchPage.compare.pick', { run: runTitle(currentRun) })}</label>
+                      <select id="batch-compare-with" className="input h-8 w-auto min-w-48 py-0 text-sm" value={compareId ?? ''} disabled={!compareCandidates.length}
+                        onChange={(e) => setCompareId(e.target.value ? Number(e.target.value) : null)} data-testid="batch-compare-select">
+                        <option value="">{compareCandidates.length ? t('batchPage.compare.none') : t('batchPage.compare.needTwo')}</option>
+                        {compareCandidates.map((r) => <option key={r.id} value={r.id}>{runTitle(r)}</option>)}
+                      </select>
+                    </div>
+                  ) : <EmptyState title={t('batchPage.noRuns')} compact />}
+                  {currentRun ? <BatchComparePanel compare={compare} onPreview={setPreviewIndex} /> : null}
+                </div>
+              ) : null}
               {tab === 'tune' ? <BatchTunePanel graph={graph} baseGraph={flow.data?.graph ?? null} defs={defs} canEditFlow={canEditFlow} sourceRunId={graphSource.startsWith('run:') ? Number(graphSource.slice(4)) : null}
                 onChange={setGraph} onRun={() => void startRun(graph, { label: t('batchPage.tune.runLabel') })} onSaveFlow={() => void saveFlow()} onSaveRecipe={(n) => void saveRecipe(n)}
                 onReset={() => setGraphSource('')} onToEditor={toEditor} busy={mut.startRun.isPending}
