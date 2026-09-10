@@ -47,7 +47,9 @@ class RegionFromShapeTool(Tool):
     inputs = [Port("image", "Image (for drawing)", "image", required=False)]
     outputs = [
         Port("region", "Region", "region"),
-        Port("point", "Centre", "any"), Port("line", "Line", "any"), Port("circle", "Circle", "any"),
+        Port("point", "Centre", "any", semantic="point"),
+        Port("line", "Line", "any", semantic="line"),
+        Port("circle", "Circle", "any", semantic="circle"),
     ]
 
     def execute(self, ctx: ToolContext) -> Result:

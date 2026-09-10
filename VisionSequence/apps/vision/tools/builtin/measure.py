@@ -459,7 +459,8 @@ class DistanceTool(Tool):
     ]
     inputs = [
         Port("image", "Image", "image", required=False),
-        Port("a", "Point A", "any", required=False), Port("b", "Point B", "any", required=False),
+        Port("a", "Point A", "any", required=False, accepts_semantics=("point", "line", "circle")),
+        Port("b", "Point B", "any", required=False, accepts_semantics=("point", "line", "circle")),
         Port("ax", "A.x", "number", required=False), Port("ay", "A.y", "number", required=False),
         Port("bx", "B.x", "number", required=False), Port("by", "B.y", "number", required=False),
     ]
@@ -563,7 +564,8 @@ class AngleTool(Tool):
     ]
     inputs = [
         Port("image", "Image", "image", required=False),
-        Port("a", "Line A", "any", required=False), Port("b", "Line B", "any", required=False),
+        Port("a", "Line A", "any", required=False, accepts_semantics=("line",)),
+        Port("b", "Line B", "any", required=False, accepts_semantics=("line",)),
         Port("ax1", "A.x1", "number", required=False), Port("ay1", "A.y1", "number", required=False),
         Port("ax2", "A.x2", "number", required=False), Port("ay2", "A.y2", "number", required=False),
         Port("bx1", "B.x1", "number", required=False), Port("by1", "B.y1", "number", required=False),
@@ -993,7 +995,7 @@ class FitArcTool(Tool):
         Port("radius", "Radius", "number"), Port("cx", "Centre X", "number"), Port("cy", "Centre Y", "number"),
         Port("residual_rms", "Residual RMS", "number"), Port("points", "Edge points", "points"),
         Port("start_angle", "Start angle", "number"), Port("end_angle", "End angle", "number"),
-        Port("circle", "Circle", "any"),
+        Port("circle", "Circle", "any", semantic="circle"),
     ]
 
     def execute(self, ctx: ToolContext) -> Result:
@@ -1265,7 +1267,8 @@ class ConcentricityTool(Tool):
     ]
     inputs = [
         Port("image", "Image", "image", required=False),
-        Port("a", "Circle A", "any", required=False), Port("b", "Circle B", "any", required=False),
+        Port("a", "Circle A", "any", required=False, accepts_semantics=("circle",)),
+        Port("b", "Circle B", "any", required=False, accepts_semantics=("circle",)),
         Port("ax", "A centre X", "number", required=False), Port("ay", "A centre Y", "number", required=False), Port("ar", "A radius", "number", required=False),
         Port("bx", "B centre X", "number", required=False), Port("by", "B centre Y", "number", required=False), Port("br", "B radius", "number", required=False),
     ]
@@ -1413,8 +1416,8 @@ class EdgeTrendTool(Tool):
     inputs = [
         Port("image", "Image", "image"),
         Port("roi", "Region (dynamic)", "region", required=False),
-        Port("line", "Reference line", "any", required=False),
-        Port("circle", "Reference circle", "any", required=False),
+        Port("line", "Reference line", "any", required=False, accepts_semantics=("line",)),
+        Port("circle", "Reference circle", "any", required=False, accepts_semantics=("circle",)),
     ]
     outputs = [
         flow_out("ok", "In trend", "ok"), flow_out("ng", "Out of trend", "critical"),
@@ -1517,7 +1520,7 @@ class ChamferAngleTool(Tool):
     inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
     outputs = [
         Port("angle_deg", "Angle", "number"), Port("length", "Chamfer length", "number"),
-        Port("line1", "Main edge", "any"), Port("line2", "Chamfer edge", "any"),
+        Port("line1", "Main edge", "any", semantic="line"), Port("line2", "Chamfer edge", "any", semantic="line"),
         Port("ix", "Intersection X", "number"), Port("iy", "Intersection Y", "number"), Port("points", "Edge points", "points"),
     ]
 
@@ -1975,9 +1978,9 @@ class GeometryTool(Tool):
               help_text="Add restores crop-local coordinates to the original image; subtract maps original-image coordinates back into the crop."),
     ]
     inputs = [
-        Port("a", "A (line / point)", "any", required=False),
-        Port("b", "B (line / point)", "any", required=False),
-        Port("c", "C (point)", "any", required=False),
+        Port("a", "A (line / point)", "any", required=False, accepts_semantics=("point", "line")),
+        Port("b", "B (line / point)", "any", required=False, accepts_semantics=("point", "line")),
+        Port("c", "C (point)", "any", required=False, accepts_semantics=("point",)),
         Port("points", "Points", "points", required=False),
         Port("matches", "Matches", "matches", required=False),
         Port("offset_x", "Offset X", "number", required=False),
@@ -1990,7 +1993,7 @@ class GeometryTool(Tool):
         Port("angle_world", "Angle (world)", "number"),
         Port("unit", "Unit", "string"),
         Port("x", "X", "number"), Port("y", "Y", "number"), Port("distance", "Distance", "number"),
-        Port("angle", "Angle", "number"), Port("line", "Line", "any"), Port("circle", "Circle", "any"),
+        Port("angle", "Angle", "number"), Port("line", "Line", "any", semantic="line"), Port("circle", "Circle", "any", semantic="circle"),
         Port("points", "Points", "points"), Port("matches", "Matches", "matches"), Port("count", "Count", "number"),
     ]
 
@@ -2159,8 +2162,10 @@ class PointsMergeTool(Tool):
         Param("unique", "Drop repeats", kind="boolean", default=False, help_text="Points closer together than a tenth of a pixel count as one."),
     ]
     inputs = [
-        Port("a", "A", "any"), Port("b", "B", "any", required=False),
-        Port("c", "C", "any", required=False), Port("d", "D", "any", required=False),
+        Port("a", "A", "any", accepts_semantics=("point",)),
+        Port("b", "B", "any", required=False, accepts_semantics=("point",)),
+        Port("c", "C", "any", required=False, accepts_semantics=("point",)),
+        Port("d", "D", "any", required=False, accepts_semantics=("point",)),
         Port("image", "Image", "image", required=False),
     ]
     outputs = [Port("points", "Points", "points"), Port("count", "Count", "number"),
@@ -2246,13 +2251,13 @@ class CoordinateTool(Tool):
               help_text="Clockwise on screen. Used when the angle input is not connected."),
     ]
     inputs = [
-        Port("point", "Origin point", "any", required=False),
+        Port("point", "Origin point", "any", required=False, accepts_semantics=("point",)),
         Port("angle", "X axis angle", "number", required=False),
-        Port("point2", "Point on X axis", "any", required=False),
-        Port("line", "Directed line", "any", required=False),
+        Port("point2", "Point on X axis", "any", required=False, accepts_semantics=("point",)),
+        Port("line", "Directed line", "any", required=False, accepts_semantics=("line",)),
     ]
     outputs = [
-        Port("frame", "Coordinate frame", "any"), Port("origin_x", "Origin X", "number"),
+        Port("frame", "Coordinate frame", "any", semantic="frame"), Port("origin_x", "Origin X", "number"),
         Port("origin_y", "Origin Y", "number"), Port("angle", "X axis angle", "number"),
         flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"),
     ]
@@ -2313,7 +2318,7 @@ class ToWorldTool(Tool):
         Param("decimals", "Decimals", kind="number", default=3, minimum=0, maximum=6, step=1, group="advanced"),
     ]
     inputs = [
-        Port("frame", "Coordinate frame", "any", required=False),
+        Port("frame", "Coordinate frame", "any", required=False, accepts_semantics=("frame",)),
         Port("points", "Points", "points", required=False),
         Port("x", "X (pixels)", "number", required=False), Port("y", "Y (pixels)", "number", required=False),
         Port("value", "Pixel length", "number", required=False),

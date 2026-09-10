@@ -90,7 +90,7 @@ class FitLinePointsTool(Tool):
     inputs = [Port("points", "Points", "points", required=False), Port("contours", "Contours", "contours", required=False)]
     outputs = [
         flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"),
-        Port("line", "Line", "any"), Port("x1", "X1", "number"), Port("y1", "Y1", "number"),
+        Port("line", "Line", "any", semantic="line"), Port("x1", "X1", "number"), Port("y1", "Y1", "number"),
         Port("x2", "X2", "number"), Port("y2", "Y2", "number"), Port("angle", "Angle", "number"),
         Port("residual_rms", "Residual RMS", "number"), Port("inliers", "Inliers", "number"), Port("count", "Count", "number"),
         Port("x1_world", "X1 (world)", "number"), Port("y1_world", "Y1 (world)", "number"),
@@ -142,7 +142,7 @@ class FitCirclePointsTool(Tool):
     inputs = [Port("points", "Points", "points", required=False), Port("contours", "Contours", "contours", required=False)]
     outputs = [
         flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"),
-        Port("circle", "Circle", "any"), Port("cx", "Centre X", "number"), Port("cy", "Centre Y", "number"),
+        Port("circle", "Circle", "any", semantic="circle"), Port("cx", "Centre X", "number"), Port("cy", "Centre Y", "number"),
         Port("r", "Radius", "number"), Port("diameter", "Diameter", "number"),
         Port("residual_rms", "Residual RMS", "number"), Port("inliers", "Inliers", "number"), Port("count", "Count", "number"),
         Port("cx_world", "Centre X (world)", "number"), Port("cy_world", "Centre Y (world)", "number"),
@@ -192,7 +192,7 @@ class FitEllipsePointsTool(Tool):
     inputs = [Port("points", "Points", "points", required=False), Port("contours", "Contours", "contours", required=False)]
     outputs = [
         flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"),
-        Port("ellipse", "Ellipse", "any"), Port("cx", "Centre X", "number"), Port("cy", "Centre Y", "number"),
+        Port("ellipse", "Ellipse", "any", semantic="ellipse"), Port("cx", "Centre X", "number"), Port("cy", "Centre Y", "number"),
         Port("major", "Major axis", "number"), Port("minor", "Minor axis", "number"), Port("angle", "Angle", "number"),
         Port("residual_rms", "Residual RMS", "number"), Port("count", "Count", "number"),
         Port("cx_world", "Centre X (world)", "number"), Port("cy_world", "Centre Y (world)", "number"),

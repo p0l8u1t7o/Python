@@ -191,7 +191,7 @@ class TrackObjectsTool(Tool):
     inputs = [
         Port("matches", "Matches", "matches", required=False),
         Port("boxes", "Boxes", "matches", required=False),
-        Port("count_line", "Count line", "any", required=False),
+        Port("count_line", "Count line", "any", required=False, accepts_semantics=("line",)),
         Port("reset", "Reset", "bool", required=False),
         Port("image", "Image (for display)", "image", required=False),
     ]

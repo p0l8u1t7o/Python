@@ -39,6 +39,9 @@ PORT_TYPES = (
     "flow",
 )
 
+# `any` 埠的選填語意標記。這只供前端來源選擇器過濾候選，不參與圖驗證。
+SEMANTICS = ("point", "line", "circle", "ellipse", "transform", "frame")
+
 # Param.kind 封閉集合（前端 ParamField 同步）。
 PARAM_KINDS = (
     "text", "multiline", "number", "boolean", "select",
@@ -219,9 +222,13 @@ class Port:
     multiple: bool = False
     #: 輸出埠（type="flow"）的顏色語意：neutral | ok | warn | critical
     tone: str = "neutral"
+    #: 輸出埠：`type="any"` 時可宣告實際語意，供來源選擇器過濾。
+    semantic: str = ""
+    #: 輸入埠：`type="any"` 時可宣告接受哪些語意的來源。
+    accepts_semantics: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        out = {
             "key": self.key,
             "label": self.label,
             "type": self.type,
@@ -229,6 +236,11 @@ class Port:
             "multiple": self.multiple,
             "tone": self.tone,
         }
+        if self.semantic:
+            out["semantic"] = self.semantic
+        if self.accepts_semantics:
+            out["accepts_semantics"] = list(self.accepts_semantics)
+        return out
 
 
 def flow_out(key: str, label: str, tone: str = "neutral") -> Port:
@@ -494,6 +506,13 @@ def register(tool: ToolType) -> ToolType:
     for port in list(tool.inputs) + list(tool.outputs):
         if port.type not in PORT_TYPES:
             raise RuntimeError(f"The tool '{tool.key}' port '{port.key}' has a type '{port.type}' that is not valid")
+        if port.semantic and port.semantic not in SEMANTICS:
+            raise RuntimeError(f"The tool '{tool.key}' port '{port.key}' has a semantic '{port.semantic}' that is not in the allowed set")
+        for semantic in port.accepts_semantics:
+            if semantic not in SEMANTICS:
+                raise RuntimeError(
+                    f"The tool '{tool.key}' port '{port.key}' accepts semantic '{semantic}' that is not in the allowed set"
+                )
     _REGISTRY[tool.key] = tool
     return tool
 
@@ -583,13 +602,20 @@ class ImplicitPort:
     collect: bool = False
     #: True＝上游有接但值是 None 時仍要留一個 None（讓工具分得出「沒接」與「接了但沒找到」）。
     keep_none: bool = False
+    semantic: str = ""
+    accepts_semantics: tuple[str, ...] = ()
 
     def shows_on(self, tool: ToolType) -> bool:
         return self.catalogued and (self.when is None or self.when(tool))
 
     def as_dict(self) -> dict[str, Any]:
-        return {"key": self.key, "label": self.label, "type": self.type, "required": False,
-                "multiple": self.multiple, "tone": "neutral", "implicit": True}
+        out = {"key": self.key, "label": self.label, "type": self.type, "required": False,
+               "multiple": self.multiple, "tone": "neutral", "implicit": True}
+        if self.semantic:
+            out["semantic"] = self.semantic
+        if self.accepts_semantics:
+            out["accepts_semantics"] = list(self.accepts_semantics)
+        return out
 
 
 IMPLICIT_INPUTS: tuple[ImplicitPort, ...] = (
@@ -597,7 +623,8 @@ IMPLICIT_INPUTS: tuple[ImplicitPort, ...] = (
     ImplicitPort(FLOW_IN, "Control", "flow", multiple=True, catalogued=False),
     ImplicitPort(IMAGE_THRU, "Image (pass-through)", "image", when=_takes_no_image, collect=True),
     # 位置修正：有畫 ROI 的工具才出現；`ctx.roi()` 會把區域跟著工件移動，工具本身不必知道
-    ImplicitPort(TRANSFORM_IN, "Position correction", "any", when=_has_roi_param, collect=True, keep_none=True),
+    ImplicitPort(TRANSFORM_IN, "Position correction", "any", when=_has_roi_param, collect=True, keep_none=True,
+                 accepts_semantics=("transform",)),
 )
 IMPLICIT_OUTPUTS: tuple[ImplicitPort, ...] = (
     ImplicitPort(IMAGE_THRU, "Image (pass-through)", "image"),

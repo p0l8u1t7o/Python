@@ -179,7 +179,8 @@ class GdtMeasureTool(Tool):
     ]
     inputs = [
         Port("points", "Points", "points", required=False),
-        Port("a", "Feature a", "any", required=False), Port("b", "Datum b", "any", required=False),
+        Port("a", "Feature a", "any", required=False, accepts_semantics=("line",)),
+        Port("b", "Datum b", "any", required=False, accepts_semantics=("line",)),
         Port("scale", "Scale (mm per pixel)", "number", required=False),
         Port("image", "Image (for display)", "image", required=False),
     ]

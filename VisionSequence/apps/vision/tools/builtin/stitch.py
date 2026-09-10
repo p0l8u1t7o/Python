@@ -304,7 +304,7 @@ class StitchImagesTool(Tool):
     ]
     outputs = [
         Port("image", "Image", "image"), Port("count", "Pictures", "number"), Port("width", "Width", "number"),
-        Port("height", "Height", "number"), Port("offsets", "Grid offsets", "list"), Port("origin", "World origin", "any"),
+        Port("height", "Height", "number"), Port("offsets", "Grid offsets", "list"), Port("origin", "World origin", "any", semantic="point"),
         Port("scale", "Scale", "number"),
     ]
 

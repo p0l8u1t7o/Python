@@ -79,11 +79,11 @@ class AlignOffsetTool(Tool):
         Port("b", "Current Y", "number", required=False),
         Port("c", "Current angle", "number", required=False),
         Port("points", "Current points", "points", required=False),
-        Port("line", "Current line", "any", required=False),
+        Port("line", "Current line", "any", required=False, accepts_semantics=("line",)),
     ]
     outputs = [
         Port("dx", "X offset", "number"), Port("dy", "Y offset", "number"),
-        Port("dtheta", "Angle offset", "number"), Port("transform", "Transform", "any"),
+        Port("dtheta", "Angle offset", "number"), Port("transform", "Transform", "any", semantic="transform"),
         Port("abs_x", "Absolute X (pixels)", "number"), Port("abs_y", "Absolute Y (pixels)", "number"),
         Port("abs_angle", "Absolute angle (image)", "number"),
         Port("world_x", "Absolute world X", "number"), Port("world_y", "Absolute world Y", "number"),

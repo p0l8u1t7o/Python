@@ -853,7 +853,7 @@ class ShapeAlignTool(Tool):
     ]
     outputs = [
         Port("dx", "dx", "number"), Port("dy", "dy", "number"), Port("dtheta", "dθ", "number"),
-        Port("transform", "Transform", "any"),
+        Port("transform", "Transform", "any", semantic="transform"),
     ]
 
     def execute(self, ctx: ToolContext) -> Result:
@@ -885,7 +885,7 @@ class FixtureRoiTool(Tool):
     params = [
         Param("roi", "Region", kind="roi", required=True, shapes=["rect", "rotated_rect", "circle", "annulus", "polygon", "line"]),
     ]
-    inputs = [Port("image", "Image", "image", required=False), Port("transform", "Transform", "any")]
+    inputs = [Port("image", "Image", "image", required=False), Port("transform", "Transform", "any", accepts_semantics=("transform",))]
     outputs = [Port("region", "Region", "region")]
 
     def execute(self, ctx: ToolContext) -> Result:
@@ -933,7 +933,7 @@ class ImageFixtureTool(Tool):
         Param("smooth", "Smooth the pixels", kind="boolean", default=True,
               help_text="On: interpolate, which looks right and measures better. Off: nearest pixel, which keeps labels and masks crisp."),
     ]
-    inputs = [Port("image", "Image", "image"), Port("transform", "Transform", "any")]
+    inputs = [Port("image", "Image", "image"), Port("transform", "Transform", "any", accepts_semantics=("transform",))]
     outputs = [
         Port("image", "Image", "image"),
         Port("dx", "dx", "number"), Port("dy", "dy", "number"), Port("dtheta", "d angle", "number"),
@@ -1132,7 +1132,7 @@ class FindCircleTool(Tool):
         flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"),
         Port("cx", "Centre X", "number"), Port("cy", "Centre Y", "number"), Port("r", "Radius", "number"),
         Port("diameter", "Diameter", "number"),
-        Port("points", "Edge points", "points"), Port("score", "Score", "number"), Port("circle", "Circle", "any"),
+        Port("points", "Edge points", "points"), Port("score", "Score", "number"), Port("circle", "Circle", "any", semantic="circle"),
     ]
 
     def execute(self, ctx: ToolContext) -> Result:
@@ -1826,7 +1826,10 @@ class FindQuadrilateralTool(Tool):
     params = []
     inputs = [
         Port("image", "Image", "image", required=False),
-        Port("a", "Edge 1", "any"), Port("b", "Edge 2", "any"), Port("c", "Edge 3", "any"), Port("d", "Edge 4", "any"),
+        Port("a", "Edge 1", "any", accepts_semantics=("line",)),
+        Port("b", "Edge 2", "any", accepts_semantics=("line",)),
+        Port("c", "Edge 3", "any", accepts_semantics=("line",)),
+        Port("d", "Edge 4", "any", accepts_semantics=("line",)),
     ]
     outputs = [
         flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"),
@@ -1904,8 +1907,9 @@ class FindParallelLinesTool(Tool):
         Port("unit", "Unit", "string"),
         flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"),
         Port("distance", "Width", "number"), Port("min_distance", "Narrowest", "number"), Port("max_distance", "Widest", "number"),
-        Port("angle", "Angle", "number"), Port("line_a", "Edge A", "any"), Port("line_b", "Edge B", "any"),
-        Port("center_line", "Centre line", "any"), Port("widths", "Widths", "list"), Port("found_count", "Calipers that found a pair", "number"),
+        Port("angle", "Angle", "number"), Port("line_a", "Edge A", "any", semantic="line"),
+        Port("line_b", "Edge B", "any", semantic="line"),
+        Port("center_line", "Centre line", "any", semantic="line"), Port("widths", "Widths", "list"), Port("found_count", "Calipers that found a pair", "number"),
     ]
 
     def execute(self, ctx: ToolContext) -> Result:
@@ -1997,7 +2001,7 @@ class FindLinesMultiTool(Tool):
     outputs = [
         flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"),
         Port("count", "How many", "number"), Port("lines", "Lines", "list"), Port("angles", "Angles", "list"),
-        Port("first", "First line", "any"), Port("points", "Edge points", "points"),
+        Port("first", "First line", "any", semantic="line"), Port("points", "Edge points", "points"),
     ]
 
     def execute(self, ctx: ToolContext) -> Result:
@@ -2177,7 +2181,7 @@ class FindLineTool(Tool):
         flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"),
         Port("x1", "X1", "number"), Port("y1", "Y1", "number"), Port("x2", "X2", "number"), Port("y2", "Y2", "number"),
         Port("angle", "Angle", "number"), Port("rho", "ρ", "number"), Port("theta", "θ", "number"),
-        Port("line", "Line", "any"), Port("points", "Edge points", "points"), Port("coverage", "Coverage", "number"),
+        Port("line", "Line", "any", semantic="line"), Port("points", "Edge points", "points"), Port("coverage", "Coverage", "number"),
     ]
 
     def execute(self, ctx: ToolContext) -> Result:

@@ -252,8 +252,8 @@ class EdgeDefectTool(Tool):
     inputs = [
         Port("image", "Image", "image"),
         Port("roi", "Region (dynamic)", "region", required=False),
-        Port("line", "Ideal line", "any", required=False),
-        Port("circle", "Ideal circle", "any", required=False),
+        Port("line", "Ideal line", "any", required=False, accepts_semantics=("line",)),
+        Port("circle", "Ideal circle", "any", required=False, accepts_semantics=("circle",)),
     ]
     outputs = [
         flow_out("ok", "Clean", "ok"), flow_out("defect", "Faults found", "critical"),
