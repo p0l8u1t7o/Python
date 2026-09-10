@@ -611,7 +611,7 @@ const en = {
     missingSource: 'Choose an image source in the capture step',
     empty: 'No matching template',
     menu: 'Templates',
-    categories: { count: 'Count', quality: 'Quality', measure: 'Measure', detect: 'Detect', identify: 'Identify', tutorial: 'Tutorial', custom: 'Custom' },
+    categories: { count: 'Count', quality: 'Quality', measure: 'Measure', detect: 'Detect', identify: 'Identify', tutorial: 'Tutorial', automation: 'Automation', custom: 'Custom' },
   },
   batch: {
     title: 'Batch test',

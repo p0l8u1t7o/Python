@@ -1244,7 +1244,7 @@ function EditorInner({ flowId }: { flowId: number }) {
           <div className="relative flex min-h-0 flex-1">
             {gridMode ? (
               <div
-                className="grid min-h-0 min-w-0 flex-1 gap-1 bg-viewer p-1"
+                className="grid min-h-0 min-w-0 flex-1 gap-1 bg-viewer p-1 pb-10"
                 style={{ gridTemplateColumns: `repeat(${gridPlace.cols}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${gridPlace.rows}, minmax(0, 1fr))` }}
                 data-testid="editor-grid-view"
               >
@@ -1329,8 +1329,8 @@ function EditorInner({ flowId }: { flowId: number }) {
                 ) : null}
               </>
             )}
-            {/* 影像視窗的顯示選項 */}
-            <div className="absolute bottom-2 left-2 flex items-center gap-1 rounded-lg border border-line bg-surface/90 px-1.5 py-1 text-[11px] backdrop-blur">
+            {/* 影像視窗的顯示選項：要壓在宮格每格底部的節點選單（z-20）之上，否則切到宮格後就按不到「執行前後」與退出宮格 */}
+            <div className="absolute bottom-2 left-2 z-30 flex items-center gap-1 rounded-lg border border-line bg-surface/90 px-1.5 py-1 text-[11px] backdrop-blur" data-testid="viewer-options">
               <Camera size={12} className="text-muted" />
               <button type="button" className={optionBtn(effectiveMode === 'input' && !split && !gridMode)} disabled={!view.hasInput || split || gridMode} onClick={() => setViewMode('input')}>
                 {t('editor.viewer.showInput')}

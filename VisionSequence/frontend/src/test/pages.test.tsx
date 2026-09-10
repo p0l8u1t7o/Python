@@ -189,6 +189,11 @@ describe('pages render (smoke)', () => {
     fireEvent.click(await screen.findByTestId('btn-grid-view'))
     expect(await screen.findByTestId('editor-grid-view')).toBeInTheDocument()
     expect(screen.getAllByTestId('editor-grid-cell')).toHaveLength(4)
+    // 顯示選項列在宮格模式下仍在（且壓在格子之上），再按一次就回到單一檢視
+    expect(screen.getByTestId('viewer-options').className).toContain('z-30')
+    fireEvent.click(screen.getByTestId('btn-grid-view'))
+    expect(screen.queryByTestId('editor-grid-view')).toBeNull()
+    expect(screen.getByTestId('btn-split')).not.toBeDisabled()
   })
 
   it('FlowEditorPage starts image sequence preview from the toolbar', async () => {

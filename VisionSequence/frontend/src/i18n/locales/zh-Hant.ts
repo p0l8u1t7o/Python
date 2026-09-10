@@ -1572,7 +1572,7 @@ const zhHant = {
     missingSource: '請在取像步驟選擇影像來源',
     empty: '沒有符合的範本',
     menu: '範本',
-    categories: { count: '計數', quality: '品質', measure: '量測', detect: '偵測', identify: '識別', tutorial: '教學', custom: '自訂' },
+    categories: { count: '計數', quality: '品質', measure: '量測', detect: '偵測', identify: '識別', tutorial: '教學', automation: '自動化', custom: '自訂' },
   },
   batch: {
     title: '批次測試',

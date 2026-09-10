@@ -7,12 +7,13 @@ runner 會把工作丟進執行緒池（跨執行緒寫 DB），所以用 Transa
 
 from __future__ import annotations
 
+import re
 import shutil
 import tempfile
 import os
 
 from django.conf import settings
-from django.test import TransactionTestCase, override_settings
+from django.test import SimpleTestCase, TransactionTestCase, override_settings
 
 from apps.vision.api_more import SOURCE_PLACEHOLDER, instantiate
 from apps.vision import demo, fixed_images
@@ -170,3 +171,17 @@ class DemoSeedTests(TransactionTestCase):
                     self.assertFalse(errors, f"{name} 有 error 節點: {errors}")
                 finally:
                     flow.delete()
+
+
+class TemplateCategoryLabelTests(SimpleTestCase):
+    """範本畫廊的分類名稱由前端 `templates.categories` 翻譯：後端多一種分類（automation）而字典沒補，中文介面就會直接顯示英文 key。"""
+
+    def test_every_builtin_category_has_a_label(self):
+        from pathlib import Path
+
+        en = (Path(__file__).resolve().parents[1] / "frontend" / "src" / "i18n" / "locales" / "en.ts").read_text(encoding="utf-8")
+        m = re.search(r"^\s*categories: \{([^}]*)\}", en, re.M)
+        self.assertIsNotNone(m, "templates.categories not found in en.ts")
+        labelled = set(re.findall(r"(\w+):", m.group(1)))
+        used = {row[3] for row in BUILTIN_TEMPLATES}
+        self.assertFalse(used - labelled, f"template categories without a label: {sorted(used - labelled)}")

@@ -1572,7 +1572,7 @@ const zhHans = {
     missingSource: '请在取像步骤选择影像来源',
     empty: '没有符合的范本',
     menu: '范本',
-    categories: { count: '计数', quality: '品质', measure: '量测', detect: '侦测', identify: '识别', tutorial: '教学', custom: '自订' },
+    categories: { count: '计数', quality: '品质', measure: '量测', detect: '侦测', identify: '识别', tutorial: '教学', automation: '自动化', custom: '自订' },
   },
   batch: {
     title: '批量测试',

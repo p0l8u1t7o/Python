@@ -119,7 +119,7 @@ export function TemplateGallery({ open, onClose, mode, onPick, prefix }: Templat
     try {
       const useSamples = sourceId === '' || sourceId === 'samples'
       const inst = await instantiate.mutateAsync({ id: selected.id, source_id: sourceId && sourceId !== 'samples' ? Number(sourceId) : null, prefix: mode === 'load' ? prefix : '', use_samples: useSamples })
-      const done = await onPick({ graph: inst.graph, name: effectiveName.trim() || inst.name, description: inst.description, missingSource: inst.missing_source, template: selected })
+      const done = await onPick({ graph: inst.graph, name: effectiveName.trim() || inst.name, description: selected.description || inst.description, missingSource: inst.missing_source, template: selected })
       if (done === false) return
       setSelectedId(null)
       setName('')
@@ -214,9 +214,9 @@ export function TemplateGallery({ open, onClose, mode, onPick, prefix }: Templat
   )
 }
 
-const CATEGORIES = ['custom', 'count', 'quality', 'measure', 'detect', 'identify']
+const CATEGORIES = ['custom', 'count', 'quality', 'measure', 'detect', 'identify', 'automation']
 /** 畫廊分組順序：先教學，再依檢測目的，自訂最後 */
-const GALLERY_ORDER = ['tutorial', 'count', 'measure', 'quality', 'detect', 'identify', 'custom']
+const GALLERY_ORDER = ['tutorial', 'count', 'measure', 'quality', 'detect', 'identify', 'automation', 'custom']
 
 /** 存為範本：名稱／說明／類別。 */
 export function SaveTemplateModal({ open, onClose, graph, defaultName }: { open: boolean; onClose: () => void; graph: () => FlowGraph; defaultName: string }) {
