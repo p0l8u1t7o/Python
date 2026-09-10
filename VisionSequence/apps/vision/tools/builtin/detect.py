@@ -308,6 +308,11 @@ class BlobTool(Tool):
         Param("min_area", "Min area", kind="number", default=50, minimum=0, unit="px²", teach=True),
         Param("max_area", "Max area", kind="number", default=0, minimum=0, unit="px²", help_text="0 means no limit.", teach=True),
         Param("min_circularity", "Min circularity", kind="range", default=0, minimum=0, maximum=1, step=0.01, help_text="4πA/P², 1 for a perfect circle.", teach=True),
+        Param("expected", "Expected state", kind="select", default="any", options=[
+            {"value": "any", "label": "Any (no verdict change)"},
+            {"value": "present", "label": "Present"},
+            {"value": "absent", "label": "Absent"},
+        ], group="Verdict"),
         Param("max_count", "Max results", kind="number", default=100, minimum=1, maximum=5000),
         Param("sort_by", "Sort by", kind="select", default="area", options=BLOB_SORT_OPTIONS),
         Param("separate", "Split touching particles", kind="boolean", default=False, group="Advanced", help_text="A distance transform plus watershed splits touching particles before measuring; the seed window comes from the particle radius implied by the minimum area."),
@@ -322,6 +327,7 @@ class BlobTool(Tool):
         Port("largest_area", "Max area", "number"), Port("total_area", "Total area", "number"),
         Port("contours", "Contour", "contours"), Port("centers", "Centres", "points"), Port("mask", "Mask", "image"),
         Port("first_cx", "First centre X", "number"), Port("first_cy", "First centre Y", "number"),
+        Port("detected", "Detected", "bool"), Port("valid", "Valid", "bool"),
     ]
 
     def execute(self, ctx: ToolContext) -> Result:
@@ -398,14 +404,21 @@ class BlobTool(Tool):
             overlays.append({"kind": "point", "x": b["cx"], "y": b["cy"], "color": "#f59e0b", "label": f"#{i + 1} A={b['area']:.0f}"})
         count = len(blobs)
         ok = count >= ctx.integer("min_count", 1)
+        detected = count > 0
+        valid = not ctx.fixture_missing
+        expected = str(ctx.param("expected", "any"))
+        status = "ok" if ok else "ng"
+        if expected in ("present", "absent"):
+            status = "ok" if valid and detected == (expected == "present") else "ng"
         return Result(
             outputs={
                 "blobs": blobs, "count": count,
                 "largest_area": max((b["area"] for b in blobs), default=0.0), "total_area": float(sum(b["area"] for b in blobs)),
                 "contours": full_contours, "centers": [[b["cx"], b["cy"]] for b in blobs], "mask": out_mask,
                 "first_cx": blobs[0]["cx"] if blobs else float("nan"), "first_cy": blobs[0]["cy"] if blobs else float("nan"),
+                "detected": detected, "valid": valid,
             },
-            overlays=overlays, branch="found" if count else "not_found", status="ok" if ok else "ng",
+            overlays=overlays, branch="found" if count else "not_found", status=status,
             message=f"{count} blobs" + (f", max {blobs[0]['area'] if sort_by == 'area' else max(b['area'] for b in blobs):.0f}px²" if blobs else ""),
         )
 
@@ -750,9 +763,18 @@ class TextPresenceTool(Tool):
         Param("c", "Adaptive constant C", kind="number", default=10, minimum=-100, maximum=100, group="Advanced"),
         Param("min_ratio", "Min stroke ratio", kind="range", default=0.03, minimum=0, maximum=1, step=0.005, teach=True),
         Param("max_ratio", "Max stroke ratio", kind="range", default=0.6, minimum=0, maximum=1, step=0.005, help_text="Above this it is treated as smearing or a solid block.", teach=True),
+        Param("expected", "Expected state", kind="select", default="any", options=[
+            {"value": "any", "label": "Any (no verdict change)"},
+            {"value": "present", "label": "Present"},
+            {"value": "absent", "label": "Absent"},
+        ], group="Verdict"),
     ]
     inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
-    outputs = [flow_out("present", "Yes", "ok"), flow_out("absent", "No", "critical"), Port("ratio", "Stroke ratio", "number"), Port("is_present", "Printed", "bool"), Port("mask", "Stroke mask", "image")]
+    outputs = [
+        flow_out("present", "Yes", "ok"), flow_out("absent", "No", "critical"),
+        Port("ratio", "Stroke ratio", "number"), Port("is_present", "Printed", "bool"), Port("mask", "Stroke mask", "image"),
+        Port("detected", "Detected", "bool"), Port("valid", "Valid", "bool"),
+    ]
 
     def execute(self, ctx: ToolContext) -> Result:
         gray = to_gray(ctx.require_image())
@@ -773,9 +795,14 @@ class TextPresenceTool(Tool):
         present = ctx.number("min_ratio", 0.03) <= ratio <= ctx.number("max_ratio", 0.6)
         full = np.zeros(gray.shape, dtype=np.uint8)
         full[c.y0 : c.y0 + mask.shape[0], c.x0 : c.x0 + mask.shape[1]] = mask
-        return Result(outputs={"ratio": ratio, "is_present": present, "mask": full},
+        valid = not ctx.fixture_missing
+        expected = str(ctx.param("expected", "any"))
+        status = "ok" if present else "ng"
+        if expected in ("present", "absent"):
+            status = "ok" if valid and present == (expected == "present") else "ng"
+        return Result(outputs={"ratio": ratio, "is_present": present, "mask": full, "detected": present, "valid": valid},
                       overlays=[region_overlay(region, color="#22c55e" if present else "#ef4444", label=f"{ratio * 100:.1f}%")],
-                      branch="present" if present else "absent", status="ok" if present else "ng", message=f"Stroke ratio {ratio * 100:.1f}% → {'present' if present else 'absent'}")
+                      branch="present" if present else "absent", status=status, message=f"Stroke ratio {ratio * 100:.1f}% → {'present' if present else 'absent'}")
 
 
 def _hex_to_bgr(value: str) -> tuple[int, int, int]:

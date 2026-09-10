@@ -435,6 +435,62 @@ class ColorSegmentTool(Tool):
                       message=f"{len(classes)} classes, {total} px")
 
 
+def _parse_label_values(text: Any) -> set[int]:
+    """解析 `1,3,5` 與 `2-4` 這類標籤清單。"""
+    values: set[int] = set()
+    for part in str(text or "").replace("\n", ",").split(","):
+        item = part.strip()
+        if not item:
+            continue
+        if "-" in item:
+            left, _, right = item.partition("-")
+            try:
+                a, b = int(left.strip()), int(right.strip())
+            except ValueError:
+                raise ToolError(f"Label range '{item}' is not valid") from None
+            lo, hi = sorted((a, b))
+            values.update(range(lo, hi + 1))
+        else:
+            try:
+                values.add(int(item))
+            except ValueError:
+                raise ToolError(f"Label value '{item}' is not valid") from None
+    if not values:
+        raise ToolError("Enter at least one label value")
+    return values
+
+
+class LabelToMaskTool(Tool):
+    key = "label_to_mask"
+    label = "Label map to mask"
+    description = "Builds a 0/255 mask from selected integer labels."
+    category = "preprocess"
+    icon = "Tags"
+    accepts = ("u8", "u16")
+    params = [
+        Param("values", "Labels", kind="text", required=True, default="1", teach=True, help_text="Comma separated labels and ranges, for example 1,3,5 or 2-4."),
+        Param("invert", "Invert", kind="boolean", default=False),
+    ]
+    inputs = [Port("labels", "Label map", "image")]
+    outputs = [Port("mask", "Mask", "image"), Port("pixels", "Pixels", "number")]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        labels = ctx.inputs.get("labels")
+        if not isinstance(labels, np.ndarray):
+            raise ToolError("Input port 'labels' has no label map")
+        if labels.ndim != 2:
+            raise ToolError("The label map must be single-channel")
+        if not np.issubdtype(labels.dtype, np.integer):
+            raise ToolError("The label map must use integer labels")
+        values = np.asarray(sorted(_parse_label_values(ctx.param("values", "1"))), dtype=labels.dtype)
+        hit = np.isin(labels, values)
+        if ctx.flag("invert", False):
+            hit = ~hit
+        mask = hit.astype(np.uint8) * 255
+        pixels = int(np.count_nonzero(mask))
+        return Result(outputs={"mask": mask, "pixels": pixels}, message=f"{pixels} pixels")
+
+
 def _colour_hist(image: np.ndarray, space: str, bins: int, mask: np.ndarray | None = None) -> np.ndarray:
     converted = _colour_space(np.ascontiguousarray(image), space)
     if space == "hsv":
@@ -1544,6 +1600,6 @@ class ShadingCorrectTool(Tool):
 
 TOOLS = [
     GrayscaleTool(), CropTool(), BlurTool(), ThresholdTool(), MorphologyTool(), ResizeTool(),
-    ColorSegmentTool(), ColorClassifyTool(), ColorConvertTool(), ColorRangeTool(), ArithmeticTool(), MaskApplyTool(), PasteBackTool(), RotateFlipTool(),
+    ColorSegmentTool(), LabelToMaskTool(), ColorClassifyTool(), ColorConvertTool(), ColorRangeTool(), ArithmeticTool(), MaskApplyTool(), PasteBackTool(), RotateFlipTool(),
     ConvertDepthTool(), LutTool(), FilterTool(), SurfaceFilterTool(), FftFilterTool(), SurfaceFilterTool(), WarpPerspectiveTool(), UndistortTool(), ShadingCorrectTool(),
 ]

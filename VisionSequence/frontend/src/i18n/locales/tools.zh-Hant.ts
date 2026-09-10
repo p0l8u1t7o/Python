@@ -292,6 +292,11 @@ export default {
         label: "最小圓形度",
         help: "4πA/P²，正圓為 1。",
       },
+      expected: {
+        label: "預期狀態",
+        options: { any: "不改判定", present: "應存在", absent: "應不存在" },
+        group: "判定",
+      },
       max_count: {
         label: "最多輸出",
       },
@@ -342,6 +347,8 @@ export default {
       mask: "遮罩",
       first_cx: "第一個中心 X",
       first_cy: "第一個中心 Y",
+      detected: "有偵測到",
+      valid: "有效",
     },
   },
   blob_label: {
@@ -444,6 +451,17 @@ export default {
     ports: {
       values: "布林",
       result: "結果",
+    },
+  },
+  inspection_summary: {
+    label: "檢測彙總",
+    description: "彙總必要檢測結果；任何結果缺少或失敗都判 NG。",
+    params: {
+      expected_count: { label: "預期結果數" },
+    },
+    ports: {
+      results: "結果", ok: "OK", ng: "NG",
+      received: "收到數", passed: "通過數", missing: "缺少數",
     },
   },
   calibration: {
@@ -876,6 +894,15 @@ export default {
       classes: "類別",
     },
   },
+  label_to_mask: {
+    label: "標籤轉遮罩",
+    description: "從整數標籤圖取出指定標籤，輸出 0/255 遮罩。",
+    params: {
+      values: { label: "標籤值", help: "以逗號、空白或換行分隔，例如 1,2,5。" },
+      invert: { label: "反選" },
+    },
+    ports: { labels: "標籤圖", mask: "遮罩", pixels: "像素數" },
+  },
   color_classify: {
     label: "樣本顏色分類",
     description: "把區域內顏色直方圖與固定影像樣本比對，回傳最接近的樣本名稱與相似度。",
@@ -1096,6 +1123,16 @@ export default {
       contours: "輪廓", reference: "參考輪廓", image: "影像（顯示用）", match: "相符", no_match: "不符",
       distances: "距離列表", distance: "最佳距離", best_index: "最佳索引", match_flag: "相符", match_count: "相符數",
       matched: "相符的輪廓", best: "最佳輪廓", first_distance: "第一條距離",
+    },
+  },
+  defects_to_geometry: {
+    label: "缺陷轉幾何",
+    description: "把缺陷紀錄轉成中心點、外框角點或起訖點，方便後續量測或座標還原。",
+    params: {
+      output: { label: "輸出", options: { centres: "中心點", boxes: "外框角點", spans: "起訖點" } },
+    },
+    ports: {
+      defects: "缺陷", points: "點", contours: "輪廓", count: "數量",
     },
   },
   convert_depth: {
@@ -2151,6 +2188,51 @@ export default {
       roundness: "圓度 b/a",
       residual_rms: "殘差 RMS",
       points: "邊緣點",
+    },
+  },
+  fit_line_points: {
+    label: "點集擬合直線",
+    description: "把點列表或第一條輪廓擬合成直線，可選離群點剔除。",
+    params: {
+      calibration: { label: "標定資產", group: "進階", help: "選填；選了標定就多出 *_world 與 unit 埠。" },
+      method: { label: "方法", options: { lsq: "最小平方", ransac: "RANSAC" } },
+      ransac_tol: { label: "RANSAC 容差" },
+    },
+    ports: {
+      points: "點", contours: "輪廓", found: "找到", not_found: "沒找到",
+      line: "直線", x1: "起點 X", y1: "起點 Y", x2: "終點 X", y2: "終點 Y",
+      angle: "角度", residual_rms: "殘差 RMS", inliers: "內點數", count: "點數",
+      x1_world: "起點 X（世界）", y1_world: "起點 Y（世界）", x2_world: "終點 X（世界）", y2_world: "終點 Y（世界）",
+      angle_world: "角度（世界）", unit: "單位",
+    },
+  },
+  fit_circle_points: {
+    label: "點集擬合圓",
+    description: "把點列表或第一條輪廓擬合成圓，可選離群點剔除。",
+    params: {
+      calibration: { label: "標定資產", group: "進階", help: "選填；選了標定就多出 *_world 與 unit 埠。" },
+      method: { label: "方法", options: { lsq: "最小平方", ransac: "RANSAC" } },
+      ransac_tol: { label: "RANSAC 容差" },
+    },
+    ports: {
+      points: "點", contours: "輪廓", found: "找到", not_found: "沒找到",
+      circle: "圓", cx: "中心 X", cy: "中心 Y", r: "半徑", diameter: "直徑",
+      residual_rms: "殘差 RMS", inliers: "內點數", count: "點數",
+      cx_world: "中心 X（世界）", cy_world: "中心 Y（世界）", r_world: "半徑（世界）", diameter_world: "直徑（世界）", unit: "單位",
+    },
+  },
+  fit_ellipse_points: {
+    label: "點集擬合橢圓",
+    description: "把點列表或第一條輪廓擬合成橢圓。",
+    params: {
+      calibration: { label: "標定資產", group: "進階", help: "選填；選了標定就多出 *_world 與 unit 埠。" },
+    },
+    ports: {
+      points: "點", contours: "輪廓", found: "找到", not_found: "沒找到",
+      ellipse: "橢圓", cx: "中心 X", cy: "中心 Y", major: "長軸", minor: "短軸",
+      angle: "角度", residual_rms: "殘差 RMS", count: "點數",
+      cx_world: "中心 X（世界）", cy_world: "中心 Y（世界）", major_world: "長軸（世界）", minor_world: "短軸（世界）",
+      angle_world: "角度（世界）", unit: "單位",
     },
   },
   image_fixture: {
@@ -3339,6 +3421,11 @@ export default {
         label: "分數門檻",
         help: "NCC 分數 0~1，低於此值不算匹配。",
       },
+      expected: {
+        label: "預期狀態",
+        options: { any: "不改判定", present: "應存在", absent: "應不存在" },
+        group: "判定",
+      },
       max_matches: {
         label: "最多匹配數",
       },
@@ -3376,6 +3463,8 @@ export default {
       best_angle: "最佳角度",
       best_label: "最佳模板",
       counts: "各模板數量",
+      detected: "有偵測到",
+      valid: "有效",
     },
   },
   text_presence: {
@@ -3407,6 +3496,11 @@ export default {
         label: "最大筆劃比例",
         help: "超過視為污損或整片色塊。",
       },
+      expected: {
+        label: "預期狀態",
+        options: { any: "不改判定", present: "應存在", absent: "應不存在" },
+        group: "判定",
+      },
     },
     ports: {
       image: "影像",
@@ -3416,6 +3510,8 @@ export default {
       ratio: "筆劃比例",
       is_present: "有印字",
       mask: "筆劃遮罩",
+      detected: "有偵測到",
+      valid: "有效",
     },
   },
   threshold: {

@@ -370,6 +370,14 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
     label_map[35:95, 35:95] = 1
     label_map[45:85, 135:175] = 2
     label_map[105:145, 145:205] = 2
+    fit_line_points = [[float(x), float(0.35 * x + 20.0)] for x in np.linspace(0, 300, 200)]
+    fit_circle_points = [[s.cx + m * 0.12 * math.cos(t), s.cy + m * 0.12 * math.sin(t)] for t in np.linspace(0, 2 * math.pi, 360, endpoint=False)]
+    fit_ellipse_points = [[s.cx + m * 0.18 * math.cos(t), s.cy + m * 0.08 * math.sin(t)] for t in np.linspace(0, 2 * math.pi, 360, endpoint=False)]
+    defect_records = [
+        {"rect": {"shape": "rotated_rect", "cx": float(s.cx - 30), "cy": float(s.cy), "w": 26.0, "h": 4.0, "angle": 12.0}},
+        {"span": [[float(s.cx + 10), float(s.cy - 5)], [float(s.cx + 38), float(s.cy + 4)]],
+         "rect": {"shape": "rotated_rect", "cx": float(s.cx + 24), "cy": float(s.cy), "w": 30.0, "h": 5.0, "angle": 18.0}},
+    ]
     color_blocks = np.zeros((180, 300, 3), dtype=np.uint8)
     color_blocks[30:130, 20:100] = (0, 0, 255)
     color_blocks[30:130, 110:190] = (0, 255, 0)
@@ -444,6 +452,7 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("color_convert gray_weighted", "color_convert", big, {"mode": "gray_weighted"}, {}, {}),
         ("color_range", "color_range", big, {"h_low": 0, "h_high": 179, "s_low": 0, "s_high": 60, "v_low": 100, "v_high": 255}, {}, {}),
         ("color_segment", "color_segment", color_blocks, {"segments": color_segments, "space": "hsv"}, {}, {}),
+        ("label_to_mask", "label_to_mask", None, {"values": "2"}, {"labels": label_map}, {}),
         ("color_classify", "color_classify", color_blocks, {"samples": s.color_samples, "space": "hsv", "bins": 16}, {}, {}),
         ("color_convert merge_rgb", "color_convert", None, {"mode": "merge_rgb"}, {"r": merge_r, "g": merge_g, "b": merge_b}, {}),
         ("lut clahe", "lut", big, {"mode": "clahe"}, {}, {}),
@@ -542,6 +551,9 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("profile_defect (fit_circle 360)", "profile_defect", None, {"baseline": "fit_circle", "threshold": 3}, {"values": [float(m * 0.12 + (2.0 if 40 <= i < 46 else 0.0)) for i in range(360)], "points": [[s.cx + math.cos(math.radians(i)) * (m * 0.12 + (2.0 if 40 <= i < 46 else 0.0)), s.cy + math.sin(math.radians(i)) * (m * 0.12 + (2.0 if 40 <= i < 46 else 0.0))] for i in range(360)]}, {}),
         ("fit_arc (annulus 90)", "fit_arc", big, {"roi": {"shape": "annulus", "cx": s.cx, "cy": s.cy, "r_inner": m * 0.06, "r_outer": m * 0.18}, "num_rays": 90}, {}, {}),
         ("fit_ellipse (annulus 90)", "fit_ellipse", big, {"roi": {"shape": "annulus", "cx": s.cx, "cy": s.cy, "r_inner": m * 0.06, "r_outer": m * 0.18}, "num_rays": 90}, {}, {}),
+        ("fit_line_points", "fit_line_points", None, {"method": "lsq"}, {"points": fit_line_points}, {}),
+        ("fit_circle_points", "fit_circle_points", None, {"method": "lsq"}, {"points": fit_circle_points}, {}),
+        ("fit_ellipse_points", "fit_ellipse_points", None, {}, {"points": fit_ellipse_points}, {}),
         ("wall_thickness 10", "wall_thickness", big, {"roi": {"shape": "rect", "x": s.cx - m * 0.2, "y": s.cy - 20, "w": m * 0.4, "h": 40}, "num_calipers": 10}, {}, {}),
         ("concentricity", "concentricity", None, {"max_deviation": 5}, {"a": {"cx": s.cx, "cy": s.cy, "r": 50}, "bx": s.cx + 1, "by": s.cy - 2, "br": 20}, {}),
         ("chamfer_angle 40", "chamfer_angle", big, {"roi": top_edge, "num_calipers": 40}, {}, {}),
@@ -566,6 +578,7 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("contour_filter", "contour_filter", None, {"min_area": 300, "min_convexity": 0.5}, {"contours": mask_contours}, {}),
         ("contour_geometry", "contour_geometry", None, {"defect_depth": 3}, {"contours": mask_contours}, {}),
         ("contour_match", "contour_match", None, {"template": "shape", "max_distance": 0.2}, {"contours": mask_contours}, {}),
+        ("defects_to_geometry", "defects_to_geometry", None, {"output": "spans"}, {"defects": defect_records}, {}),
         ("line_profile", "line_profile", big, {"roi": {"shape": "line", "x1": s.cx - m * 0.2, "y1": s.cy, "x2": s.cx + m * 0.2, "y2": s.cy}}, {}, {}),
         ("color_stats", "color_stats", big, {"roi": plate}, {}, {}),
         ("geometry intersect", "geometry", None, {"mode": "intersect"}, {"a": {"x1": 0, "y1": 0, "x2": 100, "y2": 100}, "b": {"x1": 0, "y1": 100, "x2": 100, "y2": 0}}, {}),
@@ -612,6 +625,7 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("if_number", "if_number", None, {"operator": "eq", "threshold": 5}, {"value": 5}, {}),
         ("in_range", "in_range", None, {"low": 0, "high": 10}, {"value": 5}, {}),
         ("bool_logic", "bool_logic", None, {"mode": "and"}, {"values": [True, True, False]}, {}),
+        ("inspection_summary", "inspection_summary", None, {"expected_count": 3}, {"results": [True, True, False]}, {}),
         ("formula", "formula", None, {"expression": "abs(a-b)/c*100"}, {"a": 3, "b": 1, "c": 4}, {}),
         ("parse_message", "parse_message", None, {"separator": "|", "fields": "lot\ndate\nslot:int\nw:float*0.01"}, {"text": "LOT12345|2026-09-08|7|1234"}, {}),
         ("switch", "switch", None, {"cases": "A17\nB22\nC30"}, {"value": "B22"}, {}),

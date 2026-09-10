@@ -66,6 +66,10 @@ HSV 範圍遮罩：H 0～179（紅色跨 0：用 0～10 或 170～179 兩段）�
 ## color_segment
 多色分割：`segments` 一行一段，格式 `名稱:H下,H上,S下,S上,V下,V上`，第 1 行輸出標籤 1、第 2 行標籤 2，背景是 0。HSV 的紅色常跨過 0/180，當 H 下界大於上界（例如 `170,10`）時視為環繞，會抓 `170..179` 與 `0..10` 兩段。輸出 `labels` 可直接接 `blob_label.labels` 做每色 blob、面積與數量；`areas/classes` 給快速判定與顯示。多段重疊時前面的段先佔標籤，設定色域時要避免重疊。單一色域用 `color_range`；多色一次切用 `color_segment`。
 
+## label_to_mask
+標籤圖轉遮罩：接 `color_segment.labels` 或分割工具的標籤圖，`values` 填要保留的整數標籤（逗號、空白、換行都可），輸出 0/255 `mask`。
+後面可接 `blob`、`pixel_count`、`apply_mask`。要抓「不是這些標籤」時開 `invert`。輸入必須是單通道整數標籤圖；浮點機率圖先不要接這個。
+
 ## color_classify
 樣本顏色分類：`samples` 選固定影像，每張影像名稱就是回傳 label；工具把 ROI 的顏色直方圖和樣本比對，輸出 `label/similarity/ranking`，低於 `min_similarity` 走 ng。少量穩定色票用 `histogram_intersection`；顏色有漸層或光照飄移時可試 `earth_mover`，但 bins 不要開太大。樣本直方圖會依固定影像 id、`space`、`bins` 快取，不會每片重算。
 
@@ -131,6 +135,7 @@ ROI 處理完要回到全圖座標時使用：`crop.image` 做完濾波/遮罩�
 
 ## template_match
 範本比對定位：範本圖有兩種給法——**首選** `crop_template` 動作把 ROI 裁成固定影像節點接到 `template_image` 埠（圖片跟著流程走），或 `template` 選既有影像資產；`threshold` 0.6～0.8（NCC 分數），旋轉件給 `angle_range`（±度）與 `angle_step`（5 即可，`subpixel` 預設開會把位置內插到 0.05px、角度內插到步進的 1/10）。角度以畫面順時針為正，與 ROI／找直線一致，可直接餵 shape_align。輸出 `matches` 給 shape_align、`best_x/best_y`；`not_found` 分支接 judge(ng)。兩者都沒有時留空並在 note 提醒使用者補圖。
+有無判定時用 `expected=present/absent`，不要另外接比較節點。`detected` 是這次是否找到，`valid` 是定位補正是否有效；位置補正沒找到時，即使 `expected=absent` 也會判 NG，避免在錯位置誤放行。
 
 **多模板**：`templates` 放好幾張固定影像（同一條線上兩種蓋子、同一工件的兩種姿態），每個 match 帶 `label` 說是哪一種，
 `counts` 給每種各幾個；重疊的目標只留分數最高的那一個。
@@ -210,6 +215,18 @@ ROI 跟隨：`roi` 填教導時的固定 ROI，`transform` 接 shape_align.trans
 溝、肋、縫的兩側一次到手：ROI 長邊沿著那一對邊，每把卡尺找一對邊。
 `pair_polarity` 說「兩邊之間」是亮的還是暗的，`pair_mode` 選最寬／最窄／最外／最強／最接近預期。
 輸出兩條線、`center_line`（中線，後面要量的通常是它）、平均／最窄／最寬寬度與逐把的 `widths`。
+
+## fit_line_points
+點集擬合直線：接 `contour_find.contours`、`blob.contours` 或任何 `points`，工具會用點集或第一條輪廓擬合直線。雜點多時選 `method=ransac` 並調 `ransac_tol`；乾淨輪廓用 `lsq`。
+退化輸入（少於兩個有效點或全部同點）會走 `not_found`，不是例外；完全沒接點／輪廓才是流程錯誤。
+
+## fit_circle_points
+點集擬合圓：接輪廓或點集後輸出 `circle/cx/cy/r/diameter`，常用在 `contour_find` 已經把邊取出、但不想再從影像掃邊時。
+共線或太少點會走 `not_found`。雜點多用 `ransac`，乾淨圓邊用 `lsq`。選標定資產時會多出世界座標與物理尺寸。
+
+## fit_ellipse_points
+點集擬合橢圓：接輪廓或點集後輸出中心、長短軸與角度。至少五個有效點；太少或無法擬合走 `not_found`。
+適合接 `contour_find` 或 `blob.contours` 量外形橢圓度；要先排除雜輪廓時在前面放 `contour_filter`。
 
 ## find_lines_multi
 區域裡每一條直邊都找出來：Canny 取邊緣點 → RANSAC 擬合最強的一條 → 把它的點拿掉 → 再找下一條。
@@ -331,6 +348,10 @@ ccomp／tree。`min_area`（像素數）先擋雜訊。輸出 `contours`（全�
 `template` 影像資產（取二值化後最大形狀）；`max_distance` 0.05～0.3（同形狀接近 0）。輸出 `distance`（最佳）、`distances`、
 `match_flag`／`match_count`、`matched`／`best` contours，分支 match／no_match。用來分料、抓錯料或嚴重變形；細小缺角用 contour_geometry 的凸缺陷。
 
+## defects_to_geometry
+缺陷轉幾何：接 `edge_defect.defects` 或其他缺陷紀錄清單，把缺陷外框轉成 `points/contours`。`output=centres` 給定位與回標，`boxes` 給外框角點，`spans` 給缺陷沿邊起訖。
+常見鏈：`polar_unwrap -> edge_defect -> defects_to_geometry -> polar_restore`，把展開圖上的缺陷點還原回原圖。缺陷紀錄缺少可用幾何時只跳過並寫 log，不讓整批結果因單筆壞資料中斷。
+
 ## coordinate
 自訂座標系（measure）：`mode=point_angle` 用 `point` 埠或 `origin_x/origin_y` 參數作原點，`angle` 埠或 `axis_angle`（預設 0）作 X 軸方向。
 `mode=two_points` 用 `point`（也可填原點參數）與 `point2`（X 軸上的另一點）；`mode=line` 用 `line` 起點作原點、起點到終點作 X 軸。
@@ -371,6 +392,10 @@ ccomp／tree。`min_area`（像素數）先擋雜訊。輸出 `contours`（全�
 
 ## bool_logic
 多個 bool 彙總（and/or/not）：`values` 埠可接多條邊。輸出 `result` 給 judge(by_input)。
+
+## inspection_summary
+檢測彙總：把多條必要檢測的 bool 輸出接到 `results`，`expected_count` 填應該收到幾個結果。只要少接、上游被分支跳過，或其中任一個 false，就走 `ng`。
+用在簡化流程的最後一道總判定：各檢測工具輸出 `detected/valid` 或自家 `result/in_spec`，都接進來，避免「某一步沒跑到」卻因沒有 false 而誤判 OK。
 
 ## formula
 數值算式：`expression` 用 a/b/c 變數（`a*2`、`(a+b)/2`）。輸出 `value`。
@@ -464,6 +489,7 @@ ccomp／tree。`min_area`（像素數）先擋雜訊。輸出 `contours`（全�
 
 ## blob
 粒子分析：內建二值化（`threshold_method` otsu/fixed/hysteresis/soft、`polarity` bright/dark；非矩形 ROI 的 Otsu 只看遮罩內）或接已二值化的影像（fixed+128+bright）。`area` 是像素數（1 像素粒子就是 1）；`soft` 時 `area` 是權重和，可能是小數。`min_area/max_area/min_circularity` 篩選；黏連粒子 `separate=true`（分水嶺，種子視窗依 min_area 推算的半徑，大小粒子混在一起也切得開）。輸出 `count`、`blobs`、`centers`、`mask`、`found/not_found`（`min_count` 決定）。
+有無判定時用 `expected=present/absent`，輸出 `detected/valid` 可接 inspection_summary。位置補正沒找到時 `valid=false`，即使期望不存在也判 NG。
 
 亮塊裡有更亮核心、邊界灰階慢慢變淡、單一門檻要嘛只抓核心要嘛吃到旁邊雜訊時，用 `threshold_method=hysteresis`：`threshold` 是高門檻種子，`threshold_low` 是往外長的低門檻，只保留碰得到種子的低門檻連通區。邊界本來就模糊、希望面積不要被一個硬門檻跳動影響時，用 `threshold_method=soft`，`threshold` 放在過渡中心，`soft_width` 放灰階過渡寬度。
 
@@ -566,6 +592,7 @@ edge_contrast、defects、decodability）。總評＝最低分（1D 是 10 條�
 
 ## text_presence
 文字有無（筆畫密度，不是 OCR）：`roi` 框住字區，`polarity` dark/bright，`min_ratio/max_ratio` 決定 present。
+有無判定時用 `expected=present/absent`，輸出 `detected/valid` 可接 inspection_summary。位置補正沒找到時 `valid=false`，即使期望不存在也判 NG。
 
 ## save_image
 把影像排入背景檔案輸出佇列；AI 不生成，需要時提醒使用者手動加。`filename` 可用與 `format_text` 相同的 `{}` 樣板，`daily_folder` 加 yyyyMMdd 子資料夾，JPEG 用 `jpeg_quality` 控制品質；`condition` 可選 all/ok/ng，舊的 `only_ng` 等同 NG only。

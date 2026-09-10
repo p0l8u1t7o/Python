@@ -541,6 +541,11 @@ class TemplateMatchTool(Tool):
               help_text="Several shapes that all count as a find: two orientations of the same part, three lid types on one line. Each match says which one it was."),
         Param("roi", "Search region", kind="roi", shapes=["rect", "rotated_rect"], help_text="Leave blank to search the whole image."),
         Param("threshold", "Score threshold", kind="range", default=0.7, minimum=0, maximum=1, step=0.01, help_text="NCC score 0–1; below this is not a match.", teach=True),
+        Param("expected", "Expected state", kind="select", default="any", options=[
+            {"value": "any", "label": "Any (no verdict change)"},
+            {"value": "present", "label": "Present"},
+            {"value": "absent", "label": "Absent"},
+        ], group="Verdict"),
         Param("max_matches", "Max matches", kind="number", default=1, minimum=1, maximum=500),
         Param("sort_by", "Order the matches by", kind="select", default="score", options=[
             {"value": "score", "label": "Score, best first"},
@@ -566,6 +571,7 @@ class TemplateMatchTool(Tool):
         Port("best_x", "Best X", "number"), Port("best_y", "Best Y", "number"),
         Port("best_score", "Best score", "number"), Port("best_angle", "Best angle", "number"),
         Port("best_label", "Best template", "string"), Port("counts", "Count per template", "list"),
+        Port("detected", "Detected", "bool"), Port("valid", "Valid", "bool"),
     ]
     heavy = True
 
@@ -642,17 +648,23 @@ class TemplateMatchTool(Tool):
         best = max(matches, key=lambda m: m["score"]) if matches else None
         counts = [{"label": label, "count": sum(1 for m in matches if m["label"] == label)} for label, _ in templates] if len(templates) > 1 else []
         note = ", gave up on time" if timed_out else ""
+        detected = bool(matches)
+        valid = not ctx.fixture_missing
+        expected = str(ctx.param("expected", "any"))
+        status = "ok" if matches else "ng"
+        if expected in ("present", "absent"):
+            status = "ok" if valid and detected == (expected == "present") else "ng"
         return Result(
             outputs={
                 "matches": matches, "count": len(matches),
                 "best_x": best["cx"] if best else float("nan"), "best_y": best["cy"] if best else float("nan"),
                 "best_score": best["score"] if best else 0.0, "best_angle": best["angle"] if best else 0.0,
                 "best_label": (best["label"] if best else ""),
-                "counts": counts,
+                "counts": counts, "detected": detected, "valid": valid,
             },
             overlays=overlays,
             branch="found" if matches else "not_found",
-            status="ok" if matches else "ng",
+            status=status,
             message=f"{len(matches)} matches" + (f", best {best['score']:.3f} @ ({best['cx']:.1f}, {best['cy']:.1f})" if best else "") + note,
         )
 

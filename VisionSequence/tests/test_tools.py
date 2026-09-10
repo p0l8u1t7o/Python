@@ -36,6 +36,7 @@ class RegistryTests(SimpleTestCase):
             "dl_classify", "dl_detect", "dl_segment", "dl_instance",
             "convert_depth", "lut", "filter", "fft_filter", "warp_perspective", "line_profile", "color_stats", "geometry",
             "polar_unwrap", "polar_restore", "contour_find", "contour_filter", "contour_geometry", "contour_match",
+            "label_to_mask", "fit_line_points", "fit_circle_points", "fit_ellipse_points", "inspection_summary", "defects_to_geometry",
             "region_from_shape", "region_combine", "shading_correct", "defect_stat", "shape_match", "dl_anomaly", "circular_caliper", "profile_defect", "ocr_read", "ocv_verify",
             "boxes_overlap", "edge_filter", "list_filter", "list_classify", "list_pick",
             "stereo_depth",
@@ -61,8 +62,14 @@ class RegistryTests(SimpleTestCase):
         self.assertEqual(teach["multi_light_fuse"], set())
         self.assertEqual(teach["camera_io"], {"line", "pulse_ms"})
         self.assertEqual(teach["camera_set"], {"values", "user_set_name"})
+        self.assertEqual(teach["label_to_mask"], {"values"})
         self.assertEqual(teach["template_match"], {"threshold", "angle_range"})
         self.assertEqual(teach["blob"], {"min_area", "max_area", "min_circularity"})
+        self.assertEqual(teach["fit_line_points"], {"ransac_tol"})
+        self.assertEqual(teach["fit_circle_points"], {"ransac_tol"})
+        self.assertEqual(teach["fit_ellipse_points"], set())
+        self.assertEqual(teach["inspection_summary"], set())
+        self.assertEqual(teach["defects_to_geometry"], set())
         # 期望位置與期望寬度是換線會調的產品尺寸，開放給操作員；
         # 三個權重（position／contrast／width）是演算法調校，留給工程師。
         self.assertEqual(teach["caliper"], {"edge_threshold", "polarity", "expected_position", "expected_width"})
