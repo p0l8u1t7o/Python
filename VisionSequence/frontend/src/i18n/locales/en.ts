@@ -2623,4 +2623,49 @@ const enExtra3 = {
   },
 }
 
-export default merge(merge(merge(en, enExtra), enExtra2), enExtra3)
+const inspectStage6 = { inspect: {
+  "title": "Inspection tasks",
+  "run": "Try run",
+  "save": "Save",
+  "advancedFlow": "Advanced flow",
+  "add": "Add task",
+  "chooseKind": "Choose task type",
+  "chooseTask": "Select a task or add one to begin.",
+  "noTasks": "No inspection tasks yet.",
+  "advancedOnly": "This flow was created in the advanced editor.",
+  "otherSteps": "Other steps ({{count}})",
+  "source": "Image source",
+  "upload": "Upload temporary image",
+  "clearImage": "Clear",
+  "reuseImage": "Reuse last image",
+  "unsaved": "Unsaved changes",
+  "readOnly": "Read only",
+  "locked": "Execution is locked.",
+  "advanced": "Advanced",
+  "remove": "Remove task",
+  "deleteConfirm": "Remove this inspection task?",
+  "dependencies": "Task is in use",
+  "dependenciesHint": "Disconnect these dependent steps in the advanced flow before removing this task.",
+  "customHint": "This task has custom connections or steps. Edit it in the advanced flow.",
+  "staleHint": "Settings have changed. Try running again.",
+  "needsCalibration": "Select a calibration before using millimetres.",
+  "openCalibration": "Open calibration",
+  "templateOnly": "Only template location is available in this version.",
+  "teachPose": "Teach pose from this run",
+  "saveCrop": "Use this crop",
+  "locatorMark": "Locator mark",
+  "noDraft": "The flow draft is not available.",
+  "status": {
+    "pass": "Pass",
+    "fail": "Fail",
+    "not_found": "Not found",
+    "locate_failed": "Location failed",
+    "error": "Error",
+    "skipped": "Skipped",
+    "stale": "Stale",
+    "custom": "Custom",
+    "unrun": "Not run"
+  }
+} }
+
+export default merge(merge(merge(merge(en, enExtra), enExtra2), enExtra3), inspectStage6)

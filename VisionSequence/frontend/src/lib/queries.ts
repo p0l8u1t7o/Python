@@ -8,7 +8,7 @@ import { logActivity } from '@/lib/activity'
 
 import { ApiError, api, request } from './api'
 import type { BoardConfig, BoardData } from './board'
-import { localiseList, localiseTrainers } from './catalogueLocale'
+import { localiseInspectKinds, localiseList, localiseTrainers } from './catalogueLocale'
 import type { OpenApiDocument } from '@/pages/integration/openapi'
 import { localiseCatalogue } from './toolLocale'
 import type { Language } from '@/i18n'
@@ -54,6 +54,10 @@ import type {
   GoldenCase,
   GoldenList,
   ImageSource,
+  InspectKind,
+  InspectList,
+  InspectReading,
+  InspectDependency,
   IntegrationInfo,
   LogLevel,
   Page,
@@ -547,6 +551,22 @@ export async function previewFlow({ flowId, graph, context, reuse_image_ref, unt
 export function usePreviewFlow() {
   return useMutation({ mutationFn: previewFlow, onSuccess: (report, args) => logActivity('run', `preview flow ${args.flowId}: ${report.status}`, reportDetail(report)) })
 }
+
+export function useInspectKinds() {
+  const { i18n } = useTranslation()
+  const language = i18n.language as Language
+  return useQuery({ queryKey: ['inspect-kinds', language], queryFn: () => api.get<{ items: InspectKind[] }>('/vision/inspect/kinds'),
+    select: (data) => ({ items: localiseInspectKinds(data.items, language) }) })
+}
+export function readInspection(graph: FlowGraph) { return api.post<InspectList>('/vision/inspect/read', { graph }) }
+export function writeInspection(action: 'build' | 'update', graph: FlowGraph, task: { kind?: string; version?: number; task_id?: string; fields: Record<string, unknown> }) {
+  return api.post<{ graph: FlowGraph }>(`/vision/inspect/${action}`, { graph, task })
+}
+export function removeInspection(graph: FlowGraph, task_id: string) {
+  return api.post<{ graph: FlowGraph; dependencies: InspectDependency[]; removed: boolean }>('/vision/inspect/remove', { graph, task_id })
+}
+export function inspectionEvidence(graph: FlowGraph, report: RunReport) { return api.post<{ items: InspectReading[] }>('/vision/inspect/evidence', { graph, report }) }
+export function teachInspectionPose(graph: FlowGraph, task_id: string, report: RunReport) { return api.post<{ graph: FlowGraph }>('/vision/inspect/teach-pose', { graph, task_id, report }) }
 
 /** 暫存影像：只進快取不進影像來源庫；之後試跑帶 reuse_image_ref。 */
 export function useScratchImage() {

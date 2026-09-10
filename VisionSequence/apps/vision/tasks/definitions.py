@@ -43,13 +43,18 @@ def _publish(params: dict[str, Any], key: str, name: Any) -> None:
 
 def _measure_edges(definition: TaskDefinition, fields: dict[str, Any]) -> tuple[EdgeSpec, ...]:
     if str(fields.get("mode") or "check") == "roundness":
-        return (EdgeSpec("find", "points", "tol", "points"),)
+        edges = (EdgeSpec("find", "points", "tol", "points"),)
+        if fields.get("unit") == "mm":
+            edges += (EdgeSpec("find", "points", "scale", "points"), EdgeSpec("scale", "scale", "tol", "scale"))
+        return edges
     port = "diameter_world" if fields.get("calibration") else "diameter"
     return (EdgeSpec("find", port, "tol", "value"),)
 
 
 def _measure_build(definition: TaskDefinition, task: dict[str, Any], ctx: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     fields = task_fields(task, definition)
+    if fields.get("calibration"):
+        fields["unit"] = "mm"
     if fields.get("unit") == "mm" and not fields.get("calibration"):
         raise ValidationError("Millimetre mode needs a calibration", code="missing_calibration")
     task_id = str(task.get("task_id") or task.get("id") or "diameter")
@@ -66,7 +71,9 @@ def _measure_build(definition: TaskDefinition, task: dict[str, Any], ctx: dict[s
     _publish(find_params, "diameter_world" if fields.get("calibration") else "diameter", fields.get("result_name"))
     tol_tool = "gdt_measure" if mode == "roundness" else "tolerance_judge"
     if mode == "roundness":
-        tol_params = {"mode": "roundness", "tolerance": fields.get("upper_tol", 1), "unit": fields.get("unit") or "px"}
+        # 保留直徑規格，切回直徑時仍可讀回原本的標稱值與名稱。
+        tol_params = {"mode": "roundness", "tolerance": fields.get("upper_tol", 1), "unit": fields.get("unit") or "px",
+                      "nominal": fields.get("nominal"), "lower_tol": fields.get("lower_tol"), "name": fields.get("result_name") or ""}
     else:
         tol_params = {
             "nominal": fields.get("nominal"),
@@ -79,6 +86,8 @@ def _measure_build(definition: TaskDefinition, task: dict[str, Any], ctx: dict[s
         task_node(task_id, "find", "find_circle", find_params, definition.kind, definition.version, required),
         task_node(task_id, "tol", tol_tool, tol_params, definition.kind, definition.version, required),
     ]
+    if mode == "roundness" and fields.get("unit") == "mm":
+        nodes.append(task_node(task_id, "scale", "calibration", {"mode": "asset", "calibration": fields["calibration"]}, definition.kind, definition.version, required))
     return nodes, [edge(f"{task_id}_{e.source_role}", e.source_port, f"{task_id}_{e.target_role}", e.target_port) for e in _measure_edges(definition, fields)]
 
 

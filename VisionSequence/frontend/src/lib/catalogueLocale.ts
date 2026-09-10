@@ -10,7 +10,7 @@
 import zhHans from '@/i18n/locales/catalogue.zh-Hans'
 import zhHant from '@/i18n/locales/catalogue.zh-Hant'
 import type { Language } from '@/i18n'
-import type { DlTrainerDef, ToolParam } from '@/lib/types'
+import type { DlTrainerDef, InspectKind, ToolParam } from '@/lib/types'
 
 interface Entry {
   label?: string
@@ -30,6 +30,7 @@ interface TrainerEntry extends Entry {
 }
 
 interface CatalogueDict {
+  inspectKinds?: Record<string, { label?: string; help?: string; fields?: Record<string, ParamText> }>
   sourceKinds?: Record<string, Entry>
   connectionKinds?: Record<string, Entry>
   trainers?: Record<string, TrainerEntry>
@@ -38,6 +39,20 @@ interface CatalogueDict {
   /** Param.group 的名稱（Advanced／Augment），所有訓練方式共用。 */
   paramGroups?: Record<string, string>
   templates?: Record<string, Entry>
+}
+
+export function localiseInspectKinds(items: InspectKind[], language: Language): InspectKind[] {
+  return items.map((item) => {
+    const text = DICTS[language]?.inspectKinds?.[item.kind]
+    if (!text) return item
+    return { ...item, label: text.label ?? item.label, help_text: text.help ?? item.help_text,
+      fields: item.fields.map((field) => {
+        const words = text.fields?.[field.key]
+        return { ...field, label: words?.label ?? field.label, help_text: words?.help ?? field.help_text,
+          options: field.options.map((option) => ({ ...option, label: words?.options?.[option.value] ?? option.label })) }
+      }),
+    }
+  })
 }
 
 const DICTS: Partial<Record<Language, CatalogueDict>> = {

@@ -2741,5 +2741,48 @@ const zhHant = {
   helpMenu: { help: '說明頁', shortcuts: '快捷鍵', integration: '整合頁' },
 } as const
 
-export default zhHant
+export default { ...zhHant, inspect: {
+  "title": "檢測任務",
+  "run": "試執行",
+  "save": "儲存",
+  "advancedFlow": "進階流程",
+  "add": "新增任務",
+  "chooseKind": "選擇任務種類",
+  "chooseTask": "選擇或新增任務以開始。",
+  "noTasks": "尚無檢測任務。",
+  "advancedOnly": "此流程是在進階編輯器建立的。",
+  "otherSteps": "其他步驟（{{count}}）",
+  "source": "影像來源",
+  "upload": "上傳暫存影像",
+  "clearImage": "清除",
+  "reuseImage": "使用上次影像",
+  "unsaved": "尚未儲存",
+  "readOnly": "唯讀",
+  "locked": "執行已鎖定。",
+  "advanced": "進階",
+  "remove": "移除任務",
+  "deleteConfirm": "要移除此檢測任務嗎？",
+  "dependencies": "任務仍被使用",
+  "dependenciesHint": "請先在進階流程解除下列步驟的相依連線，再移除此任務。",
+  "customHint": "此任務有自訂連線或步驟，請到進階流程編輯。",
+  "staleHint": "設定已變更，請重新試執行。",
+  "needsCalibration": "使用毫米前請先選擇標定。",
+  "openCalibration": "開啟標定",
+  "templateOnly": "此版本僅支援範本定位。",
+  "teachPose": "從此次結果教導姿態",
+  "saveCrop": "使用此裁切",
+  "locatorMark": "定位標記",
+  "noDraft": "流程草稿尚未就緒。",
+  "status": {
+    "pass": "合格",
+    "fail": "不合格",
+    "not_found": "量不到",
+    "locate_failed": "定位失敗",
+    "error": "錯誤",
+    "skipped": "已跳過",
+    "stale": "已過期",
+    "custom": "自訂",
+    "unrun": "尚未執行"
+  }
+} }
 export type Translation = typeof zhHant

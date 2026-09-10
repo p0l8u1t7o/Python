@@ -6,6 +6,204 @@
  * 由 `lib/catalogueLocale.ts` 叠上去，工具目录则另有 `tools.zh-Hans.ts`。
  */
 export default {
+  inspectKinds: {
+  "measure_diameter": {
+    "label": "测量直径",
+    "help": "查找圆形边缘，并根据规格检查直径或真圆度。",
+    "fields": {
+      "mode": {
+        "label": "模式",
+        "options": {
+          "check": "直径",
+          "roundness": "真圆度"
+        }
+      },
+      "roi": {
+        "label": "检测区域",
+        "help": "在目标边缘周围绘制圆形或环形搜索区域。"
+      },
+      "edge": {
+        "label": "测量边缘",
+        "options": {
+          "outer": "外缘",
+          "inner": "内缘"
+        }
+      },
+      "polarity": {
+        "label": "边缘极性",
+        "options": {
+          "any": "任意",
+          "dark_to_light": "暗到亮",
+          "light_to_dark": "亮到暗"
+        }
+      },
+      "calibration": {
+        "label": "标定",
+        "help": "可选；留空时使用像素测量。"
+      },
+      "nominal": {
+        "label": "标称值"
+      },
+      "upper_tol": {
+        "label": "上公差"
+      },
+      "lower_tol": {
+        "label": "下公差"
+      },
+      "unit": {
+        "label": "单位",
+        "options": {
+          "px": "像素",
+          "mm": "毫米"
+        }
+      },
+      "result_name": {
+        "label": "结果名称",
+        "help": "执行结果中使用的名称。"
+      },
+      "required": {
+        "label": "必要任务",
+        "help": "必要任务会纳入检测汇总。"
+      },
+      "locator": {
+        "label": "定位任务",
+        "help": "可选；用于位置修正的定位任务。"
+      },
+      "num_rays": {
+        "label": "扫描线数"
+      },
+      "method": {
+        "label": "定位方式",
+        "options": {
+          "template": "模板",
+          "shape": "形状模型",
+          "register": "注册示例"
+        },
+        "help": "形状与注册示例定位将在后续版本提供。"
+      },
+      "template_images": {
+        "label": "定位标记",
+        "help": "从示教工件裁剪出的固定参考图像。"
+      },
+      "threshold": {
+        "label": "分数阈值"
+      },
+      "allow_rotation": {
+        "label": "允许旋转"
+      },
+      "angle_range": {
+        "label": "旋转范围"
+      },
+      "ref_x": {
+        "label": "参考 X"
+      },
+      "ref_y": {
+        "label": "参考 Y"
+      },
+      "ref_angle": {
+        "label": "参考角度"
+      }
+    }
+  },
+  "locate_part": {
+    "label": "定位工件",
+    "help": "查找示教模板，提供下游任务的位置修正。",
+    "fields": {
+      "mode": {
+        "label": "模式",
+        "options": {
+          "check": "直径",
+          "roundness": "真圆度"
+        }
+      },
+      "roi": {
+        "label": "检测区域",
+        "help": "留空时搜索整张图像。"
+      },
+      "edge": {
+        "label": "测量边缘",
+        "options": {
+          "outer": "外缘",
+          "inner": "内缘"
+        }
+      },
+      "polarity": {
+        "label": "边缘极性",
+        "options": {
+          "any": "任意",
+          "dark_to_light": "暗到亮",
+          "light_to_dark": "亮到暗"
+        }
+      },
+      "calibration": {
+        "label": "标定",
+        "help": "可选；留空时使用像素测量。"
+      },
+      "nominal": {
+        "label": "标称值"
+      },
+      "upper_tol": {
+        "label": "上公差"
+      },
+      "lower_tol": {
+        "label": "下公差"
+      },
+      "unit": {
+        "label": "单位",
+        "options": {
+          "px": "像素",
+          "mm": "毫米"
+        }
+      },
+      "result_name": {
+        "label": "结果名称",
+        "help": "执行结果中使用的名称。"
+      },
+      "required": {
+        "label": "必要任务",
+        "help": "必要任务会纳入检测汇总。"
+      },
+      "locator": {
+        "label": "定位任务",
+        "help": "可选；用于位置修正的定位任务。"
+      },
+      "num_rays": {
+        "label": "扫描线数"
+      },
+      "method": {
+        "label": "定位方式",
+        "options": {
+          "template": "模板",
+          "shape": "形状模型",
+          "register": "注册示例"
+        },
+        "help": "形状与注册示例定位将在后续版本提供。"
+      },
+      "template_images": {
+        "label": "定位标记",
+        "help": "从示教工件裁剪出的固定参考图像。"
+      },
+      "threshold": {
+        "label": "分数阈值"
+      },
+      "allow_rotation": {
+        "label": "允许旋转"
+      },
+      "angle_range": {
+        "label": "旋转范围"
+      },
+      "ref_x": {
+        "label": "参考 X"
+      },
+      "ref_y": {
+        "label": "参考 Y"
+      },
+      "ref_angle": {
+        "label": "参考角度"
+      }
+    }
+  }
+},
   sourceKinds: {
     folder: { label: '文件夹（循环读取图像文件）' },
     file: { label: '单一图像文件' },

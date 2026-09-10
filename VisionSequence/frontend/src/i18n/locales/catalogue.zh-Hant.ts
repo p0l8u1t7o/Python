@@ -6,6 +6,204 @@
  * 由 `lib/catalogueLocale.ts` 疊上去，工具目錄則另有 `tools.zh-Hant.ts`。
  */
 export default {
+  inspectKinds: {
+  "measure_diameter": {
+    "label": "量直徑",
+    "help": "尋找圓形邊緣，並依規格檢查直徑或真圓度。",
+    "fields": {
+      "mode": {
+        "label": "模式",
+        "options": {
+          "check": "直徑",
+          "roundness": "真圓度"
+        }
+      },
+      "roi": {
+        "label": "檢測區域",
+        "help": "在目標邊緣周圍繪製圓形或環形搜尋區域。"
+      },
+      "edge": {
+        "label": "量測邊緣",
+        "options": {
+          "outer": "外緣",
+          "inner": "內緣"
+        }
+      },
+      "polarity": {
+        "label": "邊緣極性",
+        "options": {
+          "any": "任意",
+          "dark_to_light": "暗到亮",
+          "light_to_dark": "亮到暗"
+        }
+      },
+      "calibration": {
+        "label": "標定",
+        "help": "選填；留空時使用像素量測。"
+      },
+      "nominal": {
+        "label": "標稱值"
+      },
+      "upper_tol": {
+        "label": "上公差"
+      },
+      "lower_tol": {
+        "label": "下公差"
+      },
+      "unit": {
+        "label": "單位",
+        "options": {
+          "px": "像素",
+          "mm": "毫米"
+        }
+      },
+      "result_name": {
+        "label": "結果名稱",
+        "help": "執行結果中使用的名稱。"
+      },
+      "required": {
+        "label": "必要任務",
+        "help": "必要任務會納入檢測彙總。"
+      },
+      "locator": {
+        "label": "定位任務",
+        "help": "選填；用於位置修正的定位任務。"
+      },
+      "num_rays": {
+        "label": "掃描線數"
+      },
+      "method": {
+        "label": "定位方式",
+        "options": {
+          "template": "範本",
+          "shape": "形狀模型",
+          "register": "註冊範例"
+        },
+        "help": "形狀與註冊範例定位將在後續版本提供。"
+      },
+      "template_images": {
+        "label": "定位標記",
+        "help": "從教導工件裁切出的固定參考影像。"
+      },
+      "threshold": {
+        "label": "分數門檻"
+      },
+      "allow_rotation": {
+        "label": "允許旋轉"
+      },
+      "angle_range": {
+        "label": "旋轉範圍"
+      },
+      "ref_x": {
+        "label": "參考 X"
+      },
+      "ref_y": {
+        "label": "參考 Y"
+      },
+      "ref_angle": {
+        "label": "參考角度"
+      }
+    }
+  },
+  "locate_part": {
+    "label": "定位工件",
+    "help": "尋找教導範本，提供下游任務的位置修正。",
+    "fields": {
+      "mode": {
+        "label": "模式",
+        "options": {
+          "check": "直徑",
+          "roundness": "真圓度"
+        }
+      },
+      "roi": {
+        "label": "檢測區域",
+        "help": "留空時搜尋整張影像。"
+      },
+      "edge": {
+        "label": "量測邊緣",
+        "options": {
+          "outer": "外緣",
+          "inner": "內緣"
+        }
+      },
+      "polarity": {
+        "label": "邊緣極性",
+        "options": {
+          "any": "任意",
+          "dark_to_light": "暗到亮",
+          "light_to_dark": "亮到暗"
+        }
+      },
+      "calibration": {
+        "label": "標定",
+        "help": "選填；留空時使用像素量測。"
+      },
+      "nominal": {
+        "label": "標稱值"
+      },
+      "upper_tol": {
+        "label": "上公差"
+      },
+      "lower_tol": {
+        "label": "下公差"
+      },
+      "unit": {
+        "label": "單位",
+        "options": {
+          "px": "像素",
+          "mm": "毫米"
+        }
+      },
+      "result_name": {
+        "label": "結果名稱",
+        "help": "執行結果中使用的名稱。"
+      },
+      "required": {
+        "label": "必要任務",
+        "help": "必要任務會納入檢測彙總。"
+      },
+      "locator": {
+        "label": "定位任務",
+        "help": "選填；用於位置修正的定位任務。"
+      },
+      "num_rays": {
+        "label": "掃描線數"
+      },
+      "method": {
+        "label": "定位方式",
+        "options": {
+          "template": "範本",
+          "shape": "形狀模型",
+          "register": "註冊範例"
+        },
+        "help": "形狀與註冊範例定位將在後續版本提供。"
+      },
+      "template_images": {
+        "label": "定位標記",
+        "help": "從教導工件裁切出的固定參考影像。"
+      },
+      "threshold": {
+        "label": "分數門檻"
+      },
+      "allow_rotation": {
+        "label": "允許旋轉"
+      },
+      "angle_range": {
+        "label": "旋轉範圍"
+      },
+      "ref_x": {
+        "label": "參考 X"
+      },
+      "ref_y": {
+        "label": "參考 Y"
+      },
+      "ref_angle": {
+        "label": "參考角度"
+      }
+    }
+  }
+},
   sourceKinds: {
     folder: { label: '資料夾（循環讀取影像檔）' },
     file: { label: '單一影像檔' },

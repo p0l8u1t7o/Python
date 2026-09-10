@@ -7,6 +7,42 @@
  ],
  "pages": [
   {
+   "route": "/flows/:flowId/inspect",
+   "id": "inspect",
+   "names": {
+    "en": "Inspection tasks",
+    "zh-Hant": "檢測任務",
+    "zh-Hans": "检测任务"
+   },
+   "summary": {
+    "en": "Canvas, image viewer and inspector",
+    "zh-Hant": "畫布、影像視窗與側欄",
+    "zh-Hans": "画布、图像窗口与侧栏"
+   },
+   "actions": [
+    {
+     "en": "Add task",
+     "zh-Hant": "新增任務",
+     "zh-Hans": "添加任务"
+    },
+    {
+     "en": "Try run",
+     "zh-Hant": "試執行",
+     "zh-Hans": "试执行"
+    },
+    {
+     "en": "Save",
+     "zh-Hant": "儲存",
+     "zh-Hans": "保存"
+    },
+    {
+     "en": "Advanced flow",
+     "zh-Hant": "進階流程",
+     "zh-Hans": "高级流程"
+    }
+   ]
+  },
+  {
    "route": "/",
    "id": "dashboard",
    "names": {

@@ -60,7 +60,7 @@ def read(graph: dict[str, Any]) -> dict[str, Any]:
 
 
 def update(graph: dict[str, Any], task: dict[str, Any]) -> dict[str, Any]:
-    """只更新該任務欄位對應的參數；必要狀態與定位依賴可重算。"""
+    """共用 build 重算欄位差異，只替換任務內受管理的參數與接線。"""
     out = _clone_graph(graph)
     task_id = str(task.get("task_id") or task.get("id") or "")
     if not task_id:
@@ -72,18 +72,65 @@ def update(graph: dict[str, Any], task: dict[str, Any]) -> dict[str, Any]:
     definition = get_definition(str(marker.get("kind") or task.get("kind") or ""), int(marker.get("schema_version") or task.get("version") or 1))
     supplied = dict(task.get("fields") if isinstance(task.get("fields"), dict) else {})
     supplied.update({k: task[k] for k in definition.fields if k in task})
-    by_role = {inspect_marker(n)["role"]: n for n in nodes if inspect_marker(n)}
-    for spec in definition.fields.values():
-        if spec.role is None or spec.param is None or spec.key not in supplied:
+    current = _read_task(task_id, nodes, out.get("edges", []))
+    if current["custom"]:
+        raise ValidationError("Edit this custom task in the advanced flow", code="custom_task")
+    fields = {**current["fields"], **supplied}
+    if definition.kind == "measure_diameter" and "calibration" in supplied and "unit" not in supplied:
+        fields["unit"] = "mm" if fields.get("calibration") else "px"
+    if "required" in task:
+        fields["required"] = task["required"]
+    old_nodes, old_edges = definition.build({"task_id": task_id, "fields": current["fields"]}, {})
+    new_nodes, new_edges = definition.build({"task_id": task_id, "fields": fields}, {})
+    before = {inspect_marker(n)["role"]: n for n in old_nodes}
+    after = {inspect_marker(n)["role"]: n for n in new_nodes}
+    removed_ids = {str(n["id"]) for n in nodes if inspect_marker(n)["role"] not in after}
+    node_ids = {str(n["id"]) for n in nodes}
+    if any((e.get("source") in removed_ids and e.get("target") not in node_ids) or
+           (e.get("target") in removed_ids and e.get("source") not in node_ids) for e in out.get("edges", [])):
+        raise ValidationError("A step needed by another connection would be removed; edit the advanced flow first", code="task_dependency")
+    out["nodes"] = [n for n in out["nodes"] if n["id"] not in removed_ids]
+    added = [n for n in new_nodes if inspect_marker(n)["role"] not in before]
+    _place_nodes(out, added)
+    out["nodes"].extend(added)
+    for node in nodes:
+        role = inspect_marker(node)["role"]
+        if role not in after:
             continue
-        node = by_role.get(spec.role)
-        if not node:
-            continue
+        old, new = before[role], after[role]
         params = node.setdefault("params", {})
-        if spec.write is not None:
-            spec.write(params, supplied[spec.key])
+        if node["type"] != new["type"]:
+            # 換工具時只帶過仍有效的發布設定，避免舊工具參數污染新工具。
+            published = params.get("_publish")
+            node["type"] = new["type"]
+            node["params"] = copy.deepcopy(new["params"])
+            if published:
+                node["params"]["_publish"] = copy.deepcopy(published)
         else:
-            params[spec.param] = supplied[spec.key]
+            for key in old["params"].keys() | new["params"].keys():
+                if old["params"].get(key) == new["params"].get(key):
+                    continue
+                if key == "_publish":
+                    published = dict(params.get(key) or {})
+                    retained_name = next((published[p] for p in old["params"].get(key, {}) if p in published), None)
+                    for port in old["params"].get(key, {}):
+                        published.pop(port, None)
+                    published.update({port: retained_name if retained_name is not None and "result_name" not in supplied else name
+                                      for port, name in new["params"].get(key, {}).items()})
+                    if published:
+                        params[key] = published
+                    else:
+                        params.pop(key, None)
+                elif key in new["params"]:
+                    params[key] = copy.deepcopy(new["params"][key])
+                else:
+                    params.pop(key, None)
+    def connection(e: dict[str, Any]) -> tuple[str, str, str, str]:
+        return tuple(str(e.get(k) or "") for k in ("source", "source_handle", "target", "target_handle"))
+    old_connections = {connection(e) for e in old_edges}
+    new_connections = {connection(e) for e in new_edges}
+    out["edges"] = [e for e in out.get("edges", []) if connection(e) not in old_connections - new_connections]
+    out["edges"].extend(e for e in new_edges if connection(e) not in old_connections)
     if "required" in supplied or "required" in task:
         required = bool(task.get("required", supplied.get("required", marker.get("required", True))))
         for node in nodes:
@@ -92,7 +139,8 @@ def update(graph: dict[str, Any], task: dict[str, Any]) -> dict[str, Any]:
                 marker["required"] = required
     if "locator" in supplied or "locator" in task:
         _connect_locator(out, task_id, str(supplied.get("locator") or task.get("locator") or ""))
-    _maintain_summary(out)
+    if fields.get("required") != current["required"]:
+        _maintain_summary(out)
     return validate_graph(out)
 
 
@@ -235,9 +283,11 @@ def _connect_image_inputs(graph: dict[str, Any], definition: task_base.TaskDefin
 
 def _connect_locator(graph: dict[str, Any], task_id: str, locator_id: str) -> None:
     target_ids = {str(n["id"]) for n in _task_nodes(graph, task_id)}
+    previous = _locator_for(task_id, graph.get("edges", []))
+    managed = {(f"{previous}_align", "transform", tools.TRANSFORM_IN), (f"{previous}_find", "found", FLOW_IN)} if previous else set()
     graph["edges"] = [
         e for e in graph.get("edges", [])
-        if not (str(e.get("target")) in target_ids and str(e.get("target_handle") or "") in (tools.TRANSFORM_IN, FLOW_IN))
+        if not (str(e.get("target")) in target_ids and (str(e.get("source")), str(e.get("source_handle") or ""), str(e.get("target_handle") or "")) in managed)
     ]
     if not locator_id:
         return
@@ -340,8 +390,14 @@ def _read_fields(item: dict[str, Any], definition: task_base.TaskDefinition, nod
         else:
             fields[key] = spec.default
     if definition.kind == "measure_diameter":
-        fields["result_name"] = fields.get("result_name") or _published_name(by_role.get("find"), "diameter_world" if fields.get("calibration") else "diameter")
+        tol = by_role.get("tol") or {}
+        fields["mode"] = "roundness" if tol.get("type") == "gdt_measure" else "check"
+        if fields["mode"] == "roundness":
+            fields["upper_tol"] = (tol.get("params") or {}).get("tolerance", 1)
+        fields["result_name"] = (tol.get("params") or {}).get("name") or _published_name(by_role.get("find"), "diameter_world" if fields.get("calibration") else "diameter")
         item["unit"] = fields.get("unit") or "px"
+    elif definition.kind == "locate_part":
+        fields["allow_rotation"] = bool(((by_role.get("align") or {}).get("params") or {}).get("use_angle", False))
 
 
 def _locator_for(task_id: str, edges: list[dict[str, Any]]) -> str:
@@ -360,15 +416,18 @@ def _published_name(node: dict[str, Any] | None, port: str) -> str:
 
 def _custom_reasons(task_id: str, definition: task_base.TaskDefinition, nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> list[dict[str, str]]:
     reasons: list[dict[str, str]] = []
+    fields = _fields_for_reason(definition, nodes, edges, task_id)
+    expected_roles = dict(definition.roles)
+    if definition.kind == "measure_diameter" and fields.get("mode") == "roundness" and fields.get("unit") == "mm":
+        expected_roles["scale"] = "calibration"
     role_types = {inspect_marker(n)["role"]: str(n.get("type")) for n in nodes if inspect_marker(n)}
-    for role, tool_key in definition.roles.items():
+    for role, tool_key in expected_roles.items():
         if role not in role_types:
             reasons.append({"code": "missing_role", "role": role, "detail": f"Missing {role}"})
         elif role_types[role] != tool_key and not (definition.kind == "measure_diameter" and role == "tol" and role_types[role] in ("tolerance_judge", "gdt_measure")):
             reasons.append({"code": "role_type_changed", "role": role, "detail": f"Expected {tool_key}, got {role_types[role]}"})
-    for role in sorted(set(role_types) - set(definition.roles)):
+    for role in sorted(set(role_types) - set(expected_roles)):
         reasons.append({"code": "unexpected_role", "role": role, "detail": f"Unexpected role {role}"})
-    fields = _fields_for_reason(definition, nodes, edges, task_id)
     expected = {(f"{task_id}_{e.source_role}", e.source_port, f"{task_id}_{e.target_role}", e.target_port) for e in definition.edges_for(fields)}
     actual = {
         (str(e.get("source")), str(e.get("source_handle") or ""), str(e.get("target")), str(e.get("target_handle") or ""))

@@ -1,5 +1,49 @@
 /** `@/lib/api` 的假後端：依路徑回最小合法資料，讓頁面 render 走完 loading → 內容。 */
 import { vi } from 'vitest'
+import type { FlowGraph, InspectKind } from '@/lib/types'
+
+export const INSPECT_KINDS: InspectKind[] = [{
+  kind: 'measure_diameter', version: 1, label: 'Measure diameter', help_text: 'Measure a circular edge.', roles: { find: 'find_circle', tol: 'tolerance_judge' }, public_inputs: [{ role: 'find', port: 'image' }], public_outputs: [], pass_port: { role: 'tol', port: 'in_spec' },
+  fields: [
+    { key: 'roi', label: 'Region', kind: 'roi', role: 'find', param: 'roi', required: true, default: null, shapes: ['annulus'] },
+    { key: 'nominal', label: 'Nominal', kind: 'number', role: 'tol', param: 'nominal', required: true, default: 100 },
+    { key: 'unit', label: 'Unit', kind: 'select', role: 'tol', param: 'unit', default: 'px', options: [{ value: 'px', label: 'Pixels' }, { value: 'mm', label: 'Millimetres' }] },
+    { key: 'calibration', label: 'Calibration', kind: 'asset', role: 'find', param: 'calibration', default: '', accept: 'calibration' },
+    { key: 'result_name', label: 'Result name', kind: 'output_key', role: 'tol', param: 'name', default: '' },
+  ].map((field) => ({ required: false, help_text: '', options: [], unit: '', minimum: null, maximum: null, step: null, shapes: [], accept: '', ...field })),
+}] as InspectKind[]
+
+export const INSPECT_GRAPH: FlowGraph = {
+  nodes: [
+    { id: 'camera', type: 'image_source', params: { source_id: 1 } },
+    { id: 'd_find', type: 'find_circle', params: { roi: { shape: 'annulus', cx: 200, cy: 200, r_inner: 40, r_outer: 60 }, calibration: '' }, meta: { inspect: { task_id: 'd', role: 'find', kind: 'measure_diameter', schema_version: 1, required: true } } },
+    { id: 'd_tol', type: 'tolerance_judge', params: { nominal: 100, unit: 'px', name: 'Diameter' }, meta: { inspect: { task_id: 'd', role: 'tol', kind: 'measure_diameter', schema_version: 1, required: true } } },
+  ], edges: [{ source: 'camera', source_handle: 'image', target: 'd_find', target_handle: 'image' }, { source: 'd_find', source_handle: 'diameter', target: 'd_tol', target_handle: 'value' }],
+}
+
+function inspectMock(path: string, body?: unknown) {
+  const payload = body as { graph: FlowGraph; task?: { task_id?: string; fields: Record<string, unknown> }; task_id?: string }
+  if (path.endsWith('/kinds')) return { items: INSPECT_KINDS }
+  const graph = payload.graph
+  if (path.endsWith('/read')) {
+    const find = graph.nodes.find((node) => node.id === 'd_find')
+    const tol = graph.nodes.find((node) => node.id === 'd_tol')
+    return { tasks: find && tol ? [{ task_id: 'd', kind: 'measure_diameter', version: 1, required: true, nodes: { find: 'd_find', tol: 'd_tol' }, fields: { roi: find.params?.roi, calibration: find.params?.calibration ?? '', nominal: tol.params?.nominal, unit: tol.params?.unit, result_name: tol.params?.name }, custom: false, reasons: [] }] : [], shared: [{ id: 'camera', type: 'image_source' }], loose: [] }
+  }
+  if (path.endsWith('/evidence')) return { items: [{ task_id: 'd', verdict: 'pass', valid: true, detected: true, value: 99.9, unit: 'px', reason: '', overlays: [], node_id: 'd_tol' }] }
+  if (path.endsWith('/remove')) return { graph, removed: false, dependencies: [{ target: 'camera', target_handle: 'image' }] }
+  if (path.endsWith('/update')) {
+    const next = structuredClone(graph)
+    for (const field of INSPECT_KINDS[0].fields) {
+      if (payload.task?.fields && field.key in payload.task.fields) {
+        const node = next.nodes.find((entry) => entry.id === `d_${field.role}`)
+        if (node && field.param) node.params = { ...node.params, [field.param]: payload.task.fields[field.key] }
+      }
+    }
+    return { graph: next }
+  }
+  return { graph }
+}
 
 export const ME = {
   // 與真實 /auth/me 一致：帶 is_admin 與 role，否則前端會把測試身分當成工程師
@@ -138,6 +182,8 @@ export const DASHBOARD_DATA = {
 }
 
 export function routes(path: string, body?: unknown): unknown {
+  if (path.startsWith('/vision/inspect/')) return inspectMock(path, body)
+  if (path === '/vision/flows/6') return { ...FLOW, id: 6, graph: INSPECT_GRAPH, ...(body && typeof body === 'object' ? body : {}) }
   if (path.startsWith('/auth/status')) return { setup_required: false }
   if (path.startsWith('/auth/me')) return ME
   if (path.startsWith('/vision/batch/sets/')) return { id: 1, flow_id: 1, name: '影像集 A', source: 'upload', image_count: 0, size_bytes: 0, owner_id: 1, labeled: { ok: 0, ng: 0 }, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', images: [], can_manage: true, items: [], total: 0 }

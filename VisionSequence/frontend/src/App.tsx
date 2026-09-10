@@ -35,6 +35,7 @@ const CalibrationPage = lazy(() => import('@/pages/CalibrationPage').then((m) =>
 const BoardPage = lazy(() => import('@/pages/BoardPage').then((m) => ({ default: m.BoardPage })))
 const StatsPage = lazy(() => import('@/pages/StatsPage').then((m) => ({ default: m.StatsPage })))
 const TeachPage = lazy(() => import('@/pages/TeachPage').then((m) => ({ default: m.TeachPage })))
+const InspectPage = lazy(() => import('@/pages/InspectPage').then((m) => ({ default: m.InspectPage })))
 const StationTeachPage = lazy(() => import('@/pages/StationTeachPage').then((m) => ({ default: m.StationTeachPage })))
 const DlPage = lazy(() => import('@/pages/DlPage').then((m) => ({ default: m.DlPage })))
 const ToolPage = lazy(() => import('@/pages/ToolPage').then((m) => ({ default: m.ToolPage })))
@@ -71,6 +72,7 @@ const router = createBrowserRouter([
           { path: 'flows/:flowId/stats', element: <StatsPage /> },
           { path: 'flows/:flowId/teach', element: <TeachPage /> },
           { path: 'flows/:flowId/golden', element: <GoldenPage /> },
+          { path: 'flows/:flowId/inspect', element: <InspectPage /> },
           { path: 'teach', element: <StationTeachPage /> },
           { path: 'batch', element: <BatchPage /> },
           { path: 'dl', element: <DlPage /> },

@@ -192,6 +192,7 @@ export function EditorToolbar(p: EditorToolbarProps) {
               {p.collapsedTaskCount ? t('editor.groups.expandAll') : t('editor.groups.collapseTasks')}
             </Button>
           ) : null}
+          <Link to={`/flows/${p.flowId}/inspect`} className="btn-secondary !h-8 !text-xs" data-testid="btn-inspect">{t('inspect.title')}</Link>
           {canTeach ? <Link to={`/flows/${p.flowId}/teach`} className="btn-icon" title={t('editor.teach')} aria-label={t('editor.teach')} data-testid="btn-teach"><SlidersHorizontal size={15} /></Link> : null}
           <Link to={`/flows/${p.flowId}/golden`} className="btn-icon" title={t('editor.golden')} aria-label={t('editor.golden')} data-testid="btn-golden"><Gem size={15} /></Link>
           {p.onExport ? <IconButton label={t('editor.export')} title={t('flows.exportHint')} onClick={p.onExport} size="sm" data-testid="btn-export"><Download size={15} /></IconButton> : null}

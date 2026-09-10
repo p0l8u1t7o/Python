@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+from unittest.mock import patch
 
 import cv2
 import numpy as np
@@ -73,6 +74,82 @@ def diameter_task(task_id: str = "diam", *, edge_name: str = "outer", nominal: f
 
 
 class InspectTranslatorTests(SimpleTestCase):
+    def test_calibration_rewire_preserves_published_alias_and_advanced_parameters(self):
+        graph = inspect.build(base_graph(), diameter_task("d"))
+        find = next(n for n in graph["nodes"] if n["id"] == "d_find")
+        find["params"]["_publish"] = {"diameter": "measured_size", "cx": "centre_x"}
+        find["params"]["smoothing"] = 7
+        find["label"] = "Outer edge"
+        updated = inspect.update(graph, {"task_id": "d", "fields": {"calibration": "scale"}})
+        actual = next(n for n in updated["nodes"] if n["id"] == "d_find")
+        self.assertEqual(actual["params"]["_publish"], {"diameter_world": "measured_size", "cx": "centre_x"})
+        self.assertEqual(actual["params"]["smoothing"], 7)
+        self.assertEqual(actual["label"], "Outer edge")
+
+    def test_calibration_update_uses_world_measurements_in_the_engine(self):
+        task = diameter_task("d", nominal=30, lower=-0.02, upper=0.02)
+        graph = inspect.build(base_graph(), task)
+        updated = inspect.update(graph, {"task_id": "d", "fields": {"calibration": "scale"}})
+        mapping = {"unit": "mm", "world": {"matrix": [[0.1, 0, 0], [0, 0.1, 0], [0, 0, 1]], "mm_per_px": 0.1}}
+        with patch("apps.vision.calib.from_asset", return_value=mapping):
+            result = run_graph(updated, annulus_image())
+            self.assertEqual(result.status, "ok")
+            self.assertAlmostEqual(result.nodes["d_find"].outputs["diameter_world"], 30, delta=0.008)
+            reading = inspect.evidence(updated, result)[0]
+            self.assertEqual(reading["unit"], "mm")
+            self.assertAlmostEqual(reading["value"], 30, delta=0.008)
+            round_graph = inspect.update(updated, {"task_id": "d", "fields": {"mode": "roundness", "upper_tol": 0.05}})
+            round_result = run_graph(round_graph, annulus_image())
+            self.assertEqual(round_result.status, "ok", {key: row.message for key, row in round_result.nodes.items()})
+            self.assertEqual(round_result.nodes["d_scale"].outputs["scale"], 0.1)
+            self.assertLess(inspect.evidence(round_graph, round_result)[0]["value"], 0.05)
+        restored = inspect.update(updated, {"task_id": "d", "fields": {"calibration": ""}})
+        self.assertEqual(next(t for t in inspect.read(restored)["tasks"] if t["task_id"] == "d")["fields"]["unit"], "px")
+
+    def test_update_rebuild_fields_match_direct_build_and_preserve_external_edges(self):
+        task = diameter_task("d")
+        original = inspect.build(base_graph(), task)
+        original = inspect.build(original, diameter_task("other"))
+        original["nodes"].append({"id": "external", "type": "formula", "params": {"expression": "a"}})
+        external = edge("d_tol", "external", "in_spec", "a")
+        original["edges"].append(external)
+        original["nodes"][1]["meta"]["editor_note"] = "preserve"
+        snapshot = copy.deepcopy(original)
+        for changes in ({"calibration": "calibration-id", "unit": "mm"}, {"mode": "roundness"}, {"mode": "roundness", "unit": "mm", "calibration": "calibration-id"}):
+            with self.subTest(changes=changes):
+                updated = inspect.update(original, {"task_id": "d", "fields": changes})
+                direct = inspect.build(base_graph(), {**task, "fields": {**task["fields"], **changes}})
+                for role in ("find", "tol"):
+                    actual = next(n for n in updated["nodes"] if n["id"] == f"d_{role}")
+                    expected = next(n for n in direct["nodes"] if n["id"] == f"d_{role}")
+                    self.assertEqual(actual["type"], expected["type"])
+                    self.assertEqual(actual["params"], expected["params"])
+                def internal(g):
+                    return [e for e in g["edges"] if e["source"].startswith("d_") and e["target"].startswith("d_")]
+                self.assertEqual(internal(updated), internal(direct))
+                self.assertIn(external, updated["edges"])
+                self.assertEqual(updated["nodes"][1]["meta"], original["nodes"][1]["meta"])
+                self.assertEqual([n for n in updated["nodes"] if n["id"].startswith("other_")], [n for n in original["nodes"] if n["id"].startswith("other_")])
+                readback = next(t for t in inspect.read(updated)["tasks"] if t["task_id"] == "d")
+                self.assertFalse(readback["custom"])
+                self.assertEqual(readback["fields"]["result_name"], "d")
+                restored = inspect.update(updated, {"task_id": "d", "fields": {"mode": "check", "unit": "px", "calibration": ""}})
+                self.assertEqual(next(n for n in restored["nodes"] if n["id"] == "d_tol")["params"], next(n for n in original["nodes"] if n["id"] == "d_tol")["params"])
+        self.assertEqual(original, snapshot)
+
+    def test_update_rotation_matches_build_and_keeps_downstream_locator_edges(self):
+        task = {"kind": "locate_part", "task_id": "loc", "fields": {"template_images": [], "ref_x": 10, "ref_y": 20}}
+        original = inspect.build(base_graph(), task)
+        original = inspect.build(original, diameter_task("d", locator="loc"))
+        for enabled in (True, False):
+            changes = {"allow_rotation": enabled, "angle_range": 30}
+            updated = inspect.update(original, {"task_id": "loc", "fields": changes})
+            direct = inspect.build(base_graph(), {**task, "fields": {**task["fields"], **changes}})
+            self.assertEqual([n["params"] for n in updated["nodes"] if n["id"].startswith("loc_")], [n["params"] for n in direct["nodes"] if n["id"].startswith("loc_")])
+            self.assertEqual(updated["edges"], original["edges"])
+            self.assertEqual(next(t for t in inspect.read(updated)["tasks"] if t["task_id"] == "loc")["fields"]["allow_rotation"], enabled)
+            original = updated
+
     def test_build_validate_and_engine_measure_inner_and_outer_on_odd_image(self):
         image = annulus_image()
         inner_graph = inspect.build(base_graph(), diameter_task("inner", edge_name="inner", nominal=200), {})

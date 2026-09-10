@@ -4,9 +4,20 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { localiseList } from './catalogueLocale'
+import { localiseInspectKinds, localiseList } from './catalogueLocale'
+import { INSPECT_KINDS } from '@/test/apiMock'
 
 describe('catalogueLocale', () => {
+  it('translates inspection display text while preserving kind, roles, fields and option values', () => {
+    for (const language of ['zh-Hant', 'zh-Hans'] as const) {
+      const result = localiseInspectKinds(INSPECT_KINDS, language)
+      expect(result[0].label).not.toBe(INSPECT_KINDS[0].label)
+      expect(result[0].kind).toBe('measure_diameter')
+      expect(result[0].roles).toEqual(INSPECT_KINDS[0].roles)
+      expect(result[0].fields.map((field) => [field.key, field.param, field.role, field.default, field.options.map((option) => option.value)])).toEqual(INSPECT_KINDS[0].fields.map((field) => [field.key, field.param, field.role, field.default, field.options.map((option) => option.value)]))
+    }
+    expect(INSPECT_KINDS[0].label).toBe('Measure diameter')
+  })
   const sourceKinds = [
     { kind: 'capture', label: 'Capture client camera', description: 'The capture client program…', fields: ['client'] },
     { kind: 'folder', label: 'Folder (reads the image files in a loop)', fields: ['path'] },

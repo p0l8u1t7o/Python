@@ -100,6 +100,60 @@ export interface InspectMeta {
   required: boolean
 }
 
+export interface InspectField extends Omit<ToolParam, 'visible_when' | 'group'> {
+  role: string | null
+  param: string | null
+}
+
+export interface InspectKind {
+  kind: string
+  version: number
+  label: string
+  help_text: string
+  fields: InspectField[]
+  roles: Record<string, string>
+  public_inputs: { role: string; port: string }[]
+  public_outputs: { role: string; port: string }[]
+  pass_port: { role: string; port: string } | null
+}
+
+export interface InspectTask {
+  task_id: string
+  kind: string
+  version: number
+  required: boolean
+  nodes: Record<string, string>
+  fields: Record<string, unknown>
+  custom: boolean
+  reasons: { code: string; role: string; detail: string }[]
+}
+
+export interface InspectList {
+  tasks: InspectTask[]
+  shared: { id: string; type: string; kind?: string }[]
+  loose: { id: string; type: string }[]
+}
+
+export interface InspectReading {
+  task_id: string
+  verdict: 'pass' | 'fail' | 'not_found' | 'locate_failed' | 'error' | 'skipped'
+  valid: boolean
+  detected: boolean | null
+  value: unknown
+  unit: string
+  reason: string
+  overlays: Overlay[]
+  node_id: string
+}
+
+export interface InspectDependency {
+  task_id?: string
+  target: string
+  target_handle: string
+  source?: string
+  source_handle?: string
+}
+
 export interface ToolCatalogue {
   items: ToolTypeDef[]
   categories: { key: string; label: string }[]

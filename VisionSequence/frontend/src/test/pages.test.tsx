@@ -35,6 +35,36 @@ function renderDataPage(ui: React.ReactElement, route: string, path: string) {
 }
 
 describe('pages render (smoke)', () => {
+  it('InspectPage renders tasks and viewer, edits through the translator, and saves with a version baseline', async () => {
+    const { InspectPage } = await import('@/pages/InspectPage')
+    const { api } = await import('@/lib/api')
+    const { clearSession } = await import('@/lib/flowDraft')
+    clearSession(6)
+    renderDataPage(<InspectPage />, '/flows/6/inspect', '/flows/:flowId/inspect')
+    expect(await screen.findByTestId('inspect-task')).toHaveTextContent('Diameter')
+    expect(screen.getByTestId('inspect-viewer')).toBeInTheDocument()
+    expect(screen.getByTestId('inspect-add')).toBeEnabled()
+    const nominal = await screen.findByLabelText('Nominal')
+    fireEvent.change(nominal, { target: { value: '101' } })
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/vision/inspect/update', expect.objectContaining({ task: expect.objectContaining({ fields: { nominal: 101 } }) })))
+    await waitFor(() => expect(screen.getByTestId('inspect-save')).toBeEnabled())
+    fireEvent.click(screen.getByTestId('inspect-save'))
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/vision/flows/6', expect.objectContaining({ expected_updated_at: '2026-01-01T00:00:00Z' })))
+  })
+
+  it('InspectPage blocks millimetres without calibration and requires a region for new tasks', async () => {
+    const { InspectPage } = await import('@/pages/InspectPage')
+    const { clearSession } = await import('@/lib/flowDraft')
+    clearSession(6)
+    renderDataPage(<InspectPage />, '/flows/6/inspect', '/flows/:flowId/inspect')
+    fireEvent.change(await screen.findByLabelText('Unit'), { target: { value: 'mm' } })
+    expect(await screen.findByRole('link', { name: 'Open calibration' })).toHaveAttribute('href', '/calibration')
+    expect(screen.getByTestId('inspect-save')).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('Unit'), { target: { value: 'px' } })
+    await waitFor(() => expect(screen.getByTestId('inspect-add')).toBeEnabled())
+    fireEvent.change(screen.getByTestId('inspect-add'), { target: { value: 'measure_diameter' } })
+    expect(await screen.findByTestId('inspect-create')).toBeDisabled()
+  })
   it('AuditPage lists changes for an administrator', async () => {
     const { AuditPage } = await import('@/pages/AuditPage')
     renderPage(<AuditPage />, { route: '/audit' })

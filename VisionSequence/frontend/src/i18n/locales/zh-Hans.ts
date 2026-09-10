@@ -2635,4 +2635,47 @@ const zhHans = {
   helpMenu: { help: '说明页', shortcuts: '快捷键', integration: '集成页' },
 } as const
 
-export default zhHans
+export default { ...zhHans, inspect: {
+  "title": "检测任务",
+  "run": "试执行",
+  "save": "保存",
+  "advancedFlow": "高级流程",
+  "add": "添加任务",
+  "chooseKind": "选择任务类型",
+  "chooseTask": "选择或添加任务以开始。",
+  "noTasks": "尚无检测任务。",
+  "advancedOnly": "此流程是在高级编辑器创建的。",
+  "otherSteps": "其他步骤（{{count}}）",
+  "source": "图像来源",
+  "upload": "上传临时图像",
+  "clearImage": "清除",
+  "reuseImage": "使用上次图像",
+  "unsaved": "尚未保存",
+  "readOnly": "只读",
+  "locked": "执行已锁定。",
+  "advanced": "高级",
+  "remove": "移除任务",
+  "deleteConfirm": "要移除此检测任务吗？",
+  "dependencies": "任务仍被使用",
+  "dependenciesHint": "请先在高级流程解除下列步骤的依赖连线，再移除此任务。",
+  "customHint": "此任务有自定义连线或步骤，请到高级流程编辑。",
+  "staleHint": "设置已更改，请重新试执行。",
+  "needsCalibration": "使用毫米前请先选择标定。",
+  "openCalibration": "打开标定",
+  "templateOnly": "此版本仅支持模板定位。",
+  "teachPose": "从本次结果示教姿态",
+  "saveCrop": "使用此裁剪",
+  "locatorMark": "定位标记",
+  "noDraft": "流程草稿尚未就绪。",
+  "status": {
+    "pass": "合格",
+    "fail": "不合格",
+    "not_found": "未找到",
+    "locate_failed": "定位失败",
+    "error": "错误",
+    "skipped": "已跳过",
+    "stale": "已过期",
+    "custom": "自定义",
+    "unrun": "尚未执行"
+  }
+} }
