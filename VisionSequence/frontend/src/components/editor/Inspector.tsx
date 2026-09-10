@@ -7,13 +7,14 @@ import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { SlidersHorizontal } from 'lucide-react'
 
+import { SourcePicker } from '@/components/editor/SourcePicker'
 import { Button, Checkbox, Select, TextArea, TextInput } from '@/components/ui'
 import { sourcePreviewUrl } from '@/lib/api'
 import { useAuth } from '@/providers/AuthProvider'
 import { ImagesField } from '@/components/editor/ParamField'
 import { dataOutputPorts, nodeProblems, publishMap, validatePublishName } from '@/lib/graphValidation'
 import { useSources } from '@/lib/queries'
-import type { GraphEdge, GraphNode, ToolTypeDef } from '@/lib/types'
+import type { FlowGraph, GraphEdge, GraphNode, ToolTypeDef } from '@/lib/types'
 
 const NODE_COLORS = ['#0f766e', '#1d4ed8', '#7c3aed', '#b45309', '#be123c', '#0891b2', '#4d7c0f', '#334155']
 
@@ -32,7 +33,7 @@ function ColorField({ value, onChange, label, clearLabel }: { value: string; onC
   )
 }
 
-export function Inspector({ flowId, node, definition, edges, onChange, onDelete }: { flowId: number; node: GraphNode; definition: ToolTypeDef | undefined; edges: GraphEdge[]; onChange: (patch: Partial<GraphNode>) => void; onDelete: () => void }) {
+export function Inspector({ flowId, node, definition, edges, graph, defs, onChange, onGraphChange, onDelete }: { flowId: number; node: GraphNode; definition: ToolTypeDef | undefined; edges: GraphEdge[]; graph: FlowGraph; defs: Map<string, ToolTypeDef>; onChange: (patch: Partial<GraphNode>) => void; onGraphChange: (graph: FlowGraph) => string | null; onDelete: () => void }) {
   const { t } = useTranslation()
   const isNote = node.type === 'note'
   const problems = useMemo(() => nodeProblems(node, definition, edges), [node, definition, edges])
@@ -62,6 +63,7 @@ export function Inspector({ flowId, node, definition, edges, onChange, onDelete 
       )}
       {node.type === 'image_source' ? <SourceSection node={node} onChange={onChange} /> : null}
       {node.type === 'fixed_image' ? <FixedImagesSection node={node} onChange={onChange} /> : null}
+      {isNote ? null : <SourcePicker graph={graph} node={node} definition={definition} defs={defs} onGraphChange={onGraphChange} />}
       <TextInput label={t('editor.nodeName')} value={node.label ?? ''} placeholder={definition?.label} hint={isNote ? undefined : t('editor.nodeNameHint')} onChange={(e) => onChange({ label: e.target.value })} />
       <TextArea label={t('editor.nodeNote')} rows={isNote ? 5 : 2} value={node.description ?? ''} onChange={(e) => onChange({ description: e.target.value })} />
       <ColorField label={t('editor.nodeColor')} clearLabel={t('editor.nodeColorReset')} value={node.color ?? ''} onChange={(color) => onChange({ color })} />

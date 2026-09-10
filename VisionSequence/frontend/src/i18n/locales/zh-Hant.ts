@@ -876,6 +876,20 @@ const zhHant = {
       empty: '此步驟沒有資料輸出',
       nodeHint: '發布為 {{name}}',
     },
+    sourcePicker: {
+      title: '輸入來源',
+      unselected: '未選擇',
+      add: '加入來源',
+      remove: '移除來源',
+      noCandidates: '沒有相容來源',
+    },
+    deleteUsers: {
+      title: '刪除已連線步驟？',
+      message: '此步驟正在供應下列輸入。確定刪除並移除這些連線？',
+    },
+    descriptionPanel: {
+      title: '流程說明',
+    },
     parameters: '參數',
     param: {
       bind: '改由前面的步驟決定',

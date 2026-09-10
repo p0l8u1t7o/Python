@@ -2130,6 +2130,20 @@ const enExtra3 = {
       empty: 'This step has no data outputs',
       nodeHint: 'Published as {{name}}',
     },
+    sourcePicker: {
+      title: 'Input sources',
+      unselected: 'Not selected',
+      add: 'Add source',
+      remove: 'Remove source',
+      noCandidates: 'No compatible sources',
+    },
+    deleteUsers: {
+      title: 'Delete connected step?',
+      message: 'This step feeds these inputs. Delete it and remove those links?',
+    },
+    descriptionPanel: {
+      title: 'Flow description',
+    },
     param: {
       bind: 'Let an earlier step set this',
       unbind: 'Set it here again',

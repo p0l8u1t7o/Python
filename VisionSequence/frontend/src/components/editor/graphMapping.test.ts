@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { autoConnectOnInsert, computeLayout, graphFrom, isFlowHandle, nextNodeId, toFlowEdges, toFlowNodes } from '@/components/editor/graphMapping'
+import { addInputSource, autoConnectOnInsert, computeLayout, graphFrom, isFlowHandle, nextNodeId, removeInputSource, replaceInputSource, toFlowEdges, toFlowNodes } from '@/components/editor/graphMapping'
+import { createHistory, pushHistory, undoHistory } from '@/lib/flowHistory'
 import type { FlowGraph, ToolPort, ToolTypeDef } from '@/lib/types'
 
 function port(key: string, type: ToolPort['type'], required = false, implicit = false): ToolPort {
@@ -94,5 +95,38 @@ describe('graphMapping', () => {
   it('computeLayout places downstream nodes to the right', () => {
     const layout = computeLayout(graph)
     expect(layout.get('g')!.x).toBeGreaterThan(layout.get('src')!.x)
+  })
+
+  it('replaces only the selected single input edge', () => {
+    const source: FlowGraph = {
+      nodes: [{ id: 'a', type: 'measure' }, { id: 'b', type: 'measure' }, { id: 'c', type: 'measure' }, { id: 't', type: 'measure' }],
+      edges: [
+        { id: 'old', source: 'a', target: 't', source_handle: 'value', target_handle: 'image' },
+        { id: 'keep', source: 'c', target: 't', source_handle: 'value', target_handle: 'other' },
+      ],
+    }
+    const next = replaceInputSource(source, 't', 'image', { nodeId: 'b', portKey: 'value' })
+    expect(next.edges).toHaveLength(2)
+    expect(next.edges).toContainEqual(source.edges[1])
+    expect(next.edges.find((edge) => edge.target_handle === 'image')).toMatchObject({ source: 'b', source_handle: 'value', target: 't' })
+  })
+
+  it('adds and removes sources for multiple inputs', () => {
+    const source: FlowGraph = { nodes: [{ id: 'a', type: 'measure' }, { id: 't', type: 'measure' }], edges: [] }
+    const added = addInputSource(source, 't', 'images', { nodeId: 'a', portKey: 'image' })
+    expect(added.edges).toMatchObject([{ source: 'a', target: 't', source_handle: 'image', target_handle: 'images' }])
+    expect(addInputSource(added, 't', 'images', { nodeId: 'a', portKey: 'image' }).edges).toHaveLength(1)
+    expect(removeInputSource(added, 't', 'images', { nodeId: 'a', portKey: 'image' }).edges).toEqual([])
+  })
+
+  it('treats one source picker change as one undo step', () => {
+    const source: FlowGraph = {
+      nodes: [{ id: 'a', type: 'measure' }, { id: 'b', type: 'measure' }, { id: 't', type: 'measure' }],
+      edges: [{ id: 'old', source: 'a', target: 't', source_handle: 'image', target_handle: 'image' }],
+    }
+    const history = pushHistory(createHistory<FlowGraph>(), source)
+    const changed = replaceInputSource(source, 't', 'image', { nodeId: 'b', portKey: 'image' })
+    const previous = undoHistory(history, changed)
+    expect(previous.value).toEqual(source)
   })
 })

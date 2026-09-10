@@ -876,6 +876,20 @@ const zhHans = {
       empty: '此步骤没有数据输出',
       nodeHint: '发布为 {{name}}',
     },
+    sourcePicker: {
+      title: '输入来源',
+      unselected: '未选择',
+      add: '加入来源',
+      remove: '移除来源',
+      noCandidates: '没有兼容来源',
+    },
+    deleteUsers: {
+      title: '删除已连接步骤？',
+      message: '此步骤正在供应下列输入。确定删除并移除这些连接？',
+    },
+    descriptionPanel: {
+      title: '流程说明',
+    },
     parameters: '参数',
     param: {
       bind: '改由前面的步骤决定',

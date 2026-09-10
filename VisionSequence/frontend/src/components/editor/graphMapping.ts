@@ -211,6 +211,74 @@ export function graphFrom(flowNodes: Node[], flowEdges: Edge[], payloads: Map<st
   return { nodes, edges }
 }
 
+function edgeId(source: string, sourceHandle: string, target: string, targetHandle: string): string {
+  return `e-${source}.${sourceHandle}-${target}.${targetHandle}`
+}
+
+function withUniqueEdgeId(edges: GraphEdge[], edge: GraphEdge): GraphEdge {
+  const taken = new Set(edges.map((item) => item.id).filter(Boolean))
+  const base = edge.id || edgeId(edge.source, edge.source_handle ?? '', edge.target, edge.target_handle ?? '')
+  if (!taken.has(base)) return { ...edge, id: base }
+  for (let index = 2; index < 10000; index += 1) {
+    const next = `${base}-${index}`
+    if (!taken.has(next)) return { ...edge, id: next }
+  }
+  return { ...edge, id: `${base}-${Date.now()}` }
+}
+
+function sameTarget(edge: GraphEdge, targetNodeId: string, targetPortKey: string): boolean {
+  return edge.target === targetNodeId && (edge.target_handle ?? '') === targetPortKey
+}
+
+function sameSource(edge: GraphEdge, sourceNodeId: string, sourcePortKey: string): boolean {
+  return edge.source === sourceNodeId && (edge.source_handle ?? '') === sourcePortKey
+}
+
+export function replaceInputSource(
+  graph: FlowGraph,
+  targetNodeId: string,
+  targetPortKey: string,
+  source?: { nodeId: string; portKey: string } | null,
+): FlowGraph {
+  const kept = (graph.edges ?? []).filter((edge) => !sameTarget(edge, targetNodeId, targetPortKey))
+  if (!source) return { ...graph, edges: kept }
+  const next = withUniqueEdgeId(kept, {
+    source: source.nodeId,
+    target: targetNodeId,
+    source_handle: source.portKey,
+    target_handle: targetPortKey,
+  })
+  return { ...graph, edges: [...kept, next] }
+}
+
+export function addInputSource(
+  graph: FlowGraph,
+  targetNodeId: string,
+  targetPortKey: string,
+  source: { nodeId: string; portKey: string },
+): FlowGraph {
+  if ((graph.edges ?? []).some((edge) => sameTarget(edge, targetNodeId, targetPortKey) && sameSource(edge, source.nodeId, source.portKey))) return graph
+  const next = withUniqueEdgeId(graph.edges ?? [], {
+    source: source.nodeId,
+    target: targetNodeId,
+    source_handle: source.portKey,
+    target_handle: targetPortKey,
+  })
+  return { ...graph, edges: [...(graph.edges ?? []), next] }
+}
+
+export function removeInputSource(
+  graph: FlowGraph,
+  targetNodeId: string,
+  targetPortKey: string,
+  source: { nodeId: string; portKey: string },
+): FlowGraph {
+  return {
+    ...graph,
+    edges: (graph.edges ?? []).filter((edge) => !(sameTarget(edge, targetNodeId, targetPortKey) && sameSource(edge, source.nodeId, source.portKey))),
+  }
+}
+
 /**
  * 自動排列：依「距來源的最長路徑」分欄（左→右），每欄依父節點平均列排序。
  * note 不動。

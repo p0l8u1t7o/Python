@@ -26,7 +26,7 @@ import {
   type Node,
   type NodeChange,
 } from '@xyflow/react'
-import { Camera, Check, Columns2, Layers, LayoutGrid, RotateCcw } from 'lucide-react'
+import { Camera, Check, ChevronDown, ChevronUp, Columns2, FileText, Layers, LayoutGrid, RotateCcw } from 'lucide-react'
 
 import { EditorToolbar } from '@/components/editor/EditorToolbar'
 import { FlowCanvas, readInteractionMode, storeInteractionMode, type InteractionMode } from '@/components/editor/FlowCanvas'
@@ -50,7 +50,7 @@ import { createHistory, pushHistory as pushEditHistory, redoHistory, undoHistory
 import { getSession, setDraft, updateSession, useFlowSession } from '@/lib/flowDraft'
 import { flowGraphSignature, shouldSaveDraftVersion } from '@/lib/flowAutoVersion'
 import { searchNodes } from '@/lib/nodeSearch'
-import { readEditorGridView, readFlowDraftAutoVersion, writeEditorGridView } from '@/lib/localState'
+import { readEditorGridView, readFlowDescriptionPanelCollapsed, readFlowDraftAutoVersion, writeEditorGridView, writeFlowDescriptionPanelCollapsed } from '@/lib/localState'
 import { GRID_COUNTS, bindGridCell, gridCellImage, gridPlacement, normalizeGridLayout, setGridCount, type GridBinding, type GridCount, type GridLayout } from '@/lib/gridView'
 import { countFolderPreviewFiles, countPreviewSequenceResult, createPreviewSequenceState, findPreviewSequenceSource, graphForPreviewSequenceItem, isPreviewSequenceDone, nextPreviewSequenceIndex, previewSequenceStatusLabel, type PreviewSequenceSource, type PreviewSequenceState } from '@/lib/previewSequence'
 import { describeReport, useRegisterAssistantContext } from '@/lib/assistantContext'
@@ -235,6 +235,7 @@ function EditorInner({ flowId }: { flowId: number }) {
   const [split, setSplit] = useState(true) // 進編輯器預設就看「執行前／後」並排
   const [gridMode, setGridMode] = useState(false)
   const [gridLayout, setGridLayout] = useState<GridLayout>(() => normalizeGridLayout(readEditorGridView(flowId)))
+  const [descriptionCollapsed, setDescriptionCollapsed] = useState(readFlowDescriptionPanelCollapsed)
   const [allOverlays, setAllOverlays] = useState(false)
   const [pinnedRunId, setPinnedRunId] = useState<string | null>(null)
   const [clearedRunId, setClearedRunId] = useState<string | null>(null)
@@ -277,6 +278,9 @@ function EditorInner({ flowId }: { flowId: number }) {
   useEffect(() => {
     writeEditorGridView(flowId, gridLayout)
   }, [flowId, gridLayout])
+  useEffect(() => {
+    writeFlowDescriptionPanelCollapsed(descriptionCollapsed)
+  }, [descriptionCollapsed])
 
   const defs = useMemo(() => {
     const map = new Map<string, ToolTypeDef>()
@@ -610,18 +614,62 @@ function EditorInner({ flowId }: { flowId: number }) {
     [defs, setNodes],
   )
 
-  const deleteNodes = useCallback(
-    (ids: string[]) => {
-      if (!ids.length) return
+  const applyGraphChange = useCallback(
+    (graph: FlowGraph): string | null => {
+      const nodeMap = new Map(graph.nodes.map((node) => [node.id, node]))
+      for (let index = 0; index < graph.edges.length; index += 1) {
+        const edge = graph.edges[index]
+        const rejection = checkConnection(
+          { source: edge.source, sourceHandle: edge.source_handle ?? null, target: edge.target, targetHandle: edge.target_handle ?? null },
+          nodeMap,
+          graph.edges.filter((_item, i) => i !== index),
+          defs,
+        )
+        if (rejection) return t(`editor.validation.${rejection.code}`, rejection.values)
+      }
       pushHistory()
+      const selectedIds = new Set(nodesRef.current.filter((node) => node.selected).map((node) => node.id))
+      payloads.current = new Map(graph.nodes.map((node) => [node.id, node]))
+      setNodes(toFlowNodes(graph, defs).map((node) => ({ ...node, selected: selectedIds.has(node.id) })))
+      setEdges(toFlowEdges(graph, defs))
+      setDirty(true)
+      return null
+    },
+    [defs, pushHistory, setEdges, setNodes, t],
+  )
+
+  const deleteNodes = useCallback(
+    async (ids: string[]) => {
+      if (!ids.length) return
       const gone = new Set(ids)
+      const usages = graphFrom(nodesRef.current, edgesRef.current, payloads.current).edges
+        .filter((edge) => gone.has(edge.source) && !gone.has(edge.target))
+        .map((edge) => {
+          const target = payloads.current.get(edge.target)
+          const def = target ? defs.get(target.type) : undefined
+          const port = def?.inputs.find((item) => item.key === (edge.target_handle ?? ''))
+          return `${target?.label || def?.label || edge.target} · ${port?.label || edge.target_handle || ''}`
+        })
+      if (usages.length) {
+        const ok = await confirm(
+          <div className="space-y-2">
+            <p>{t('editor.deleteUsers.message')}</p>
+            <ul className="max-h-40 list-disc space-y-1 overflow-y-auto pl-5 text-left text-xs">
+              {usages.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}
+            </ul>
+          </div>,
+          { title: t('editor.deleteUsers.title'), confirmLabel: t('common.delete'), danger: true },
+        )
+        if (!ok) return
+      }
+      pushHistory()
       for (const id of ids) payloads.current.delete(id)
       setNodes((list) => list.filter((n) => !gone.has(n.id)))
       setEdges((list) => list.filter((e) => !gone.has(e.source) && !gone.has(e.target)))
       setSelectedId((cur) => (cur && gone.has(cur) ? null : cur))
       setDirty(true)
     },
-    [pushHistory, setNodes, setEdges],
+    [confirm, defs, pushHistory, setNodes, setEdges, t],
   )
 
   const copySelection = useCallback(() => {
@@ -1034,7 +1082,7 @@ function EditorInner({ flowId }: { flowId: number }) {
         const chosen = nodesRef.current.filter((n) => n.selected)
         if (chosen.length) {
           event.preventDefault()
-          deleteNodes(chosen.map((n) => n.id))
+          void deleteNodes(chosen.map((n) => n.id))
         } else {
           const chosenEdges = edgesRef.current.filter((e) => e.selected)
           if (chosenEdges.length) {
@@ -1471,6 +1519,23 @@ function EditorInner({ flowId }: { flowId: number }) {
               onDragOver={onDragOver}
               onDrop={onDrop}
             />
+            {meta.description.trim() ? (
+              <div className="absolute right-2 top-2 z-20 max-w-sm rounded-lg border border-line bg-surface/95 text-xs shadow-lg backdrop-blur" data-testid="flow-description-panel">
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-2.5 py-2 text-left text-heading"
+                  onClick={() => setDescriptionCollapsed((value) => !value)}
+                  aria-expanded={!descriptionCollapsed}
+                >
+                  <FileText size={14} className="shrink-0 text-muted" />
+                  <span className="min-w-0 flex-1 truncate font-semibold">{t('editor.descriptionPanel.title')}</span>
+                  {descriptionCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                </button>
+                {descriptionCollapsed ? null : (
+                  <p className="max-h-40 overflow-y-auto whitespace-pre-wrap px-2.5 pb-2 text-muted">{meta.description}</p>
+                )}
+              </div>
+            ) : null}
           </div>
         </div>
         <div className="vs-resizer vs-resizer-x hidden lg:block" onMouseDown={onRightResize} />
@@ -1492,12 +1557,12 @@ function EditorInner({ flowId }: { flowId: number }) {
                 <div className="space-y-3 p-3" data-testid="multi-select">
                   <p className="text-sm font-medium">{t('editor.multiSelected', { count: selectedCount })}</p>
                   <p className="text-xs text-muted">{t('editor.multiSelectedHint')}</p>
-                  <Button size="sm" variant="danger" onClick={() => deleteNodes(nodesRef.current.filter((n) => n.selected).map((n) => n.id))}>
+                  <Button size="sm" variant="danger" onClick={() => void deleteNodes(nodesRef.current.filter((n) => n.selected).map((n) => n.id))}>
                     {t('editor.deleteSelected', { count: selectedCount })}
                   </Button>
                 </div>
               ) : selected ? (
-                <Inspector flowId={flowId} node={selected} definition={selectedDef} edges={graphEdges} onChange={(p) => patchNode(selected.id, p)} onDelete={() => deleteNodes([selected.id])} />
+                <Inspector flowId={flowId} node={selected} definition={selectedDef} edges={graphEdges} graph={{ nodes: graphNodes, edges: graphEdges }} defs={defs} onChange={(p) => patchNode(selected.id, p)} onGraphChange={applyGraphChange} onDelete={() => void deleteNodes([selected.id])} />
               ) : (
                 <div className="space-y-3 p-3">
                   <p className="text-xs text-muted">{t('editor.selectNodeHint')}</p>
@@ -1619,7 +1684,7 @@ function EditorInner({ flowId }: { flowId: number }) {
         onRunTo={execLocked ? undefined : (node) => void doPreview(node.id)}
         onDuplicate={duplicateNode}
         onToggleEnabled={(node) => patchNode(node.id, { enabled: node.enabled === false })}
-        onDelete={(node) => deleteNodes([node.id])}
+        onDelete={(node) => void deleteNodes([node.id])}
         onCopyParams={copyParams}
         paramsClipboardType={paramsClipboard?.type ?? null}
         onPasteParams={pasteParams}

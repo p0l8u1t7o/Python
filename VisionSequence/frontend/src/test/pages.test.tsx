@@ -156,6 +156,7 @@ describe('pages render (smoke)', () => {
     const { FlowEditorPage } = await import('@/pages/FlowEditorPage')
     renderDataPage(<FlowEditorPage />, '/flows/1', '/flows/:flowId')
     await screen.findByTestId('editor-toolbar')
+    expect(await screen.findByTestId('flow-description-panel')).toHaveTextContent('Inspect the sample part')
     expect(screen.queryByTestId('btn-batch')).toBeNull()
     expect(await screen.findByTestId('editor-open-variables')).toBeInTheDocument()
     const boardButton = await screen.findByTestId('editor-open-board')
@@ -190,6 +191,7 @@ describe('pages render (smoke)', () => {
     expect(row).not.toBeNull()
     fireEvent.click(row as Element)
     expect(await screen.findByTestId('published-outputs')).toBeInTheDocument()
+    expect(await screen.findByTestId('source-picker')).toBeInTheDocument()
   })
 
   it('FlowEditorPage opens the image grid viewer mode', async () => {

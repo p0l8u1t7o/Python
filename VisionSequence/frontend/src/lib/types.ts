@@ -71,6 +71,8 @@ export interface ToolPort {
   required: boolean
   multiple: boolean
   tone: 'neutral' | 'ok' | 'warn' | 'critical'
+  semantic?: string
+  accepts_semantics?: string[]
   /** 隱含輸出埠（例如 _overlays）：卡片上畫得較小、放最後 */
   implicit?: boolean
 }
