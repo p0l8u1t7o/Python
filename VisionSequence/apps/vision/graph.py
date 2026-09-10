@@ -24,6 +24,7 @@ FLOW_IN = tools.FLOW_IN
 OVERLAYS_OUT = tools.OVERLAYS_OUT
 IMAGE_THRU = tools.IMAGE_THRU
 OUTPUT_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
+INSPECT_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 
 
 class GraphError(ValidationError):
@@ -74,6 +75,30 @@ def _validate_publish(node_id: str, tool: tools.ToolType, params: Any) -> None:
             raise GraphError(f"Node '{node_id}' publishes '{key}' with an invalid output name '{name}'", node_id=node_id, port=key, name=name)
 
 
+def _inspect_meta(node: dict[str, Any]) -> dict[str, Any] | None:
+    meta = node.get("meta")
+    if meta is None:
+        return None
+    if not isinstance(meta, dict):
+        raise GraphError(f"Node '{node.get('id')}' has an invalid meta object", node_id=str(node.get("id") or ""))
+    inspect = meta.get("inspect")
+    if inspect is None:
+        return None
+    if not isinstance(inspect, dict):
+        raise GraphError(f"Node '{node.get('id')}' has an invalid inspect marker", node_id=str(node.get("id") or ""))
+    node_id = str(node.get("id") or "")
+    for key in ("task_id", "role", "kind"):
+        value = inspect.get(key)
+        if not isinstance(value, str) or not INSPECT_ID_RE.fullmatch(value):
+            raise GraphError(f"Node '{node_id}' has an invalid inspect {key}", node_id=node_id, field=key)
+    version = inspect.get("schema_version")
+    if not isinstance(version, int) or version < 1:
+        raise GraphError(f"Node '{node_id}' has an invalid inspect schema_version", node_id=node_id, field="schema_version")
+    if not isinstance(inspect.get("required"), bool):
+        raise GraphError(f"Node '{node_id}' has an invalid inspect required flag", node_id=node_id, field="required")
+    return inspect
+
+
 def validate_graph(graph: Any) -> dict:
     if not isinstance(graph, dict):
         raise GraphError("The graph must be an object with nodes and edges")
@@ -88,6 +113,7 @@ def validate_graph(graph: Any) -> dict:
         raise GraphError(f"The edge limit is {max_edges}", edge_count=len(raw_edges))
 
     seen: dict[str, dict] = {}
+    inspect_tasks: dict[str, dict[str, Any]] = {}
     for node in raw_nodes:
         if not isinstance(node, dict):
             raise GraphError("Every node must be an object")
@@ -102,6 +128,15 @@ def validate_graph(graph: Any) -> dict:
         if node_type not in DECORATION_TYPES:
             tool = tools.get(node_type)  # 查無 → UnknownToolType（附可用 key）
             _validate_publish(node_id, tool, node.get("params") or {})
+        inspect = _inspect_meta(node)
+        if inspect is not None:
+            task_id = inspect["task_id"]
+            task = inspect_tasks.setdefault(task_id, {"roles": set(), "kind": inspect["kind"], "schema_version": inspect["schema_version"]})
+            if inspect["role"] in task["roles"]:
+                raise GraphError(f"Inspect task '{task_id}' has duplicate role '{inspect['role']}'", node_id=node_id, task_id=task_id, role=inspect["role"])
+            if inspect["kind"] != task["kind"] or inspect["schema_version"] != task["schema_version"]:
+                raise GraphError(f"Inspect task '{task_id}' mixes different kinds or versions", node_id=node_id, task_id=task_id)
+            task["roles"].add(inspect["role"])
         seen[node_id] = node
 
     def port_type(node_id: str, key: str, direction: str) -> str:

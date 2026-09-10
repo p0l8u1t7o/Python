@@ -72,6 +72,18 @@ class ValidateGraphTests(SimpleTestCase):
     def test_multiple_port_allows_two_edges(self):
         validate_graph({"nodes": [n("a", "if_number"), n("b", "if_number"), n("l", "bool_logic")], "edges": [e("a", "l", "result", "values"), e("b", "l", "result", "values")]})
 
+    def test_inspect_meta_validation(self):
+        meta = {"inspect": {"task_id": "t1", "role": "find", "kind": "measure_diameter", "schema_version": 1, "required": True}}
+        validate_graph({"nodes": [{"id": "a", "type": "image_source", "params": {}, "meta": meta}], "edges": []})
+        bad = {"inspect": {"task_id": "bad space", "role": "find", "kind": "measure_diameter", "schema_version": 1, "required": True}}
+        with self.assertRaises(ValidationError):
+            validate_graph({"nodes": [{"id": "a", "type": "image_source", "params": {}, "meta": bad}], "edges": []})
+        with self.assertRaises(ValidationError):
+            validate_graph({"nodes": [
+                {"id": "a", "type": "image_source", "params": {}, "meta": meta},
+                {"id": "b", "type": "grayscale", "params": {}, "meta": meta},
+            ], "edges": [e("a", "b")]})
+
 
 class CompileGraphTests(SimpleTestCase):
     def test_implicit_ports_come_from_one_table(self):

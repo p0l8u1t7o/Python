@@ -106,6 +106,9 @@ def instantiate(graph: dict[str, Any], *, source_id: int | None, prefix: str = "
     for node in out.get("nodes", []):
         if rename:
             node["id"] = rename[node["id"]]
+            inspect = (node.get("meta") or {}).get("inspect") if isinstance(node.get("meta"), dict) else None
+            if isinstance(inspect, dict) and isinstance(inspect.get("task_id"), str):
+                inspect["task_id"] = f"{prefix}{inspect['task_id']}"[:40]
         params = node.get("params") or {}
         if node.get("type") == "image_source" and params.get("source_id") == SOURCE_PLACEHOLDER:
             if source_id is None and samples:
