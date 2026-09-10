@@ -710,6 +710,70 @@ def multi_light_surface() -> list[np.ndarray]:
         out.append(np.vstack([np.hstack([f[0], f[1]]), np.hstack([f[2], f[3]])]))
     return out
 
+def registration_shapes() -> dict[str, np.ndarray]:
+    """相同亮度的四種形狀，避免只靠顏色識別類別。"""
+    from apps.vision.tools.roi import mask_for
+
+    shapes = {
+        'circle': {'shape': 'circle', 'cx': 48, 'cy': 48, 'r': 32},
+        'square': {'shape': 'rect', 'x': 16, 'y': 16, 'w': 64, 'h': 64},
+        'triangle': {'shape': 'polygon', 'points': [[48, 12], [84, 80], [12, 80]]},
+        'diamond': {'shape': 'polygon', 'points': [[48, 8], [88, 48], [48, 88], [8, 48]]},
+    }
+    out = {}
+    for name, region in shapes.items():
+        image = np.full((96, 96, 3), 30, np.uint8)
+        image[mask_for(region, 96, 96) != 0] = 220
+        out[name] = image
+    return out
+
+
+def registered_classes() -> list[np.ndarray]:
+    """每類三件、第四張缺一個三角形；前三張平移半個或一個特徵格距。"""
+    out = []
+    for index, (dx, dy) in enumerate([(0, 0), (16, 12), (-16, 0), (0, 0)]):
+        image = np.full((480, 640, 3), 30, np.uint8)
+        for row, patch in enumerate(list(registration_shapes().values())[:3]):
+            for col in range(2 if index == 3 and row == 2 else 3):
+                x, y = 32 + col * 192 + dx, 24 + row * 144 + dy
+                image[y:y + 96, x:x + 96] = patch
+        out.append(image)
+    return out
+
+
+def registration_texture(foreground: bool, width: int = 96, height: int = 96) -> np.ndarray:
+    """前景斜紋與背景棋紋，以確定性像素公式生成。"""
+    y, x = np.indices((height, width))
+    pattern = ((x + 2 * y) // 9) % 2 if foreground else ((x // 11 + y // 13) % 2)
+    colour = np.array([185, 70, 205] if foreground else [65, 170, 65])
+    return np.clip(colour + pattern[:, :, None] * 30, 0, 255).astype(np.uint8)
+
+
+def registration_texture_scene(width: int = 641, height: int = 481, empty: bool = False) -> tuple[np.ndarray, np.ndarray]:
+    """三塊不規則紋理的解析多邊形真值；回傳影像與獨立二值遮罩。"""
+    from apps.vision.tools.roi import mask_for
+
+    polygons = [
+        [[.08, .12], [.30, .10], [.33, .34], [.23, .43], [.07, .35]],
+        [[.58, .10], [.87, .16], [.90, .39], [.68, .44], [.60, .30]],
+        [[.28, .62], [.49, .54], [.70, .65], [.63, .91], [.34, .90]],
+    ]
+    truth = np.zeros((height, width), np.uint8)
+    if not empty:
+        for polygon in polygons:
+            truth |= mask_for({'shape': 'polygon', 'points': [[x * width, y * height] for x, y in polygon]}, width, height)
+    image = registration_texture(False, width, height)
+    target = registration_texture(True, width, height)
+    image[truth != 0] = target[truth != 0]
+    return image, truth
+
+
+def registered_textures() -> list[np.ndarray]:
+    """三張紋理良品與一張完全沒有目標的背景。"""
+    image, _ = registration_texture_scene()
+    return [image, np.roll(image, 8, axis=0), np.roll(image, -8, axis=1), registration_texture_scene(empty=True)[0]]
+
+
 def registered_parts() -> list[np.ndarray]:
     """註冊計數：三張各三個帶孔方塊，第四張缺一個；留背景邊界供裁切註冊。"""
     out = []
@@ -1296,6 +1360,8 @@ SAMPLE_SETS: dict[str, tuple[str, callable]] = {
     "fitted_boundaries": ("fitted boundaries", fitted_boundaries),
     "polar_rim_chips": ("polar rim chips", polar_rim_chips),
     "clear_exclusion_zone": ("clear exclusion zone", clear_exclusion_zone),
+    "registered_classes": ("registered classes", registered_classes),
+    "registered_textures": ("registered textures", registered_textures),
     "registered_parts": ("registered parts", registered_parts),
     "plate_holes": ("plate holes", plate_holes),
     "exposure_frames": ("exposure", exposure_frames),

@@ -1548,6 +1548,39 @@ def register_count_flow(source_id: Any) -> dict[str, Any]:
     ]}
 
 
+def _registration_refs(segment: bool = False) -> tuple[list[dict], list[dict]]:
+    """範本參考圖內容定址，重複載入只重用既有固定影像。"""
+    from apps.vision import demo_images, fixed_images
+
+    if segment:
+        return ([fixed_images.store(demo_images.registration_texture(True), 'Target texture')],
+                [fixed_images.store(demo_images.registration_texture(False), 'Background texture')])
+    refs = []
+    for name, image in list(demo_images.registration_shapes().items())[:3]:
+        refs.append(fixed_images.store(image, f'{name}:1.png'))
+        refs.append(fixed_images.store(np.clip(image.astype(np.int16) - 5, 0, 255).astype(np.uint8), f'{name}:2.png'))
+    return refs, []
+
+
+def register_classes_flow(source_id: Any) -> dict[str, Any]:
+    """每個已註冊類別各三個目標才合格。"""
+    refs, _ = _registration_refs()
+    return {'nodes': [
+        _node('src', 'image_source', 0, 0, 'Acquire', source_id=source_id),
+        _node('detect', 'register_detect', 1, 0, 'Count each class', registrations=refs, mode='count',
+              classes='circle\nsquare\ntriangle', class_limits='circle:3,3\nsquare:3,3\ntriangle:3,3', min_similarity=0.9),
+    ], 'edges': [_edge('src', 'detect', 'image', 'image')]}
+
+
+def register_segment_flow(source_id: Any) -> dict[str, Any]:
+    """從前景與背景裁切圖分割三塊紋理；第四張沒有目標。"""
+    refs, negatives = _registration_refs(segment=True)
+    return {'nodes': [
+        _node('src', 'image_source', 0, 0, 'Acquire', source_id=source_id),
+        _node('segment', 'register_segment', 1, 0, 'Find registered texture', registrations=refs, negatives=negatives),
+    ], 'edges': [_edge('src', 'segment', 'image', 'image')]}
+
+
 def plate_corners_flow(source_id: Any) -> dict[str, Any]:
     """矩形板角點範例：四邊卡尺找矩形，四條找線重建四邊形，寬度公差決定 OK/NG。"""
     rect_roi = {"shape": "rotated_rect", "cx": 260, "cy": 180, "w": 390, "h": 230, "angle": 0}
@@ -2380,6 +2413,8 @@ BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
     ("point_fitting", "Fit geometry from edge points", "Fit a line, circle and ellipse from measured boundaries; require all three results and calculate circular area", "measure", point_fitting_flow),
     ("polar_edge_check", "Unwrap and restore rim defects", "Inspect a straightened rim and map only detected chip centres back to the original image", "quality", polar_edge_check_flow),
     ("absence_check", "Keep an exclusion zone clear", "Reject foreign objects inside a region that must remain empty", "quality", absence_check_flow),
+    ("register_classes", "Count registered classes", "Count three examples of each registered class without training. Requires the deep learning pack.", "count", register_classes_flow),
+    ("register_segment", "Segment registered textures", "Find irregular target textures using foreground and background examples. Requires the deep learning pack.", "detect", register_segment_flow),
     ("register_count", "Count parts by registration", "Register one cropped part and accept exactly three matches, without training. Requires the deep learning pack.", "count", register_count_flow),
     ("hole_count", "Hole count", "Grayscale, denoise, threshold, morphology, blob count, number check, OK/NG — with a named output and a result image", "count", hole_count_flow),
     ("exposure", "Exposure check", "Downscale, Otsu threshold, range check, OK/NG", "quality", brightness_gate_flow),
@@ -2485,6 +2520,8 @@ TEMPLATE_SAMPLE_SOURCES: dict[str, str] = {
     "polar_edge_check": "Example: polar rim chips",
     "absence_check": "Example: clear exclusion zone",
     "register_count": "Example: registered parts",
+    "register_classes": "Example: registered classes",
+    "register_segment": "Example: registered textures",
     "hole_count": "Example: plate holes",
     "exposure": "Example: exposure",
     "circle_gauge": "Example: circle gauge",
@@ -2566,7 +2603,7 @@ TEMPLATE_SAMPLE_SETS: dict[str, str] = _sample_sets()
 #: 需要 DL 依賴（ultralytics／torch）才能執行的範本 key；測試與文件用。
 TEMPLATES_NEED_DL = ("ai_count", "ai_area", "ai_classify_demo", "ai_obb_demo", "ai_pose_demo", "conveyor_pick", "conveyor_pick_bytetrack", "conveyor_pick_stereo")
 #: 需要平台附帶的異常檢測 backbone（ASSET_DIR/dl/weights/resnet18_l2l3.onnx）才能執行的範本 key。
-TEMPLATES_NEED_BACKBONE = ("anomaly_demo", "register_count", "dl_retrieval_demo")
+TEMPLATES_NEED_BACKBONE = ("register_classes", "register_segment", "anomaly_demo", "register_count", "dl_retrieval_demo")
 #: Templates that demonstrate model-only tools whose seeded demo asset is intentionally blank.
 TEMPLATES_NEED_MODEL = ("dl_detect_instance_demo",)
 #: 逐張判定序列沒有「前三 OK 後二 NG」意義的範本，live 測試只要求跑得完沒有 error 節點：底模接線示範（合成樣本不會命中

@@ -15,6 +15,7 @@ INTENTIONALLY_GENERIC: dict[tuple[str, str, str], str] = {
     ("call_flow", "outputs", "output"): "child run named outputs dictionary",
     ("string_match", "text", "input"): "coerces arbitrary values to text",
     ("list_classify", "counts", "output"): "class name to count dictionary",
+    ("register_detect", "counts", "output"): "class name to count dictionary",
     ("formula", "a", "input"): "expression variable",
     ("formula", "b", "input"): "expression variable",
     ("formula", "c", "input"): "expression variable",

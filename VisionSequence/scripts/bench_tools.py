@@ -326,6 +326,13 @@ class Scene:
             fixed_images.store(np.full((32, 32, 3), (0, 255, 0), np.uint8), "green"),
             fixed_images.store(np.full((32, 32, 3), (255, 0, 0), np.uint8), "blue"),
         ]
+        from apps.vision import demo, demo_images
+
+        self.register_image = demo_images.registered_classes()[0]
+        self.register_refs, _ = demo._registration_refs()
+        self.segment_image = demo_images.registration_texture_scene(w, h)[0]
+        self.segment_refs, self.segment_negatives = demo._registration_refs(segment=True)
+        self.register_backbone = fake_backbone(os.path.join(folder, "register_case_backbone.onnx"), 320)
         self.assets = {"tpl": self.template, "golden": self.golden, "gap": gap_classifier_onnx(folder), "idn": identity_onnx(folder), "yolo": yolo_like_onnx(folder), "seg": yolo_seg_onnx(folder), "cal": self.calibration, "mapcal": self.mapping_calibration, "stcal": self.stereo_calibration, "shape": self.shape_template, "flat": self.flat, "flat_bgr": self.flat_bgr, "stat": self.stat_model, "shapemodel": self.shape_model, "anomaly": self.anomaly_model, "retrieval": self.retrieval_model, "font": self.font_model}
 
     def rect(self, fx: float, fy: float, fw: float, fh: float) -> dict[str, Any]:
@@ -432,6 +439,9 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
     prev_run = f"bench-prev-{s.w}x{s.h}"
     _image_store.put(f"{prev_run}:grayscale:image", gray, flow_id=1, run_id=prev_run)
     return [
+        ("register_detect (classes)", "register_detect", s.register_image, {"registrations": s.register_refs, "backbone_path": s.register_backbone, "device": "cpu", "mode": "count", "min_similarity": .9, "class_limits": "circle:3,3\nsquare:3,3\ntriangle:3,3"}, {}, {}),
+        ("register_segment (presence)", "register_segment", s.segment_image, {"registrations": s.segment_refs, "negatives": s.segment_negatives, "backbone_path": s.register_backbone, "device": "cpu"}, {}, {}),
+        ("register_segment (area_range)", "register_segment", s.segment_image, {"registrations": s.segment_refs, "negatives": s.segment_negatives, "backbone_path": s.register_backbone, "device": "cpu", "mode": "area_range", "min_area_total": 1000}, {}, {}),
         # source / preprocess
         ("image_source", "image_source", None, {"mode": "input"}, {}, {"_input_image": big}),
         ("stereo_grab (degraded)", "stereo_grab", None, {"left": "0", "right": "0"}, {}, {"_input_image": big}),

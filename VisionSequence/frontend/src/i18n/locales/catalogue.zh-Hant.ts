@@ -787,6 +787,8 @@ export default {
     code_message_rules: { name: '解碼、拆訊息與比對', description: '讀取 QR payload，拆出批號與料號，用正規表示式驗證批號並格式化回覆' },
     io_sequence: { name: '燈源、相機 I/O 與設備訊號', description: '相機設定、燈源、站台輸出、相機輸出與 Modbus 讀取在缺連線時都降級為警告' },
     outputs_bundle: { name: '記錄、存圖、送圖與觸發', description: '格式化結果、寫入 CSV、NG 存圖、送出結果影像並非同步觸發後續流程' },
+    register_classes: {"name": "註冊多類別計數", "description": "各註冊類別恰好三個才合格，無需訓練。需要深度學習加購包。"},
+    register_segment: {"name": "註冊紋理分割", "description": "使用前景與背景樣本尋找不規則目標紋理。需要深度學習加購包。"},
     register_count: { name: '以註冊圖計數零件', description: '由一張零件裁切圖尋找相似目標，恰好三個才合格，無需訓練。需要深度學習加購包。' },
     form_tolerance: { name: '真圓度（形位公差）', description: '180 把徑向卡尺取邊緣點，形位公差以最小區域圓（ISO 1101）評真圓度，兩同心圓的環寬在 5 px 內合格——崩邊的圓盤不合格' },
     emboss_defect: { name: '刻印字與凹坑（光度立體）', description: '四個裁切把四燈 2×2 拼圖拆開，光度立體合成形狀強度圖，檢查區的像素計數找出單張看不見的凹坑' },

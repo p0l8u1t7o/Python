@@ -82,10 +82,76 @@ export default {
     },
     ports: { image: '影像', regions: '區域', count: '數量' },
   },
+  register_segment: {
+  "label": "註冊式分割",
+  "description": "使用少量目標裁切圖與選填背景圖分割相似紋理，無需訓練。",
+  "params": {
+    "registrations": {
+      "label": "註冊圖",
+      "help": "目標裁切圖。可另加同尺寸遮罩，名稱須為原圖名加上 #mask，非零像素為前景；省略時整張為前景。"
+    },
+    "negatives": {
+      "label": "背景圖",
+      "help": "選填背景樣本。註冊遮罩外也提供背景特徵；兩者皆無時，背景相似度為零。"
+    },
+    "roi": {
+      "label": "搜尋區域",
+      "help": "工作尺寸為 320，特徵格距為 8 像素，邊界為近似值；小目標建議縮小搜尋區域。"
+    },
+    "min_margin": {
+      "label": "最低相似度差",
+      "help": "最近前景原型相似度減去最近背景原型相似度；越大保留越少像素。"
+    },
+    "cleanup": {
+      "label": "清理半徑"
+    },
+    "min_area": {
+      "label": "最小區塊面積"
+    },
+    "mode": {
+      "label": "模式",
+      "options": {
+        "presence": "有無",
+        "area_range": "總面積範圍"
+      }
+    },
+    "min_area_total": {
+      "label": "總面積下限"
+    },
+    "max_area_total": {
+      "label": "總面積上限"
+    },
+    "device": {
+      "label": "運算裝置",
+      "options": {
+        "auto": "自動",
+        "cpu": "處理器",
+        "cuda": "圖形處理器"
+      }
+    },
+    "backbone_path": {
+      "label": "特徵模型檔案",
+      "help": "內部測試用，留空使用已安裝的特徵模型。"
+    }
+  },
+  "ports": {
+    "image": "影像",
+    "roi": "搜尋區域",
+    "ok": "合格",
+    "ng": "不合格",
+    "mask": "遮罩",
+    "regions": "區塊",
+    "area": "總面積",
+    "count": "數量",
+    "present": "存在"
+  }
+},
   register_detect: {
     label: '註冊式檢測',
     description: '使用少量目標裁切圖尋找、計數或檢查零件有無，無需訓練。加入相似物的排除圖可減少誤判。',
     params: {
+      classes: {"label": "類別", "help": "每行一個類別名稱，圖名以「類別:圖名」開頭。無前綴者歸 default 類；未設定類別功能時保留原始標籤。"},
+      class_limits: {"label": "各類合格數量", "help": "每行填「類別:下限,上限」，計數模式同時檢查總數與各類限制。"},
       registrations: { label: '註冊圖', help: '每張裁切圖包含一個目標並保留少許背景，建議少於十張。' },
       negatives: { label: '排除圖', help: '選填：不得計入的相似物裁切圖。' },
       roi: { label: '搜尋區域' },
@@ -105,6 +171,7 @@ export default {
       backbone_path: { label: '特徵模型檔案', help: '內部測試用，留空使用已安裝的特徵模型。' },
     },
     ports: {
+      counts: '各類數量',
       image: '影像', roi: '搜尋區域', found: '已找到', not_found: '未找到', ok: '合格', ng: '不合格',
       matches: '比對結果', count: '數量', best_score: '最佳相似度', best_x: '最佳 X', best_y: '最佳 Y', present: '存在',
     },

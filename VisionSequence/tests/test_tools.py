@@ -27,6 +27,20 @@ from tests._helpers import (
 
 
 class RegistryTests(SimpleTestCase):
+    def test_registration_segmentation(self):
+        from apps.vision import demo, demo_images
+        from apps.vision.dl import anomaly
+        from tests._helpers import fake_backbone
+
+        with tempfile.TemporaryDirectory() as folder:
+            with override_settings(VISION={**settings.VISION, 'ASSET_DIR': folder}):
+                fake_backbone(anomaly.backbone_path())
+                refs, negatives = demo._registration_refs(segment=True)
+                result = run_tool('register_segment', demo_images.registration_texture_scene()[0],
+                                  {'registrations': refs, 'negatives': negatives, 'device': 'cpu'})
+                self.assertEqual((result.status, result.outputs['count']), ('ok', 3))
+                anomaly.clear_sessions()
+
     def test_character_detection_and_pair_mode(self):
         from apps.vision.demo_images import character_scene, seal_scene
         from tests.test_edge_model_pair import EdgeModelPairTests
@@ -65,6 +79,8 @@ class RegistryTests(SimpleTestCase):
         self.assertTrue({"mode", "pair_polarity", "width_min", "width_max"} <= teach["edge_model_defect"])
         self.assertEqual(teach["char_detect"], {"method", "polarity", "threshold", "window", "k", "height_min", "height_max",
                                                "aspect_min", "aspect_max", "area_min", "area_max", "merge_gap", "expected_text"})
+        self.assertTrue({"class_limits"} <= teach["register_detect"])
+        self.assertEqual(teach["register_segment"], {"registrations", "negatives", "roi", "min_margin", "cleanup", "min_area", "min_area_total", "max_area_total"})
         # offset 是在算出的門檻上再加減一個常數，換線時操作員會調；區域自適應的視窗與 k 屬於工程師。
         self.assertEqual(teach["threshold"], {"threshold", "low", "high", "block", "c", "offset"})
         self.assertEqual(teach["image_source"], {"exposure_us", "gain_db"})

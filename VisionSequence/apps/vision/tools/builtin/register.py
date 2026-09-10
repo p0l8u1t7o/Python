@@ -29,9 +29,9 @@ def _grid(sess, image, size):
         raise ToolError("The feature model could not process this picture; check the installed pack and device setting") from None
 
 
-def _reference(sess, image, size, kh, kw, angle):
+def _reference(sess, image, size, kh, kw, angle, identity=None):
     """在相同輸入尺寸的背景畫布抽參考特徵，保留邊界脈絡；依內容與工作尺寸快取。"""
-    key = (sess, hashlib.sha256(image.tobytes()).digest(), image.shape, size, kh, kw, angle)
+    key = (sess, identity, hashlib.sha256(image.tobytes()).digest(), image.shape, size, kh, kw, angle)
     with _LOCK:
         if key in _CACHE:
             _CACHE.move_to_end(key)
@@ -94,6 +94,34 @@ def _images(ctx, key):
     return out
 
 
+def _classes(ctx, positives):
+    """明確類別清單保留零計數；舊圖名只在啟用類別功能後轉成類別。"""
+    names = [line.strip() for line in str(ctx.param('classes') or '').splitlines() if line.strip()]
+    text = str(ctx.param('class_limits') or '').strip()
+    active = bool(names or text or any(':' in label for label, _ in positives))
+    if len(names) != len(set(names)) or any(':' in name or ',' in name for name in names):
+        raise ToolError("Use unique class names without colons or commas")
+    mapped = [(label.split(':', 1)[0].strip() if ':' in label else 'default', image) for label, image in positives]
+    for label, _ in mapped:
+        if not label or (names and label not in names):
+            raise ToolError("Each registered picture must name a listed class")
+    classes = names or list(dict.fromkeys(label for label, _ in mapped))
+    limits = {}
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        try:
+            label, bounds = line.split(':')
+            label = label.strip()
+            lo, hi = (int(value.strip()) for value in bounds.split(','))
+            if label not in classes or label in limits or not 0 <= lo <= hi:
+                raise ValueError
+        except (ValueError, TypeError):
+            raise ToolError("Enter each listed class once as class:minimum,maximum with nonnegative ordered counts") from None
+        limits[label] = (lo, hi)
+    return mapped if active else positives, classes, limits, active
+
+
 class RegisterDetect(Tool):
     key = "register_detect"
     label = "Registration detection"
@@ -102,6 +130,8 @@ class RegisterDetect(Tool):
     icon = "ScanSearch"
     heavy = True
     params = [
+        Param("classes", "Classes", kind="multiline", default="", help_text="Optional class names, one per line. Name each picture class:example. Unprefixed pictures share the default class; without class settings their original labels are preserved."),
+        Param("class_limits", "Accepted counts by class", kind="multiline", default="", teach=True, help_text="One class:minimum,maximum per line. Applied in Count mode in addition to the total count limits."),
         Param("registrations", "Registered pictures", kind="images", required=True, teach=True, help_text="One cropped target per picture. Include a small background margin; use fewer than ten examples."),
         Param("negatives", "Excluded pictures", kind="images", help_text="Optional cropped lookalikes that must not count."),
         Param("roi", "Search region", kind="roi", shapes=["rect", "rotated_rect"], teach=True),
@@ -125,6 +155,7 @@ class RegisterDetect(Tool):
         flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "warn"),
         flow_out("ok", "Accepted", "ok"), flow_out("ng", "Rejected", "critical"),
         Port("matches", "Matches", "matches"), Port("count", "Count", "number"),
+        Port("counts", "Counts by class", "any"),
         Port("best_score", "Best similarity", "number"), Port("best_x", "Best X", "number"), Port("best_y", "Best Y", "number"), Port("present", "Present", "bool"),
     ]
 
@@ -137,6 +168,7 @@ class RegisterDetect(Tool):
         positives, negatives = _images(ctx, "registrations"), _images(ctx, "negatives")
         if not positives:
             raise ToolError("Add at least one registered picture")
+        positives, classes, limits, multiclass = _classes(ctx, positives)
         path = str(ctx.param("backbone_path") or anomaly.backbone_path())
         if not os.path.isfile(path):
             raise ToolError("The feature model for registration detection is not installed: install the deep learning pack")
@@ -172,23 +204,31 @@ class RegisterDetect(Tool):
                 kept.append(match)
                 if len(kept) >= max(1, ctx.integer("max_count", 50)):
                     break
+        counts = dict.fromkeys(classes, 0)
+        for match in kept:
+            label = match['label'] if multiclass else 'default'
+            counts[label] = counts.get(label, 0) + 1
         count = len(kept)
         present = bool(count)
         accepted = present if mode == "detect" else (ctx.integer("min_count", 1) <= count <= ctx.integer("max_count_ok", 50) if mode == "count" else present == (ctx.param("expected", "present") == "present"))
+        if mode == "count":
+            accepted = accepted and all(lo <= counts.get(label, 0) <= hi for label, (lo, hi) in limits.items())
         branch = ("found" if present else "not_found") if mode == "detect" else ("ok" if accepted else "ng")
         best = kept[0] if kept else {}
         overlays = [{"kind": "rect", "x": m['x'], "y": m['y'], "w": m['w'], "h": m['h'], "angle": m['angle'], "color": "#22c55e", "width": 2, "label": f"{m['label']} {m['score']:.2f}"} for m in kept]
-        return Result(outputs={"matches": kept, "count": count, "present": present, "best_score": best.get('score', 0.0), "best_x": best.get('cx', float('nan')), "best_y": best.get('cy', float('nan'))}, overlays=overlays, branch=branch, status="ok" if accepted else "ng", message=f"{count} matches")
+        return Result(outputs={"matches": kept, "count": count, "counts": counts, "present": present, "best_score": best.get('score', 0.0), "best_x": best.get('cx', float('nan')), "best_y": best.get('cy', float('nan'))}, overlays=overlays, branch=branch, status="ok" if accepted else "ng", message=f"{count} matches")
 
     def _search(self, ctx, c, region, sess, scene, size, positives, negatives, scales):
         found = []
+        comparisons = []
+        multiclass = bool(str(ctx.param('classes') or '').strip() or str(ctx.param('class_limits') or '').strip() or any(':' in str(item.get('name', '')) for item in ctx.param('registrations')))
         height, width = c.image.shape[:2]
         sy, sx = height / scene.shape[0], width / scene.shape[1]
         span, step = abs(ctx.number("angle_range", 0)), ctx.number("angle_step", 0)
         if span > 180 or (span and step > 0 and 2 * span / step > 720):
             raise ToolError("Use an angle range up to 180 degrees and at most 721 angles")
         angles = sorted(set([0.0] + (np.arange(-span, span + 1e-6, step).tolist() if span and step > 0 else [])))
-        for label, image in positives:
+        for index, (label, image) in enumerate(positives):
             for scale in scales:
                 h, w = image.shape[0] * scale, image.shape[1] * scale
                 if min(h, w) < ctx.number("min_size", 0) or (ctx.number("max_size", 0) and max(h, w) > ctx.number("max_size", 0)):
@@ -199,8 +239,10 @@ class RegisterDetect(Tool):
                     if bw > width or bh > height:
                         continue
                     kw, kh = max(1, round(bw / sx)), max(1, round(bh / sy))
-                    ref = _reference(sess, image, size, kh, kw, angle)
+                    ref = _reference(sess, image, size, kh, kw, angle, ctx.param('registrations')[index]['id'])
                     scores = _similarity(scene, ref)
+                    if multiclass:
+                        comparisons.append((label, scores, kh, kw))
                     peaks = (scores >= ctx.number("min_similarity", 0.7)) & (scores >= cv2.dilate(scores, np.ones((3, 3), np.uint8)))
                     # 相同分數的平台只取一個代表，避免均勻背景形成大量重複候選。
                     _, components = cv2.connectedComponents(peaks.astype(np.uint8))
@@ -218,7 +260,179 @@ class RegisterDetect(Tool):
                         cx, cy = c.to_full(lx, ly)
                         total_angle = angle + (float(region.get('angle', 0)) if c.inverse is not None else 0)
                         found.append({"cx": cx, "cy": cy, "x": cx - w / 2, "y": cy - h / 2, "w": w, "h": h, "angle": total_angle, "score": score, "label": label})
+        if multiclass:
+            # 在同一中心查所有其他類別，包含未達候選門檻者；分數差保留正負。
+            for match in found:
+                if c.inverse is None:
+                    lx, ly = match['cx'] - c.x0, match['cy'] - c.y0
+                else:
+                    lx, ly = cv2.invertAffineTransform(c.inverse) @ np.array([match['cx'], match['cy'], 1])
+                competitors = []
+                for label, scores, kh, kw in comparisons:
+                    x, y = round(lx / sx - kw / 2), round(ly / sy - kh / 2)
+                    if label != match['label'] and 0 <= y < scores.shape[0] and 0 <= x < scores.shape[1]:
+                        competitors.append((float(scores[y, x]), label))
+                score, label = max(competitors, default=(0.0, ''))
+                match.update(runner_up=label, runner_up_score=score, margin=match['score'] - score)
         return found
 
 
-TOOLS = [RegisterDetect()]
+_PATCH_CACHE: OrderedDict = OrderedDict()
+
+
+def _patches(sess, image, size, identity):
+    """每張固定影像獨立快取，追加註冊圖不重算已存在的網格。"""
+    key = (sess, identity, size, image.shape, hashlib.sha256(image.tobytes()).digest())
+    with _LOCK:
+        if key in _PATCH_CACHE:
+            _PATCH_CACHE.move_to_end(key)
+            return _PATCH_CACHE[key]
+    value = _grid(sess, image, size)
+    value = value / np.maximum(np.linalg.norm(value, axis=2, keepdims=True), 1e-12)
+    value.setflags(write=False)
+    with _LOCK:
+        _PATCH_CACHE[key] = value
+        while len(_PATCH_CACHE) > 64:
+            _PATCH_CACHE.popitem(last=False)
+    return value
+
+
+def _prototypes(patches, k=8):
+    """確定性的最遠點初始化與 k-means；不修改共用亂數種子。"""
+    points = np.concatenate(patches).astype(np.float32)
+    # 限制教導成本並以固定等距取樣保持可重現。
+    if len(points) > 8192:
+        points = points[np.linspace(0, len(points) - 1, 8192, dtype=int)]
+    centers = [points[0]]
+    distance = np.full(len(points), np.inf)
+    for _ in range(1, min(k, len(points))):
+        distance = np.minimum(distance, np.sum((points - centers[-1]) ** 2, axis=1))
+        if float(distance.max()) < 1e-10:
+            break
+        centers.append(points[int(distance.argmax())])
+    centers = np.array(centers)
+    for _ in range(20):
+        labels = np.argmin(np.sum((points[:, None] - centers) ** 2, axis=2), axis=1)
+        updated = np.array([points[labels == i].mean(axis=0) if np.any(labels == i) else center for i, center in enumerate(centers)])
+        if np.allclose(updated, centers, atol=1e-6):
+            break
+        centers = updated
+    return centers / np.maximum(np.linalg.norm(centers, axis=1, keepdims=True), 1e-12)
+
+
+class RegisterSegment(Tool):
+    key = "register_segment"
+    label = "Registration segmentation"
+    description = "Segment similar textures from a few cropped examples and optional background pictures, without training."
+    category = "dl"
+    icon = "ScanSearch"
+    heavy = True
+    params = [
+        Param("registrations", "Registered pictures", kind="images", required=True, teach=True, help_text="Target crops. Optionally add a same-size picture named exactly crop-name#mask, with nonzero foreground. Without a mask the entire crop is foreground."),
+        Param("negatives", "Background pictures", kind="images", teach=True, help_text="Optional background examples. Masked-out crop patches also supply background; without either, background similarity is zero."),
+        Param("roi", "Search region", kind="roi", shapes=["rect", "rotated_rect"], teach=True, help_text="Features use an 8-pixel grid at a working size of 320. Boundaries are approximate; reduce the search region for small targets."),
+        Param("min_margin", "Minimum similarity margin", kind="range", default=0.15, minimum=-2, maximum=2, step=0.01, teach=True, help_text="Nearest foreground similarity minus nearest background similarity; larger values keep fewer pixels."),
+        Param("cleanup", "Cleanup radius", kind="number", default=1, minimum=0, maximum=20, teach=True, unit="px"),
+        Param("min_area", "Minimum region area", kind="number", default=64, minimum=0, teach=True, unit="px²"),
+        Param("mode", "Mode", kind="select", default="presence", options=[{"value": "presence", "label": "Presence"}, {"value": "area_range", "label": "Total area range"}]),
+        Param("min_area_total", "Minimum total area", kind="number", default=0, minimum=0, teach=True, unit="px²"),
+        Param("max_area_total", "Maximum total area", kind="number", default=1000000000, minimum=0, teach=True, unit="px²"),
+        *[param for param in RegisterDetect.params if param.key in ('device', 'backbone_path')],
+    ]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Search region", "region", required=False)]
+    outputs = [flow_out("ok", "Accepted", "ok"), flow_out("ng", "Rejected", "critical"),
+               Port("mask", "Mask", "image"), Port("regions", "Regions", "list"),
+               Port("area", "Total area", "number"), Port("count", "Count", "number"), Port("present", "Present", "bool")]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        for param in self.params:
+            if param.kind in ('number', 'range'):
+                value = ctx.number(param.key, param.default)
+                if not math.isfinite(value) or value < param.minimum or (param.maximum is not None and value > param.maximum):
+                    raise ToolError(f"{param.label} is outside the allowed range")
+        mode = ctx.param('mode', 'presence')
+        if mode not in ('presence', 'area_range'):
+            raise ToolError("Choose a valid segmentation mode")
+        if ctx.number('min_area_total', 0) > ctx.number('max_area_total', 1000000000):
+            raise ToolError("The accepted area range is reversed")
+        positives, negatives = _images(ctx, 'registrations'), _images(ctx, 'negatives')
+        pictures = {name: image for name, image in positives}
+        if len(pictures) != len(positives):
+            raise ToolError("Use unique registered picture names")
+        targets = [(name, image) for name, image in positives if not name.endswith('#mask')]
+        if not targets:
+            raise ToolError("Add at least one registered target picture")
+        if any(name.endswith('#mask') and name[:-5] not in pictures for name in pictures):
+            raise ToolError("Each mask must have a matching target picture")
+        source = ctx.require_image()
+        c = crop(source, ctx.roi(), upright=True)
+        path = str(ctx.param('backbone_path') or anomaly.backbone_path())
+        if not os.path.isfile(path):
+            raise ToolError("The feature model for registration segmentation is not installed: install the deep learning pack")
+        try:
+            sess = anomaly.session_for(path, path=path, device=str(ctx.param('device', 'auto')))
+        except anomaly.AnomalyError:
+            raise ToolError("The feature model could not be loaded; check the deep learning pack and device setting") from None
+        declared = sess.get_inputs()[0].shape[-1]
+        size = declared if isinstance(declared, int) else 320
+        foreground, background = [], []
+        ids = {name: item['id'] for (name, _), item in zip(positives, ctx.param('registrations'))}
+        for name, image in targets:
+            grid = _patches(sess, image, size, ids[name])
+            mask = pictures.get(name + '#mask')
+            if mask is None:
+                selected = np.ones(grid.shape[:2], bool)
+            else:
+                if mask.shape[:2] != image.shape[:2]:
+                    raise ToolError("A registration mask must match its target picture size")
+                binary = np.any(mask != 0, axis=2) if mask.ndim == 3 else mask != 0
+                selected = cv2.resize(binary.astype(np.float32), (grid.shape[1], grid.shape[0]), interpolation=cv2.INTER_AREA) >= 0.5
+            if not selected.any():
+                raise ToolError("Each target mask must include foreground patches")
+            foreground.append(grid[selected])
+            if (~selected).any():
+                background.append(grid[~selected])
+        for (_, image), item in zip(negatives, ctx.param('negatives') or []):
+            grid = _patches(sess, image, size, item['id'])
+            background.append(grid.reshape(-1, grid.shape[-1]))
+        fg = _prototypes(foreground)
+        bg = _prototypes(background) if background else None
+        mask = np.zeros(source.shape[:2], np.uint8)
+        if c.image.size:
+            grid = _grid(sess, c.image, size)
+            grid /= np.maximum(np.linalg.norm(grid, axis=2, keepdims=True), 1e-12)
+            margin = np.max(grid @ fg.T, axis=2)
+            if bg is not None:
+                margin -= np.max(grid @ bg.T, axis=2)
+            score = cv2.resize(margin, (c.image.shape[1], c.image.shape[0]), interpolation=cv2.INTER_LINEAR)
+            local = (score >= ctx.number('min_margin', 0.15)).astype(np.uint8) * 255
+            radius = ctx.integer('cleanup', 1)
+            if radius:
+                kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (radius * 2 + 1, radius * 2 + 1))
+                local = cv2.morphologyEx(cv2.morphologyEx(local, cv2.MORPH_OPEN, kernel), cv2.MORPH_CLOSE, kernel)
+            if c.mask is not None:
+                local[c.mask == 0] = 0
+            if c.inverse is not None:
+                mask = cv2.warpAffine(local, c.inverse, (source.shape[1], source.shape[0]), flags=cv2.INTER_NEAREST)
+            else:
+                mask[c.y0:c.y0 + local.shape[0], c.x0:c.x0 + local.shape[1]] = local
+        count, labels, stats, _ = cv2.connectedComponentsWithStats(mask)
+        regions, overlays = [], []
+        for index in range(1, count):
+            x, y, w, h, area = (int(value) for value in stats[index])
+            if area < ctx.number('min_area', 64):
+                mask[labels == index] = 0
+                continue
+            component = (labels[y:y + h, x:x + w] == index).astype(np.uint8)
+            contours, _ = cv2.findContours(component, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE, offset=(x, y))
+            points = [contour.reshape(-1, 2).tolist() for contour in contours]
+            regions.append({'contours': points, 'area': area, 'x': x, 'y': y, 'w': w, 'h': h})
+            overlays.append({'kind': 'contours', 'contours': points, 'color': '#22c55e', 'width': 2})
+        area = int(np.count_nonzero(mask))
+        present = bool(regions)
+        accepted = present if mode == 'presence' else ctx.number('min_area_total', 0) <= area <= ctx.number('max_area_total', 1000000000)
+        return Result(outputs={'mask': mask, 'regions': regions, 'area': area, 'count': len(regions), 'present': present},
+                      overlays=overlays, status='ok' if accepted else 'ng', branch='ok' if accepted else 'ng', message=f"{len(regions)} regions, area {area} px")
+
+
+TOOLS = [RegisterDetect(), RegisterSegment()]

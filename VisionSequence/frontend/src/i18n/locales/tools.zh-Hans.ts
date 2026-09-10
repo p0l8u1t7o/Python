@@ -82,10 +82,76 @@ export default {
     },
     ports: { image: '图像', regions: '区域', count: '数量' },
   },
+  register_segment: {
+  "label": "注册式分割",
+  "description": "使用少量目标裁切图与选填背景图分割相似纹理，无需训练。",
+  "params": {
+    "registrations": {
+      "label": "注册图",
+      "help": "目标裁切图。可另加同尺寸遮罩，名称须为原图名加上 #mask，非零像素为前景；省略时整张为前景。"
+    },
+    "negatives": {
+      "label": "背景图",
+      "help": "选填背景样本。注册遮罩外也提供背景特征；两者皆无时，背景相似度为零。"
+    },
+    "roi": {
+      "label": "搜索区域",
+      "help": "工作尺寸为 320，特征格距为 8 像素，边界为近似值；小目标建议缩小搜索区域。"
+    },
+    "min_margin": {
+      "label": "最低相似度差",
+      "help": "最近前景原型相似度减去最近背景原型相似度；越大保留越少像素。"
+    },
+    "cleanup": {
+      "label": "清理半径"
+    },
+    "min_area": {
+      "label": "最小区域面积"
+    },
+    "mode": {
+      "label": "模式",
+      "options": {
+        "presence": "有无",
+        "area_range": "总面积范围"
+      }
+    },
+    "min_area_total": {
+      "label": "总面积下限"
+    },
+    "max_area_total": {
+      "label": "总面积上限"
+    },
+    "device": {
+      "label": "运算设备",
+      "options": {
+        "auto": "自动",
+        "cpu": "处理器",
+        "cuda": "图形处理器"
+      }
+    },
+    "backbone_path": {
+      "label": "特征模型文件",
+      "help": "内部测试用，留空使用已安装的特征模型。"
+    }
+  },
+  "ports": {
+    "image": "图像",
+    "roi": "搜索区域",
+    "ok": "合格",
+    "ng": "不合格",
+    "mask": "遮罩",
+    "regions": "区域",
+    "area": "总面积",
+    "count": "数量",
+    "present": "存在"
+  }
+},
   register_detect: {
     label: '注册式检测',
     description: '使用少量目标裁切图查找、计数或检查零件有无，无需训练。加入相似物的排除图可减少误判。',
     params: {
+      classes: {"label": "类别", "help": "每行一个类别名称，图名以“类别:图名”开头。无前缀者归 default 类；未设置类别功能时保留原始标签。"},
+      class_limits: {"label": "各类合格数量", "help": "每行填“类别:下限,上限”，计数模式同时检查总数与各类限制。"},
       registrations: { label: '注册图', help: '每张裁切图包含一个目标并保留少许背景，建议少于十张。' },
       negatives: { label: '排除图', help: '选填：不得计入的相似物裁切图。' },
       roi: { label: '搜索区域' },
@@ -105,6 +171,7 @@ export default {
       backbone_path: { label: '特征模型文件', help: '内部测试用，留空使用已安装的特征模型。' },
     },
     ports: {
+      counts: '各类数量',
       image: '图像', roi: '搜索区域', found: '已找到', not_found: '未找到', ok: '合格', ng: '不合格',
       matches: '匹配结果', count: '数量', best_score: '最佳相似度', best_x: '最佳 X', best_y: '最佳 Y', present: '存在',
     },

@@ -2,6 +2,7 @@
 
 import os
 import tempfile
+import time
 from unittest import mock
 
 import cv2
@@ -172,3 +173,207 @@ class RegisterTests(SimpleTestCase):
             self.assertFalse([n.message for n in result.nodes.values() if n.status == 'error'])
             statuses.append(result.status)
         self.assertEqual(statuses, ['ok', 'ok', 'ok', 'ng'])
+
+
+class RegistrationExtensionsTests(SimpleTestCase):
+    def setUp(self):
+        folder = tempfile.TemporaryDirectory(prefix='vs-register-extended-')
+        self.addCleanup(folder.cleanup)
+        override = override_settings(VISION={**settings.VISION, 'ASSET_DIR': folder.name, 'SAMPLE_DIR': os.path.join(folder.name, 'samples')})
+        override.enable()
+        self.addCleanup(override.disable)
+        self.addCleanup(anomaly.clear_sessions)
+        fake_backbone(anomaly.backbone_path(), 320)
+
+    def test_classes_append_and_cache(self):
+        from apps.vision import demo, demo_images
+        from apps.vision.tools.builtin import register
+
+        refs, _ = demo._registration_refs()
+        image = demo_images.registered_classes()[0]
+        params = {'registrations': refs, 'device': 'cpu', 'min_similarity': .9, 'mode': 'count',
+                  'class_limits': 'circle:3,3\nsquare:3,3\ntriangle:3,3'}
+        with mock.patch.object(register, '_grid', wraps=register._grid) as extract:
+            before = run_tool('register_detect', image, params)
+            self.assertEqual(extract.call_count, 7)
+            extract.reset_mock()
+            self.assertEqual(run_tool('register_detect', image, params).outputs, before.outputs)
+            self.assertEqual(extract.call_count, 1)
+            extra = fixed_images.store(demo_images.registration_shapes()['diamond'], 'diamond:1.png')
+            extract.reset_mock()
+            start = time.perf_counter()
+            after = run_tool('register_detect', image, {**params, 'registrations': [*refs, extra]})
+            elapsed = (time.perf_counter() - start) * 1000
+            self.assertEqual(extract.call_count, 2, 'Only the scene and new reference should be extracted')
+        self.assertEqual(before.outputs['counts'], {'circle': 3, 'square': 3, 'triangle': 3})
+        self.assertEqual(after.outputs['counts'], {**before.outputs['counts'], 'diamond': 0})
+        self.assertEqual(before.status, 'ok')
+        for match in before.outputs['matches']:
+            row = round((match['cy'] - 72) / 144)
+            column = round((match['cx'] - 80) / 192)
+            self.assertEqual(match['label'], ['circle', 'square', 'triangle'][row])
+            self.assertLess(abs(match['cy'] - (72 + 144 * row)), 16)
+            self.assertIn(column, range(3))
+            self.assertLess(abs(match['cx'] - (80 + 192 * column)), 16)
+
+        def projection(result):
+            return [{k: v for k, v in match.items() if k not in ('runner_up', 'runner_up_score', 'margin')} for match in result.outputs['matches']]
+        self.assertEqual(projection(before), projection(after))
+        with_fourth = image.copy()
+        with_fourth[96:192, 544:640] = demo_images.registration_shapes()['diamond']
+        expanded = run_tool('register_detect', with_fourth, {**params, 'registrations': [*refs, extra]})
+        self.assertEqual(expanded.outputs['counts'], {'circle': 3, 'square': 3, 'triangle': 3, 'diamond': 1})
+        count_value = run_tool('formula', params={'expression': "a['diamond']"}, inputs={'a': expanded.outputs['counts']})
+        self.assertEqual(count_value.outputs['value'], 1)
+        diamond = next(match for match in expanded.outputs['matches'] if match['label'] == 'diamond')
+        self.assertAlmostEqual(diamond['cx'], 592, delta=16)
+        self.assertAlmostEqual(diamond['cy'], 144, delta=12)
+        for match in after.outputs['matches']:
+            self.assertNotEqual(match['label'], match['runner_up'])
+            self.assertAlmostEqual(match['margin'], match['score'] - match['runner_up_score'])
+        print(f'STAGE16B append reference 7: {elapsed:.3f} ms; extractions=2 (scene+new); classes=3/3/3; accuracy=9/9; fourth class=1/1')
+
+    def test_class_limits_zero_and_validation(self):
+        from apps.vision import demo, demo_images
+
+        refs, _ = demo._registration_refs()
+        image = demo_images.registered_classes()[0]
+        base = {'registrations': refs, 'device': 'cpu', 'mode': 'count'}
+        result = run_tool('register_detect', image, {**base, 'classes': 'circle\nsquare\ntriangle\nmissing', 'class_limits': 'missing:1,1'})
+        self.assertEqual(result.outputs['counts']['missing'], 0)
+        self.assertEqual(result.status, 'ng')
+        for limits in ['circle:3,2', 'circle:-1,2', 'circle:1.5,2', 'missing:0,1', 'circle:0,1\ncircle:1,2', 'bad']:
+            with self.subTest(limits=limits), self.assertRaises(ToolError):
+                run_tool('register_detect', image, {**base, 'class_limits': limits})
+        for names in ['circle\ncircle', 'wrong', 'circle:one']:
+            with self.subTest(names=names), self.assertRaises(ToolError):
+                run_tool('register_detect', image, {**base, 'classes': names})
+
+    def test_segmentation_truth_modes_and_purity(self):
+        from apps.vision import demo, demo_images
+
+        refs, negatives = demo._registration_refs(segment=True)
+        params = {'registrations': refs, 'negatives': negatives, 'device': 'cpu'}
+        for width, height in [(641, 481), (1001, 701), (333, 297)]:
+            image, truth = demo_images.registration_texture_scene(width, height)
+            original = image.copy()
+            image.setflags(write=False)
+            result = run_tool('register_segment', image, params)
+            mask = result.outputs['mask']
+            iou = np.count_nonzero((mask != 0) & (truth != 0)) / np.count_nonzero((mask != 0) | (truth != 0))
+            self.assertGreaterEqual(iou, .7)
+            self.assertEqual(result.outputs['count'], 3)
+            self.assertEqual(mask.dtype, np.uint8)
+            self.assertLessEqual(set(np.unique(mask)), {0, 255})
+            self.assertEqual(result.outputs['area'], int(np.count_nonzero(mask)))
+            self.assertEqual(sum(r['area'] for r in result.outputs['regions']), result.outputs['area'])
+            exact_area = result.outputs['area']
+            self.assertEqual(run_tool('register_segment', image, {**params, 'mode': 'area_range', 'min_area_total': exact_area, 'max_area_total': exact_area}).status, 'ok')
+            self.assertEqual(run_tool('register_segment', image, {**params, 'mode': 'area_range', 'max_area_total': exact_area - 1}).status, 'ng')
+            np.testing.assert_array_equal(image, original)
+            print(f'STAGE16B segmentation {width}x{height}: IoU={iou:.6f}, regions=3, area={result.outputs["area"]}')
+        image, _ = demo_images.registration_texture_scene(empty=True)
+        empty = run_tool('register_segment', image, params)
+        self.assertEqual((empty.status, empty.outputs['present'], empty.outputs['area']), ('ng', False, 0))
+        self.assertEqual(run_tool('register_segment', image, {**params, 'mode': 'area_range', 'max_area_total': 0}).status, 'ok')
+        self.assertEqual(run_tool('register_segment', image, {**params, 'mode': 'area_range', 'min_area_total': 1}).status, 'ng')
+
+    def test_segmentation_masks_roi_and_errors(self):
+        from apps.vision import demo_images
+
+        image, truth = demo_images.registration_texture_scene()
+        refs = [fixed_images.store(image, 'Texture'), fixed_images.store(truth, 'Texture#mask')]
+        params = {'registrations': refs, 'device': 'cpu'}
+        result = run_tool('register_segment', image, params)
+        self.assertEqual(result.outputs['count'], 3)
+        region = {'shape': 'rect', 'x': 0, 'y': 0, 'w': 250, 'h': 250}
+        result = run_tool('register_segment', image, {**params, 'roi': region})
+        self.assertEqual(result.outputs['count'], 1)
+        self.assertFalse(result.outputs['mask'][250:].any())
+        self.assertFalse(result.outputs['mask'][:, 250:].any())
+        self.assertEqual(run_tool('register_segment', image, {**params, 'roi': {'shape': 'rect', 'x': 999, 'y': 999, 'w': 20, 'h': 20}}).outputs['area'], 0)
+        for changes in [{'registrations': []}, {'registrations': [refs[1]]},
+                        {'registrations': [refs[0], fixed_images.store(np.zeros_like(truth), 'Texture#mask')]},
+                        {'registrations': [refs[0], fixed_images.store(np.ones((8, 8), np.uint8), 'Texture#mask')]},
+                        {'registrations': [{'id': 'missing', 'name': 'Missing'}]},
+                        {'min_margin': float('nan')}, {'min_area': -1}, {'cleanup': 21}, {'mode': 'invalid'},
+                        {'min_area_total': 2, 'max_area_total': 1}, {'backbone_path': 'missing'}]:
+            with self.subTest(changes=changes), self.assertRaises(ToolError):
+                run_tool('register_segment', image, {**params, **changes})
+        with self.assertRaises(ToolError):
+            run_tool('register_segment', None, params)
+
+    def test_new_template_sequences_and_graph_ports(self):
+        from apps.vision import demo, engine
+        from apps.vision.api_more import SOURCE_PLACEHOLDER, instantiate
+        from apps.vision.graph import compile_graph, validate_graph
+
+        for key, builder in [('register_classes', demo.register_classes_flow), ('register_segment', demo.register_segment_flow)]:
+            samples = demo.template_samples(key)
+            graph = instantiate(builder(SOURCE_PLACEHOLDER), source_id=None, samples=samples)
+            compiled = compile_graph(validate_graph(graph))
+            statuses = []
+            for sample in samples:
+                result = engine.execute(compiled, flow_id=0, flow_version=1, trigger='test', grab=lambda _: None,
+                                        asset_path=lambda _: None, preview=True, input_image=fixed_images.load(sample['id']))
+                statuses.append(result.status)
+            self.assertEqual(statuses, ['ok', 'ok', 'ok', 'ng'], key)
+            print(f'STAGE16B {key}: {" ".join(statuses)}')
+        graph = demo.register_segment_flow(None)
+        graph['nodes'].append({'id': 'count', 'type': 'pixel_count', 'params': {}})
+        graph['edges'].append(demo._edge('segment', 'count', 'mask', 'image'))
+        validate_graph(graph)
+        graph = demo.register_classes_flow(None)
+        graph['nodes'].append({'id': 'read_count', 'type': 'formula', 'params': {'expression': "a['circle']"}})
+        graph['edges'].append(demo._edge('detect', 'read_count', 'counts', 'a'))
+        validate_graph(graph)
+
+    def test_competing_classes_and_unprefixed_contract(self):
+        from apps.vision import demo_images
+
+        patch = demo_images.registration_shapes()['square']
+        first = fixed_images.store(patch, 'first:1')
+        other = {**first, 'name': 'other:1'}
+        image = np.full((297, 333, 3), 30, np.uint8)
+        image[64:160, 64:160] = patch
+        result = run_tool('register_detect', image, {'registrations': [first, other], 'min_similarity': .9, 'device': 'cpu'})
+        self.assertEqual(result.outputs['count'], 1)
+        match = result.outputs['matches'][0]
+        self.assertEqual((match['label'], match['runner_up']), ('first', 'other'))
+        self.assertAlmostEqual(match['margin'], 0, places=6)
+        legacy = run_tool('register_detect', image, {'registrations': [{**first, 'name': 'Original'}], 'device': 'cpu'})
+        self.assertEqual(legacy.outputs['counts'], {'default': 1})
+        self.assertEqual(legacy.outputs['matches'][0]['label'], 'Original')
+        self.assertNotIn('runner_up', legacy.outputs['matches'][0])
+
+    def test_segmentation_cleanup_cache_and_rotated_roi(self):
+        from apps.vision import demo, demo_images
+        from apps.vision.tools.builtin import register
+
+        refs, negatives = demo._registration_refs(segment=True)
+        image, _ = demo_images.registration_texture_scene()
+        params = {'registrations': refs, 'negatives': negatives, 'device': 'cpu'}
+        with mock.patch.object(register, '_grid', wraps=register._grid) as extract:
+            result = run_tool('register_segment', image, params)
+            self.assertEqual(extract.call_count, 3)
+            extract.reset_mock()
+            warm = run_tool('register_segment', image, params)
+            self.assertEqual(extract.call_count, 1)
+            np.testing.assert_array_equal(result.outputs['mask'], warm.outputs['mask'])
+            extra = fixed_images.store(np.clip(demo_images.registration_texture(True).astype(int) + 3, 0, 255).astype(np.uint8), 'Extra')
+            extract.reset_mock()
+            run_tool('register_segment', image, {**params, 'registrations': [*refs, extra]})
+            self.assertEqual(extract.call_count, 2)
+        removed = run_tool('register_segment', image, {**params, 'min_area': image.shape[0] * image.shape[1]})
+        self.assertEqual((removed.outputs['count'], removed.outputs['area']), (0, 0))
+        self.assertFalse(removed.outputs['mask'].any())
+        for angle in [-25, 25]:
+            roi = {'shape': 'rotated_rect', 'cx': 140, 'cy': 140, 'w': 200, 'h': 200, 'angle': angle}
+            result = run_tool('register_segment', image, {**params, 'roi': roi})
+            self.assertTrue(result.outputs['present'])
+            region = result.outputs['regions'][0]
+            self.assertLess(region['x'] + region['w'], 320)
+            self.assertLess(region['y'] + region['h'], 300)
+        # 遮罩省略時全部是前景，背景省略時相似度基準為零。
+        result = run_tool('register_segment', demo_images.registration_texture(True), {'registrations': refs, 'device': 'cpu'})
+        self.assertEqual(result.outputs['area'], 96 * 96)
