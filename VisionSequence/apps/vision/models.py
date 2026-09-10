@@ -314,6 +314,37 @@ class DlDatasetVersion(models.Model):
         ordering = ["-created_at"]
 
 
+class DlModelVersion(models.Model):
+    """候選模型與不可變資料快照；註冊式工具以 flow／node_id 作為版本範圍。"""
+
+    project = models.ForeignKey(DlProject, null=True, blank=True, on_delete=models.CASCADE, related_name="model_versions")
+    flow = models.ForeignKey(Flow, null=True, blank=True, on_delete=models.CASCADE, related_name="model_versions")
+    node_id = models.CharField(max_length=80, blank=True, default="")
+    number = models.PositiveIntegerField()
+    asset_id = models.CharField(max_length=40, blank=True, default="")
+    dataset_version = models.ForeignKey(DlDatasetVersion, null=True, blank=True, on_delete=models.RESTRICT, related_name="models")
+    params = models.JSONField(default=dict)
+    tune_samples = models.JSONField(default=list)
+    holdout_samples = models.JSONField(default=list)
+    metrics = models.JSONField(default=dict)
+    failures = models.JSONField(default=list)
+    parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.SET_NULL, related_name="children")
+    status = models.CharField(max_length=12, default="candidate", choices=[("candidate", "Candidate"), ("active", "Active"), ("retired", "Retired")])
+    note = models.TextField(blank=True, default="")
+    created_by = models.CharField(max_length=150, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-number"]
+        constraints = [
+            models.UniqueConstraint(fields=["project", "number"], name="dl_model_project_number"),
+            models.UniqueConstraint(fields=["flow", "node_id", "number"], name="dl_model_node_number"),
+            models.UniqueConstraint(fields=["project"], condition=models.Q(status="active"), name="dl_model_project_active"),
+            models.UniqueConstraint(fields=["flow", "node_id"], condition=models.Q(status="active"), name="dl_model_node_active"),
+            models.CheckConstraint(condition=(models.Q(project__isnull=False, flow__isnull=True, node_id="") | (models.Q(project__isnull=True, flow__isnull=False) & ~models.Q(node_id=""))), name="dl_model_scope"),
+        ]
+
+
 class DlSettings(models.Model):
     """單列（id=1）：推論 providers 與訓練裝置偏好（devices.py 讀進記憶體快取）。"""
 

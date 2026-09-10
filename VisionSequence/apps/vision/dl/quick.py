@@ -60,7 +60,7 @@ def quick_register(project, *, device: str = "", asset_name: str = "") -> dict[s
     classes = [str(c) for c in (project.classes or []) if str(c)]
     if not classes:
         raise ValidationError("Add at least one class before quick register", code="no_classes")
-    rows = list(project.samples.all())
+    rows = list(project.samples.exclude(split="test"))
     if len(rows) < QUICK_MIN_SAMPLES:
         raise ValidationError(f"Quick register needs at least {QUICK_MIN_SAMPLES} samples", code="not_enough_samples",
                               details={"min_samples": QUICK_MIN_SAMPLES, "samples": len(rows)})
@@ -89,7 +89,7 @@ def quick_register(project, *, device: str = "", asset_name: str = "") -> dict[s
     except TrainError as exc:
         raise ValidationError(str(exc), code="quick_register_label_failed") from None
 
-    labelled_count = sum(1 for sample in project.samples.all() if sample.shapes)
+    labelled_count = sum(1 for sample in project.samples.exclude(split="test") if sample.shapes)
     if labelled_count < QUICK_MIN_SAMPLES:
         raise ValidationError(f"Quick register needs at least {QUICK_MIN_SAMPLES} boxed samples", code="not_enough_labeled_samples",
                               details={"min_samples": QUICK_MIN_SAMPLES, "labeled_samples": labelled_count})

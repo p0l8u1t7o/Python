@@ -364,6 +364,7 @@ def add(
     image: np.ndarray,
     label: str,
     sess: Any | None = None,
+    *, source_id: str = "",
 ) -> bytes:
     name = str(label or "").strip()
     if not name:
@@ -372,7 +373,7 @@ def add(
     size = int(meta.get("input_size") or 224)
     classes = list(model.get("classes") or [])
     runner = sess or backbone_session(model, model.get("_path") or "<embedded>", "auto")
-    item = build_item(runner, image, name, classes, size, model.get("proj"))
+    item = build_item(runner, image, name, classes, size, model.get("proj"), source_id=source_id)
     vectors = np.asarray(model.get("vectors"), dtype=np.float32)
     labels = np.asarray(model.get("labels"), dtype=np.int32)
     if vectors.size:

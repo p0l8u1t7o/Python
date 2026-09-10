@@ -21,7 +21,7 @@ from typing import Any
 from django.conf import settings
 
 from apps.core.errors import Conflict
-from apps.vision.dl.base import SampleRef, TrainCancelled, TrainError, get_trainer
+from apps.vision.dl.base import TrainCancelled, TrainError, get_trainer
 
 log = logging.getLogger(__name__)
 
@@ -41,6 +41,10 @@ class PendingModel:
     weights_tool_params: dict[str, Any] = field(default_factory=dict)
     metrics: dict[str, Any] = field(default_factory=dict)
     project_name: str = ""
+    dataset_version_id: int | None = None
+    params: dict[str, Any] = field(default_factory=dict)
+    holdout_metrics: dict[str, Any] = field(default_factory=dict)
+    failures: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -205,25 +209,30 @@ def _clear_pending(job: TrainJob | None) -> None:
 
 
 def _train(job: TrainJob, project_id: int, params: dict[str, Any]) -> None:
+    from apps.vision.dl import model_versions
     from apps.vision.models import DlProject
 
     trainer = get_trainer(job.trainer_kind)
     project = DlProject.objects.get(pk=project_id)
-    rows = list(project.samples.all())
-    samples = [SampleRef(id=str(r.id), label=r.label, path=r.path, shapes=list(r.shapes or []), split=r.split) for r in rows]
-    classes = [str(c) for c in (project.classes or [])]
-
-    progress = TrainProgress(job)
-    result = trainer.train(samples, classes, params, job.device, progress)
-
-    # 產物先落在 pending 資料夾：使用者命名並確認後才進資產庫（save），不要就整個刪掉（discard）
+    rows = model_versions.prepare(project, params)
+    dataset = model_versions.freeze(project, rows)
     folder = os.path.join(pending_root(), job.id)
     os.makedirs(folder, exist_ok=True)
+    samples, classes = model_versions.frozen_samples(dataset, folder)
+    tuning = [s for s in samples if s.split != "test"]
+    dataset.stats["tune_samples"] = [s.id for s in tuning]
+    dataset.save(update_fields=["stats"])
+
+    progress = TrainProgress(job)
+    result = trainer.train(tuning, classes, params, job.device, progress)
+
+    # 產物先落在 pending 資料夾：使用者命名並確認後才進資產庫（save），不要就整個刪掉（discard）
     onnx_path = os.path.join(folder, "model.onnx")
     with open(onnx_path, "wb") as f:
         f.write(result.onnx_bytes)
     pending = PendingModel(dir=folder, onnx_path=onnx_path, tool_key=result.tool_key, tool_params=dict(result.tool_params),
-                           metrics=dict(result.metrics), project_name=project.name)
+                           metrics=dict(result.metrics), project_name=project.name,
+                           dataset_version_id=dataset.pk, params=dict(params))
     if result.weights_bytes and result.weights_tool_key:
         pending.weights_ext = result.weights_ext
         pending.weights_path = os.path.join(folder, f"weights{result.weights_ext}")
@@ -232,6 +241,9 @@ def _train(job: TrainJob, project_id: int, params: dict[str, Any]) -> None:
         with open(pending.weights_path, "wb") as f:
             f.write(result.weights_bytes)
 
+    pending.holdout_metrics, pending.failures = model_versions.evaluate(
+        pending.weights_tool_key or pending.tool_key, pending.weights_path or pending.onnx_path,
+        pending.weights_tool_params or pending.tool_params, samples, classes)
     job.pending = pending
     job.metrics = dict(result.metrics)
     job.tool_key = pending.weights_tool_key or pending.tool_key
@@ -239,10 +251,11 @@ def _train(job: TrainJob, project_id: int, params: dict[str, Any]) -> None:
     job.progress, job.stage, job.status = 1.0, "Finished", "done"
 
 
-def save(name: str = "", job: TrainJob | None = None) -> dict[str, Any]:
+def save(name: str = "", job: TrainJob | None = None, *, created_by: str = "") -> dict[str, Any]:
     """把剛訓練好的模型存進資產庫（原生權重是主產物，ONNX 另存一個），並回寫專案的最後模型。
     `job` 只有測試會傳；平台上永遠是目前那個訓練工作。"""
-    from apps.vision.models import Asset, DlProject
+    from apps.vision.dl import model_versions
+    from apps.vision.models import Asset, DlDatasetVersion, DlProject
 
     if job is None:
         with _lock:
@@ -250,6 +263,8 @@ def save(name: str = "", job: TrainJob | None = None) -> dict[str, Any]:
     if job is None or job.status != "done" or job.pending is None:
         raise Conflict("No trained model is waiting to be saved", code="no_pending_model")
     p = job.pending
+    if p.dataset_version_id is None:
+        raise Conflict("The candidate has no frozen dataset; build it again", code="missing_model_dataset")
     asset_name = (name or job.asset_name).strip() or f"{p.project_name}-model"
     has_weights = bool(p.weights_path)
     asset_dir = str(settings.VISION["ASSET_DIR"])
@@ -275,6 +290,9 @@ def save(name: str = "", job: TrainJob | None = None) -> dict[str, Any]:
 
     metrics = {**p.metrics, "onnx_asset_id": onnx_id.hex}
     DlProject.objects.filter(pk=job.project_id).update(last_asset_id=primary_id.hex, last_metrics=metrics)
+    model_versions.record(DlProject.objects.get(pk=job.project_id), primary_id.hex,
+                          DlDatasetVersion.objects.get(pk=p.dataset_version_id), p.params,
+                          p.holdout_metrics, p.failures, created_by=created_by)
     job.metrics, job.asset_id, job.asset_name = metrics, primary_id.hex, asset_name
     job.tool_key, job.tool_params = tool_key, tool_params
     _clear_pending(job)

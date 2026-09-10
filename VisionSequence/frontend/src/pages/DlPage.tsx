@@ -13,6 +13,9 @@ import { Legend, Line, LineChart, ResponsiveContainer, Tooltip as ChartTooltip, 
 import { ClassifyWorkspace } from '@/components/dl/ClassifyWorkspace'
 import { ShapeWorkspace } from '@/components/dl/ShapeWorkspace'
 import { VideoExtractPanel } from '@/components/dl/VideoExtractPanel'
+import { ModelVersionsPanel } from '@/components/dl/ModelVersionsPanel'
+import { RegistrationVersionsPanel } from '@/components/dl/RegistrationVersionsPanel'
+import { Tabs } from '@/components/ui/Tabs'
 import { ParamField, type InspectorActions } from '@/components/editor/ParamField'
 import { Page } from '@/components/layout/AppShell'
 import { Badge, Button, Card, CardBody, ConfirmDialog, EmptyState, LoadingState, Modal, PageHeader, Panel, SegmentedControl, Select, TextInput } from '@/components/ui'
@@ -490,7 +493,7 @@ function DatasetPanel({ project, samples, isShapes }: { project: DlProject; samp
         </div>
         {/* 版本清單與凍結 */}
         <div className="space-y-1.5 border-t border-line pt-2.5">
-          <p className="text-xs font-medium text-muted">{t('dl.versions')}</p>
+          <p className="text-xs font-medium text-muted">{t('dl.datasetVersions')}</p>
           {(versions.data ?? []).map((v) => (
             <div key={v.id} className="flex items-center gap-1.5 rounded-md border border-line px-2 py-1.5 text-xs">
               <span className="min-w-0 flex-1">
@@ -763,6 +766,7 @@ export function DlPage() {
   const projects = useDlProjects()
   const devices = useDlDevices()
   const [selected, setSelected] = useState<number | null>(null)
+  const [projectTab, setProjectTab] = useState<'samples' | 'versions'>('samples')
   const projectId = selected ?? projects.data?.[0]?.id ?? null
   const project = useDlProject(projectId)
   const samples = useDlSamples(projectId)
@@ -932,7 +936,8 @@ export function DlPage() {
 
         {/* 標記工作區 */}
         <div className="min-w-0 space-y-3">
-          {project.data && isShapes ? (
+          {project.data ? <Tabs value={projectTab} onChange={setProjectTab} tabs={[{ value: 'samples', label: t('dl.versions.samples') }, { value: 'versions', label: t('dl.versions.title') }]} /> : null}
+          {project.data && projectTab === 'versions' ? <ModelVersionsPanel key={project.data.id} projectId={project.data.id} /> : project.data && isShapes ? (
             <>
               <Card>
                 <CardBody className="space-y-2">
@@ -1061,6 +1066,7 @@ export function DlPage() {
         </div>
       </div>
 
+      <RegistrationVersionsPanel />
       <CreateProjectModal open={creating} onClose={() => setCreating(false)} trainers={trainers.data ?? []} onCreated={(p) => { setSelected(p.id); setEditingClasses(true) }} />
       {project.data ? <ClassesModal open={editingClasses} onClose={() => setEditingClasses(false)} classes={project.data.classes} onSave={saveClasses} saving={patchProject.isPending} /> : null}
       {project.data ? <FromSourceModal open={fromSourceOpen} onClose={() => setFromSourceOpen(false)} project={project.data} showLabel={!isShapes} /> : null}

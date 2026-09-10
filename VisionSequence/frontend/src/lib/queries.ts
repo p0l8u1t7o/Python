@@ -1277,6 +1277,15 @@ export function useDlVersions(projectId: number | null) {
   })
 }
 
+export function useDlModelVersions(projectId: number | null) {
+  return useQuery({
+    queryKey: ['dl', 'models', projectId],
+    queryFn: () => api.get<{ items: import('./types').DlModelVersion[] }>(`/vision/dl/projects/${projectId}/models`),
+    select: (data) => data.items,
+    enabled: projectId !== null,
+  })
+}
+
 /** 訓練狀態輪詢：訓練中每 700ms、閒置放慢到 5 秒。 */
 export function useDlTrainStatus(active = true) {
   return useQuery({

@@ -274,7 +274,7 @@ const en = {
     autoSplitHint: 'Stratified random assignment (reassigns every sample)',
     splitDone: 'Split done: train {{train}}, val {{val}}, test {{test}}',
     splitCycleHint: 'Click to cycle: train → val → test → unset',
-    versions: 'Dataset versions',
+    datasetVersions: 'Dataset versions',
     noVersions: 'No frozen versions yet',
     versionName: 'Version name',
     freeze: 'Freeze',
@@ -1607,6 +1607,19 @@ const enExtra2 = {
 
 /** Keys that only existed in Chinese until the product went English-first; merged last. */
 const enExtra3 = {
+  dl: { versions: {
+    noHoldout: 'No holdout set — accuracy not measured',
+    registrations: 'Registered-picture versions', selectFlow: 'Select a flow', selectStep: 'Select a step', snapshot: 'Save snapshot', noRegistrations: 'This flow has no registered-picture steps.',
+    title: 'Versions', samples: 'Samples', hint: 'Candidates are validated on a fixed holdout set. Activating a version keeps existing flows on their current model.',
+    empty: 'No model versions. Build and save a candidate to begin.', number: 'Version', status: 'Status', metrics: 'Holdout metrics', errors: 'Errors', created: 'Created', parent: 'Parent',
+    candidate: 'Candidate', active: 'Active', retired: 'Retired', accuracy: 'Accuracy', auroc: 'AUROC', iou: 'Overlap',
+    activate: 'Activate', rollback: 'Roll back', compareWith: 'Compare with', compare: 'Compare', fixed: 'Corrected samples ({{count}})', new: 'New errors ({{count}})',
+    truncated: 'Each version retains up to 200 errors. This comparison may be incomplete.', failures: 'Holdout errors',
+    flows: 'Flows using this model', noFlows: 'No flows use this model.', previousFlows: 'Flows still using the previous model', apply: 'Apply to this step', applied: 'Model applied to flow.',
+    correction: 'Add as correction sample', correctionAdded: 'Correction sample added. Review its label before rebuilding.',
+    holdoutCorrection: 'Correction recorded. This picture remains in holdout; add a separate correction picture for training.',
+    sample: 'Sample picture', truth: 'Expected', prediction: 'Predicted', project: 'Project', selectProject: 'Select a project', labelLater: 'Label in project',
+  } },
   connections: {
     fields: {
       baudrate: 'Baud rate',

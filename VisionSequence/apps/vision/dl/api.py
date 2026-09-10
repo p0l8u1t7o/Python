@@ -28,7 +28,7 @@ from ninja import File, Form, Router, UploadedFile
 from apps.accounts.security import authenticate, principal, require_admin, require_feature
 from apps.core import audit
 from apps.core.errors import NotFound, ValidationError
-from apps.vision.dl import base as dl_base, devices, jobs, quick, retrieval, video, yolo_runtime
+from apps.vision.dl import base as dl_base, devices, jobs, model_versions, quick, retrieval, video, yolo_runtime
 from apps.vision.dl.base import SampleRef, TrainError
 from apps.vision.images import encode_image
 from apps.vision.models import Asset, DlDatasetVersion, DlProject, DlSample
@@ -173,18 +173,11 @@ def _retrieval_out(project: DlProject) -> dict[str, Any]:
     }
 
 
-def _write_retrieval_model(project: DlProject, asset: Asset, data: bytes) -> dict[str, Any]:
-    path = Path(asset.path)
-    with path.open("wb") as fh:
-        fh.write(data)
-    retrieval.invalidate(path)
-    asset.size = os.path.getsize(path)
-    model = retrieval.loads(data, path=str(path.resolve()))
-    metrics = _retrieval_metrics(model, dict(project.last_metrics or {}))
-    asset.meta = {**dict(asset.meta or {}), "metrics": metrics}
-    asset.save(update_fields=["size", "meta"])
-    project.last_metrics = metrics
-    project.save(update_fields=["last_metrics", "updated_at"])
+def _write_retrieval_model(project: DlProject, asset: Asset, data: bytes, created_by="") -> dict[str, Any]:
+    try:
+        model_versions.retrieval_edit(project, asset, data, created_by)
+    except TrainError as exc:
+        raise ValidationError(str(exc), code="model_validation_failed") from None
     return _retrieval_out(project)
 
 
@@ -413,13 +406,14 @@ def add_retrieval_items(request: HttpRequest, project_id: int, files: list[Uploa
                 duplicates += 1
                 continue
             seen.add(sha)
-            _save_sample(project, image, name, sha=sha)
-            data = retrieval.add(model, image, name)
+            sample = _save_sample(project, image, name, sha=sha)
+            data = retrieval.add(model, image, name, source_id=str(sample.id))
             model = retrieval.loads(data, path=str(Path(asset.path).resolve()))
             created += 1
     if created == 0:
         return 201, {**_retrieval_out(project), "created": 0, "skipped": skipped, "duplicates": duplicates}
-    out = _write_retrieval_model(project, asset, data)
+    out = _write_retrieval_model(project, asset, data, principal(request).name)
+    audit.record(request, "dl.library.add", target_type="dl_project", target_id=str(project.pk), detail={"created": created})
     return 201, {**out, "created": created, "skipped": skipped, "duplicates": duplicates}
 
 
@@ -433,7 +427,9 @@ def remove_retrieval_item(request: HttpRequest, project_id: int, index: int):
         data = retrieval.remove(retrieval.load(asset.path), int(index))
     except retrieval.RetrievalError as exc:
         raise ValidationError(str(exc), code="bad_library_item") from None
-    return _write_retrieval_model(project, asset, data)
+    out = _write_retrieval_model(project, asset, data, principal(request).name)
+    audit.record(request, "dl.library.remove", target_type="dl_project", target_id=str(project.pk), detail={"index": index})
+    return out
 
 
 @router.post("/dl/projects/{project_id}/samples/from-source", response={201: dict})
@@ -465,13 +461,16 @@ def samples_from_source(request: HttpRequest, project_id: int):
 
 
 @router.get("/dl/samples/{sample_id}/file", auth=None)
-def sample_file(request: HttpRequest, sample_id: uuid.UUID, max: int = 0):
+def sample_file(request: HttpRequest, sample_id: uuid.UUID, max: int = 0, model_version: int = 0):
     if authenticate(request) is None:
         return HttpResponse(status=401)
-    sample = DlSample.objects.filter(pk=sample_id).first()
-    if sample is None or not os.path.isfile(sample.path):
-        raise NotFound("Sample not found", code="dl_sample_not_found")
-    image = cv2.imdecode(np.fromfile(sample.path, dtype=np.uint8), cv2.IMREAD_COLOR)
+    if model_version:
+        image, _item = model_versions.frozen_item(model_version, sample_id)
+    else:
+        sample = DlSample.objects.filter(pk=sample_id).first()
+        if sample is None or not os.path.isfile(sample.path):
+            raise NotFound("Sample not found", code="dl_sample_not_found")
+        image = cv2.imdecode(np.fromfile(sample.path, dtype=np.uint8), cv2.IMREAD_COLOR)
     if image is None:
         raise NotFound("The sample image is missing or damaged", code="dl_sample_not_found")
     response = HttpResponse(encode_image(image, max_side=max or None, fmt="jpeg"), content_type="image/jpeg")
@@ -507,6 +506,8 @@ def patch_sample(request: HttpRequest, sample_id: uuid.UUID):
         split = str(body["split"] or "")
         if split not in ("", "train", "val", "test"):
             raise ValidationError("split must be train, val, test or empty", code="bad_split")
+        if str(sample.id) in model_versions.frozen_holdout_ids(sample.project) and split != "test":
+            raise ValidationError("A frozen holdout sample must stay in test", code="holdout_fixed")
         sample.split = split
         fields += ["split"]
     if fields:
@@ -572,7 +573,10 @@ def auto_split(request: HttpRequest, project_id: int):
     test = min(0.5, max(0.0, float(body.get("test") or 0.0)))
     if val + test >= 1.0:
         raise ValidationError("val + test must be less than 1", code="bad_ratio")
-    rows = list(project.samples.values_list("id", "label", "shapes"))
+    fixed = model_versions.frozen_holdout_ids(project)
+    rows = list(project.samples.exclude(pk__in=fixed).values_list("id", "label", "shapes"))
+    if fixed:
+        test = 0.0
     if not rows:
         raise ValidationError("There are no samples to split", code="no_samples")
     rng = np.random.default_rng(int(body["seed"]) if body.get("seed") is not None else None)
@@ -590,7 +594,7 @@ def auto_split(request: HttpRequest, project_id: int):
             assign[split].append(ids[int(i)])
     for split, ids in assign.items():
         project.samples.filter(pk__in=ids).update(split=split)
-    return {"train": len(assign["train"]), "val": len(assign["val"]), "test": len(assign["test"])}
+    return {"train": len(assign["train"]), "val": len(assign["val"]), "test": project.samples.filter(split="test").count()}
 
 
 # ---------------------------------------------------------------------------
@@ -726,6 +730,8 @@ def delete_version(request: HttpRequest, version_id: int):
     version = DlDatasetVersion.objects.filter(pk=version_id).first()
     if version is None:
         raise NotFound("Dataset version not found", code="dl_version_not_found")
+    if version.models.exists() or version.stats.get("holdout_samples"):
+        raise ValidationError("A model dataset must be retained for version history", code="dataset_in_use")
     asset = Asset.objects.filter(pk=version.asset_id).first() if version.asset_id else None
     if asset is not None:
         try:
@@ -786,7 +792,7 @@ def auto_label(request: HttpRequest, project_id: int):
     require_feature(request, "dl")
     project = _project(project_id)
     trainer = dl_base.get_trainer(project.trainer_kind)
-    rows = list(project.samples.all())
+    rows = list(project.samples.exclude(split="test").exclude(pk__in=model_versions.frozen_holdout_ids(project)))
     body = _body(request)
     if str(body.get("method") or "model") == "sam":
         if trainer.label_mode != "shapes":
@@ -813,10 +819,10 @@ def auto_label(request: HttpRequest, project_id: int):
             raise ValidationError(str(exc), code="auto_label_failed") from None
         return {"items": items, "remaining": max(0, len(pending) - limit), "method": "sam", "model": os.path.basename(sam.loaded_model())}
     if trainer.label_mode == "shapes":
-        labeled = [SampleRef(id=str(r.id), label=r.label, path=r.path, shapes=list(r.shapes or [])) for r in rows if r.shapes and r.labeled_by == "human"]
+        labeled = [SampleRef(id=str(r.id), label=r.label, path=r.path, shapes=list(r.shapes or []), split=r.split) for r in rows if r.shapes and r.labeled_by in ("human", "correction")]
         unlabeled = [SampleRef(id=str(r.id), label="", path=r.path) for r in rows if not r.shapes or r.labeled_by == "auto"]
     else:
-        labeled = [SampleRef(id=str(r.id), label=r.label, path=r.path) for r in rows if r.label and r.labeled_by == "human"]
+        labeled = [SampleRef(id=str(r.id), label=r.label, path=r.path, split=r.split) for r in rows if r.label and r.labeled_by in ("human", "correction")]
         unlabeled = [SampleRef(id=str(r.id), label="", path=r.path) for r in rows if not r.label or r.labeled_by == "auto"]
     params = {**dict(project.params or {}), **(body.get("params") or {})}
     weights = (project.last_metrics or {}).get("weights_path")
@@ -906,7 +912,7 @@ def train_save(request: HttpRequest):
     """把剛訓練好的模型存進資產庫（訓練完不會自動存，先讓使用者看指標、命名）。"""
     require_feature(request, "dl")
     name = str(_body(request).get("name") or "")
-    job = jobs.save(name)
+    job = jobs.save(name, created_by=principal(request).name)
     audit.record(request, "dl.model.save", target_type="asset", target_id=job["asset_id"], target_name=job["asset_name"],
                  summary=f"{job['project_name']} → {job['asset_name']}",
                  detail={"trainer": job["trainer_kind"], "tool": job["tool_key"], "metrics": job["metrics"]})
@@ -918,3 +924,231 @@ def train_discard(request: HttpRequest):
     """不要這個模型：刪掉還沒進資產庫的產物檔。"""
     require_feature(request, "dl")
     return {"discarded": jobs.discard()}
+
+
+@router.get("/dl/projects/{project_id}/models")
+def list_model_versions(request: HttpRequest, project_id: int):
+    return {"items": [model_versions.output(v) for v in _project(project_id).model_versions.select_related("parent")]}
+
+
+@router.get("/dl/projects/{project_id}/models/compare")
+def compare_model_versions(request: HttpRequest, project_id: int, a: int, b: int):
+    project = _project(project_id)
+    return model_versions.compare(model_versions.get(project, a), model_versions.get(project, b))
+
+
+@router.get("/dl/projects/{project_id}/models/{number}")
+def get_model_version(request: HttpRequest, project_id: int, number: int):
+    return model_versions.output(model_versions.get(_project(project_id), number))
+
+
+def _activate_model(request, project_id, number, rollback=False):
+    require_feature(request, "dl")
+    version = model_versions.get(_project(project_id), number)
+    result = model_versions.activate(version, rollback)
+    audit.record(request, "dl.model.rollback" if rollback else "dl.model.activate", target_type="dl_project", target_id=str(project_id),
+                 detail={"number": result["version"]["number"]})
+    return result
+
+
+@router.post("/dl/projects/{project_id}/models/{number}/activate")
+def activate_model(request: HttpRequest, project_id: int, number: int):
+    return _activate_model(request, project_id, number)
+
+
+@router.post("/dl/projects/{project_id}/models/{number}/rollback")
+def rollback_model(request: HttpRequest, project_id: int, number: int):
+    return _activate_model(request, project_id, number, True)
+
+
+def _apply_model(request, version, body):
+    """沿用流程 PATCH 的權限、圖驗證、稽核與衝突檢查；基準必須由呼叫者提供。"""
+    from copy import deepcopy
+
+    from apps.vision.api import get_flow, patch_flow
+    from apps.vision.schemas import FlowPatch
+
+    require_feature(request, "flows.edit")
+    if not body.get("expected_updated_at"):
+        raise ValidationError("expected_updated_at is required", code="version_required")
+    flow = get_flow(int(body.get("flow_id") or 0))
+    graph = deepcopy(flow.graph)
+    node = next((n for n in graph["nodes"] if n["id"] == body.get("node_id")), None)
+    if node is None:
+        raise NotFound("Flow step not found", code="node_not_found")
+    if version.project_id:
+        asset = Asset.objects.filter(pk=version.asset_id).first()
+        if asset is None:
+            raise NotFound("Model asset not found", code="model_asset_not_found")
+        if node["type"] != (asset.meta or {}).get("tool_key"):
+            raise ValidationError("The model is not compatible with this step", code="model_tool_mismatch")
+        node.setdefault("params", {}).update({**(asset.meta or {}).get("tool_params", {}), "model": version.asset_id})
+    else:
+        if flow.id != version.flow_id or node["id"] != version.node_id or node["type"] != version.params["tool_key"]:
+            raise ValidationError("The snapshot belongs to another step", code="model_tool_mismatch")
+        model_versions.restore_registration(version)
+        node.setdefault("params", {}).update(deepcopy(version.params["settings"]))
+    result = patch_flow(request, flow.id, FlowPatch(graph=graph))
+    audit.record(request, "dl.model.apply", target_type="flow", target_id=str(flow.id),
+                 detail={"model_version": version.pk, "node_id": node["id"]})
+    return result
+
+
+@router.post("/dl/projects/{project_id}/models/{number}/apply-to-flow")
+def apply_model(request: HttpRequest, project_id: int, number: int):
+    require_feature(request, "dl")
+    return _apply_model(request, model_versions.get(_project(project_id), number), _body(request))
+
+
+def _correction_image(body):
+    """來源限既有樣本或批次影像，不接受任意磁碟路徑。"""
+    if body.get("sample_id"):
+        if body.get("model_version"):
+            from types import SimpleNamespace
+
+            image, item = model_versions.frozen_item(body["model_version"], body["sample_id"])
+            return image, SimpleNamespace(id=item["id"], label=item["label"], shapes=item["shapes"], split=item["split"])
+        sample = DlSample.objects.filter(pk=body["sample_id"]).first()
+        if sample is None:
+            raise NotFound("Sample not found", code="dl_sample_not_found")
+        image = SampleRef(str(sample.id), sample.label, sample.path).load()
+    else:
+        from apps.vision.batch import store
+        from apps.vision.models import BatchRun
+
+        run = BatchRun.objects.filter(pk=body.get("batch_run_id")).select_related("batch_set").first()
+        if run is None:
+            raise NotFound("Batch run not found", code="batch_run_not_found")
+        image = store.load_image(store.image_by_index(run.batch_set, int(body.get("index", -1))))
+        sample = None
+    if image is None:
+        raise NotFound("Correction picture not found", code="correction_image_missing")
+    return image, sample
+
+
+@router.post("/dl/projects/{project_id}/corrections")
+def add_correction(request: HttpRequest, project_id: int):
+    require_feature(request, "dl")
+    project = _project(project_id)
+    body = _body(request)
+    image, source = _correction_image(body)
+    label = str(body.get("label", source.label if source else ""))
+    if label and label not in project.classes:
+        raise ValidationError("The correction label is not in this project", code="bad_label")
+    from apps.vision.dl.shapes import validate_shapes
+
+    shapes = validate_shapes(body.get("shapes", source.shapes if source else []), project.classes)
+    sha = _pixels_sha256(image)
+    reserved = any(sha in stats.get("holdout_sha256", []) for stats in DlDatasetVersion.objects.values_list("stats", flat=True))
+    sample = project.samples.filter(sha256=sha).first()
+    if sample is None:
+        sample = _save_sample(project, image, label, sha)
+        # 複製其他專案的保留樣本也不得洩漏到訓練集。
+        sample.split = "test" if source and source.split == "test" else "train"
+    if reserved:
+        sample.split = "test"
+    sample.label, sample.shapes, sample.labeled_by = label, shapes, "correction"
+    sample.save(update_fields=["label", "shapes", "labeled_by", "split"])
+    audit.record(request, "dl.sample.correction", target_type="dl_project", target_id=str(project_id),
+                 detail={"sample_id": str(sample.id), "source": body})
+    return {"sample": _sample_out(sample), "holdout": sample.split == "test"}
+
+
+def _registration_scope(flow_id, node_id):
+    from apps.vision.api import get_flow
+    from apps.vision.models import DlModelVersion
+
+    flow = get_flow(flow_id)
+    node = next((n for n in (flow.graph or {}).get("nodes", []) if n["id"] == node_id), None)
+    if node is None or node["type"] not in ("register_detect", "register_segment"):
+        raise ValidationError("Select a registered-picture step", code="registration_step_required")
+    return flow, node, DlModelVersion.objects.filter(flow=flow, node_id=node_id)
+
+
+@router.get("/dl/registrations/{flow_id}/{node_id}/models")
+def registration_models(request: HttpRequest, flow_id: int, node_id: str):
+    _flow, _node, scope = _registration_scope(flow_id, node_id)
+    return {"items": [model_versions.output(v) for v in scope.select_related("parent")]}
+
+
+def _registration_snapshot(request, flow_id, node_id, correction=None):
+    from copy import deepcopy
+    from django.db import transaction
+    from django.db.models import Max
+    from apps.vision.models import Flow
+
+    with transaction.atomic():
+        Flow.objects.select_for_update().get(pk=flow_id)
+        flow, node, scope = _registration_scope(flow_id, node_id)
+        params = {"tool_key": node["type"], "settings": deepcopy(node.get("params", {}))}
+        previous = scope.first()
+        if previous and all(previous.params.get(k) == value for k, value in params.items()):
+            return previous
+        if correction is not None:
+            params["corrections"] = [correction]
+        try:
+            asset = model_versions.registration_asset(params["settings"], f"{flow.name} / {node_id}")
+        except TrainError as exc:
+            raise ValidationError(str(exc), code="registration_image_missing") from None
+        version = scope.create(flow=flow, node_id=node_id, number=(scope.aggregate(n=Max("number"))["n"] or 0) + 1,
+                               params=params, parent=previous, created_by=principal(request).name, asset_id=asset.id.hex)
+    audit.record(request, "dl.registration.snapshot", target_type="flow", target_id=str(flow_id), detail={"node_id": node_id, "version": version.number})
+    return version
+
+
+@router.post("/dl/registrations/{flow_id}/{node_id}/models")
+def create_registration_model(request: HttpRequest, flow_id: int, node_id: str):
+    require_feature(request, "dl")
+    return model_versions.output(_registration_snapshot(request, flow_id, node_id))
+
+
+@router.post("/dl/registrations/{flow_id}/{node_id}/models/{number}/{action}")
+def registration_action(request: HttpRequest, flow_id: int, node_id: str, number: int, action: str):
+    require_feature(request, "dl")
+    _flow, _node, scope = _registration_scope(flow_id, node_id)
+    version = scope.filter(number=number).first()
+    if version is None:
+        raise NotFound("Model version not found", code="model_version_not_found")
+    if action == "apply-to-flow":
+        return _apply_model(request, version, {**_body(request), "flow_id": flow_id, "node_id": node_id})
+    if action not in ("activate", "rollback"):
+        raise ValidationError("Unknown model version action", code="bad_action")
+    result = model_versions.activate(version, action == "rollback")
+    audit.record(request, f"dl.registration.{action}", target_type="flow", target_id=str(flow_id), detail={"number": number})
+    return result
+
+
+@router.post("/dl/registrations/{flow_id}/{node_id}/corrections")
+def registration_correction(request: HttpRequest, flow_id: int, node_id: str):
+    from copy import deepcopy
+    from apps.vision import fixed_images
+    from apps.vision.api import patch_flow
+    from apps.vision.schemas import FlowPatch
+
+    require_feature(request, "dl")
+    require_feature(request, "flows.edit")
+    body = _body(request)
+    if not body.get("expected_updated_at"):
+        raise ValidationError("expected_updated_at is required", code="version_required")
+    flow, node, _scope = _registration_scope(flow_id, node_id)
+    image, source = _correction_image(body)
+    sha = _pixels_sha256(image)
+    reserved = any(sha in stats.get("holdout_sha256", []) for stats in DlDatasetVersion.objects.values_list("stats", flat=True))
+    if reserved or (source and source.split == "test"):
+        raise ValidationError("Holdout pictures cannot be registered for learning", code="holdout_fixed")
+    descriptor = fixed_images.store(image, str(body.get("label") or "Correction"))
+    graph = deepcopy(flow.graph)
+    node = next(n for n in graph["nodes"] if n["id"] == node_id)
+    key = "negatives" if body.get("negative") else "registrations"
+    items = node.setdefault("params", {}).setdefault(key, [])
+    if not any(d.get("id") == descriptor["id"] for d in items):
+        items.append(descriptor)
+    patch_flow(request, flow_id, FlowPatch(graph=graph))
+    version = _registration_snapshot(request, flow_id, node_id, correction={"labeled_by": "correction", "picture_id": descriptor["id"],
+                                                                          "sample_id": body.get("sample_id"), "batch_run_id": body.get("batch_run_id"),
+                                                                          "index": body.get("index"), "negative": bool(body.get("negative"))})
+    if isinstance(source, DlSample):
+        source.labeled_by = "correction"
+        source.save(update_fields=["labeled_by"])
+    audit.record(request, "dl.registration.correction", target_type="flow", target_id=str(flow_id), detail={"node_id": node_id})
+    return model_versions.output(version)

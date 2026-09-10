@@ -1103,6 +1103,44 @@ export interface DlTrainerDef {
   params: ToolParam[]
 }
 
+export interface DlModelFailure {
+  sample_id: string
+  prediction: unknown
+  truth: unknown
+}
+
+export interface DlModelFlow {
+  flow_id: number
+  name: string
+  node_id: string
+  updated_at: string
+}
+
+export interface DlModelVersion {
+  id: number
+  number: number
+  status: 'candidate' | 'active' | 'retired'
+  asset_id: string
+  dataset_version: number | null
+  parent: number | null
+  metrics: { holdout_count?: number; accuracy?: number | null; auroc?: number | null; iou?: number | null; error_count?: number; warning?: string }
+  failures: DlModelFailure[]
+  tune_samples: string[]
+  holdout_samples: string[]
+  created_by: string
+  created_at: string
+  note: string
+  flows: DlModelFlow[]
+}
+
+export interface DlModelComparison {
+  a: DlModelVersion
+  b: DlModelVersion
+  fixed: DlModelFailure[]
+  new: DlModelFailure[]
+  truncated: boolean
+}
+
 export interface DlProject {
   id: number
   name: string

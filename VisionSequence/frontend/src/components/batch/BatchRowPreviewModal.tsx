@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { formatValue } from '@/components/editor/ResultsPanel'
+import { CorrectionSampleButton } from '@/components/dl/CorrectionSampleButton'
 import { LoadingState, Modal, StatusBadge } from '@/components/ui'
 import { ImageViewer } from '@/components/viewer/ImageViewer'
 import { imageUrl } from '@/lib/api'
@@ -47,6 +48,7 @@ export function BatchRowPreviewModal({ run, set, index, graph, onClose }: { run:
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <StatusBadge status={report.status} />
+            {run && index !== null ? <CorrectionSampleButton runId={run.id} index={index} /> : null}
             <span className="tnum text-muted">{Math.round(report.duration_ms)} ms</span>
             {report.error ? <span className="text-critical">{report.error}</span> : null}
             <span className="font-mono text-muted">{Object.entries(report.outputs ?? {}).slice(0, 6).map(([k, v]) => `${k}=${formatValue(v)}`).join('  ')}</span>

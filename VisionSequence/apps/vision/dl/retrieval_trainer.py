@@ -142,7 +142,7 @@ class RetrievalTrainer(Trainer):
     ) -> tuple[np.ndarray, np.ndarray, list[str], list[bytes], list[str], np.ndarray | None, bytes, dict[str, Any]]:
         if not classes:
             raise TrainError("At least one class is required")
-        labeled = [s for s in samples if getattr(s, "label", "") in classes]
+        labeled = [s for s in samples if getattr(s, "label", "") in classes and s.split != "test"]
         if not labeled:
             raise TrainError("At least one labeled image is required")
         size = _as_int(params, "input_size", 224)

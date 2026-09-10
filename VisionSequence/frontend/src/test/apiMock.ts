@@ -471,6 +471,8 @@ export function routes(path: string, body?: unknown): unknown {
   if (/\/vision\/dl\/projects\/\d+\/video-extract$/.test(path)) return { id: 'video-job', project_id: 1, video_path: 'demo.avi', status: 'running', progress: 0.1, stage: 'running', frame: 1, total_frames: 10, saved: 0, duplicates: 0, per_class: {}, recent: [], logs: [], log_from: 0, log_next: 0, error: '' }
   if (/\/vision\/dl\/projects\/\d+\/samples$/.test(path)) return { items: DL_SAMPLES }
   if (/\/vision\/dl\/projects\/\d+\/versions$/.test(path)) return { items: [] }
+  if (/\/vision\/dl\/projects\/\d+\/models$/.test(path)) return { items: [] }
+  if (/\/vision\/dl\/projects\/\d+\/corrections$/.test(path)) return { sample: DL_SAMPLES[0], holdout: false }
   if (/\/vision\/dl\/projects\/\d+$/.test(path)) return DL_PROJECT
   if (path.startsWith('/vision/dl/projects')) return { items: [DL_PROJECT] }
   if (path.startsWith('/vision/dl/trainers')) return { items: [DL_TRAINER] }

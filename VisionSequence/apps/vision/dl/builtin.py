@@ -155,7 +155,7 @@ class MlpClassifierTrainer(Trainer):
     def suggest(self, labeled: list[SampleRef], unlabeled: list[SampleRef], classes: list[str], params: dict[str, Any]) -> list[Suggestion]:
         """自動標記：以已標記樣本的特徵做 cosine kNN（k=3），快、且一張標對就開始有用。"""
         size = int(params.get("input_size") or 64)
-        pool = [s for s in labeled if s.label in classes]
+        pool = [s for s in labeled if s.label in classes and s.split != "test"]
         if not pool:
             raise TrainError("Label a few samples first, then the rest can be labelled automatically")
         if not unlabeled:
