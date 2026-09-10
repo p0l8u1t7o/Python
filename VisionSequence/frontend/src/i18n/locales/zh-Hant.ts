@@ -426,6 +426,7 @@ const zhHant = {
     bad_credentials: '帳號或密碼錯誤',
     permission_denied: '無此權限',
     not_owner: '共用流程只有管理員能修改，請先複製',
+    version_conflict: '此流程已在別處被修改',
     validation_error: '資料不合法',
     capacity: '執行緒池已滿',
     engine_locked: '引擎已鎖定',
@@ -799,6 +800,15 @@ const zhHant = {
     timeoutS: '流程逾時秒數 (0 = 不限)',
     concurrency: '流程並行度',
     stopOnNg: 'NG 後停止',
+  },
+  saveConflict: {
+    title: '儲存衝突',
+    description: '此流程已於 {{time}} 被修改。',
+    descriptionWithUser: '此流程已被 {{user}} 於 {{time}} 修改。',
+    diffTitle: '伺服器版本變更',
+    noDiff: '沒有可顯示的流程圖差異。',
+    loadServer: '載入伺服器版本',
+    overwrite: '用我的版本覆蓋',
   },
   editor: {
     picturesSection: '此步驟的圖片',

@@ -5,6 +5,7 @@ import { ArrowDown, ArrowUp, FolderPlus, ListFilter, Save, Star, Trash2, X } fro
 import type { InspectorActions } from '@/components/editor/ParamField'
 import { ParamField } from '@/components/editor/ParamField'
 import { formatValue } from '@/components/editor/ResultsPanel'
+import { useSaveConflictDialog } from '@/components/flow/SaveConflictDialog'
 import { Badge, Button, EmptyState, ErrorState, IconButton, LoadingState, PageHeader, TextInput } from '@/components/ui'
 import { Page } from '@/components/layout/AppShell'
 import { errorMessage } from '@/lib/errors'
@@ -12,11 +13,11 @@ import {
   buildStationTeachPatches,
   filterStationTeachItems,
   invalidGroupItems,
-  saveStationTeachPatches,
   sameStationTeachValue,
   stationTeachKey,
   stationTeachOptions,
   stationTeachRef,
+  type StationTeachSaveResult,
 } from '@/lib/stationTeach'
 import { useFlowMutations, useFlows, useStationTeachGroupMutations, useStationTeachGroups, useStationTeachParams } from '@/lib/queries'
 import type { StationTeachGroup, StationTeachParamItem, StationTeachRef } from '@/lib/types'
@@ -52,6 +53,7 @@ export function StationTeachPage() {
   const flows = useFlows()
   const flowMut = useFlowMutations()
   const groupMut = useStationTeachGroupMutations()
+  const { showConflict, dialog: saveConflictDialog } = useSaveConflictDialog()
   const [flowId, setFlowId] = useState<number | ''>('')
   const [toolType, setToolType] = useState('')
   const [q, setQ] = useState('')
@@ -60,7 +62,7 @@ export function StationTeachPage() {
   const [rename, setRename] = useState('')
   const [changes, setChanges] = useState<Record<string, unknown>>({})
   const [saving, setSaving] = useState(false)
-  const [saveResults, setSaveResults] = useState<Awaited<ReturnType<typeof saveStationTeachPatches>>>([])
+  const [saveResults, setSaveResults] = useState<StationTeachSaveResult[]>([])
 
   const rows = params.data?.items ?? []
   const groupList = groups.data?.items ?? []
@@ -156,14 +158,42 @@ export function StationTeachPage() {
     const patches = buildStationTeachPatches(flows.data?.items ?? [], rows, changes)
     if (!patches.length) return
     setSaving(true)
-    const results = await saveStationTeachPatches(patches, (patch) => flowMut.patch.mutateAsync({ id: patch.flow.id, graph: patch.graph }))
+    const clearFlowChanges = (flowIds: Set<number>) => {
+      setChanges((old) => Object.fromEntries(Object.entries(old).filter(([key]) => {
+        const row = rows.find((item) => stationTeachKey(stationTeachRef(item)) === key)
+        return row && !flowIds.has(row.flow_id)
+      })))
+    }
+    const results = await Promise.all(patches.map(async (item) => {
+      try {
+        await flowMut.patch.mutateAsync({ id: item.flow.id, graph: item.graph, expected_updated_at: item.flow.updated_at })
+        return { flow_id: item.flow.id, flow_name: item.flow.name, ok: true, count: item.count } satisfies StationTeachSaveResult
+      } catch (error) {
+        const result = { flow_id: item.flow.id, flow_name: item.flow.name, ok: false, count: item.count, error } satisfies StationTeachSaveResult
+        showConflict(error, {
+          flowId: item.flow.id,
+          graph: item.graph,
+          loadServer: () => {
+            clearFlowChanges(new Set([item.flow.id]))
+            void params.refetch()
+            void flows.refetch()
+          },
+          overwrite: async (updatedAt) => {
+            await flowMut.patch.mutateAsync({ id: item.flow.id, graph: item.graph, expected_updated_at: updatedAt })
+            setSaveResults((old) => old.map((row) => (row.flow_id === item.flow.id ? { flow_id: item.flow.id, flow_name: item.flow.name, ok: true, count: item.count } : row)))
+            clearFlowChanges(new Set([item.flow.id]))
+            void params.refetch()
+            void flows.refetch()
+            toast.success(t('stationTeach.savedAll', { count: item.count }))
+          },
+        })
+        return result
+      }
+    }))
     setSaveResults(results)
     setSaving(false)
     const okFlowIds = new Set(results.filter((result) => result.ok).map((result) => result.flow_id))
-    setChanges((old) => Object.fromEntries(Object.entries(old).filter(([key]) => {
-      const row = rows.find((item) => stationTeachKey(stationTeachRef(item)) === key)
-      return row && !okFlowIds.has(row.flow_id)
-    })))
+    clearFlowChanges(okFlowIds)
     const ok = results.filter((result) => result.ok).length
     const failed = results.length - ok
     if (failed) toast.error(t('stationTeach.savedPartial', { ok, failed }))
@@ -299,6 +329,7 @@ export function StationTeachPage() {
           </main>
         </div>
       </div>
+      {saveConflictDialog}
     </Page>
   )
 }

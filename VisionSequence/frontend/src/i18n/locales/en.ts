@@ -133,6 +133,7 @@ const en = {
     bad_credentials: 'Wrong username or password',
     permission_denied: 'Permission denied',
     not_owner: 'Only administrators can modify shared flows; duplicate it first',
+    version_conflict: 'This flow was changed elsewhere',
   },
   dl: {
     createFlow: 'Create a flow with this model', createFlowDesc: 'Created from deep-learning teaching: model "{{model}}"', createFlowDone: 'Flow "{{name}}" created; pick an image source in the capture step',
@@ -383,6 +384,15 @@ const en = {
     timeoutS: 'Flow timeout (s, 0 = none)',
     concurrency: 'Flow concurrency',
     stopOnNg: 'Stop on NG',
+  },
+  saveConflict: {
+    title: 'Save conflict',
+    description: 'This flow was changed after you loaded it at {{time}}.',
+    descriptionWithUser: 'This flow was changed by {{user}} at {{time}}.',
+    diffTitle: 'Server changes',
+    noDiff: 'No graph differences to show.',
+    loadServer: 'Load server version',
+    overwrite: 'Overwrite with mine',
   },
   editor: {
     picturesSection: 'Pictures in this step',

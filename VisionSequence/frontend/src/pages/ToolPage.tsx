@@ -21,6 +21,7 @@ import type { InspectorActions } from '@/components/editor/ParamField'
 import { ParamForm } from '@/components/editor/ParamForm'
 import { formatValue } from '@/components/editor/ResultsPanel'
 import { iconFor } from '@/components/editor/ToolNode'
+import { useSaveConflictDialog } from '@/components/flow/SaveConflictDialog'
 import { Button, DetailRow, ErrorState, LoadingState, Modal, StatusBadge, Switch, TextInput } from '@/components/ui'
 import { ImageViewer } from '@/components/viewer/ImageViewer'
 import { fixedImageFromRef, imageUrl, teachContourFromImage } from '@/lib/api'
@@ -62,6 +63,7 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
   const scratchUpload = useScratchImage()
   const { fromImage } = useAssetMutations()
   const session = useFlowSession(flowId)
+  const { showConflict, dialog: saveConflictDialog } = useSaveConflictDialog()
 
   const [autoApply, setAutoApplyState] = useState(readToolAutoPreview) // 預設手動試執行, 要即時預覽時由使用者自行開啟。
   const setAutoApply = useCallback((value: boolean) => {
@@ -86,6 +88,7 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
   const [templateName, setTemplateName] = useState('')
   const [askTemplateName, setAskTemplateName] = useState(false)
   const scratchInput = useRef<HTMLInputElement>(null)
+  const saveBaseline = useRef<string | null>(null)
 
   const defs = useMemo(() => {
     const map = new Map<string, ToolTypeDef>()
@@ -103,7 +106,29 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
     const draft = getSession(flowId).draft
     if (draft && draft.baseVersion === data.version) return
     setDraft(flowId, { baseVersion: data.version, graph: data.graph, name: data.name, description: data.description, dirty: false })
+    saveBaseline.current = data.updated_at
   }, [flow.data, session.draft, flowId])
+
+  useEffect(() => {
+    if (flow.data) saveBaseline.current = flow.data.updated_at
+  }, [flow.data])
+
+  const loadServerConflict = useCallback(
+    (details: { version: number; updated_at: string; graph: NonNullable<typeof flow.data>['graph'] }) => {
+      saveBaseline.current = details.updated_at
+      setDraft(flowId, {
+        baseVersion: details.version,
+        graph: details.graph,
+        name: flow.data?.name ?? '',
+        description: flow.data?.description ?? '',
+        dirty: false,
+      })
+      const serverNode = details.graph.nodes.find((n) => n.id === nodeId)
+      if (serverNode) entryRef.current = { key: `${flowId}:${nodeId}`, json: JSON.stringify(serverNode), dirty: false }
+      void flow.refetch()
+    },
+    [flow, flowId, nodeId],
+  )
 
   const draft = session.draft && flow.data && session.draft.baseVersion === flow.data.version ? session.draft : null
   const graph = draft?.graph
@@ -239,18 +264,31 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
     }
     setSaving(true)
     try {
-      const saved = await patch.mutateAsync({ id: flowId, name: draft.name.trim() || t('editor.untitled'), description: draft.description, graph: draft.graph })
+      const saved = await patch.mutateAsync({ id: flowId, name: draft.name.trim() || t('editor.untitled'), description: draft.description, graph: draft.graph, expected_updated_at: saveBaseline.current })
+      saveBaseline.current = saved.updated_at
       setDraft(flowId, { ...draft, baseVersion: saved.version, dirty: false })
       // 儲存成功＝新的基準：之後按返回不再詢問、也不會把已儲存的參數還原掉
       const savedNode = draft.graph.nodes.find((n) => n.id === nodeId)
       if (savedNode) entryRef.current = { key: `${flowId}:${nodeId}`, json: JSON.stringify(savedNode), dirty: false }
       toast.success(t('editor.toast.saved'))
     } catch (error) {
-      toast.error(errorMessage(error))
+      if (!showConflict(error, {
+        flowId,
+        graph: draft.graph,
+        loadServer: loadServerConflict,
+        overwrite: async (updatedAt) => {
+          const saved = await patch.mutateAsync({ id: flowId, name: draft.name.trim() || t('editor.untitled'), description: draft.description, graph: draft.graph, expected_updated_at: updatedAt })
+          saveBaseline.current = saved.updated_at
+          setDraft(flowId, { ...draft, baseVersion: saved.version, dirty: false })
+          const savedNode = draft.graph.nodes.find((n) => n.id === nodeId)
+          if (savedNode) entryRef.current = { key: `${flowId}:${nodeId}`, json: JSON.stringify(savedNode), dirty: false }
+          toast.success(t('editor.toast.saved'))
+        },
+      })) toast.error(errorMessage(error))
     } finally {
       setSaving(false)
     }
-  }, [draft, readOnly, patch, flowId, nodeId, toast, t])
+  }, [draft, readOnly, patch, flowId, nodeId, toast, t, showConflict, loadServerConflict])
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -613,6 +651,7 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
       >
         <TextInput label={t('editor.viewer.templateName')} autoFocus value={templateName} onChange={(e) => setTemplateName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void createTemplate()} />
       </Modal>
+      {saveConflictDialog}
     </div>
   )
 }

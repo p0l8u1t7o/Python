@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createMemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
-import { installApiMock } from './apiMock'
+import { FLOW, installApiMock } from './apiMock'
 import { renderPage } from './render'
 import { expandOnDrop } from '@/lib/nodeGroups'
 import { AuthProvider } from '@/providers/AuthProvider'
@@ -174,6 +174,31 @@ describe('pages render (smoke)', () => {
     const results = await screen.findByTestId('node-search-results')
     expect(results).toHaveTextContent('camera')
     fireEvent.click(screen.getByTestId('node-search-result'))
+  })
+
+  it('FlowEditorPage shows a save conflict dialog when the backend returns 409', async () => {
+    const { api, FlowVersionConflictError } = await import('@/lib/api')
+    const { FlowEditorPage } = await import('@/pages/FlowEditorPage')
+    const serverGraph = {
+      ...FLOW.graph,
+      nodes: FLOW.graph.nodes.map((node) => node.id === 'thr' ? { ...node, params: { ...node.params, threshold: 70 } } : node),
+    }
+    vi.mocked(api.patch).mockRejectedValueOnce(new FlowVersionConflictError(409, 'This flow has changed since it was loaded', {
+      version: 2,
+      updated_at: '2026-01-01T00:00:02Z',
+      last_saved_by: { name: 'alice', kind: 'user', at: '2026-01-01T00:00:02Z' },
+      graph: serverGraph,
+    }))
+    renderDataPage(<FlowEditorPage />, '/flows/1', '/flows/:flowId')
+    await screen.findByTestId('editor-toolbar')
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Edited flow' } })
+    fireEvent.click(await screen.findByRole('button', { name: 'Save' }))
+    expect(await screen.findByTestId('save-conflict-dialog')).toBeInTheDocument()
+    expect(screen.getByText(/alice/)).toBeInTheDocument()
+    expect(await screen.findByText('threshold 60 → 70')).toBeInTheDocument()
+    expect(screen.getByTestId('save-conflict-load')).toBeInTheDocument()
+    expect(screen.getByTestId('save-conflict-overwrite')).toBeInTheDocument()
+    expect(screen.getByTestId('save-conflict-cancel')).toBeInTheDocument()
   })
 
   it('FlowEditorPage clears visible results without throwing', async () => {

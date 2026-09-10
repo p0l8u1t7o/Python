@@ -426,6 +426,7 @@ const zhHans = {
     bad_credentials: '帐号或密码错误',
     permission_denied: '无此权限',
     not_owner: '共用流程只有管理员能修改，请先拷贝',
+    version_conflict: '此流程已在别处被修改',
     validation_error: '数据不合法',
     capacity: '线程池已满',
     engine_locked: '引擎已锁定',
@@ -799,6 +800,15 @@ const zhHans = {
     timeoutS: '流程超时秒数 (0 = 不限)',
     concurrency: '流程并行度',
     stopOnNg: 'NG 后停止',
+  },
+  saveConflict: {
+    title: '保存冲突',
+    description: '此流程已于 {{time}} 被修改。',
+    descriptionWithUser: '此流程已被 {{user}} 于 {{time}} 修改。',
+    diffTitle: '服务器版本变更',
+    noDiff: '没有可显示的流程图差异。',
+    loadServer: '载入服务器版本',
+    overwrite: '用我的版本覆盖',
   },
   editor: {
     picturesSection: '此步骤的图片',

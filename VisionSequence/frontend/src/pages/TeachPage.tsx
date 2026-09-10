@@ -22,6 +22,7 @@ import type { InspectorActions } from '@/components/editor/ParamField'
 import { ParamField } from '@/components/editor/ParamField'
 import { formatValue } from '@/components/editor/ResultsPanel'
 import { iconFor } from '@/components/editor/ToolNode'
+import { useSaveConflictDialog } from '@/components/flow/SaveConflictDialog'
 import { BoundBadge } from '@/components/recipes/BoundRecipeSelect'
 import { RecipeDrawer, compactOverrides, countOverrides, useSaveCheck, type Overrides } from '@/components/recipes/RecipeDrawer'
 import { Badge, Button, ErrorState, LoadingState, Modal, StatusBadge, TextInput } from '@/components/ui'
@@ -56,6 +57,7 @@ function TeachPageInner({ flowId }: { flowId: number }) {
   const recipeMut = useRecipeMutations(flowId)
   const scratchUpload = useScratchImage()
   const session = useFlowSession(flowId)
+  const { showConflict, dialog: saveConflictDialog } = useSaveConflictDialog()
 
   const [recipeId, setRecipeId] = useState<number | null>(null)
   const [overrides, setOverrides] = useState<Overrides>({})
@@ -71,6 +73,7 @@ function TeachPageInner({ flowId }: { flowId: number }) {
   const [saveAsOpen, setSaveAsOpen] = useState(false)
   const [saveAsName, setSaveAsName] = useState('')
   const scratchInput = useRef<HTMLInputElement>(null)
+  const saveBaseline = useRef<string | null>(null)
 
   const defs = useMemo(() => {
     const map = new Map<string, ToolTypeDef>()
@@ -85,7 +88,12 @@ function TeachPageInner({ flowId }: { flowId: number }) {
     const draft = getSession(flowId).draft
     if (draft && draft.baseVersion === data.version) return
     setDraft(flowId, { baseVersion: data.version, graph: data.graph, name: data.name, description: data.description, dirty: false })
+    saveBaseline.current = data.updated_at
   }, [flow.data, session.draft, flowId])
+
+  useEffect(() => {
+    if (flow.data) saveBaseline.current = flow.data.updated_at
+  }, [flow.data])
 
   const draft = session.draft && flow.data && session.draft.baseVersion === flow.data.version ? session.draft : null
   const graph = draft?.graph
@@ -119,6 +127,21 @@ function TeachPageInner({ flowId }: { flowId: number }) {
   // 「標記為已教導」是工程師的簽核動作，另外用 canCommission 控制。
   const readOnly = !auth.can('flows.teach')
   const canCommission = auth.isEngineer
+
+  const loadServerConflict = useCallback(
+    (details: { version: number; updated_at: string; graph: FlowGraph }) => {
+      saveBaseline.current = details.updated_at
+      setDraft(flowId, {
+        baseVersion: details.version,
+        graph: details.graph,
+        name: flow.data?.name ?? '',
+        description: flow.data?.description ?? '',
+        dirty: false,
+      })
+      void flow.refetch()
+    },
+    [flow, flowId],
+  )
 
   // ---- 試跑 ----
   const scratch = session.scratch
@@ -233,15 +256,26 @@ function TeachPageInner({ flowId }: { flowId: number }) {
     if (!draft) return
     setSaving(true)
     try {
-      const saved = await patch.mutateAsync({ id: flowId, name: draft.name.trim() || t('editor.untitled'), description: draft.description, graph: draft.graph })
+      const saved = await patch.mutateAsync({ id: flowId, name: draft.name.trim() || t('editor.untitled'), description: draft.description, graph: draft.graph, expected_updated_at: saveBaseline.current })
+      saveBaseline.current = saved.updated_at
       setDraft(flowId, { ...draft, baseVersion: saved.version, dirty: false })
       toast.success(t('editor.toast.saved'))
     } catch (error) {
-      toast.error(errorMessage(error))
+      if (!showConflict(error, {
+        flowId,
+        graph: draft.graph,
+        loadServer: loadServerConflict,
+        overwrite: async (updatedAt) => {
+          const saved = await patch.mutateAsync({ id: flowId, name: draft.name.trim() || t('editor.untitled'), description: draft.description, graph: draft.graph, expected_updated_at: updatedAt })
+          saveBaseline.current = saved.updated_at
+          setDraft(flowId, { ...draft, baseVersion: saved.version, dirty: false })
+          toast.success(t('editor.toast.saved'))
+        },
+      })) toast.error(errorMessage(error))
     } finally {
       setSaving(false)
     }
-  }, [readOnly, recipe, overrides, draft, saveCheck, recipeMut.patch, patch, flowId, toast, t])
+  }, [readOnly, recipe, overrides, draft, saveCheck, recipeMut.patch, patch, flowId, toast, t, showConflict, loadServerConflict])
 
   const saveRef = useRef(save)
   saveRef.current = save
@@ -277,10 +311,21 @@ function TeachPageInner({ flowId }: { flowId: number }) {
   // ---- 已教導 ----
   async function setCommissioned(value: boolean) {
     try {
-      await patch.mutateAsync({ id: flowId, commissioned: value })
+      const saved = await patch.mutateAsync({ id: flowId, commissioned: value, expected_updated_at: saveBaseline.current })
+      saveBaseline.current = saved.updated_at
       toast.success(value ? t('teach.markedCommissioned') : t('teach.unmarkedCommissioned'))
     } catch (error) {
-      toast.error(errorMessage(error))
+      const currentGraph = draft?.graph ?? flow.data?.graph ?? { nodes: [], edges: [] }
+      if (!showConflict(error, {
+        flowId,
+        graph: currentGraph,
+        loadServer: loadServerConflict,
+        overwrite: async (updatedAt) => {
+          const saved = await patch.mutateAsync({ id: flowId, commissioned: value, expected_updated_at: updatedAt })
+          saveBaseline.current = saved.updated_at
+          toast.success(value ? t('teach.markedCommissioned') : t('teach.unmarkedCommissioned'))
+        },
+      })) toast.error(errorMessage(error))
     }
   }
 
@@ -497,6 +542,7 @@ function TeachPageInner({ flowId }: { flowId: number }) {
 
       <RecipeDrawer open={manageOpen} onClose={() => { setManageOpen(false); if (recipe) { const r = recipeList.find((x) => x.id === recipe.id); if (r && !recipeDirty) setOverrides(structuredClone(r.param_overrides ?? {})) } }} flowId={flowId} readOnly={!canCommission} graphOverride={graph} />
       {saveCheck.modal}
+      {saveConflictDialog}
       <Modal
         open={saveAsOpen}
         onClose={() => setSaveAsOpen(false)}

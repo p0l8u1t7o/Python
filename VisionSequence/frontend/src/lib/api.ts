@@ -5,7 +5,7 @@
  */
 
 import { logActivity } from '@/lib/activity'
-import type { CalibrationSolveResult, FixedImageDesc, Region, StereoReferenceBody } from '@/lib/types'
+import type { CalibrationSolveResult, FixedImageDesc, FlowGraph, Region, StereoReferenceBody } from '@/lib/types'
 
 /** API 基底：獨立部署前端時以 VITE_API_BASE_URL 指向後端（含 /api）；同源時走 /api（dev 由 Vite 代理、正式由 whitenoise 同站服務）。 */
 export const BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '/api'
@@ -29,6 +29,26 @@ export class ApiError extends Error {
     this.code = code
     this.details = details
   }
+}
+
+export interface FlowVersionConflictDetails {
+  version: number
+  updated_at: string
+  last_saved_by?: { name: string; kind: string; at: string } | null
+  graph: FlowGraph
+}
+
+export class FlowVersionConflictError extends ApiError {
+  readonly details: FlowVersionConflictDetails
+  constructor(status: number, message: string, details: FlowVersionConflictDetails) {
+    super(status, 'version_conflict', message, details)
+    this.name = 'FlowVersionConflictError'
+    this.details = details
+  }
+}
+
+export function isFlowVersionConflict(error: unknown): error is FlowVersionConflictError {
+  return error instanceof FlowVersionConflictError
 }
 
 export function apiKey(): string {
@@ -216,6 +236,12 @@ async function toApiError(response: Response): Promise<ApiError> {
     /* 非 JSON */
   }
   if (response.status === 401 && code === 'http_error') code = 'unauthenticated'
+  if (response.status === 409 && code === 'version_conflict' && details && typeof details === 'object') {
+    const conflict = details as Partial<FlowVersionConflictDetails>
+    if (typeof conflict.version === 'number' && typeof conflict.updated_at === 'string' && conflict.graph) {
+      return new FlowVersionConflictError(response.status, message, conflict as FlowVersionConflictDetails)
+    }
+  }
   return new ApiError(response.status, code, message, details)
 }
 

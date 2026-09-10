@@ -25,6 +25,7 @@ GET    /vision/assets/{id}/file
 from __future__ import annotations
 
 import base64
+import datetime as dt
 import json
 import os
 import time
@@ -34,14 +35,18 @@ from typing import Any
 import cv2
 import numpy as np
 from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.http import HttpRequest, HttpResponse
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from ninja import File, Form, Router, Schema, UploadedFile
 
 from apps.accounts.security import authenticate, principal, require_feature
 from apps.core.errors import APIError, Conflict, NotFound, PermissionDenied, ValidationError
 from apps.core import audit
+from apps.core.models import AuditLog
 from apps.vision import archive, board, graphdiff, reporting, schemas, scripts, teachguard, trace, versions
 from apps.vision.engine import NODE_REPORT_DEFAULTS
 from apps.vision.graph import validate_graph
@@ -141,6 +146,51 @@ def _json_payload_field(request: HttpRequest, key: str) -> Any:
     if isinstance(body, dict) and key in body:
         return body[key]
     return _MISSING
+
+
+def _expected_updated_at(request: HttpRequest) -> str | None:
+    raw = _json_payload_field(request, "expected_updated_at")
+    if raw is _MISSING or raw in ("", None):
+        return None
+    if not isinstance(raw, str):
+        raise ValidationError("expected_updated_at must be an ISO timestamp", code="bad_argument")
+    parsed = parse_datetime(raw)
+    if parsed is None:
+        raise ValidationError("expected_updated_at must be an ISO timestamp", code="bad_argument")
+    if timezone.is_naive(parsed):
+        parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
+    return parsed.astimezone(dt.UTC).isoformat()
+
+
+def _updated_at_key(flow: Flow) -> str:
+    value = flow.updated_at
+    if timezone.is_naive(value):
+        value = timezone.make_aware(value, timezone.get_current_timezone())
+    return value.astimezone(dt.UTC).isoformat()
+
+
+def _last_flow_editor(flow: Flow) -> dict[str, Any] | None:
+    row = (
+        AuditLog.objects.filter(target_type="flow", target_id=str(flow.id), action__in=["flow.update", "flow.settings"])
+        .order_by("-at", "-id")
+        .first()
+    )
+    if row is None:
+        return None
+    return {"name": row.actor_name, "kind": row.actor_kind, "at": row.at.isoformat()}
+
+
+def _flow_conflict(flow: Flow) -> Conflict:
+    return Conflict(
+        "This flow has changed since it was loaded",
+        code="version_conflict",
+        details={
+            "version": flow.version,
+            "updated_at": flow.updated_at.isoformat(),
+            "last_saved_by": _last_flow_editor(flow),
+            "graph": flow.graph or {"nodes": [], "edges": []},
+        },
+    )
 
 
 def _positive_int(value: Any, name: str) -> int:
@@ -300,62 +350,79 @@ def get_flow_api(request: HttpRequest, flow_id: int):
     return _flow_out(flow)
 
 
+class FlowDiffIn(Schema):
+    graph: dict[str, Any]
+
+
+@router.post("/flows/{flow_id}/diff")
+def diff_flow(request: HttpRequest, flow_id: int, payload: FlowDiffIn):
+    require_feature(request, "flows.edit")
+    flow = get_flow(flow_id)
+    changes = graphdiff.diff(payload.graph, flow.graph or {"nodes": [], "edges": []})
+    return {"diff": changes, "summary": graphdiff.summarize(changes)}
+
+
 @router.patch("/flows/{flow_id}")
 def patch_flow(request: HttpRequest, flow_id: int, payload: schemas.FlowPatch):
     p = principal(request)
-    flow = get_flow(flow_id)
-    before_graph = flow.graph or {}
-    before_fields = {f: getattr(flow, f) for f in ("name", "description", "is_enabled", "continuous_interval_ms", "timeout_s", "concurrency", "stop_on_ng", "commissioned")}
+    expected = _expected_updated_at(request)
     raw_concurrency = _json_payload_field(request, "concurrency")
-    if not p.can("flows.edit"):
-        # 沒有 flows.edit 的人只能在參數卡頁微調現場參數：圖以外的欄位一律不准，圖只准 teach 參數的值變。
-        require_feature(request, "flows.teach")
-        touched = [f for f in ("name", "description", "is_enabled", "continuous_interval_ms", "timeout_s", "stop_on_ng", "commissioned", "archive_policy", "board", "comm") if getattr(payload, f) is not None]
-        if raw_concurrency is not _MISSING:
-            touched.append("concurrency")
-        if touched or payload.graph is None:
-            raise PermissionDenied("Your role may only change on-site teaching parameters on this flow", code="permission_denied")
-        try:
-            teachguard.assert_teach_only(flow.graph or {}, payload.graph or {})
-        except teachguard.StructureChanged as exc:
-            raise PermissionDenied(str(exc), code="teach_only") from None
-    if payload.name is not None:
-        flow.name = payload.name.strip()
-    if payload.description is not None:
-        flow.description = payload.description
-    if payload.is_enabled is not None:
-        flow.is_enabled = payload.is_enabled
-        if not flow.is_enabled:
-            runner.stop_continuous(flow.id)
-    if payload.continuous_interval_ms is not None:
-        flow.continuous_interval_ms = max(0, payload.continuous_interval_ms)
-    if payload.timeout_s is not None:
-        flow.timeout_s = max(0, payload.timeout_s)
-    if raw_concurrency is not _MISSING:
-        flow.concurrency = _positive_int(raw_concurrency, "concurrency")
-    if payload.stop_on_ng is not None:
-        flow.stop_on_ng = payload.stop_on_ng
-    if payload.commissioned is not None:
-        flow.commissioned = payload.commissioned
-    if payload.archive_policy is not None:
-        flow.archive_policy = archive.sanitize(payload.archive_policy)
-    if payload.board is not None:
-        flow.board = board.sanitize(payload.board)
-    if payload.comm is not None:
-        flow.comm = reporting.sanitize(payload.comm)
-        reporting.forget(flow.id)  # 改了設定就忘掉退避與定時送的節拍，下一次編譯會重新載入
-    field_changes = {}
-    graph_changed = False
-    if payload.graph is not None:
-        new_graph = validate_graph(payload.graph)
-        scripts.check_graph_edit(principal(request), new_graph, flow=flow)  # Python 腳本：一般使用者只能用已核准的程式碼
-        graph_changed = new_graph != (flow.graph or {})
-        flow.graph = new_graph
-        if graph_changed:
-            flow.version += 1
-    field_changes = audit.fields_diff(before_fields, {f: getattr(flow, f) for f in before_fields}, tuple(before_fields))
     try:
         with transaction.atomic():
+            try:
+                flow = Flow.objects.select_for_update().select_related("owner").get(pk=flow_id)
+            except ObjectDoesNotExist:
+                raise NotFound(f"Flow {flow_id} not found", code="flow_not_found") from None
+            before_graph = flow.graph or {}
+            before_fields = {f: getattr(flow, f) for f in ("name", "description", "is_enabled", "continuous_interval_ms", "timeout_s", "concurrency", "stop_on_ng", "commissioned")}
+            if not p.can("flows.edit"):
+                # 沒有 flows.edit 的人只能在參數卡頁微調現場參數：圖以外的欄位一律不准，圖只准 teach 參數的值變。
+                require_feature(request, "flows.teach")
+                touched = [f for f in ("name", "description", "is_enabled", "continuous_interval_ms", "timeout_s", "stop_on_ng", "commissioned", "archive_policy", "board", "comm") if getattr(payload, f) is not None]
+                if raw_concurrency is not _MISSING:
+                    touched.append("concurrency")
+                if touched or payload.graph is None:
+                    raise PermissionDenied("Your role may only change on-site teaching parameters on this flow", code="permission_denied")
+                try:
+                    teachguard.assert_teach_only(flow.graph or {}, payload.graph or {})
+                except teachguard.StructureChanged as exc:
+                    raise PermissionDenied(str(exc), code="teach_only") from None
+            if expected is not None and expected != _updated_at_key(flow):
+                raise _flow_conflict(flow)
+            if payload.name is not None:
+                flow.name = payload.name.strip()
+            if payload.description is not None:
+                flow.description = payload.description
+            if payload.is_enabled is not None:
+                flow.is_enabled = payload.is_enabled
+                if not flow.is_enabled:
+                    runner.stop_continuous(flow.id)
+            if payload.continuous_interval_ms is not None:
+                flow.continuous_interval_ms = max(0, payload.continuous_interval_ms)
+            if payload.timeout_s is not None:
+                flow.timeout_s = max(0, payload.timeout_s)
+            if raw_concurrency is not _MISSING:
+                flow.concurrency = _positive_int(raw_concurrency, "concurrency")
+            if payload.stop_on_ng is not None:
+                flow.stop_on_ng = payload.stop_on_ng
+            if payload.commissioned is not None:
+                flow.commissioned = payload.commissioned
+            if payload.archive_policy is not None:
+                flow.archive_policy = archive.sanitize(payload.archive_policy)
+            if payload.board is not None:
+                flow.board = board.sanitize(payload.board)
+            if payload.comm is not None:
+                flow.comm = reporting.sanitize(payload.comm)
+                reporting.forget(flow.id)  # 改了設定就忘掉退避與定時送的節拍，下一次編譯會重新載入
+            graph_changed = False
+            if payload.graph is not None:
+                new_graph = validate_graph(payload.graph)
+                scripts.check_graph_edit(principal(request), new_graph, flow=flow)  # Python 腳本：一般使用者只能用已核准的程式碼
+                graph_changed = new_graph != (flow.graph or {})
+                flow.graph = new_graph
+                if graph_changed:
+                    flow.version += 1
+            field_changes = audit.fields_diff(before_fields, {f: getattr(flow, f) for f in before_fields}, tuple(before_fields))
             flow.save()
     except IntegrityError:
         raise Conflict("A flow with that name already exists", code="flow_name_taken") from None

@@ -316,6 +316,7 @@ export function useDashboardMutations() {
 }
 
 export interface FlowPatch {
+  expected_updated_at?: string | null
   name?: string
   description?: string
   graph?: FlowGraph
@@ -331,6 +332,15 @@ export interface FlowPatch {
   /** 現場看板設定（工程師才能改） */
   board?: BoardConfig
   comm?: CommRule[]
+}
+
+export interface FlowDiffResult {
+  diff: Record<string, unknown>
+  summary: string
+}
+
+export function diffFlow(flowId: number, graph: FlowGraph): Promise<FlowDiffResult> {
+  return api.post<FlowDiffResult>(`/vision/flows/${flowId}/diff`, { graph })
 }
 
 export function useFlowMutations() {

@@ -164,7 +164,11 @@ export function routes(path: string, body?: unknown): unknown {
   if (/\/vision\/dashboards\/\d+$/.test(path)) return DASHBOARD
   if (/\/vision\/flows\/\d+\/teach-contour$/.test(path)) return { model: { version: 1, image_size: [640, 480], closed: true, points: [[10, 10], [30, 10], [30, 30], [10, 30]] }, points: [[10, 10], [30, 10], [30, 30], [10, 30]] }
   if (/\/vision\/flows\/\d+\/preview$/.test(path)) return { ...RUNS[0], id: 'preview-1', persisted: false }
-  if (/\/vision\/flows\/\d+$/.test(path)) return FLOW
+  if (/\/vision\/flows\/\d+\/diff$/.test(path)) return { summary: 'threshold 60 → 70', diff: { params: [{ node: 'thr', param: 'threshold', before: 60, after: 70 }], count: 1 } }
+  if (/\/vision\/flows\/\d+$/.test(path)) {
+    const patch = typeof body === 'object' && body ? body as Record<string, unknown> : {}
+    return { ...FLOW, ...patch, id: 1, version: 2, updated_at: '2026-01-01T00:00:01Z', graph: (patch.graph as typeof FLOW.graph | undefined) ?? FLOW.graph }
+  }
   if (/\/vision\/flows\/\d+\/versions/.test(path)) return { items: [], current: 1, keep: 50 }
   if (/\/vision\/flows\/\d+\/recipes/.test(path)) return { items: [] }
   if (/\/vision\/flows\/\d+\/recent/.test(path)) return { items: [] }
@@ -324,7 +328,7 @@ export function installApiMock() {
         post: vi.fn(async (path: string, body?: unknown) => routes(path, body)),
         postForm: vi.fn(async (path: string) => routes(path)),
         put: vi.fn(async (path: string) => routes(path)),
-        patch: vi.fn(async (path: string) => routes(path)),
+        patch: vi.fn(async (path: string, body?: unknown) => routes(path, body)),
         delete: vi.fn(async () => undefined),
       },
       authToken: () => 'test-token',

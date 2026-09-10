@@ -38,6 +38,7 @@ import { NodeResult, RecentRunsTable, RunErrorBlock, RunWarnings, SpanTimingCard
 import { DRAG_MIME, HISTORY_LIMIT, autoConnectOnInsert, computeLayout, edgeProps, graphFrom, isTypingTarget, nextNodeId, nodeDataFrom, toFlowEdges, toFlowNode, toFlowNodes, type ToolNodeData } from '@/components/editor/graphMapping'
 import { useResizer } from '@/components/editor/useResizer'
 import { FlowSettingsDialogs } from '@/components/flow/FlowSettingsDialogs'
+import { useSaveConflictDialog } from '@/components/flow/SaveConflictDialog'
 import { RecipeDrawer } from '@/components/recipes/RecipeDrawer'
 import { SaveTemplateModal, TemplateGallery } from '@/components/templates/TemplateGallery'
 import { Button, Checkbox, ConfirmDialog, ErrorState, LoadingState, Modal, Select, StatusBadge, Tabs, TextInput } from '@/components/ui'
@@ -57,7 +58,7 @@ import { countFolderPreviewFiles, countPreviewSequenceResult, createPreviewSeque
 import { describeReport, useRegisterAssistantContext } from '@/lib/assistantContext'
 import { useFlowStream, type StreamEvent } from '@/lib/flowStream'
 import { DECORATION_TYPES, checkConnection, graphProblems } from '@/lib/graphValidation'
-import { useAssetMutations, useClearRecent, useContinuous, useFlow, useFlowMutations, usePreviewFlow, useRecentRuns, useRecipes, useScratchImage, useSources, useToolTypes } from '@/lib/queries'
+import { useAssetMutations, useClearRecent, useContinuous, useFlow, useFlowMutations, usePreviewFlow, useRecentRuns, useRecipes, useScratchImage, useSources, useToolTypes, type FlowPatch } from '@/lib/queries'
 import { isImageRef, type FlowGraph, type GraphEdge, type GraphNode, type NodeReport, type Overlay, type Region, type RunReport, type ToolTypeDef } from '@/lib/types'
 import { isLockHolder, useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
@@ -249,6 +250,7 @@ function EditorInner({ flowId }: { flowId: number }) {
   const session = useFlowSession(flowId)
   const recipes = useRecipes(flowId)
   const [recipesOpen, setRecipesOpen] = useState(false)
+  const { showConflict, dialog: saveConflictDialog } = useSaveConflictDialog()
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
@@ -336,6 +338,7 @@ function EditorInner({ flowId }: { flowId: number }) {
   const history = useRef(createHistory<FlowGraph>(HISTORY_LIMIT))
   const clipboard = useRef<{ nodes: GraphNode[]; edges: GraphEdge[] } | null>(null)
   const loadedFor = useRef('')
+  const saveBaseline = useRef<string | null>(null)
   const lastAutoVersionSignature = useRef<string | null>(null)
   const sequenceTimer = useRef<number | undefined>(undefined)
   const sequenceAbort = useRef<AbortController | null>(null)
@@ -352,6 +355,7 @@ function EditorInner({ flowId }: { flowId: number }) {
     const key = `${data.id}:${data.version}`
     if (loadedFor.current === key) return
     loadedFor.current = key
+    saveBaseline.current = data.updated_at
     const draft = getSession(flowId).draft
     const source = draft && draft.baseVersion === data.version ? draft : null
     const graph = source ? source.graph : data.graph
@@ -363,6 +367,26 @@ function EditorInner({ flowId }: { flowId: number }) {
     lastAutoVersionSignature.current = flowGraphSignature(data.graph)
     history.current = createHistory<FlowGraph>(HISTORY_LIMIT)
   }, [flow.data, defs, setNodes, setEdges, flowId])
+
+  const loadServerConflict = useCallback(
+    (details: { version: number; updated_at: string; graph: FlowGraph }) => {
+      saveBaseline.current = details.updated_at
+      loadedFor.current = `${flowId}:${details.version}`
+      payloads.current = new Map((details.graph.nodes ?? []).map((n) => [n.id, n]))
+      setNodes(toFlowNodes(details.graph, defs))
+      setEdges(toFlowEdges(details.graph, defs))
+      setDirty(false)
+      lastAutoVersionSignature.current = flowGraphSignature(details.graph)
+      setDraft(flowId, { baseVersion: details.version, graph: details.graph, name: meta.name, description: meta.description, dirty: false })
+      void flow.refetch()
+    },
+    [defs, flow, flowId, meta.description, meta.name, setEdges, setNodes],
+  )
+
+  const markSaved = useCallback((saved: { id: number; version: number; updated_at: string }) => {
+    loadedFor.current = `${saved.id}:${saved.version}`
+    saveBaseline.current = saved.updated_at
+  }, [])
 
   // ---- 離開頁面時把目前的圖寫成草稿（工具頁會讀；回來時 version 相符就沿用） ----
   const latest = useRef({ meta, dirty, version: flow.data?.version ?? 0, loaded: false })
@@ -396,8 +420,8 @@ function EditorInner({ flowId }: { flowId: number }) {
       autoVersionSaving.current = true
       try {
         const saved = await patch.mutateAsync(
-          { id: flowId, name: l.meta.name.trim() || t('editor.untitled'), description: l.meta.description, graph },
-          { onSuccess: (item) => { loadedFor.current = `${item.id}:${item.version}` } },
+          { id: flowId, name: l.meta.name.trim() || t('editor.untitled'), description: l.meta.description, graph, expected_updated_at: saveBaseline.current },
+          { onSuccess: markSaved },
         )
         lastAutoVersionSignature.current = signature
         if (flowGraphSignature(currentGraph()) === signature) {
@@ -406,14 +430,27 @@ function EditorInner({ flowId }: { flowId: number }) {
         }
         toast.success(t('editor.toast.autoVersionSaved', { version: saved.version }))
       } catch (error) {
-        toast.error(errorMessage(error))
+        if (!showConflict(error, {
+          flowId,
+          graph,
+          loadServer: loadServerConflict,
+          overwrite: async (updatedAt) => {
+            const saved = await patch.mutateAsync({ id: flowId, name: l.meta.name.trim() || t('editor.untitled'), description: l.meta.description, graph, expected_updated_at: updatedAt }, { onSuccess: markSaved })
+            lastAutoVersionSignature.current = signature
+            if (flowGraphSignature(currentGraph()) === signature) {
+              setDirty(false)
+              setDraft(flowId, { baseVersion: saved.version, graph, name: l.meta.name, description: l.meta.description, dirty: false })
+            }
+            toast.success(t('editor.toast.autoVersionSaved', { version: saved.version }))
+          },
+        })) toast.error(errorMessage(error))
       } finally {
         autoVersionSaving.current = false
       }
     }
     const timer = window.setInterval(() => void saveDraftVersion(), AUTO_VERSION_INTERVAL_MS)
     return () => window.clearInterval(timer)
-  }, [currentGraph, flowId, patch, t, toast])
+  }, [currentGraph, flowId, patch, t, toast, markSaved, showConflict, loadServerConflict])
 
   // ---- SSE ----
   const onStreamEvent = useCallback(
@@ -862,20 +899,57 @@ function EditorInner({ flowId }: { flowId: number }) {
     if (problemMap.size > 0) toast.warning(t('editor.toast.validationWarning', { count: problemMap.size }))
     try {
       const graph = currentGraph()
+      const saveBody = { id: flowId, name: meta.name.trim() || t('editor.untitled'), description: meta.description, graph }
       await patch.mutateAsync(
-        { id: flowId, name: meta.name.trim() || t('editor.untitled'), description: meta.description, graph },
+        { ...saveBody, expected_updated_at: saveBaseline.current },
         // 回應的新 version 會觸發「重載圖」effect；先標記為已載入，畫布才不會被重設。
-        { onSuccess: (saved) => { loadedFor.current = `${saved.id}:${saved.version}` } },
+        { onSuccess: markSaved },
       )
       lastAutoVersionSignature.current = flowGraphSignature(graph)
       setDirty(false)
       toast.success(t('editor.toast.saved'))
       return true
     } catch (error) {
+      const graph = currentGraph()
+      if (showConflict(error, {
+        flowId,
+        graph,
+        loadServer: loadServerConflict,
+        overwrite: async (updatedAt) => {
+          const saved = await patch.mutateAsync({ id: flowId, name: meta.name.trim() || t('editor.untitled'), description: meta.description, graph, expected_updated_at: updatedAt }, { onSuccess: markSaved })
+          lastAutoVersionSignature.current = flowGraphSignature(graph)
+          setDirty(false)
+          setDraft(flowId, { baseVersion: saved.version, graph, name: meta.name, description: meta.description, dirty: false })
+          toast.success(t('editor.toast.saved'))
+        },
+      })) return false
       toast.error(errorMessage(error))
       return false
     }
-  }, [readOnly, problemMap.size, patch, flowId, meta, currentGraph, toast, t])
+  }, [readOnly, problemMap.size, patch, flowId, meta, currentGraph, toast, t, markSaved, showConflict, loadServerConflict])
+
+  const patchFlowSettings = useCallback(
+    async (body: FlowPatch, onSaved?: () => void) => {
+      const graph = currentGraph()
+      try {
+        const saved = await patch.mutateAsync({ id: flowId, ...body, expected_updated_at: saveBaseline.current })
+        markSaved(saved)
+        onSaved?.()
+      } catch (error) {
+        if (!showConflict(error, {
+          flowId,
+          graph,
+          loadServer: loadServerConflict,
+          overwrite: async (updatedAt) => {
+            const saved = await patch.mutateAsync({ id: flowId, ...body, expected_updated_at: updatedAt })
+            markSaved(saved)
+            onSaved?.()
+          },
+        })) toast.error(errorMessage(error))
+      }
+    },
+    [currentGraph, flowId, loadServerConflict, markSaved, patch, showConflict, toast],
+  )
 
   const lastSourceRef = useMemo(() => sourceRefOf(activeRun, payloads.current), [activeRun])
   //: 全域 AI 助手：在編輯器內可直接請助手修改目前畫布（套用走復原堆疊）
@@ -1761,7 +1835,7 @@ function EditorInner({ flowId }: { flowId: number }) {
                         min={0}
                         value={String(flow.data?.continuous_interval_ms ?? 0)}
                         disabled={readOnly}
-                        onChange={(e) => patch.mutate({ id: flowId, continuous_interval_ms: Number(e.target.value) || 0 }, { onSuccess: (saved) => { loadedFor.current = `${saved.id}:${saved.version}` } })}
+                        onChange={(e) => void patchFlowSettings({ continuous_interval_ms: Number(e.target.value) || 0 })}
                       />
                       <TextInput
                         label={t('flow.timeoutS')}
@@ -1769,7 +1843,7 @@ function EditorInner({ flowId }: { flowId: number }) {
                         min={0}
                         value={String(flow.data?.timeout_s ?? 0)}
                         disabled={readOnly}
-                        onChange={(e) => patch.mutate({ id: flowId, timeout_s: Number(e.target.value) || 0 }, { onSuccess: (saved) => { loadedFor.current = `${saved.id}:${saved.version}` } })}
+                        onChange={(e) => void patchFlowSettings({ timeout_s: Number(e.target.value) || 0 })}
                       />
                       <TextInput
                         label={t('flow.concurrency')}
@@ -1778,7 +1852,7 @@ function EditorInner({ flowId }: { flowId: number }) {
                         step={1}
                         value={String(flow.data?.concurrency ?? 1)}
                         disabled={readOnly}
-                        onChange={(e) => patch.mutate({ id: flowId, concurrency: Math.max(1, Number(e.target.value) || 1) }, { onSuccess: (saved) => { loadedFor.current = `${saved.id}:${saved.version}` }, onError: (error) => toast.error(errorMessage(error)) })}
+                        onChange={(e) => void patchFlowSettings({ concurrency: Math.max(1, Number(e.target.value) || 1) })}
                       />
                     </div>
                     <div className="flex flex-wrap gap-x-4 gap-y-1">
@@ -1788,13 +1862,13 @@ function EditorInner({ flowId }: { flowId: number }) {
                         hint={flow.data?.is_enabled === false ? t('editor.flowDisabledHint') : undefined}
                         checked={flow.data?.is_enabled !== false}
                         disabled={readOnly}
-                        onChange={(v) => patch.mutate({ id: flowId, is_enabled: v }, { onSuccess: (saved) => { loadedFor.current = `${saved.id}:${saved.version}` }, onError: (error) => toast.error(errorMessage(error)) })}
+                        onChange={(v) => void patchFlowSettings({ is_enabled: v })}
                       />
                       <Checkbox
                         label={t('flow.stopOnNg')}
                         checked={flow.data?.stop_on_ng === true}
                         disabled={readOnly}
-                        onChange={(v) => patch.mutate({ id: flowId, stop_on_ng: v }, { onSuccess: (saved) => { loadedFor.current = `${saved.id}:${saved.version}` }, onError: (error) => toast.error(errorMessage(error)) })}
+                        onChange={(v) => void patchFlowSettings({ stop_on_ng: v })}
                       />
                     </div>
                   </div>
@@ -1807,8 +1881,8 @@ function EditorInner({ flowId }: { flowId: number }) {
                       boardImageNodes={boardImageNodes}
                       readOnly={readOnly}
                       saving={patch.isPending}
-                      onSaveBoard={(cfg) => patch.mutate({ id: flowId, board: cfg }, { onSuccess: (saved) => { loadedFor.current = `${saved.id}:${saved.version}`; toast.success(t('board.settings.saved')) }, onError: (error) => toast.error(errorMessage(error)) })}
-                      onSaveComm={(rules) => patch.mutate({ id: flowId, comm: rules }, { onSuccess: (saved) => { loadedFor.current = `${saved.id}:${saved.version}`; toast.success(t('comm.saved')) }, onError: (error) => toast.error(errorMessage(error)) })}
+                      onSaveBoard={(cfg) => void patchFlowSettings({ board: cfg }, () => toast.success(t('board.settings.saved')))}
+                      onSaveComm={(rules) => void patchFlowSettings({ comm: rules }, () => toast.success(t('comm.saved')))}
                     />
                   </div>
                 </div>
@@ -1849,6 +1923,7 @@ function EditorInner({ flowId }: { flowId: number }) {
         <TextInput label={t('editor.viewer.templateName')} autoFocus value={templateName} onChange={(e) => setTemplateName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void createTemplate()} />
       </Modal>
       {confirmDialog}
+      {saveConflictDialog}
       <ConfirmDialog open={askReset} onClose={() => setAskReset(false)} onConfirm={() => void doReset()} title={t('editor.reset')} message={t('editor.resetConfirm')} confirmLabel={t('editor.reset')} danger loading={clearRecent.isPending} />
       <ToolPicker open={pickerOpen} onClose={() => setPickerOpen(false)} catalogue={catalogue.data}
         favorites={favorites} onToggleFavorite={toggleFavorite} onPick={insertAtCenter} />
