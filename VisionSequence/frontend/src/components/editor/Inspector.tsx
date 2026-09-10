@@ -2,7 +2,7 @@
  * 側欄（Inspector）：選取步驟的基本設定（名稱、備註、顏色、啟用、出錯時繼續）＋「開啟工具頁」。
  * 完整參數表單在工具頁（ToolPage）。
  */
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { SlidersHorizontal } from 'lucide-react'
@@ -11,7 +11,7 @@ import { Button, Checkbox, Select, TextArea, TextInput } from '@/components/ui'
 import { sourcePreviewUrl } from '@/lib/api'
 import { useAuth } from '@/providers/AuthProvider'
 import { ImagesField } from '@/components/editor/ParamField'
-import { nodeProblems } from '@/lib/graphValidation'
+import { dataOutputPorts, nodeProblems, publishMap, validatePublishName } from '@/lib/graphValidation'
 import { useSources } from '@/lib/queries'
 import type { GraphEdge, GraphNode, ToolTypeDef } from '@/lib/types'
 
@@ -70,6 +70,7 @@ export function Inspector({ flowId, node, definition, edges, onChange, onDelete 
         <>
           <Checkbox label={t('editor.nodeEnabled')} hint={t('editor.nodeEnabledHint')} checked={node.enabled !== false} onChange={(enabled) => onChange({ enabled })} />
           <Checkbox label={t('editor.continueOnError')} hint={t('editor.continueOnErrorHint')} checked={node.continue_on_error === true} onChange={(continue_on_error) => onChange({ continue_on_error })} />
+          <PublishedOutputsSection node={node} definition={definition} onChange={onChange} />
 
           {problems.length ? (
             <p className="rounded-lg bg-warning-soft px-3 py-2 text-xs text-warning">{t('editor.problemsOnNode', { count: problems.length })}</p>
@@ -99,6 +100,56 @@ export function Inspector({ flowId, node, definition, edges, onChange, onDelete 
 }
 
 /** 固定影像步驟：直接在檢視器上傳／移除圖片（與工具頁的 images 參數同一份值）。 */
+function PublishedOutputsSection({ node, definition, onChange }: { node: GraphNode; definition: ToolTypeDef | undefined; onChange: (patch: Partial<GraphNode>) => void }) {
+  const { t } = useTranslation()
+  const ports = useMemo(() => dataOutputPorts(definition), [definition])
+  const published = useMemo(() => publishMap(node.params), [node.params])
+  const [draft, setDraft] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    setDraft(Object.fromEntries(ports.map((port) => [port.key, published[port.key] ?? ''])))
+  }, [node.id, ports, published])
+
+  if (!definition) return null
+
+  const update = (key: string, value: string) => {
+    setDraft((current) => ({ ...current, [key]: value }))
+    if (!validatePublishName(value)) return
+
+    const next = { ...publishMap(node.params) }
+    const clean = value.trim()
+    if (clean) next[key] = clean
+    else delete next[key]
+
+    const params = { ...(node.params ?? {}) }
+    if (Object.keys(next).length) params._publish = next
+    else delete params._publish
+    onChange({ params })
+  }
+
+  return (
+    <div className="space-y-2 rounded-md border border-line bg-surface p-2" data-testid="published-outputs">
+      <p className="text-xs font-semibold text-heading">{t('editor.publishedOutputs.title')}</p>
+      {ports.length ? ports.map((port) => {
+        const value = draft[port.key] ?? published[port.key] ?? ''
+        const invalid = !validatePublishName(value)
+        return (
+          <TextInput
+            key={port.key}
+            label={port.label || port.key}
+            value={value}
+            placeholder={t('editor.publishedOutputs.placeholder')}
+            className="font-mono"
+            error={invalid ? t('editor.publishedOutputs.invalidName') : undefined}
+            onChange={(event) => update(port.key, event.target.value)}
+            data-testid={`publish-output-${port.key}`}
+          />
+        )
+      }) : <p className="text-[11px] text-muted">{t('editor.publishedOutputs.empty')}</p>}
+    </div>
+  )
+}
+
 function FixedImagesSection({ node, onChange }: { node: GraphNode; onChange: (patch: Partial<GraphNode>) => void }) {
   const { t } = useTranslation()
   const auth = useAuth()

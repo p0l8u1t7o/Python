@@ -35,7 +35,7 @@ import { NodeContextMenu, type NodeMenuState } from '@/components/editor/NodeCon
 import { NodeList } from '@/components/editor/NodeList'
 import { FavoriteTools, ToolPicker, readFavorites, writeFavorites } from '@/components/editor/ToolPalette'
 import { NodeResult, RecentRunsTable, RunErrorBlock, RunWarnings, SpanTimingCard } from '@/components/editor/ResultsPanel'
-import { DRAG_MIME, HISTORY_LIMIT, computeLayout, edgeProps, graphFrom, isTypingTarget, nextNodeId, nodeDataFrom, toFlowEdges, toFlowNode, toFlowNodes, type ToolNodeData } from '@/components/editor/graphMapping'
+import { DRAG_MIME, HISTORY_LIMIT, autoConnectOnInsert, computeLayout, edgeProps, graphFrom, isTypingTarget, nextNodeId, nodeDataFrom, toFlowEdges, toFlowNode, toFlowNodes, type ToolNodeData } from '@/components/editor/graphMapping'
 import { useResizer } from '@/components/editor/useResizer'
 import { FlowSettingsDialogs } from '@/components/flow/FlowSettingsDialogs'
 import { RecipeDrawer } from '@/components/recipes/RecipeDrawer'
@@ -537,13 +537,21 @@ function EditorInner({ flowId }: { flowId: number }) {
         params: Object.fromEntries(def.params.filter((p) => p.default !== null && p.default !== undefined).map((p) => [p.key, p.default])),
         position,
       }
+      const graphBefore = graphFrom(nodesRef.current, edgesRef.current, payloads.current)
+      const autoEdge = autoConnectOnInsert({ nodes: [...graphBefore.nodes, payload], edges: graphBefore.edges }, id, selectedId, defs)
       payloads.current.set(id, payload)
       setNodes((current) => [...current.map((n) => ({ ...n, selected: false })), { ...toFlowNode(payload, def), selected: true }])
+      if (autoEdge) {
+        const source = payloads.current.get(autoEdge.source)
+        const sourceDef = source ? defs.get(source.type) : undefined
+        const sourceType = sourceDef?.outputs.find((p) => p.key === autoEdge.source_handle)?.type ?? (autoEdge.source_handle === '_image' ? 'image' : 'any')
+        setEdges((current) => [...current, { id: autoEdge.id ?? `e-auto-${autoEdge.source}-${autoEdge.target}`, source: autoEdge.source, target: autoEdge.target, sourceHandle: autoEdge.source_handle ?? null, targetHandle: autoEdge.target_handle ?? null, ...edgeProps(sourceType, source?.type === 'note') }])
+      }
       setSelectedId(id)
       setRightTab('inspector')
       setDirty(true)
     },
-    [pushHistory, setNodes],
+    [defs, pushHistory, selectedId, setEdges, setNodes],
   )
 
   const onDragOver = useCallback((e: React.DragEvent) => {

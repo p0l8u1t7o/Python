@@ -8,6 +8,7 @@ import { memo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { FLOW_HANDLE, portColor } from '@/lib/ports'
+import { publishMap } from '@/lib/graphValidation'
 import type { ToolPort } from '@/lib/types'
 import type { ToolNodeData } from './graphMapping'
 
@@ -33,7 +34,7 @@ const TONE_COLOR: Record<ToolPort['tone'], string> = {
   critical: 'var(--critical)',
 }
 
-function PortRow({ port, side, customFg }: { port: ToolPort; side: 'in' | 'out'; customFg: string }) {
+function PortRow({ port, side, customFg, publishName, publishTitle }: { port: ToolPort; side: 'in' | 'out'; customFg: string; publishName?: string; publishTitle?: string }) {
   const isFlow = port.type === 'flow'
   const color = isFlow ? TONE_COLOR[port.tone] : portColor(port.type)
   // 隱含輸出埠（_overlays）：較小較淡，免得跟真正的資料輸出搶注意力。
@@ -44,6 +45,11 @@ function PortRow({ port, side, customFg }: { port: ToolPort; side: 'in' | 'out';
         {port.label}
         {port.required && side === 'in' ? <span className="text-critical">*</span> : null}
       </span>
+      {side === 'out' && publishName ? (
+        <span className="ml-1 max-w-20 truncate rounded border border-brand/40 bg-brand-soft px-1 py-px font-mono text-[9px] leading-none text-brand" title={publishTitle}>
+          {publishName}
+        </span>
+      ) : null}
       <Handle
         id={port.key}
         type={side === 'in' ? 'target' : 'source'}
@@ -81,6 +87,7 @@ function ToolNodeInner({ data, selected }: NodeProps) {
   // 隱含埠排最後
   const outputs = [...(def?.outputs ?? [])].sort((a, b) => Number(a.implicit === true) - Number(b.implicit === true))
   const rows = Math.max(inputs.length, outputs.length)
+  const published = publishMap(node.params)
 
   return (
     <div
@@ -130,7 +137,7 @@ function ToolNodeInner({ data, selected }: NodeProps) {
           </div>
           <div>
             {outputs.map((port) => (
-              <PortRow key={port.key} port={port} side="out" customFg={fg} />
+              <PortRow key={port.key} port={port} side="out" customFg={fg} publishName={published[port.key]} publishTitle={published[port.key] ? t('editor.publishedOutputs.nodeHint', { name: published[port.key] }) : undefined} />
             ))}
           </div>
         </div>

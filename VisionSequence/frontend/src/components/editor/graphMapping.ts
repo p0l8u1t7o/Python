@@ -5,7 +5,7 @@
 import { MarkerType, type Edge, type Node } from '@xyflow/react'
 
 import { DECORATION_TYPES } from '@/lib/graphValidation'
-import { FLOW_HANDLE } from '@/lib/ports'
+import { FLOW_HANDLE, compatible } from '@/lib/ports'
 import { PARAM_PREFIX } from '@/lib/types'
 import type { FlowGraph, GraphEdge, GraphNode, NodeReport, PortType, ToolParam, ToolPort, ToolTypeDef } from '@/lib/types'
 
@@ -83,6 +83,53 @@ export function withCasePorts(definition: ToolTypeDef | undefined, payload: Grap
   if (!lines.length) return definition
   const cases: ToolPort[] = lines.map((label, i) => ({ key: `case_${i + 1}`, label: label.slice(0, 40), type: 'flow', required: false, multiple: false, tone: 'neutral' }))
   return { ...definition, outputs: [...cases, ...definition.outputs] }
+}
+
+function firstImageInput(definition: ToolTypeDef | undefined): ToolPort | undefined {
+  const inputs = definition?.inputs ?? []
+  return inputs.find((p) => p.type === 'image' && p.required) ?? inputs.find((p) => p.type === 'image')
+}
+
+function firstSourceImageOutput(node: GraphNode, definition: ToolTypeDef | undefined): string | null {
+  if (DECORATION_TYPES.has(node.type)) return null
+  const declared = definition?.outputs.find((p) => p.type === 'image' && p.implicit !== true)
+  return declared?.key ?? '_image'
+}
+
+export function autoConnectOnInsert(
+  graph: FlowGraph,
+  newNodeId: string,
+  selectedNodeId: string | null,
+  defs: Map<string, ToolTypeDef>,
+): GraphEdge | null {
+  const nodes = graph.nodes ?? []
+  const newNode = nodes.find((node) => node.id === newNodeId)
+  const targetPort = newNode ? firstImageInput(defs.get(newNode.type)) : undefined
+  if (!newNode || !targetPort) return null
+
+  let sourceNode: GraphNode | undefined
+  let sourceHandle: string | null = null
+  if (selectedNodeId && selectedNodeId !== newNodeId) {
+    const selected = nodes.find((node) => node.id === selectedNodeId)
+    const handle = selected ? firstSourceImageOutput(selected, defs.get(selected.type)) : null
+    if (selected && handle) {
+      sourceNode = selected
+      sourceHandle = handle
+    }
+  } else if (!selectedNodeId) {
+    sourceNode = nodes.find((node) => node.type === 'image_source' || node.type === 'fixed_image')
+    sourceHandle = sourceNode ? 'image' : null
+  }
+
+  if (!sourceNode || !sourceHandle || sourceNode.id === newNodeId) return null
+  if (!compatible('image', targetPort.type)) return null
+  return {
+    id: `e-auto-${sourceNode.id}.${sourceHandle}-${newNodeId}.${targetPort.key}`,
+    source: sourceNode.id,
+    target: newNodeId,
+    source_handle: sourceHandle,
+    target_handle: targetPort.key,
+  }
 }
 
 export function nodeDataFrom(payload: GraphNode, definition: ToolTypeDef | undefined): ToolNodeData {

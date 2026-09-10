@@ -4,7 +4,7 @@
  */
 import { paramPort } from '@/components/editor/graphMapping'
 import { FLOW_HANDLE, compatible } from './ports'
-import type { GraphEdge, GraphNode, ToolParam, ToolTypeDef } from './types'
+import type { GraphEdge, GraphNode, ToolParam, ToolPort, ToolTypeDef } from './types'
 
 export type ProblemCode =
   | 'required'
@@ -14,6 +14,8 @@ export type ProblemCode =
   | 'badJson'
   | 'inputMissing'
   | 'flowUnconnected'
+  | 'publishBadPort'
+  | 'publishBadName'
 
 export interface Problem {
   /** 參數 key；輸入埠問題用 `in:<port>`、分支用 `out:<port>` */
@@ -25,6 +27,7 @@ export interface Problem {
 }
 
 export const DECORATION_TYPES: ReadonlySet<string> = new Set(['note'])
+export const PUBLISH_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/
 
 function isBlank(value: unknown): boolean {
   return value === null || value === undefined || String(value).trim() === ''
@@ -62,6 +65,30 @@ function checkParam(param: ToolParam, value: unknown): Problem | null {
   return null
 }
 
+export function dataOutputPorts(def: ToolTypeDef | undefined): ToolPort[] {
+  return (def?.outputs ?? []).filter((port) => port.type !== 'flow' && port.implicit !== true)
+}
+
+export function publishMap(params: Record<string, unknown> | undefined): Record<string, string> {
+  const raw = params?._publish
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  return Object.fromEntries(Object.entries(raw).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
+}
+
+export function validatePublishName(name: string): boolean {
+  return name.trim() === '' || PUBLISH_NAME_PATTERN.test(name)
+}
+
+function publishProblems(node: GraphNode, def: ToolTypeDef | undefined): Problem[] {
+  const allowed = new Set(dataOutputPorts(def).map((port) => port.key))
+  const problems: Problem[] = []
+  for (const [key, name] of Object.entries(publishMap(node.params))) {
+    if (!allowed.has(key)) problems.push({ key: `publish:${key}`, code: 'publishBadPort', severity: 'error', values: { port: key } })
+    else if (!validatePublishName(name)) problems.push({ key: `publish:${key}`, code: 'publishBadName', severity: 'error', values: { port: key, name } })
+  }
+  return problems
+}
+
 export function nodeProblems(node: GraphNode, def: ToolTypeDef | undefined, edges: GraphEdge[]): Problem[] {
   if (!def || DECORATION_TYPES.has(node.type)) return []
   const params = node.params ?? {}
@@ -83,6 +110,7 @@ export function nodeProblems(node: GraphNode, def: ToolTypeDef | undefined, edge
     if (port.type !== 'flow' || outgoing.has(port.key)) continue
     problems.push({ key: `out:${port.key}`, code: 'flowUnconnected', severity: 'warning', values: { label: port.label } })
   }
+  problems.push(...publishProblems(node, def))
   return problems
 }
 

@@ -105,6 +105,55 @@ def coerce_param(spec: "Param", value: Any) -> Any:
 _BAD_PARAM = object()
 
 
+ON_FALSE_OPTIONS = [
+    {"value": "route", "label": "Route only (no verdict)"},
+    {"value": "reject", "label": "Reject (mark this step NG)"},
+]
+
+
+def reject_params() -> list["Param"]:
+    return [
+        Param(
+            "on_false", "When not satisfied", kind="select", default="reject",
+            options=ON_FALSE_OPTIONS, group="Advanced",
+            help_text="Reject marks this step NG when the check is not satisfied. Route only keeps the old branch-only behaviour.",
+        ),
+        Param(
+            "ng_label", "Reject label", kind="text", default="", group="Advanced",
+            help_text="Written into run.outputs.judge_label when this step rejects, so an automation system can tell which check fired.",
+        ),
+    ]
+
+
+def apply_reject(ctx: "ToolContext", ok: bool, message: str) -> tuple[str, str, dict[str, Any] | None]:
+    """比較工具的不成立處理；第一個 reject label 會保留下來。"""
+    if ok or str(ctx.param("on_false", "reject")) != "reject":
+        return "ok", message, None
+    label = str(ctx.param("ng_label", "") or "").strip()
+    context = None
+    if label:
+        message = f"{message} ({label})"
+        outputs = dict(ctx.context.get("_outputs") or {})
+        outputs.setdefault("judge_label", label)
+        context = {"_outputs": outputs}
+    return "ng", message, context
+
+
+def normalize_output_value(value: Any, decimals: int = 3) -> Any:
+    """具名輸出的共用正規化，維持 output 工具原本的轉型規則。"""
+    if isinstance(value, np.ndarray):
+        value = value.tolist() if value.size <= 200 else {"array": True, "shape": list(value.shape)}
+    if isinstance(value, float):
+        value = round(value, decimals)
+    if isinstance(value, (np.floating,)):
+        value = round(float(value), decimals)
+    if isinstance(value, (np.integer,)):
+        value = int(value)
+    if isinstance(value, (np.bool_,)):
+        value = bool(value)
+    return value
+
+
 class UnknownToolType(ValidationError):
     def __init__(self, key: str, available: list[str] | None = None) -> None:
         super().__init__(
@@ -209,6 +258,8 @@ class ToolContext:
     preview: bool = False
     #: 本工具宣告可吃的影像位深（Tool.accepts；image() 會把宣告外的位深自動正規化成 u8）。
     depth: tuple[str, ...] = ("u8",)
+    #: 工具宣告需要單通道影像時，image() 在中央接縫用 grayscale 工具同一路徑轉換。
+    wants_gray: bool = False
     #: 執行期綁定的參數（`param:<key>` 埠收到的值）；疊在節點參數之上，工具完全不必知道。
     bound: dict[str, Any] = field(default_factory=dict)
     _params_cache: dict[str, Any] | None = field(default=None, init=False, repr=False, compare=False)
@@ -252,7 +303,12 @@ class ToolContext:
         # 位深中央接縫：工具沒宣告支援的位深（16-bit／浮點）自動正規化成 u8（新陣列，不動輸入）
         from apps.vision.tools import imgfmt
 
-        return imgfmt.coerce(value, self.depth)
+        out = imgfmt.coerce(value, self.depth)
+        if self.wants_gray and out.ndim == 3:
+            import cv2
+
+            out = cv2.cvtColor(out, cv2.COLOR_BGR2GRAY)
+        return out
 
     def require_image(self, key: str = "image") -> np.ndarray:
         image = self.image(key)
@@ -417,6 +473,8 @@ class Tool:
     #: 可吃的影像位深（imgfmt.DEPTHS 子集合）。預設只吃 u8：其他位深進來會被自動
     #: 正規化（工具永遠不炸）；能原生處理 16-bit／浮點的工具自行宣告放寬。
     accepts: tuple[str, ...] = ("u8",)
+    #: True 時 ToolContext.image() 會把 3 通道影像轉成單通道；本批不套到任何內建工具。
+    wants_gray: bool = False
 
     def execute(self, ctx: ToolContext) -> Result:  # pragma: no cover - 抽象
         raise NotImplementedError

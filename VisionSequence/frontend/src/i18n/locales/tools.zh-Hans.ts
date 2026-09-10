@@ -773,6 +773,8 @@ export default {
       },
       case_sensitive: { label: "区分大小写" },
       invert: { label: "相符时反而算失败", help: "用在「这些字不准出现」的清单。" },
+      on_false: { label: "不成立时", options: { route: "只分流（不判定）", reject: "判 NG（此步骤不合格）" } },
+      ng_label: { label: "NG 标签", help: "此步骤判 NG 时写入 run.outputs.judge_label，让自动化系统知道是哪个检查触发。" },
     },
     ports: { text: "文字", found: "相符", not_found: "不相符", index: "第几笔", matched: "相符的那一笔" },
   },
@@ -1889,7 +1891,7 @@ export default {
         group: "进阶",
       },
     },
-    ports: { cx_world: "圆心 X（世界）", cy_world: "圆心 Y（世界）", r_world: "半径（物理量）", unit: "单位",
+    ports: { cx_world: "圆心 X（世界）", cy_world: "圆心 Y（世界）", r_world: "半径（物理量）", diameter_world: "直径（物理量）", unit: "单位",
       image: "影像",
       roi: "区域（動态）",
       found: "找到",
@@ -1897,6 +1899,7 @@ export default {
       cx: "中心 X",
       cy: "中心 Y",
       r: "半径",
+      diameter: "直径",
       points: "边缘点",
       score: "分数",
       circle: "圆",
@@ -2403,6 +2406,8 @@ export default {
       tolerance: {
         label: "容差（= / ≠ 用）",
       },
+      on_false: { label: "不成立时", options: { route: "只分流（不判定）", reject: "判 NG（此步骤不合格）" } },
+      ng_label: { label: "NG 标签", help: "此步骤判 NG 时写入 run.outputs.judge_label，让自动化系统知道是哪个检查触发。" },
     },
     ports: {
       value: "值",
@@ -2546,6 +2551,8 @@ export default {
       high: {
         label: "上限",
       },
+      on_false: { label: "不成立时", options: { route: "只分流（不判定）", reject: "判 NG（此步骤不合格）" } },
+      ng_label: { label: "NG 标签", help: "此步骤判 NG 时写入 run.outputs.judge_label，让自动化系统知道是哪个检查触发。" },
     },
     ports: {
       value: "值",

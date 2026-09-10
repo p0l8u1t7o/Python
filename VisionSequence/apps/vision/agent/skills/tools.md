@@ -193,7 +193,7 @@ ROI 跟隨：`roi` 填教導時的固定 ROI，`transform` 接 shape_align.trans
 
 ## find_circle
 選填 `calibration` 資產；選了標定就多出原始埠名加 `_world` 的物理量與 `unit`，機構 `robot.matrix` 優先於 `world.matrix`；未選時像素輸出不變。長度採量測位置的面積等效比例，非等向縮放與透視下不是沿線積分長度。
-射線式找圓（精量測）：`roi` 用 `annulus`，環要蓋住圓緣（r_inner ≈ 0.6r、r_outer ≈ 1.4r）；只有一段弧時給 `a0/a1` 起迄角，掃描線只落在扇形內。`edge_select` first/last 決定內緣或外緣（同心環杯件：外徑 last、內徑 first）。ROI 沒對準圓心也沒關係：`refine`（預設開）會從擬合圓心重掃一次。擬合是幾何最小平方（部分弧無偏）。輸出 `cx/cy/r`、`points`（給 calibration）。`not_found` 接 judge(ng)。
+射線式找圓（精量測）：`roi` 用 `annulus`，環要蓋住圓緣（r_inner ≈ 0.6r、r_outer ≈ 1.4r）；只有一段弧時給 `a0/a1` 起迄角，掃描線只落在扇形內。`edge_select` first/last 決定內緣或外緣（同心環杯件：外徑 last、內徑 first）。ROI 沒對準圓心也沒關係：`refine`（預設開）會從擬合圓心重掃一次。擬合是幾何最小平方（部分弧無偏）。輸出 `cx/cy/r/diameter`、`points`（給 calibration）；選標定時另有 `diameter_world`。`not_found` 接 judge(ng)。
 
 ## find_rectangle
 選填 `calibration` 資產；選了標定就多出原始埠名加 `_world` 的物理量與 `unit`，機構 `robot.matrix` 優先於 `world.matrix`；未選時像素輸出不變。長度採量測位置的面積等效比例，非等向縮放與透視下不是沿線積分長度。
@@ -353,9 +353,11 @@ ccomp／tree。`min_area`（像素數）先擋雜訊。輸出 `contours`（全�
 
 ## in_range
 數值落在 [low, high] → `inside`／`outside` 分支。簡單守門用它；有標稱值用 tolerance_judge。
+預設 `on_false=reject`，超出範圍時節點與 run 直接 NG；只是想分流、不想判定時才設 `on_false=route`。`ng_label` 可標出是哪個檢查失敗。
 
 ## if_number
 數值比較（eq/ne/gt/ge/lt/le）→ `true/false` 分支。計數 == N 就是它。
+預設 `on_false=reject`，false 時節點與 run 直接 NG；只是想分流、不想判定時才設 `on_false=route`。`ng_label` 可標出是哪個檢查失敗。
 
 ## switch
 一個值一條路（多料號、多等級）：`value` 接條碼／文字辨識／料號變數，`cases` 一行一個案例，
@@ -365,6 +367,7 @@ ccomp／tree。`min_area`（像素數）先擋雜訊。輸出 `contours`（全�
 ## string_match
 文字在不在允許清單裡：`text` 接條碼或文字辨識，`list` 一行一個，走 `found`／`not_found`，
 輸出 `index`／`matched`。`invert` 用在「這些字不准出現」的黑名單。單一字串比對也用它（清單只寫一行）。
+預設 `on_false=reject`，不相符時節點與 run 直接 NG；只是想分流、不想判定時才設 `on_false=route`。`ng_label` 可標出是哪個檢查失敗。
 
 ## bool_logic
 多個 bool 彙總（and/or/not）：`values` 埠可接多條邊。輸出 `result` 給 judge(by_input)。

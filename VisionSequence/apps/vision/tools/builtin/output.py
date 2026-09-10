@@ -15,7 +15,7 @@ from django.conf import settings
 
 from apps.comm.writers import CommError, get_writer, parse_address
 from apps.vision.capture.hub import CaptureError
-from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError
+from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, normalize_output_value
 
 
 class JudgeTool(Tool):
@@ -76,16 +76,7 @@ class OutputValueTool(Tool):
     def execute(self, ctx: ToolContext) -> Result:
         name = str(ctx.param("name", "value"))
         value = ctx.inputs.get("value")
-        if isinstance(value, np.ndarray):
-            value = value.tolist() if value.size <= 200 else {"array": True, "shape": list(value.shape)}
-        if isinstance(value, float):
-            value = round(value, ctx.integer("decimals", 3))
-        if isinstance(value, (np.floating,)):
-            value = round(float(value), ctx.integer("decimals", 3))
-        if isinstance(value, (np.integer,)):
-            value = int(value)
-        if isinstance(value, (np.bool_,)):
-            value = bool(value)
+        value = normalize_output_value(value, ctx.integer("decimals", 3))
         outputs = dict(ctx.context.get("_outputs") or {})
         outputs[name] = value
         return Result(message=f"{name} = {value!r}"[:200], context={"_outputs": outputs})

@@ -106,7 +106,7 @@ class PrecisionStudyTests(TestCase):
         self.assertIn("mean", result["outputs"])
         self.assertEqual(result["outputs"]["mean"]["stats"]["std"], 0.0)
         self.assertEqual(result["outputs"]["mean"]["stats"]["range"], 0.0)
-        self.assertEqual(result["skipped_outputs"], [])
+        self.assertEqual(result["skipped_outputs"], ["judge"])
         self.assertTrue(result["formulas"])
         md = precision.markdown_report(result)
         self.assertIn("# Repeatability study", md)

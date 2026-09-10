@@ -2123,6 +2123,13 @@ const enExtra3 = {
     nodeEnabledHint: 'Disabling skips this step and everything downstream of it',
     continueOnError: 'Continue on error',
     continueOnErrorHint: 'A failure here does not stop the flow; downstream steps receive empty values',
+    publishedOutputs: {
+      title: 'Published outputs',
+      placeholder: 'output_name',
+      invalidName: 'Use A-Z, a-z, digits and underscores; start with a letter or underscore, up to 64 characters',
+      empty: 'This step has no data outputs',
+      nodeHint: 'Published as {{name}}',
+    },
     param: {
       bind: 'Let an earlier step set this',
       unbind: 'Set it here again',
@@ -2159,6 +2166,8 @@ const enExtra3 = {
       singleInput: 'This input accepts only one connection',
       noteTarget: 'Notes cannot be connected to',
       cycle: 'Cannot connect back upstream (that would be a loop)',
+      publishBadPort: 'Published output "{{port}}" is not a data output port',
+      publishBadName: 'Published output "{{port}}" has an invalid name "{{name}}"',
     },
     viewer: {
       building: 'Building the image viewer',

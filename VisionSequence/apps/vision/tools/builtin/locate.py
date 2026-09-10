@@ -1115,9 +1115,11 @@ class FindCircleTool(Tool):
         Port("cx_world", "Centre X (world)", "number"),
         Port("cy_world", "Centre Y (world)", "number"),
         Port("r_world", "R (world)", "number"),
+        Port("diameter_world", "Diameter (world)", "number"),
         Port("unit", "Unit", "string"),
         flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"),
         Port("cx", "Centre X", "number"), Port("cy", "Centre Y", "number"), Port("r", "Radius", "number"),
+        Port("diameter", "Diameter", "number"),
         Port("points", "Edge points", "points"), Port("score", "Score", "number"), Port("circle", "Circle", "any"),
     ]
 
@@ -1158,7 +1160,7 @@ class FindCircleTool(Tool):
         overlays = [region_overlay(region, label="roi")]
         nan = float("nan")
         if len(arr) < 3:
-            return Result(outputs={"cx": nan, "cy": nan, "r": nan, "points": arr.round(2).tolist(), "score": 0.0, "circle": None},
+            return Result(outputs={"cx": nan, "cy": nan, "r": nan, "diameter": nan, "points": arr.round(2).tolist(), "score": 0.0, "circle": None},
                           overlays=overlays, branch="not_found", status="ng", message=f"Too few edge points ({len(arr)})")
         circle, inliers = fit_circle_points(arr, use_ransac, tol)
         # 重掃精修：ROI 中心偏離圓心時掃描線斜切邊緣；改從擬合圓心再掃一次，掃描線與邊緣垂直。
@@ -1169,9 +1171,10 @@ class FindCircleTool(Tool):
                 if circle2 is not None and int(inliers2.sum()) >= int(inliers.sum()):
                     arr, circle, inliers = arr2, circle2, inliers2
         if circle is None:
-            return Result(outputs={"cx": nan, "cy": nan, "r": nan, "points": arr.round(2).tolist(), "score": 0.0, "circle": None},
+            return Result(outputs={"cx": nan, "cy": nan, "r": nan, "diameter": nan, "points": arr.round(2).tolist(), "score": 0.0, "circle": None},
                           overlays=overlays, branch="not_found", status="ng", message="Fit failed")
         fcx, fcy, fr = circle
+        diameter = 2 * fr
         resid = np.abs(np.hypot(arr[:, 0] - fcx, arr[:, 1] - fcy) - fr)
         score = float(inliers.sum() / num_rays)
         overlays += [
@@ -1182,9 +1185,9 @@ class FindCircleTool(Tool):
             {"kind": "line", "x1": fcx, "y1": fcy - 6, "x2": fcx, "y2": fcy + 6, "color": "#22c55e"},
         ]
         return Result(
-            outputs={"cx": fcx, "cy": fcy, "r": fr, "points": arr.round(2).tolist(), "score": score,
+            outputs={"cx": fcx, "cy": fcy, "r": fr, "diameter": diameter, "points": arr.round(2).tolist(), "score": score,
                      "circle": {"cx": round(float(fcx), 4), "cy": round(float(fcy), 4), "r": round(float(fr), 4)},
-                     **world_outputs(ctx, points={("cx", "cy"): (fcx, fcy)}, lengths={"r": (fr, (fcx, fcy))})},
+                     **world_outputs(ctx, points={("cx", "cy"): (fcx, fcy)}, lengths={"r": (fr, (fcx, fcy)), "diameter": (diameter, (fcx, fcy))})},
             overlays=overlays, branch="found",
             message=f"Centre ({fcx:.1f}, {fcy:.1f}) r={fr:.1f}, {int(inliers.sum())}/{num_rays} points, residual {float(resid[inliers].mean()):.2f}px",
             detail={"rms": float(np.sqrt((resid[inliers] ** 2).mean()))},

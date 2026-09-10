@@ -869,6 +869,13 @@ const zhHant = {
     nodeEnabledHint: '停用後此步驟與其下游不執行',
     continueOnError: '出錯時繼續',
     continueOnErrorHint: '此步驟失敗時不中止整個流程，下游收到空值',
+    publishedOutputs: {
+      title: '已發布輸出',
+      placeholder: 'output_name',
+      invalidName: '請使用 A-Z、a-z、數字與底線，且以字母或底線開頭，最多 64 字元',
+      empty: '此步驟沒有資料輸出',
+      nodeHint: '發布為 {{name}}',
+    },
     parameters: '參數',
     param: {
       bind: '改由前面的步驟決定',
@@ -919,6 +926,8 @@ const zhHant = {
       singleInput: '此輸入埠只能接一條線',
       noteTarget: '註解無法被連入',
       cycle: '無法連回上游（會形成迴圈）',
+      publishBadPort: '已發布輸出「{{port}}」不是資料輸出埠',
+      publishBadName: '已發布輸出「{{port}}」的名稱「{{name}}」不合法',
     },
     viewer: {
       building: '影像檢視器建置中',

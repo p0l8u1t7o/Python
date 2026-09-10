@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -22,6 +23,7 @@ LEGACY_TOOL_TYPES = {
 FLOW_IN = tools.FLOW_IN
 OVERLAYS_OUT = tools.OVERLAYS_OUT
 IMAGE_THRU = tools.IMAGE_THRU
+OUTPUT_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
 
 
 class GraphError(ValidationError):
@@ -53,6 +55,25 @@ def _compatible(source_type: str, target_type: str) -> bool:
     }
 
 
+def _validate_publish(node_id: str, tool: tools.ToolType, params: Any) -> None:
+    if not isinstance(params, dict) or "_publish" not in params:
+        return
+    publish = params.get("_publish")
+    if not isinstance(publish, dict):
+        raise GraphError(f"Node '{node_id}' has an invalid _publish setting; it must be an object", node_id=node_id, port="_publish")
+    declared = {p.key: p for p in tool.outputs}
+    for raw_key, raw_name in publish.items():
+        key = str(raw_key)
+        port = declared.get(key)
+        if port is None:
+            raise GraphError(f"Node '{node_id}' cannot publish unknown output port '{key}'", node_id=node_id, port=key)
+        if port.type == "flow":
+            raise GraphError(f"Node '{node_id}' cannot publish branch output port '{key}'", node_id=node_id, port=key)
+        name = str(raw_name)
+        if not OUTPUT_NAME_RE.fullmatch(name):
+            raise GraphError(f"Node '{node_id}' publishes '{key}' with an invalid output name '{name}'", node_id=node_id, port=key, name=name)
+
+
 def validate_graph(graph: Any) -> dict:
     if not isinstance(graph, dict):
         raise GraphError("The graph must be an object with nodes and edges")
@@ -79,7 +100,8 @@ def validate_graph(graph: Any) -> dict:
         if node_type in LEGACY_TOOL_TYPES:
             node_type = node["type"] = LEGACY_TOOL_TYPES[node_type]
         if node_type not in DECORATION_TYPES:
-            tools.get(node_type)  # 查無 → UnknownToolType（附可用 key）
+            tool = tools.get(node_type)  # 查無 → UnknownToolType（附可用 key）
+            _validate_publish(node_id, tool, node.get("params") or {})
         seen[node_id] = node
 
     def port_type(node_id: str, key: str, direction: str) -> str:

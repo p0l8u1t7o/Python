@@ -869,6 +869,13 @@ const zhHans = {
     nodeEnabledHint: '停用后此步骤与其下游不运行',
     continueOnError: '出错时继续',
     continueOnErrorHint: '此步骤失败时不中止整个流程，下游收到空值',
+    publishedOutputs: {
+      title: '已发布输出',
+      placeholder: 'output_name',
+      invalidName: '请使用 A-Z、a-z、数字与下划线，且以字母或下划线开头，最多 64 字符',
+      empty: '此步骤没有数据输出',
+      nodeHint: '发布为 {{name}}',
+    },
     parameters: '参数',
     param: {
       bind: '改由前面的步骤决定',
@@ -919,6 +926,8 @@ const zhHans = {
       singleInput: '此输入端口只能接一条线',
       noteTarget: '注解无法被连入',
       cycle: '无法连回上游（会形成循环）',
+      publishBadPort: '已发布输出「{{port}}」不是数据输出端口',
+      publishBadName: '已发布输出「{{port}}」的名称「{{name}}」不合法',
     },
     viewer: {
       building: '影像查看器建置中',

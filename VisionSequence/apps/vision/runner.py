@@ -804,7 +804,11 @@ def apply_recipe(graph: dict, recipe: "FlowRecipe | None") -> dict:
     for node in out.get("nodes", []):
         patch = overrides.get(str(node.get("id")))
         if isinstance(patch, dict):
-            node["params"] = {**(node.get("params") or {}), **patch}
+            allowed = {k: v for k, v in patch.items() if not str(k).startswith("_")}
+            ignored = sorted(str(k) for k in patch if str(k).startswith("_"))
+            if ignored:
+                log.info("配方覆寫略過平台參數 node=%s keys=%s", node.get("id"), ",".join(ignored))
+            node["params"] = {**(node.get("params") or {}), **allowed}
     return out
 
 

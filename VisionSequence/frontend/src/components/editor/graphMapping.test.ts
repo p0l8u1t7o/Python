@@ -1,19 +1,33 @@
 import { describe, expect, it } from 'vitest'
 
-import { computeLayout, graphFrom, isFlowHandle, nextNodeId, toFlowEdges, toFlowNodes } from '@/components/editor/graphMapping'
-import type { FlowGraph, ToolTypeDef } from '@/lib/types'
+import { autoConnectOnInsert, computeLayout, graphFrom, isFlowHandle, nextNodeId, toFlowEdges, toFlowNodes } from '@/components/editor/graphMapping'
+import type { FlowGraph, ToolPort, ToolTypeDef } from '@/lib/types'
+
+function port(key: string, type: ToolPort['type'], required = false, implicit = false): ToolPort {
+  return { key, label: key, type, required, multiple: false, tone: 'neutral', implicit }
+}
+
+function tool(key: string, inputs: ToolPort[], outputs: ToolPort[]): ToolTypeDef {
+  return { key, label: key, description: '', category: 'test', category_label: 'Test', icon: 'Box', params: [], inputs, outputs, heavy: false }
+}
 
 const defs = new Map<string, ToolTypeDef>([
-  ['grayscale', { key: 'grayscale', label: '灰階', description: '', category: 'preprocess', category_label: '影像前處理', icon: 'Box', params: [], inputs: [{ key: 'image', label: '影像', type: 'image' }], outputs: [{ key: 'image', label: '影像', type: 'image' }], heavy: false } as unknown as ToolTypeDef],
-  ['judge', { key: 'judge', label: '判定', description: '', category: 'logic', category_label: '邏輯', icon: 'Box', params: [], inputs: [{ key: '_flow', label: '分支', type: 'flow' }], outputs: [], heavy: false } as unknown as ToolTypeDef],
+  ['image_source', tool('image_source', [], [port('image', 'image')])],
+  ['fixed_image', tool('fixed_image', [], [port('image', 'image')])],
+  ['grayscale', tool('grayscale', [port('image', 'image')], [port('image', 'image')])],
+  ['judge', tool('judge', [port('_flow', 'flow')], [])],
+  ['filter', tool('filter', [port('image', 'image', true)], [port('image', 'image'), port('_image', 'image', false, true)])],
+  ['no_image_input', tool('no_image_input', [port('value', 'number')], [port('value', 'number')])],
+  ['measure', tool('measure', [port('image', 'image', true)], [port('value', 'number'), port('_image', 'image', false, true)])],
 ])
+
 const graph: FlowGraph = {
   nodes: [
     { id: 'src', type: 'image_source', params: {}, position: { x: 0, y: 0 } },
     { id: 'g', type: 'grayscale', params: {}, position: { x: 300, y: 0 } },
-    { id: 'n', type: 'note', label: '註解', description: 'hi', position: { x: 0, y: 200 }, width: 200, height: 80 },
+    { id: 'n', type: 'note', label: 'Note', description: 'hi', position: { x: 0, y: 200 }, width: 200, height: 80 },
   ],
-  edges: [{ id: 'e1', source: 'src', target: 'g', source_handle: '', target_handle: '' }],
+  edges: [{ id: 'e1', source: 'src', target: 'g', source_handle: 'image', target_handle: 'image' }],
 }
 
 describe('graphMapping', () => {
@@ -27,6 +41,43 @@ describe('graphMapping', () => {
     const back = graphFrom(nodes, edges, payloads)
     expect(back.nodes.map((n) => n.id)).toEqual(['src', 'g', 'n'])
     expect(back.edges[0]).toMatchObject({ source: 'src', target: 'g' })
+  })
+
+  it('preserves meta and _publish through React Flow mapping', () => {
+    const source: FlowGraph = {
+      nodes: [{ id: 'm', type: 'measure', params: { _publish: { value: 'diameter' } }, meta: { inspect: { task_id: 't1', role: 'find', kind: 'measure_diameter', schema_version: 1, required: true } } }],
+      edges: [],
+    }
+    const nodes = toFlowNodes(source, defs)
+    const back = graphFrom(nodes, [], new Map(source.nodes.map((node) => [node.id, node])))
+    expect(back.nodes[0].meta).toEqual(source.nodes[0].meta)
+    expect(back.nodes[0].params?._publish).toEqual({ value: 'diameter' })
+  })
+
+  it('auto-connects inserted image tools from the selected node', () => {
+    const source: FlowGraph = { nodes: [{ id: 'src', type: 'image_source' }, { id: 'f', type: 'filter' }, { id: 'm', type: 'measure' }], edges: [] }
+    expect(autoConnectOnInsert(source, 'm', 'f', defs)).toMatchObject({ source: 'f', source_handle: 'image', target: 'm', target_handle: 'image' })
+  })
+
+  it('auto-connects from the first image source when nothing is selected', () => {
+    const source: FlowGraph = { nodes: [{ id: 'src', type: 'fixed_image' }, { id: 'm', type: 'measure' }], edges: [] }
+    expect(autoConnectOnInsert(source, 'm', null, defs)).toMatchObject({ source: 'src', source_handle: 'image', target: 'm', target_handle: 'image' })
+  })
+
+  it('does not auto-connect from notes or self-selection', () => {
+    const source: FlowGraph = { nodes: [{ id: 'n', type: 'note' }, { id: 'm', type: 'measure' }], edges: [] }
+    expect(autoConnectOnInsert(source, 'm', 'n', defs)).toBeNull()
+    expect(autoConnectOnInsert(source, 'm', 'm', defs)).toBeNull()
+  })
+
+  it('does not auto-connect when the new tool has no image input or the flow has no source', () => {
+    expect(autoConnectOnInsert({ nodes: [{ id: 'src', type: 'image_source' }, { id: 'x', type: 'no_image_input' }], edges: [] }, 'x', null, defs)).toBeNull()
+    expect(autoConnectOnInsert({ nodes: [{ id: 'm', type: 'measure' }], edges: [] }, 'm', null, defs)).toBeNull()
+  })
+
+  it('falls back to the selected node _image passthrough when it has no declared image output', () => {
+    const source: FlowGraph = { nodes: [{ id: 'm1', type: 'measure' }, { id: 'm2', type: 'measure' }], edges: [] }
+    expect(autoConnectOnInsert(source, 'm2', 'm1', defs)).toMatchObject({ source: 'm1', source_handle: '_image', target: 'm2' })
   })
 
   it('nextNodeId skips taken ids', () => {

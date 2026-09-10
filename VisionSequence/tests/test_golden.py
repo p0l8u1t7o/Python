@@ -162,7 +162,7 @@ class GoldenTests(TestCase):
         rows = {c["case_id"]: c for c in body["cases"]}
         self.assertFalse(rows[wrong[0]["id"]]["match"])
         self.assertIsNotNone(rows[wrong[0]["id"]]["image_ref"])  # mismatch 才有 preview 影像
-        self.assertEqual(rows[wrong[0]["id"]]["node"], "ng")
+        self.assertEqual(rows[wrong[0]["id"]]["node"], "rng")
         self.assertIsNone(rows[bright[0]["id"]]["image_ref"])
         self.assertIsNone(rows[bright[0]["id"]]["changed_since_baseline"])
         self.assertTrue(all(c["duration_ms"] >= 0 for c in body["cases"]))
@@ -186,7 +186,7 @@ class GoldenTests(TestCase):
         self.assertEqual(set(regressed), {bright[0]["id"], bright[1]["id"]})
         self.assertEqual(regressed[bright[0]["id"]]["was"], "ok")
         self.assertEqual(regressed[bright[0]["id"]]["now"], "ng")
-        self.assertEqual(regressed[bright[0]["id"]]["node"], "ng")
+        self.assertEqual(regressed[bright[0]["id"]]["node"], "rng")
         self.assertEqual(body["improved"], [])
         rows = {c["case_id"]: c for c in body["cases"]}
         self.assertTrue(rows[bright[0]["id"]]["changed_since_baseline"])

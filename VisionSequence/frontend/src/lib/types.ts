@@ -90,6 +90,14 @@ export interface ToolTypeDef {
   outputs: ToolPort[]
 }
 
+export interface InspectMeta {
+  task_id: string
+  role: string
+  kind: string
+  schema_version: number
+  required: boolean
+}
+
 export interface ToolCatalogue {
   items: ToolTypeDef[]
   categories: { key: string; label: string }[]
@@ -207,6 +215,7 @@ export interface GraphNode {
   height?: number
   /** 外露成輸入埠的參數（`param:<key>`）；接上上游就改吃那個值 */
   exposed_params?: string[]
+  meta?: { inspect?: InspectMeta; [key: string]: unknown }
 }
 
 export interface GraphEdge {

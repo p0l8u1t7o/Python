@@ -151,6 +151,29 @@ def _passthrough(cn: CompiledNode, inputs: dict[str, Any]) -> dict[str, Any] | N
     return out or None
 
 
+def _apply_publish(cn: CompiledNode, result: Result, context: dict[str, Any], status: str) -> None:
+    """節點埠發布成 run 具名輸出；只在節點有正常或 NG 結果時生效。"""
+    if status not in ("ok", "ng"):
+        return
+    publish = (cn.node.get("params") or {}).get("_publish")
+    if not isinstance(publish, dict):
+        return
+    outputs = None
+    for port_key, name in publish.items():
+        key = str(port_key)
+        if key not in result.outputs:
+            continue
+        if outputs is None:
+            outputs = dict(context.get("_outputs") or {})
+        outputs[str(name)] = tools_base.normalize_output_value(result.outputs[key], 3)
+    if outputs is not None:
+        context["_outputs"] = outputs
+
+
+def _judge_for_status(status: str) -> str:
+    return {"ng": "NG", "failed": "FAILED"}.get(status, "OK")
+
+
 def execute(
     compiled: CompiledGraph,
     *,
@@ -306,6 +329,7 @@ def execute(
             inputs=inputs,
             context=context,
             depth=getattr(cn.tool, "accepts", ("u8",)),
+            wants_gray=bool(getattr(cn.tool, "wants_gray", False)),
             moment=time.time(),
             log=_log,
             asset_path=asset_path,
@@ -361,6 +385,7 @@ def execute(
                 continue
             else:
                 node_report.outputs[k] = _jsonable(v)
+        _apply_publish(cn, result, context, node_report.status)
         # 影像直通（_image，宣告輸出之後才登記——分析／檢視優先看真正的輸出埠）：
         # 原影像原樣往下傳；overlays 只是 metadata、工具不就地改影像，下游檢測不受標記影響。
         thru = inputs.get(tools_base.IMAGE_THRU)
@@ -406,8 +431,6 @@ def execute(
         if node_id not in report.nodes:
             report.nodes[node_id] = NodeReport(status="skipped", message="Not run")
 
-    report.context = {k: _jsonable(v) for k, v in context.items() if not k.startswith("_")}
-    report.outputs = _jsonable(context.get("_outputs", {}))
     if any_error and report.error:
         report.status = "failed"
     elif any_ng or context.get("_judge") == "ng":
@@ -416,6 +439,10 @@ def execute(
         report.status = "failed"
     else:
         report.status = "ok"
+    named_outputs = dict(context.get("_outputs") or {})
+    named_outputs.setdefault("judge", _judge_for_status(report.status))
+    report.context = {k: _jsonable(v) for k, v in context.items() if not k.startswith("_")}
+    report.outputs = _jsonable(named_outputs)
     report.finished_at = time.time()
     report.duration_ms = (time.perf_counter() - t0) * 1000
     frames = context.get("_timing_frames") if isinstance(context.get("_timing_frames"), list) else []

@@ -182,6 +182,16 @@ describe('pages render (smoke)', () => {
     expect(button).toBeInTheDocument()
   })
 
+  it('FlowEditorPage shows published outputs for a selected node', async () => {
+    const { FlowEditorPage } = await import('@/pages/FlowEditorPage')
+    const view = renderDataPage(<FlowEditorPage />, '/flows/1', '/flows/:flowId')
+    await screen.findByTestId('editor-toolbar')
+    const row = view.container.querySelector('[data-node-id="thr"]')
+    expect(row).not.toBeNull()
+    fireEvent.click(row as Element)
+    expect(await screen.findByTestId('published-outputs')).toBeInTheDocument()
+  })
+
   it('FlowEditorPage opens the image grid viewer mode', async () => {
     const { FlowEditorPage } = await import('@/pages/FlowEditorPage')
     renderDataPage(<FlowEditorPage />, '/flows/1', '/flows/:flowId')

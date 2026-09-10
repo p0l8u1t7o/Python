@@ -118,7 +118,7 @@ class BatchAndIntegrationTests(TestCase):
         g2["edges"] = [e for e in g2["edges"] if e["target"] == "t"]
         r = self.client.post(f"/api/vision/flows/{self.flow.id}/batch", data={"images": [png()], "graph": json.dumps(g2)})
         self.assertEqual(r.status_code, 200, r.content)
-        self.assertEqual(r.json()["items"][0]["outputs"], {})
+        self.assertEqual(r.json()["items"][0]["outputs"], {"judge": "OK"})
         empty = io.BytesIO(b"")
         empty.name = "empty.png"
         self.assertEqual(self.client.post(f"/api/vision/flows/{self.flow.id}/batch", data={"images": [empty]}).status_code, 422)

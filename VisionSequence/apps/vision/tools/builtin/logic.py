@@ -11,7 +11,7 @@ import math
 import operator
 from typing import Any
 
-from apps.vision.tools.base import MAX_CASES, Param, Port, Result, Tool, ToolContext, ToolError, flow_out
+from apps.vision.tools.base import MAX_CASES, Param, Port, Result, Tool, ToolContext, ToolError, apply_reject, flow_out, reject_params
 
 _OPS = {
     "gt": operator.gt, "ge": operator.ge, "lt": operator.lt, "le": operator.le,
@@ -31,6 +31,7 @@ class CompareNumberTool(Tool):
               options=[{"value": k, "label": v} for k, v in _OP_LABEL.items()]),
         Param("threshold", "Threshold", kind="number", required=True, default=0, teach=True),
         Param("tolerance", "Tolerance (for = and ≠)", kind="number", default=0, minimum=0),
+        *reject_params(),
     ]
     inputs = [Port("value", "Value", "number")]
     outputs = [flow_out("true", "True", "ok"), flow_out("false", "False", "critical"), Port("result", "Result", "bool")]
@@ -52,10 +53,14 @@ class CompareNumberTool(Tool):
             ok = abs(v - threshold) > tol
         else:
             ok = _OPS[op](v, threshold)
+        message = f"{v:g} {_OP_LABEL[op]} {threshold:g} → {ok}"
+        status, message, context = apply_reject(ctx, ok, message)
         return Result(
             outputs={"result": ok},
             branch="true" if ok else "false",
-            message=f"{v:g} {_OP_LABEL[op]} {threshold:g} → {ok}",
+            status=status,
+            message=message,
+            context=context,
         )
 
 
@@ -68,6 +73,7 @@ class CompareRangeTool(Tool):
     params = [
         Param("low", "Lower", kind="number", required=True, default=0, teach=True),
         Param("high", "Upper", kind="number", required=True, default=100, teach=True),
+        *reject_params(),
     ]
     inputs = [Port("value", "Value", "number")]
     outputs = [flow_out("inside", "In range", "ok"), flow_out("outside", "Out of range", "critical"), Port("result", "Result", "bool")]
@@ -80,8 +86,10 @@ class CompareRangeTool(Tool):
             raise ToolError(f"The input is not a number: {value!r}") from None
         low, high = ctx.number("low"), ctx.number("high")
         ok = low <= v <= high
+        message = f"{v:g} ∈ [{low:g}, {high:g}] → {ok}"
+        status, message, context = apply_reject(ctx, ok, message)
         return Result(outputs={"result": ok}, branch="inside" if ok else "outside",
-                      message=f"{v:g} ∈ [{low:g}, {high:g}] → {ok}")
+                      status=status, message=message, context=context)
 
 
 class BoolLogicTool(Tool):
@@ -407,6 +415,7 @@ class StringMatchTool(Tool):
         Param("case_sensitive", "Match upper and lower case", kind="boolean", default=False),
         Param("invert", "Fail when it does match", kind="boolean", default=False, group="Advanced",
               help_text="For a list of values that must not appear."),
+        *reject_params(),
     ]
     inputs = [Port("text", "Text", "any")]
     outputs = [
@@ -425,11 +434,14 @@ class StringMatchTool(Tool):
         text = _plain_text(value)
         index = match_case(text, entries, str(ctx.param("match", "exact")), case_sensitive=ctx.flag("case_sensitive"))
         found = bool(index) != ctx.flag("invert")
+        message = f"'{text[:40]}' {'matches' if index else 'matches nothing'}{' — ' + entries[index - 1] if index else ''}"
+        status, message, context = apply_reject(ctx, found, message)
         return Result(
             outputs={"found": found, "index": index, "matched": entries[index - 1] if index else "", "text": text},
             branch="found" if found else "not_found",
-            status="ok",
-            message=f"'{text[:40]}' {'matches' if index else 'matches nothing'}{' — ' + entries[index - 1] if index else ''}",
+            status=status,
+            message=message,
+            context=context,
         )
 
 
