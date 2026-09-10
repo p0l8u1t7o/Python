@@ -8,10 +8,20 @@ import { BASE_URL, api, withKey } from '@/lib/api'
 import type { FlowGraph, RunReport } from '@/lib/types'
 
 export type Expected = '' | 'ok' | 'ng'
+export type SampleGroup = 'tune' | 'accept'
+
+export function filterSampleGroup<T extends { group?: SampleGroup }>(images: T[], group: SampleGroup | 'all'): T[] {
+  return group === 'all' ? images : images.filter((im) => (im.group ?? 'tune') === group)
+}
+
+export function splitSampleGroups(count: number, every: number): SampleGroup[] {
+  return Array.from({ length: count }, (_, i) => every >= 2 && (i + 1) % every === 0 ? 'accept' : 'tune')
+}
 export type BatchOrigin = 'manual' | 'draft' | 'autotune' | 'ai_tune'
 export type BatchRunStatus = 'queued' | 'running' | 'done' | 'cancelled' | 'failed'
 
 export interface BatchImage {
+  group?: SampleGroup
   index: number
   name: string
   width: number
@@ -53,6 +63,7 @@ export interface BatchNodeResult {
 }
 
 export interface BatchRunItem {
+  group?: SampleGroup
   index: number
   status: string
   duration_ms: number
@@ -296,21 +307,22 @@ export function useBatchMutations(flowId: number | null) {
     void client.invalidateQueries({ queryKey: batchKeys.insights(run.id) })
   }
   const createUpload = useMutation({
-    mutationFn: ({ files, name }: { files: File[]; name?: string }) => {
+    mutationFn: ({ files, name, accept_every }: { files: File[]; name?: string; accept_every?: number }) => {
       const form = new FormData()
       form.append('flow_id', String(flowId))
       if (name) form.append('name', name)
+      if (accept_every) form.append('accept_every', String(accept_every))
       for (const f of files) form.append('images', f)
       return api.postForm<BatchSet>('/vision/batch/sets', form)
     },
     onSuccess: invalidateSets,
   })
   const createFromSource = useMutation({
-    mutationFn: (body: { source_id: number; count: number; name?: string }) => api.post<BatchSet>('/vision/batch/sets/from-source', { flow_id: flowId, ...body }),
+    mutationFn: (body: { source_id: number; count: number; name?: string; accept_every?: number }) => api.post<BatchSet>('/vision/batch/sets/from-source', { flow_id: flowId, ...body }),
     onSuccess: invalidateSets,
   })
   const patchSet = useMutation({
-    mutationFn: ({ id, ...body }: { id: number; name?: string; labels?: { index: number; expected?: Expected; note?: string }[]; remove?: number[] }) =>
+    mutationFn: ({ id, ...body }: { id: number; name?: string; labels?: { index: number; expected?: Expected; note?: string; group?: SampleGroup }[]; remove?: number[] }) =>
       api.patch<BatchSet>(`/vision/batch/sets/${id}`, body),
     onSuccess: (s) => {
       invalidateSet(s.id)

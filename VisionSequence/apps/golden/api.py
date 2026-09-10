@@ -160,6 +160,7 @@ class GoldenAutotuneIn(Schema):
     graph: dict[str, Any] | None = None
     max_evals: int = 60
     deadline_s: float = 25.0
+    groups: dict[int, str] = {}
 
 
 @router.post("/flows/{flow_id}/golden/autotune")
@@ -171,19 +172,24 @@ def autotune_flow(request: HttpRequest, flow_id: int, payload: GoldenAutotuneIn)
 
     flow = _visible_flow(request, flow_id)
     principal(request).can_execute()
-    labeled, skipped = [], []
+    labeled, heldout, skipped = [], [], []
+    if any(group not in ("tune", "accept") for group in payload.groups.values()):
+        raise ValidationError("group must be tune or accept", code="bad_group")
     for case in GoldenCase.objects.filter(flow=flow).order_by("id"):
         image = regress.load_image(case.image_path)
         if image is None:
             skipped.append(case.name)
             continue
-        labeled.append(autotune.Labeled(image, case.expect_status, case.expect_outputs or {}, case.name))
+        group = payload.groups.get(case.id, "tune")
+        (heldout if group == "accept" else labeled).append(autotune.Labeled(image, case.expect_status, case.expect_outputs or {}, case.name, group))
     if not labeled:
         raise ValidationError("The Golden Set has no readable case images", code="no_cases")
     graph = validate_graph(payload.graph or flow.graph)
     res = autotune.coordinate_search(graph, labeled, max_evals=max(1, min(200, payload.max_evals)), deadline_s=max(1.0, min(120.0, payload.deadline_s)),
                                      trial=lambda g, im: service.trial_run(g, im, keep_images=False))
+    accepted = autotune.acceptance(res["graph"], heldout, lambda g, im: service.trial_run(g, im, keep_images=False))
     return {"flow_id": flow.id, "flow_version": flow.version, "graph_override": payload.graph is not None, "cases": len(labeled), "skipped": skipped,
+            "acceptance": accepted, "acceptance_note": autotune.acceptance_text(accepted),
             **{k: res[k] for k in ("graph", "before", "after", "changes", "change_text", "evals", "elapsed_ms", "improved", "budget_hit")}}
 
 

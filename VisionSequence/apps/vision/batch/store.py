@@ -52,7 +52,7 @@ def save_images(batch_set: BatchSet, images: list[tuple[str, np.ndarray]]) -> li
         buf.tofile(path)
         rows.append({
             "index": index, "name": str(name or f"Image {index + 1}")[:200], "path": path,
-            "width": int(img.shape[1]), "height": int(img.shape[0]), "expected": "", "expect_outputs": {}, "note": "",
+            "width": int(img.shape[1]), "height": int(img.shape[0]), "expected": "", "expect_outputs": {}, "note": "", "group": "tune",
         })
         total += int(buf.size)
     batch_set.images = list(batch_set.images or []) + rows
@@ -196,7 +196,7 @@ def run_out(r: BatchRun, *, batch_set: BatchSet | None = None, items: bool = Fal
         for it in (live_items if live_items is not None else (r.items or [])):
             image = by_index.get(int(it.get("index", -1)), {})
             m, reasons = row_match(it, image)
-            rows.append({**it, "name": image.get("name", ""), "expected": image.get("expected", ""), "match": m, "reasons": reasons,
+            rows.append({**it, "name": image.get("name", ""), "expected": image.get("expected", ""), "group": image.get("group", "tune"), "match": m, "reasons": reasons,
                          "image_url": image_url(s.id, int(it.get("index", -1)))})
         out["items"] = rows
         out["graph"] = r.graph

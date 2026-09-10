@@ -1,5 +1,10 @@
 /** English. Partial: anything missing falls back to zh-Hant. */
 const en = {
+  evidence: {
+    group: 'Sample group', groupFilter: 'Filter by sample group', allGroups: 'All groups', tune: 'Tune group', accept: 'Acceptance group',
+    acceptEvery: 'Keep every Nth image for acceptance (0 = none)', noAcceptance: 'No independent acceptance', failureReason: 'Failure reason',
+    reasons: { glare: 'Glare', wrong_edge: 'Wrong edge', locate_offset: 'Location offset', low_contrast: 'Low contrast', missing_calibration: 'Missing calibration', tolerance_unclear: 'Unclear tolerance', tool_error: 'Tool error', other: 'Other' },
+  },
   app: { name: 'VisionSequence', tagline: 'Machine vision flow platform' },
   nav: {
     inspect: 'Inspection',

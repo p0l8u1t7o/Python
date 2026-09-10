@@ -19,6 +19,14 @@ export function BatchRunDetail({ run, set, onLabel, onPreview, onToGolden, canMa
   canManage: boolean
 }) {
   const { t } = useTranslation()
+  const grouping = (set.images ?? []).map((image) => ({ image, row: run.items?.find((item) => item.index === image.index) }))
+  const groupScore = (group: 'tune' | 'accept') => {
+    const labeled = grouping.filter(({ image, row }) => (image.group ?? 'tune') === group && image.expected && row)
+    return { labeled: labeled.length, matches: labeled.filter(({ row }) => row?.match === true).length }
+  }
+  const tuning = (run.meta.autotune as { after?: { match: number; total: number } } | undefined)?.after
+  const tune = tuning ? { matches: tuning.match, labeled: tuning.total } : groupScore('tune')
+  const accept = (run.meta.acceptance as { matches: number; labeled: number } | undefined) ?? groupScore('accept')
   const [filter, setFilter] = useState<Filter>('all')
   const [picked, setPicked] = useState<Set<number>>(new Set())
   const items = run.items ?? []
@@ -34,6 +42,10 @@ export function BatchRunDetail({ run, set, onLabel, onPreview, onToGolden, canMa
 
   return (
     <div className="space-y-3" data-testid="batch-detail">
+      <p className="text-xs text-muted" data-testid="batch-group-scores">
+        {t('evidence.tune')}: {tune.matches}/{tune.labeled}{' · '}
+        {accept.labeled ? `${t('evidence.accept')}: ${accept.matches}/${accept.labeled}` : t('evidence.noAcceptance')}
+      </p>
       <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
         <Tile label={t('batchPage.kpi.total')} value={running ? `${run.progress.done}/${run.progress.total}` : s.total ?? 0} />
         <Tile label={t('batchPage.kpi.ok')} value={s.ok ?? 0} tone="text-ok" />

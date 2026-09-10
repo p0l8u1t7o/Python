@@ -406,6 +406,10 @@ def claude_messages(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
             out.append({"role": "assistant", "content": blocks or [{"type": "text", "text": "（無）"}]})
         else:
             block = {"type": "tool_result", "tool_use_id": turn["tool_call_id"], "content": str(turn.get("content", ""))}
+            if turn.get("picture"):
+                pic = turn["picture"]
+                block["content"] = [{"type": "text", "text": str(turn.get("content", ""))},
+                                    {"type": "image", "source": {"type": "base64", "media_type": pic["mime"], "data": pic["data_base64"]}}]
             if out and out[-1]["role"] == "user" and out[-1]["content"] and out[-1]["content"][0].get("type") == "tool_result":
                 out[-1]["content"].append(block)
             else:
@@ -440,8 +444,13 @@ def _claude_tools(s: AgentSettings, system: str, history: list[dict[str, Any]], 
 
 def openai_messages(system: str, history: list[dict[str, Any]]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = [{"role": "system", "content": system}]
+    pictures = []
     for turn in history:
         role = turn["role"]
+        # 所有同回合的工具結果先送完，才插入 user 影像，避免拆斷工具協定。
+        if role != "tool" and pictures:
+            out.append({"role": "user", "content": pictures})
+            pictures = []
         if role == "user":
             content = []
             for part in turn["content"]:
@@ -458,6 +467,12 @@ def openai_messages(system: str, history: list[dict[str, Any]]) -> list[dict[str
             out.append(msg)
         else:
             out.append({"role": "tool", "tool_call_id": turn["tool_call_id"], "content": str(turn.get("content", ""))})
+            if turn.get("picture"):
+                pic = turn["picture"]
+                pictures.extend([{"type": "text", "text": f"Image from tool result {turn['tool_call_id']}"},
+                                 {"type": "image_url", "image_url": {"url": f"data:{pic['mime']};base64,{pic['data_base64']}"}}])
+    if pictures:
+        out.append({"role": "user", "content": pictures})
     return out
 
 
@@ -540,6 +555,9 @@ def gemini_contents(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 out[-1]["parts"].append(part)
             else:
                 out.append({"role": "user", "parts": [part]})
+            if turn.get("picture"):
+                pic = turn["picture"]
+                out[-1]["parts"].append({"inlineData": {"mimeType": pic["mime"], "data": pic["data_base64"]}})
     return out
 
 
@@ -575,4 +593,21 @@ def complete_tools(s: AgentSettings, system: str, history: list[dict[str, Any]],
     """一回合工具呼叫對話：回模型文字＋要執行的工具呼叫（可能為空＝模型認為講完了）。"""
     if s.provider not in _TOOL_IMPL:
         raise RuntimeError(f"供應商 {s.provider} 不支援工具呼叫")
+    if s.provider == "openai_compatible":
+        # 相容端點沒有影像能力契約；預設文字模式，歷史本身不變。
+        history = text_only_history(history)
     return _TOOL_IMPL[s.provider](s, system, history, tools, timeout or generate_timeout())
+
+
+def text_only_history(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """移除影像並留下明確提示，不把 base64 當文字送出。"""
+    out = []
+    notice = "Image unavailable: this provider is using text-only mode."
+    for turn in history:
+        item = {k: v for k, v in turn.items() if k != "picture"}
+        if turn.get("picture"):
+            item["content"] = str(item.get("content", "")) + "\n" + notice
+        if item["role"] == "user" and isinstance(item.get("content"), list):
+            item["content"] = [{"type": "text", "text": notice} if p.get("type") == "image" else p for p in item["content"]]
+        out.append(item)
+    return out

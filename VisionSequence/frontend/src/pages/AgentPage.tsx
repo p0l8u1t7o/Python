@@ -10,6 +10,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { BookOpen, Bot, HelpCircle, History, Loader2, Plus, RotateCcw, Save, Settings2, Sparkles, Square, ThumbsDown, ThumbsUp, Trash2, Upload, Wand2, X } from 'lucide-react'
 
 import { AgentTimeline } from '@/components/agent/AgentTimeline'
+import { LessonRating } from '@/components/assistant/LessonRating'
 import { Page } from '@/components/layout/AppShell'
 import { TemplateThumb } from '@/components/templates/TemplateGallery'
 import { Badge, Button, Card, Modal, PageHeader, Select, StatusBadge, TextArea, TextInput } from '@/components/ui'
@@ -21,6 +22,7 @@ import type { FlowGraph, Overlay, Region, RunReport } from '@/lib/types'
 import { useToast } from '@/providers/ToastProvider'
 
 interface UploadedImage {
+  group?: 'tune' | 'accept'
   ref: string
   width: number
   height: number
@@ -63,6 +65,7 @@ interface Candidate {
 }
 
 interface AgentResult {
+  acceptance?: { ok: number; ng: number; matches: number; labeled: number }
   graph: FlowGraph
   rationale: string
   provider: string
@@ -97,7 +100,7 @@ interface SessionRow {
 }
 
 interface SessionFull extends SessionRow {
-  images: { ref: string; width: number; height: number; name: string }[]
+  images: { ref: string; width: number; height: number; name: string; group?: 'tune' | 'accept' }[]
   regions: { region: Region; hint?: string; image?: number }[]
   answers: { id: string; answer: string }[]
   graph: FlowGraph
@@ -534,7 +537,7 @@ export function AgentPage() {
   const payload = useMemo(() => {
     const regions = rois.map((r) => ({ region: r.region as unknown as Record<string, unknown>, hint: r.hint, image: r.image }))
     if (drawing) regions.push({ region: drawing as unknown as Record<string, unknown>, hint: '', image: active })
-    return { images: images.map((im) => im.ref), prompt, regions, labels: images.map((_, i) => labels[i] ?? '') }
+    return { images: images.map((im) => im.ref), prompt, regions, labels: images.map((_, i) => labels[i] ?? ''), groups: images.map((im) => im.group ?? 'tune') }
   }, [rois, drawing, images, prompt, active, labels])
 
   function abort() {
@@ -711,7 +714,7 @@ export function AgentPage() {
   async function restoreSession(s: SessionFull) {
     const refs = s.images.map((im) => im.ref)
     const run = await api.post<AgentResult>('/vision/agent/run', { images: refs, graph: s.graph, main: 0 })
-    setImages(s.images.map((im) => ({ ref: im.ref, width: im.width, height: im.height, name: im.name })))
+    setImages(s.images.map((im) => ({ ref: im.ref, width: im.width, height: im.height, name: im.name, group: im.group ?? 'tune' })))
     setRois((s.regions ?? []).map((r) => ({ region: r.region, hint: r.hint ?? '', image: r.image ?? 0 })))
     setPrompt(s.prompt)
     setAnswers(Object.fromEntries((s.answers ?? []).map((a) => [a.id, a.answer])))
@@ -779,9 +782,10 @@ export function AgentPage() {
                     const st = result?.reports[i]?.status
                     const lb = labels[i]
                     return (
-                      <div key={im.ref} className={`group relative overflow-hidden rounded border ${i === active ? 'border-brand ring-2 ring-brand/30' : 'border-line'}`}>
+                      <div key={im.ref} className={`group w-32 overflow-hidden rounded border ${i === active ? 'border-brand ring-2 ring-brand/30' : 'border-line'}`}>
+                        <div className="relative">
                         <button type="button" onClick={() => { setActive(i); setDrawing(null) }} title={im.name} className="block">
-                          <img src={imageUrl(im.ref, 160)} alt="" className="h-12 w-16 object-cover" />
+                          <img src={imageUrl(im.ref, 160)} alt="" className="h-20 w-32 object-cover" />
                         </button>
                         <span className="pointer-events-none absolute left-0.5 top-0.5 rounded bg-black/60 px-1 text-[9px] text-white">{t('agent.imageN', { n: i + 1 })}</span>
                         {st ? <span className={`pointer-events-none absolute bottom-0.5 left-0.5 rounded px-1 text-[9px] font-semibold text-white ${st === 'ok' ? 'bg-ok' : st === 'ng' ? 'bg-critical' : 'bg-neutral-500'}`}>{st.toUpperCase()}</span> : null}
@@ -790,6 +794,11 @@ export function AgentPage() {
                           className={`absolute bottom-0.5 right-0.5 rounded px-1 text-[9px] font-semibold ${lb === 'ok' ? 'bg-ok text-white' : lb === 'ng' ? 'bg-critical text-white' : 'bg-black/50 text-white/80'}`}>
                           {lb ? lb.toUpperCase() : t('agent.labelNone')}
                         </button>
+                        </div>
+                        <select className="input !w-full !text-[10px]" aria-label={t('evidence.group')} value={im.group ?? 'tune'} data-testid="agent-image-group"
+                          onChange={(e) => setImages((list) => list.map((item, index) => index === i ? { ...item, group: e.target.value as 'tune' | 'accept' } : item))}>
+                          <option value="tune">{t('evidence.tune')}</option><option value="accept">{t('evidence.accept')}</option>
+                        </select>
                       </div>
                     )
                   })}
@@ -893,13 +902,16 @@ export function AgentPage() {
                 </div>
                 <TemplateThumb graph={result.graph} className="h-20 w-full rounded bg-surface-muted" />
                 <p className="text-xs leading-relaxed text-muted">{result.rationale}</p>
+                {result.acceptance ? <p className="text-xs text-muted" data-testid="agent-acceptance">{result.acceptance.labeled
+                  ? `${t('evidence.accept')}: ${result.acceptance.matches}/${result.acceptance.labeled}` : t('evidence.noAcceptance')}</p> : null}
                 {result.similar?.length ? <p className="text-[11px] text-subtle" data-testid="agent-similar">{t('agent.similarUsed', { count: result.similar.length, ids: result.similar.map((x) => `#${x.id}`).join(', ') })}</p> : null}
                 {result.session_id ? (
-                  <div className="flex items-center gap-1 text-[11px] text-muted" data-testid="agent-rate">
+                  <div className="flex flex-wrap items-center gap-1 text-[11px] text-muted" data-testid="agent-rate">
                     <span>{t('agent.rateHint')}</span>
                     <button type="button" className={`btn-icon ${rated?.id === result.session_id && rated.rating === 1 ? 'text-ok' : ''}`} title={t('agent.rateGood')} onClick={() => void rate(1)} data-testid="agent-rate-good"><ThumbsUp size={13} /></button>
                     <button type="button" className={`btn-icon ${rated?.id === result.session_id && rated.rating === -1 ? 'text-critical' : ''}`} title={t('agent.rateBad')} onClick={() => void rate(-1)} data-testid="agent-rate-bad"><ThumbsDown size={13} /></button>
                     <span className="text-subtle">#{result.session_id}</span>
+                    <LessonRating key={result.session_id} sessionId={result.session_id} />
                   </div>
                 ) : null}
                 {result.warnings?.length ? (
@@ -922,6 +934,7 @@ export function AgentPage() {
                 ) : null}
                 {result.autotune ? (
                   <p className="rounded bg-brand-soft px-2 py-1 text-[11px] text-brand" data-testid="agent-autotune">
+                    {t('evidence.tune')}{': '}
                     {t('agent.autotuned', { before: result.autotune.before.match, after: result.autotune.after.match, total: result.autotune.after.total, ms: result.autotune.elapsed_ms })}
                   </p>
                 ) : null}

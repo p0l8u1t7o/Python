@@ -1,10 +1,12 @@
 /** 影像集分頁：縮圖網格＋每張的期望標記（—／OK／NG）與備註；有選定執行時疊上判定與命中記號。 */
 import { useTranslation } from 'react-i18next'
+import { useState } from 'react'
 
 import { Button, SegmentedControl } from '@/components/ui'
-import { batchImageUrl, type BatchRun, type BatchSet, type Expected } from '@/lib/batch'
+import { batchImageUrl, filterSampleGroup, type SampleGroup, type BatchRun, type BatchSet, type Expected } from '@/lib/batch'
 
-export function BatchImagesGrid({ set, run, onLabel, onBulk, onPreview, canManage }: {
+export function BatchImagesGrid({ set, run, onLabel, onBulk, onPreview, canManage, onGroup }: {
+  onGroup?: (index: number, group: SampleGroup) => void
   set: BatchSet
   run: BatchRun | null
   onLabel: (index: number, expected: Expected) => void
@@ -13,11 +15,15 @@ export function BatchImagesGrid({ set, run, onLabel, onBulk, onPreview, canManag
   canManage: boolean
 }) {
   const { t } = useTranslation()
+  const [group, setGroup] = useState<SampleGroup | 'all'>('all')
   const byIndex = new Map((run?.items ?? []).map((it) => [it.index, it]))
-  const images = set.images ?? []
+  const images = filterSampleGroup(set.images ?? [], group)
   return (
     <div className="space-y-2" data-testid="batch-images">
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+        <select className="input !w-auto" aria-label={t('evidence.groupFilter')} value={group} onChange={(e) => setGroup(e.target.value as SampleGroup | 'all')} data-testid="batch-group-filter">
+          <option value="all">{t('evidence.allGroups')}</option><option value="tune">{t('evidence.tune')}</option><option value="accept">{t('evidence.accept')}</option>
+        </select>
         <span>{t('batchPage.labelHint')}</span>
         <span className="ml-auto flex gap-1">
           <Button size="xs" disabled={!canManage} onClick={() => onBulk('ok')}>{t('batchPage.labelAllOk')}</Button>
@@ -37,6 +43,10 @@ export function BatchImagesGrid({ set, run, onLabel, onBulk, onPreview, canManag
                 {st ? <span className={`absolute bottom-1 left-1 rounded px-1 text-[9px] font-semibold text-white ${st === 'ok' ? 'bg-ok' : st === 'ng' ? 'bg-critical' : 'bg-neutral-500'}`}>{st.toUpperCase()}{it?.match === false ? ' ✗' : it?.match ? ' ✓' : ''}</span> : null}
               </button>
               <p className="mt-1 truncate text-[11px]" title={im.name}>{im.name}</p>
+              <select className="input mt-1 !text-xs" aria-label={t('evidence.group')} value={im.group ?? 'tune'} disabled={!canManage || !onGroup}
+                onChange={(e) => onGroup?.(im.index, e.target.value as SampleGroup)} data-testid="batch-image-group">
+                <option value="tune">{t('evidence.tune')}</option><option value="accept">{t('evidence.accept')}</option>
+              </select>
               <div className="mt-1 flex items-center justify-between gap-1">
                 <SegmentedControl size="sm" value={im.expected} onChange={(v) => { if (canManage) onLabel(im.index, v) }} options={[
                   { value: '', label: t('batchPage.expectNone') }, { value: 'ok', label: 'OK' }, { value: 'ng', label: 'NG' },

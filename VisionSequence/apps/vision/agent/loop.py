@@ -62,6 +62,7 @@ def initial_text(state: actions.AgentState) -> str:
     marks = [f"影像 {i + 1} 應判 {e.upper()}" for i, e in enumerate(state.expected) if e]
     if marks:
         lines.append("影像期望判定：" + "、".join(marks))
+    lines.append("樣本分組（按影像順序）：" + json.dumps(state.groups or ["tune"] * len(state.images)))
     if state.answers:
         lines.append("使用者已回答：" + json.dumps(state.answers, ensure_ascii=False))
     if state.analysis:
@@ -79,7 +80,9 @@ def initial_text(state: actions.AgentState) -> str:
 
 
 def initial_history(state: actions.AgentState) -> list[dict[str, Any]]:
-    parts: list[dict[str, Any]] = [{"type": "image", "data": llm.encode_image(im)} for im in state.images[:MAX_INITIAL_IMAGES]]
+    count = min(MAX_INITIAL_IMAGES, actions.MAX_PICTURES - state.pictures)
+    parts: list[dict[str, Any]] = [{"type": "image", "data": llm.encode_image(im)} for im in state.images[:count]]
+    state.pictures += len(parts)
     parts.append({"type": "text", "text": initial_text(state)})
     return [{"role": "user", "content": parts}]
 
@@ -129,7 +132,11 @@ def run_loop(settings: providers.AgentSettings, state: actions.AgentState, histo
                 result = {"error": "試跑預算已用完，請依既有結果決定並呼叫 finish"}
             else:
                 result = actions.dispatch(state, call.name, call.args)
-            history.append({"role": "tool", "tool_call_id": call.id, "name": call.name, "content": actions.serialize_result(result)})
+            picture = result.get("picture")
+            has_image = isinstance(picture, dict) and "data_base64" in picture
+            text_result = {k: v for k, v in result.items() if k != "picture"} if has_image else result
+            history.append({"role": "tool", "tool_call_id": call.id, "name": call.name, "content": actions.serialize_result(text_result),
+                            **({"picture": picture} if has_image else {})})
             if state.questions:
                 state.step("question", "向使用者提問", "；".join(q["text"] for q in state.questions))
                 return LoopResult("needs_input", state.graph, state.rationale, turns, questions=list(state.questions))

@@ -17,7 +17,6 @@ from typing import Any
 import cv2
 import numpy as np
 from django.conf import settings as dj_settings
-from django.db.models import Q
 
 from apps.vision.models import AgentSession
 from apps.vision.tools import base as tools
@@ -29,6 +28,41 @@ FEATURE_KEYS = ("mean", "std", "mad", "edge_ratio", "dark_ratio", "h", "s", "v",
 SIMILAR_MAX_DIST = 0.35
 SIMILAR_LIMIT = 2
 SCAN_LIMIT = 300
+FAILURE_REASONS = ("glare", "wrong_edge", "locate_offset", "low_contrast", "missing_calibration", "tolerance_unclear", "tool_error", "other")
+
+
+def clean_lessons(value: Any) -> dict[str, Any]:
+    """封閉原因集合與有限的適用條件；非法資料由 API 或動作層回報。"""
+    if not isinstance(value, dict):
+        raise ValueError("lessons must be an object")
+    outcome = value.get("outcome", "partial")
+    reasons = value.get("failure_reasons", [])
+    conditions = value.get("conditions", {})
+    accepted = value.get("accepted_on")
+    if outcome not in ("success", "failure", "partial") or accepted not in (None, "tune", "accept"):
+        raise ValueError("Invalid lesson outcome or acceptance group")
+    if not isinstance(reasons, list) or any(r not in FAILURE_REASONS for r in reasons):
+        raise ValueError("Invalid failure reason")
+    if not isinstance(conditions, dict) or any(k not in ("lighting", "material", "part", "notes") or not isinstance(v, str) for k, v in conditions.items()):
+        raise ValueError("Invalid lesson conditions")
+    return {"outcome": outcome, "failure_reasons": list(dict.fromkeys(reasons)),
+            "conditions": {k: v[:500] for k, v in conditions.items()}, "accepted_on": accepted}
+
+
+def default_lessons(statuses: list[str], labels: list[str], groups: list[str] | None = None) -> dict[str, Any]:
+    """獨立驗收優先；不能把正常 NG 樣本誤記成失敗。"""
+    groups = groups or ["tune"] * len(labels)
+    accepted = [i for i, lb in enumerate(labels) if lb in ("ok", "ng") and groups[i] == "accept"]
+    chosen = accepted or [i for i, lb in enumerate(labels) if lb in ("ok", "ng") and groups[i] == "tune"]
+    success = all(i < len(statuses) and statuses[i] == labels[i] for i in chosen) if chosen else None
+    errors = any(s not in ("ok", "ng") for s in statuses)
+    outcome = "failure" if errors or success is False else "success" if success else "partial"
+    return clean_lessons({"outcome": outcome, "failure_reasons": ["tool_error"] if errors else ["other"] if outcome == "failure" else [],
+                          "accepted_on": ("accept" if accepted else "tune") if chosen else None})
+
+
+def is_prior(session: AgentSession) -> bool:
+    return session.rating >= 0 and (session.success is True or session.rating > 0) and (session.lessons or {}).get("outcome") != "failure"
 
 
 def session_dir(session_id: int) -> str:
@@ -82,16 +116,28 @@ def success_of(statuses: list[str], labels: list[str]) -> bool | None:
 def remember(*, owner: Any, task: str, prompt: str, intent_kind: str, images: list[np.ndarray], regions: list[dict[str, Any]],
              answers: list[dict[str, Any]], labels: list[str], analysis: dict[str, Any] | None, graph: dict[str, Any], rationale: str,
              candidates: list[dict[str, Any]], statuses: list[str], provider: str, mode: str = "single", turns: int = 0,
-             names: list[str] | None = None) -> AgentSession | None:
+             names: list[str] | None = None, lessons: dict[str, Any] | None = None, groups: list[str] | None = None) -> AgentSession | None:
     """存一個工作階段；任何失敗（磁碟、DB 鎖）只記 log 回 None，不影響生成結果。"""
     try:
+        from apps.vision.agent.autotune import label_groups
+
+        groups = label_groups(labels, len(images), groups)
+        derived = default_lessons(statuses, labels, groups)
+        lesson = clean_lessons(lessons) if lessons else derived
+        # 模型不能把未做的驗收寫成事實，也不能掩蓋實際失敗。
+        lesson["accepted_on"] = derived["accepted_on"]
+        if derived["outcome"] == "failure":
+            lesson["outcome"] = "failure"
+            lesson["failure_reasons"] = list(dict.fromkeys(lesson["failure_reasons"] + derived["failure_reasons"]))
         session = AgentSession.objects.create(
             owner=owner if getattr(owner, "pk", None) else None, task=task, prompt=prompt[:4000], intent=intent_kind, provider=provider, mode=mode, turns=turns,
             regions=regions, answers=answers, labels=labels, features={"vector": feature_vector(analysis), "image_count": len(images)},
-            graph=graph, rationale=rationale[:4000], statuses=statuses, success=success_of(statuses, labels),
+            graph=graph, rationale=rationale[:4000], statuses=statuses, success=success_of(statuses, labels), lessons=lesson,
             candidates=[{k: c.get(k) for k in ("key", "label", "statuses", "score", "chosen")} for c in candidates],
         )
         session.images = _save_images(session.id, images, names)
+        for i, im in enumerate(session.images):
+            im["group"] = groups[i]
         session.save(update_fields=["images"])
         return session
     except Exception:  # noqa: BLE001 - 記憶是加分項，不能讓生成失敗
@@ -104,15 +150,18 @@ def forget(session: AgentSession) -> None:
     session.delete()
 
 
-def find_similar(intent_kind: str, analysis: dict[str, Any] | None, *, exclude_id: int | None = None, limit: int = SIMILAR_LIMIT) -> list[tuple[AgentSession, float]]:
+def find_similar(intent_kind: str, analysis: dict[str, Any] | None, *, exclude_id: int | None = None, limit: int = SIMILAR_LIMIT, include_failures: bool = False) -> list[tuple[AgentSession, float]]:
     """同意圖、成功（標記全中或按讚）、特徵距離最近的 ≤limit 個工作階段。"""
     vec = feature_vector(analysis)
     if not vec:
         return []
     try:
-        qs = AgentSession.objects.filter(intent=intent_kind).filter(Q(success=True) | Q(rating__gt=0)).exclude(rating__lt=0).order_by("-created_at")[:SCAN_LIMIT]
+        qs = AgentSession.objects.filter(intent=intent_kind).order_by("-created_at")[:SCAN_LIMIT]
         rows: list[tuple[AgentSession, float]] = []
         for s in qs:
+            failure = s.success is False or s.rating < 0 or (s.lessons or {}).get("outcome") == "failure"
+            if not is_prior(s) and not (include_failures and failure):
+                continue
             if exclude_id is not None and s.id == exclude_id:
                 continue
             fv = (s.features or {}).get("vector") if isinstance(s.features, dict) else None
@@ -146,7 +195,8 @@ def priors_from_sessions(rows: list[tuple[AgentSession, float]]) -> dict[tuple[s
     """最近的優先（先套遠的再讓近的覆蓋）。"""
     out: dict[tuple[str, str], Any] = {}
     for s, _ in sorted(rows, key=lambda r: -r[1]):
-        out.update(priors_from_graph(s.graph))
+        if is_prior(s):
+            out.update(priors_from_graph(s.graph))
     return out
 
 
@@ -169,8 +219,13 @@ def examples_text(rows: list[tuple[AgentSession, float]]) -> str:
     """給 LLM／代理的「過去成功案例」段。"""
     if not rows:
         return ""
-    lines = ["# 過去成功案例（影像特徵相似，可沿用其設計與參數）"]
+    lines = ["# 過去案例（只有成功案例可作參數先驗）"]
     for s, d in rows:
+        if not is_prior(s):
+            lesson = s.lessons or {}
+            lines.append(f"## 避免 / Avoid #{s.id}\n{lesson.get('outcome', 'failure')}: {', '.join(lesson.get('failure_reasons') or ['other'])}; "
+                         f"conditions={json.dumps(lesson.get('conditions') or {}, ensure_ascii=False)}; {s.prompt[:80]}")
+            continue
         params = {f"{t}.{k}": v for (t, k), v in priors_from_graph(s.graph).items()}
         types = [n.get("type") for n in (s.graph or {}).get("nodes", []) if n.get("type") not in ("note",)]
         lines.append(f"- #{s.id}（{s.created_at:%Y-%m-%d}，意圖 {s.intent}，特徵距離 {d}）：需求「{s.prompt[:80]}」；流程 {' → '.join(types)[:200]}；"
@@ -182,6 +237,7 @@ def session_out(s: AgentSession, *, full: bool = False) -> dict[str, Any]:
     base = {
         "id": s.id, "owner_id": s.owner_id, "task": s.task, "prompt": s.prompt, "intent": s.intent, "provider": s.provider, "mode": s.mode, "turns": s.turns,
         "image_count": len(s.images or []), "statuses": s.statuses, "labels": s.labels, "success": s.success, "rating": s.rating, "note": s.note,
+        "lessons": s.lessons, "groups": [im.get("group", "tune") for im in s.images or []],
         "flow_id": s.flow_id, "created_at": s.created_at.isoformat(), "updated_at": s.updated_at.isoformat(),
     }
     if full:

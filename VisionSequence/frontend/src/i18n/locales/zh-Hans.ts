@@ -1,5 +1,10 @@
 ﻿/** 简体中文（由 zh-Hant 以 OpenCC tw2sp 转换＋人工词汇微调产生；缺的 key 会退回繁中）。 */
 const zhHans = {
+  evidence: {
+    group: '样本分组', groupFilter: '按样本分组筛选', allGroups: '所有分组', tune: '调参组', accept: '验收组',
+    acceptEvery: '每 N 张保留一张验收 (0 = 不保留)', noAcceptance: '没有独立验收', failureReason: '失败原因',
+    reasons: { glare: '反光', wrong_edge: '抓错边', locate_offset: '定位偏移', low_contrast: '对比不足', missing_calibration: '缺少标定', tolerance_unclear: '公差不明', tool_error: '工具错误', other: '其他' },
+  },
   comm: {
     title: '结果回送',
     hint: '这条流程跑完一片就送一行给上位机，不必在画布上接线。大括号里的名字会被填进去：judge、任何具名输出、触发带进来的参数，另有 run_id、station、flow 与 duration_ms。协议需要换行就打 \\r\\n。',

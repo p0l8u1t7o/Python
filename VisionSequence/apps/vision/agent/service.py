@@ -83,6 +83,8 @@ def expected_labels(regions: list[dict[str, Any]], labels: list[str] | None, cou
         elif any(w in hint for w in intents._BAD_WORDS):
             out[idx] = "ng"
     for i, lb in enumerate(labels or []):
+        if isinstance(lb, dict):
+            lb = lb.get("expected", lb.get("label", ""))
         if i < count and str(lb).lower() in ("ok", "ng"):
             out[i] = str(lb).lower()
     return out
@@ -99,7 +101,7 @@ def _score(statuses: list[str], errors: list[bool], expected: list[str]) -> int:
     return score
 
 
-def _rank_candidates(cands: list[dict[str, Any]], images: list[np.ndarray], expected: list[str]) -> tuple[list[dict[str, Any]], int]:
+def _rank_candidates(cands: list[dict[str, Any]], images: list[np.ndarray], expected: list[str], groups: list[str] | None = None) -> tuple[list[dict[str, Any]], int]:
     """每個候選 graph 在全部影像上靜默試跑打分；回 (帶 statuses/score 的候選列表, 勝者索引)。主要方案驗證失敗會照舊 raise。"""
     ranked: list[dict[str, Any]] = []
     for i, c in enumerate(cands):
@@ -111,11 +113,16 @@ def _rank_candidates(cands: list[dict[str, Any]], images: list[np.ndarray], expe
             log.warning("候選方案 %s 無效，略過", c.get("key"))
             continue
         statuses, errors = [], []
-        for im in images:
+        for index, im in enumerate(images):
+            if groups and groups[index] == "accept":
+                statuses.append("")
+                errors.append(False)
+                continue
             rep = _quiet_trial(graph, im)
             statuses.append(rep.status)
             errors.append(any(getattr(nr, "status", "") == "error" for nr in rep.nodes.values()))
-        ranked.append({**c, "graph": graph, "statuses": statuses, "score": _score(statuses, errors, expected)})
+        selected = [i for i in range(len(images)) if not groups or groups[i] == "tune"]
+        ranked.append({**c, "graph": graph, "statuses": statuses, "score": _score([statuses[i] for i in selected], [errors[i] for i in selected], [expected[i] for i in selected])})
     win = max(range(len(ranked)), key=lambda k: (ranked[k]["score"], -k))
     return ranked, win
 
@@ -176,7 +183,7 @@ def _result(graph: dict[str, Any], rationale: str, provider: str, intent: str, r
 
 def recall(intent_kind: str, feats: dict[str, Any] | None) -> tuple[list[tuple[Any, float]], dict[tuple[str, str], Any], str]:
     """相似成功案例 → (列表, 參數先驗, 給 LLM 的文字)。"""
-    similar = memory.find_similar(intent_kind, feats)
+    similar = memory.find_similar(intent_kind, feats, include_failures=True)
     return similar, memory.priors_from_sessions(similar), memory.examples_text(similar)
 
 
@@ -218,7 +225,7 @@ def clarify(images: list[np.ndarray], regions: list[dict[str, Any]], prompt: str
 def generate(images: list[np.ndarray], regions: list[dict[str, Any]], prompt: str,
              settings: providers.AgentSettings | None = None, *, use_llm: bool | None = None,
              answers: list[dict[str, Any]] | None = None, labels: list[str] | None = None, owner: Any = None,
-             remember: bool = True) -> dict[str, Any]:
+             remember: bool = True, groups: list[str] | None = None) -> dict[str, Any]:
     """上傳影像們＋ROI＋提示詞（＋每張影像的 OK/NG 標記）→ {graph, rationale, provider, intent, report, reports, candidates, labels, session_id, similar}。
 
     規則引擎會產 1～3 個候選方案（相似成功案例的參數先驗版排第一），全部在影像上靜默試跑後依標記命中打分，勝者才正式跑（保留 overlay）；
@@ -228,8 +235,9 @@ def generate(images: list[np.ndarray], regions: list[dict[str, Any]], prompt: st
     feats = analysis_mod.analyze(images, regions)
     intent = intents.parse(prompt, regions, feats)  # 規則引擎的意圖也拿來幫 LLM 挑相關工具技能
     expected = expected_labels(regions, labels, len(images))
+    groups = autotune.label_groups(labels or [], len(images), groups)
     similar, priors, examples = recall(intent.kind, feats) if remember else ([], {}, "")  # remember=False：評測基準等不讀也不寫記憶
-    similar_out = [{"id": s.id, "prompt": s.prompt[:80], "distance": d} for s, d in similar]
+    similar_out = [{"id": s.id, "prompt": s.prompt[:80], "distance": d} for s, d in similar if memory.is_prior(s)]
     llm_prompt = f"{prompt}\n{_labels_text(expected)}".strip()
     got, llm_reason = _try_llm(settings, use_llm, images=images, regions=regions, prompt=llm_prompt, analysis=feats, intent_kind=intent.kind,
                                examples=examples, user=owner)
@@ -247,11 +255,11 @@ def generate(images: list[np.ndarray], regions: list[dict[str, Any]], prompt: st
         result = _result(graph, rationale, settings.provider, intent.kind, report, reports, main_image=main, candidates=[], labels=expected, similar=similar_out)
     else:
         cands = synth.candidates(intent, regions, feats, make_asset=_make_picture_factory(images), priors=priors)
-        ranked, win = _rank_candidates(cands, images, expected)
+        ranked, win = _rank_candidates(cands, images, expected, groups)
         graph, rationale = ranked[win]["graph"], ranked[win]["rationale"]
         extra: dict[str, Any] = {}
-        labeled = [autotune.Labeled(im, e) for im, e in zip(images, expected) if e]
-        if len(labeled) >= 2 and not all(s == e for s, e in zip(ranked[win]["statuses"], expected) if e):
+        labeled = [autotune.Labeled(im, e) for im, e, group in zip(images, expected, groups) if e and group == "tune"]
+        if len(labeled) >= 2 and not all(s == e for s, e, group in zip(ranked[win]["statuses"], expected, groups) if e and group == "tune"):
             tuned = autotune.coordinate_search(graph, labeled, max_evals=GENERATE_AUTOTUNE_EVALS, deadline_s=GENERATE_AUTOTUNE_DEADLINE_S, trial=_quiet_trial, priors=priors)
             if tuned["improved"]:
                 graph = tuned["graph"]
@@ -265,10 +273,14 @@ def generate(images: list[np.ndarray], regions: list[dict[str, Any]], prompt: st
                        "graph": c["graph"], "chosen": i == win} for i, c in enumerate(ranked)]
         result = _result(graph, rationale, "rules", intent.kind, report, reports, main_image=main, warnings=warnings, candidates=candidates,
                          labels=expected, similar=similar_out, **extra)
+    result["groups"] = groups
+    result["avoided"] = [{"id": s.id, "lessons": s.lessons} for s, _ in similar if not memory.is_prior(s)]
+    result["acceptance"] = autotune.acceptance_rows([{**r, "expected": expected[i], "group": groups[i]} for i, r in enumerate(result["reports"])])
+    result["acceptance_note"] = autotune.acceptance_text(result["acceptance"])
     if remember:
         session = memory.remember(owner=owner, task="generate", prompt=prompt, intent_kind=intent.kind, images=images, regions=regions, answers=list(answers or []),
                                   labels=expected, analysis=feats, graph=result["graph"], rationale=result["rationale"], candidates=result.get("candidates") or [],
-                                  statuses=[r.get("status", "") for r in result["reports"]], provider=result["provider"], mode=settings.mode)
+                                  statuses=[r.get("status", "") for r in result["reports"]], provider=result["provider"], mode=settings.mode, groups=groups)
         result["session_id"] = session.id if session else None
     return result
 
@@ -675,7 +687,8 @@ def _rerun_items(graph: dict[str, Any], runs: list[dict[str, Any]], images: dict
             items.append({"name": r.get("name", "?"), "before": r.get("status", ""), "after": "gone"})
             continue
         rep = trial_run(graph, images[ref], keep_images=keep_images)
-        row = {"name": r.get("name", "?"), "before": r.get("status", ""), "after": rep.status, "run_id": rep.id, "outputs": rep.outputs, "expected": r.get("expected", "")}
+        row = {"name": r.get("name", "?"), "before": r.get("status", ""), "after": rep.status, "run_id": rep.id, "outputs": rep.outputs, "expected": r.get("expected", ""),
+               "group": autotune.group_of(r), "expect_outputs": r.get("expect_outputs") or {}}
         if detail and r.get("index") is not None:
             row = {**compact_row(int(r["index"]), rep), **row}
         items.append(row)
@@ -685,21 +698,23 @@ def _rerun_items(graph: dict[str, Any], runs: list[dict[str, Any]], images: dict
 def autotune_runs(graph: dict[str, Any], runs: list[dict[str, Any]], images: dict[str, np.ndarray], *,
                   max_evals: int = 60, deadline_s: float = 25.0, detail: bool = False) -> dict[str, Any]:
     """批次測試的自動調參：每列的 expected（ok／ng）當標記，座標下降找更好的現場參數；回與 tune 相同形狀＋autotune 摘要。"""
-    labeled = [autotune.Labeled(images[r["image_ref"]], str(r.get("expected", "")).lower(), {}, str(r.get("name", "")))
-               for r in runs if r.get("image_ref") in images and str(r.get("expected", "")).lower() in ("ok", "ng")]
+    labeled = [autotune.Labeled(images[r["image_ref"]], str(r.get("expected", "")).lower(), r.get("expect_outputs") or {}, str(r.get("name", "")))
+               for r in runs if autotune.group_of(r) == "tune" and r.get("image_ref") in images and str(r.get("expected", "")).lower() in ("ok", "ng")]
     before = _tally([r.get("status", "") for r in runs])
     if not labeled:
         return {"graph": graph, "rationale": "沒有可用的期望標記：請在結果表為至少一列填 OK／NG 期望（影像須仍在快取中）。",
-                "provider": "autotune", "changes": [], "before": before, "after": None, "items": [], "applied": False}
+                "provider": "autotune", "changes": [], "before": before, "after": None, "items": [], "applied": False,
+                "acceptance": {"ok": 0, "ng": 0, "matches": 0, "labeled": 0}}
     graph = validate_graph(graph)
     res = autotune.coordinate_search(graph, labeled, max_evals=max_evals, deadline_s=deadline_s, trial=_quiet_trial)
     items = _rerun_items(res["graph"], runs, images, keep_images=not detail, detail=detail)
     b, a = res["before"], res["after"]
+    accepted = autotune.acceptance_rows(items)
     rationale = ("自動調參：" + ("、".join(res["change_text"]) if res["improved"] else "在預算內找不到更好的參數，維持原參數")
-                 + f"；標記命中 {b['match']}/{b['total']} → {a['match']}/{a['total']}，評估 {res['evals']} 次、{res['elapsed_ms']} ms"
+                 + f"; Tune group: {b['match']}/{b['total']} → {a['match']}/{a['total']}, {res['evals']} evaluations, {res['elapsed_ms']} ms. " + autotune.acceptance_text(accepted)
                  + ("（預算用盡）" if res["budget_hit"] else ""))
     return {"graph": res["graph"], "rationale": rationale, "provider": "autotune", "changes": res["change_text"],
-            "before": before, "after": _tally([it["after"] for it in items]), "items": items, "applied": True,
+            "before": before, "after": _tally([it["after"] for it in items]), "items": items, "applied": True, "acceptance": accepted,
             "autotune": {k: res[k] for k in ("before", "after", "changes", "change_text", "evals", "elapsed_ms", "improved", "budget_hit")}}
 
 
@@ -739,7 +754,7 @@ def tune(graph: dict[str, Any], instruction: str, runs: list[dict[str, Any]], im
 def build_state(task: str, images: list[np.ndarray], regions: list[dict[str, Any]], prompt: str, *,
                 answers: list[dict[str, Any]] | None = None, labels: list[str] | None = None,
                 graph: dict[str, Any] | None = None, instruction: str = "", runs: list[dict[str, Any]] | None = None,
-                owner: Any = None, extra_summary: str = "") -> actions.AgentState:
+                owner: Any = None, extra_summary: str = "", groups: list[str] | None = None) -> actions.AgentState:
     """代理迴圈的初始狀態：分析、意圖、期望標記、make_asset、相似成功案例的先驗；edit／tune 帶既有 graph 與指令。"""
     text = effective_prompt(prompt, answers)
     feats = analysis_mod.analyze(images, regions) if images else None
@@ -750,7 +765,7 @@ def build_state(task: str, images: list[np.ndarray], regions: list[dict[str, Any
         expected=expected_labels(regions, labels, len(images)), make_asset=_make_picture_factory(images) if images else None,
         graph=validate_graph(graph) if graph else None, feedback=instruction, answers=list(answers or []),
         batch_summary=((extra_summary.strip() + "\n") if extra_summary.strip() else "") + (_batch_summary(runs) if runs else ""),
-        owner=owner, priors=priors, examples=examples,
+        owner=owner, priors=priors, examples=examples, groups=autotune.label_groups(labels or [], len(images), groups),
     )
     return state
 

@@ -146,7 +146,7 @@ def _autotune_graph(job: BatchJob, run: BatchRun, batch_set: BatchSet, images: l
         parent = BatchRun.objects.filter(pk=run.parent_id).only("items").first()
         if parent is not None:
             parent_status = {int(it.get("index", -1)): str(it.get("status", "")) for it in parent.items or []}
-    labeled_imgs = [im for im in images if im.get("expected") in ("ok", "ng")]
+    labeled_imgs = [im for im in images if im.get("expected") in ("ok", "ng") and im.get("group", "tune") == "tune"]
     labeled_imgs.sort(key=lambda im: 0 if parent_status.get(int(im["index"])) not in ("", None, im["expected"]) else 1)
     labeled = []
     for im in labeled_imgs[:AUTOTUNE_SAMPLE]:
@@ -190,6 +190,12 @@ def _run(job: BatchJob) -> None:
                 last_flush = time.perf_counter()
 
         rows, wall = execute_rows(flow, graph, images, on_row=on_row, cancelled=lambda: job.cancel_flag)
+        if job.mode == "autotune":
+            from apps.vision.agent import autotune
+
+            by_index = {im["index"]: im for im in images}
+            accepted = autotune.acceptance_rows([{**by_index[row["index"]], **row} for row in rows])
+            meta = {**(meta or {}), "acceptance": accepted, "acceptance_note": autotune.acceptance_text(accepted)}
         status = "cancelled" if (job.cancel_flag and len(rows) < len(images)) else "done"
         run = BatchRun.objects.select_related("batch_set__flow", "flow").get(pk=job.run_id)
         store.finalize_run(run, rows, wall_ms=wall, status=status, graph=graph, meta=meta)

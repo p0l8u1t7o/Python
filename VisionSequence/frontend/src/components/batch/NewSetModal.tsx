@@ -20,6 +20,7 @@ export function NewSetModal({ open, onClose, flowId, maxImages, onCreated }: { o
   const [name, setName] = useState('')
   const [sourceId, setSourceId] = useState('')
   const [count, setCount] = useState('10')
+  const [acceptEvery, setAcceptEvery] = useState('0')
   const [dragging, setDragging] = useState(false)
   const busy = createUpload.isPending || createFromSource.isPending
 
@@ -34,8 +35,8 @@ export function NewSetModal({ open, onClose, flowId, maxImages, onCreated }: { o
   async function create() {
     try {
       const set = mode === 'upload'
-        ? await createUpload.mutateAsync({ files, name: name.trim() || undefined })
-        : await createFromSource.mutateAsync({ source_id: Number(sourceId), count: Math.max(1, Math.min(maxImages, Number(count) || 1)), name: name.trim() || undefined })
+        ? await createUpload.mutateAsync({ files, name: name.trim() || undefined, accept_every: Number(acceptEvery) })
+        : await createFromSource.mutateAsync({ source_id: Number(sourceId), count: Math.max(1, Math.min(maxImages, Number(count) || 1)), name: name.trim() || undefined, accept_every: Number(acceptEvery) })
       toast.success(t('batchPage.created', { name: set.name }))
       setFiles([])
       setName('')
@@ -53,6 +54,7 @@ export function NewSetModal({ open, onClose, flowId, maxImages, onCreated }: { o
       <div className="space-y-3">
         <SegmentedControl size="sm" value={mode} onChange={setMode} options={[{ value: 'upload', label: t('batchPage.upload') }, { value: 'source', label: t('batchPage.fromSource') }]} />
         <TextInput label={t('batchPage.setName')} value={name} onChange={(e) => setName(e.target.value)} placeholder={t('batchPage.setNamePlaceholder')} data-testid="batch-set-name" />
+        <TextInput label={t('evidence.acceptEvery')} type="number" min={0} step={1} value={acceptEvery} onChange={(e) => setAcceptEvery(e.target.value)} data-testid="batch-accept-every" />
         {mode === 'upload' ? (
           <div className={`flex flex-col gap-2 rounded-lg border border-dashed p-3 ${dragging ? 'border-brand bg-brand-soft/40' : 'border-line'}`}
             onDragOver={(e) => { e.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)}

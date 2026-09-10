@@ -1,5 +1,10 @@
 /** 繁體中文（預設語言）。key 以功能分組；en.ts 缺的 key 會退回這裡。 */
 const zhHant = {
+  evidence: {
+    group: '樣本分組', groupFilter: '依樣本分組篩選', allGroups: '所有分組', tune: '調參組', accept: '驗收組',
+    acceptEvery: '每 N 張保留一張驗收 (0 = 不保留)', noAcceptance: '沒有獨立驗收', failureReason: '失敗原因',
+    reasons: { glare: '反光', wrong_edge: '抓錯邊', locate_offset: '定位偏移', low_contrast: '對比不足', missing_calibration: '缺少標定', tolerance_unclear: '公差不明', tool_error: '工具錯誤', other: '其他' },
+  },
   comm: {
     title: '結果回送',
     hint: '這條流程跑完一片就送一行給上位機，不必在畫布上接線。大括號裡的名字會被填進去：judge、任何具名輸出、觸發帶進來的引數，另有 run_id、station、flow 與 duration_ms。協定需要換行就打 \\r\\n。',

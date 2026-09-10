@@ -32,7 +32,7 @@ import binascii
 import json
 import re
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from django.http import HttpRequest
 from ninja import File, Router, Schema, UploadedFile
@@ -57,6 +57,11 @@ class RegionIn(Schema):
     image: int = 0
 
 
+class ImageLabelIn(Schema):
+    expected: Literal["", "ok", "ng"] = ""
+    group: Literal["tune", "accept"] = "tune"
+
+
 class GenerateIn(Schema):
     #: 舊欄位（單張）；images 有值時忽略。
     ref: str = ""
@@ -68,7 +73,8 @@ class GenerateIn(Schema):
     #: 詢問機制的回答 [{id, answer}]；會併進提示詞。
     answers: list[dict[str, Any]] = []
     #: 每張影像的期望判定（"ok"／"ng"／""，與 images 對齊）；用來排名候選方案與自動調參。
-    labels: list[str] = []
+    labels: list[str | ImageLabelIn] = []
+    groups: list[Literal["tune", "accept"]] = []
 
 
 class RunGraphIn(Schema):
@@ -211,6 +217,8 @@ class RunIn(Schema):
     status: str = ""
     outputs: dict[str, Any] = {}
     expected: str = ""
+    group: Literal["tune", "accept"] = "tune"
+    expect_outputs: dict[str, Any] = {}
 
 
 class TuneIn(Schema):
@@ -265,6 +273,7 @@ class SessionPatch(Schema):
     success: bool | None = None
     note: str | None = None
     flow_id: int | None = None
+    lessons: dict[str, Any] | None = None
 
 
 def _settings_for(request: HttpRequest) -> providers.AgentSettings:
@@ -323,7 +332,8 @@ def _batch_context(request: HttpRequest, batch_run_id: int, graph: dict[str, Any
         images[ref] = img
         m, _ = bstore.row_match(it, im)
         runs.append({"name": str(im.get("name") or f"#{idx + 1}"), "image_ref": ref, "status": str(it.get("status", "")), "outputs": it.get("outputs") or {},
-                     "expected": str(im.get("expected") or ""), "index": idx, "mismatch": m is False})
+                     "expected": str(im.get("expected") or ""), "index": idx, "mismatch": m is False,
+                     "group": im.get("group", "tune"), "expect_outputs": im.get("expect_outputs") or {}})
     runs.sort(key=lambda r: 0 if r["mismatch"] else 1)
     for r in runs:
         r.pop("mismatch", None)
@@ -491,7 +501,7 @@ def agent_clarify(request: HttpRequest, payload: GenerateIn):
 def agent_generate(request: HttpRequest, payload: GenerateIn):
     require_feature(request, "agent").can_execute()
     return service.generate(_images(payload), _regions(payload.regions), payload.prompt, _settings_for(request), use_llm=payload.use_llm,
-                            answers=payload.answers, labels=payload.labels, owner=principal(request).user)
+                            answers=payload.answers, labels=[lb.model_dump() if isinstance(lb, ImageLabelIn) else lb for lb in payload.labels], groups=payload.groups, owner=principal(request).user)
 
 
 @router.post("/agent/run")
@@ -518,7 +528,7 @@ def agent_autotune(request: HttpRequest, payload: AutotuneIn):
             from apps.vision.batch import store as bstore
 
             new = bstore.persist_tune(run.id, result["graph"], result["items"], origin="autotune", label="自動調參", owner=p.user,
-                                      meta={"rationale": result["rationale"], "changes": result["changes"], "autotune": result.get("autotune")})
+                                      meta={"rationale": result["rationale"], "changes": result["changes"], "autotune": result.get("autotune"), "acceptance": result.get("acceptance")})
         return {**result, "batch_run_id": new.id if new else None}
     if payload.graph is None:
         raise ValidationError("graph or batch_run_id is required", code="bad_request")
@@ -561,11 +571,15 @@ def start_agent_job(request: HttpRequest, payload: JobIn):
         run_images = _run_images(runs)
     if payload.task in ("edit", "tune") and (graph is None or not payload.instruction.strip()):
         raise ValidationError("edit and tune need a graph and an instruction", code="bad_request")
-    if payload.task == "tune" and not images:
-        images = [run_images[r["image_ref"]] for r in runs if r.get("image_ref") in run_images][:4]  # 持久化批次已把未命中排前面
-    labels = payload.labels or ([r.get("expected", "") for r in runs][:4] if payload.task == "tune" and batch_run_id else [])
+    selected = [r for r in runs if r.get("image_ref") in run_images]
+    from_runs = payload.task == "tune" and not images
+    if from_runs:
+        images = [run_images[r["image_ref"]] for r in selected]
+    labels = ([{"expected": r.get("expected", ""), "group": r.get("group", "tune")} for r in selected] if from_runs else
+              [lb.model_dump() if isinstance(lb, ImageLabelIn) else lb for lb in payload.labels])
     state = service.build_state(payload.task, images, _regions(payload.regions), payload.prompt, answers=payload.answers, labels=labels,
-                                graph=graph, instruction=payload.instruction, runs=runs, owner=principal(request).user, extra_summary=extra_summary)
+                                graph=graph, instruction=payload.instruction, runs=runs, owner=principal(request).user, extra_summary=extra_summary,
+                                groups=None if from_runs else payload.groups)
     budget = loop.Budget(max_turns=max(1, min(40, payload.max_turns)), max_trials=max(1, min(30, payload.max_trials)), deadline_s=max(10.0, min(900.0, payload.deadline_s)))
     return 202, jobs.start(payload.task, settings, state, budget, runs=runs, run_images=run_images, batch_run_id=batch_run_id)
 
@@ -628,6 +642,12 @@ def patch_session(request: HttpRequest, session_id: int, payload: SessionPatch):
     """評分（1／-1／0）、成功與否、備註、關聯到存成的流程。"""
     row = _session_or_404(request, session_id)
     fields = []
+    if payload.lessons is not None:
+        try:
+            row.lessons = memory.clean_lessons(payload.lessons)
+        except ValueError as exc:
+            raise ValidationError(str(exc), code="bad_lessons") from None
+        fields.append("lessons")
     if payload.rating is not None:
         if payload.rating not in (-1, 0, 1):
             raise ValidationError("rating must be -1, 0 or 1", code="bad_rating")
@@ -659,7 +679,7 @@ def restore_session(request: HttpRequest, session_id: int):
     for item, img in memory.load_images(row):
         run_id = f"agent{uuid.uuid4().hex[:12]}"
         info = store.put(f"{run_id}:upload:image", img, flow_id=service.AGENT_FLOW_ID, run_id=run_id, pinned=True)
-        images.append({**info, "name": item.get("name") or "影像"})
+        images.append({**info, "name": item.get("name") or "影像", "group": item.get("group", "tune")})
     if not images:
         raise NotFound("The images of this session no longer exist", code="images_gone")
     return {**memory.session_out(row, full=True), "images": images}
@@ -686,7 +706,7 @@ def agent_tune(request: HttpRequest, payload: TuneIn):
 
             origin = "autotune" if result.get("provider") == "autotune" else "ai_tune"
             new = bstore.persist_tune(run.id, result["graph"], result["items"], origin=origin, label=payload.instruction[:60], owner=p.user,
-                                      meta={"rationale": result["rationale"], "changes": result["changes"], "provider": result.get("provider"), "autotune": result.get("autotune")})
+                                      meta={"rationale": result["rationale"], "changes": result["changes"], "provider": result.get("provider"), "autotune": result.get("autotune"), "acceptance": result.get("acceptance")})
         return {**result, "batch_run_id": new.id if new else None}
     if payload.graph is None:
         raise ValidationError("graph or batch_run_id is required", code="bad_request")
@@ -783,7 +803,7 @@ def agent_chat(request: HttpRequest, payload: ChatIn):
 
                 origin = "autotune" if result.get("provider") == "autotune" else "ai_tune"
                 new = bstore.persist_tune(run.id, result["graph"], result["items"], origin=origin, label=message[:60], owner=p.user,
-                                          meta={"rationale": result["rationale"], "changes": result["changes"], "provider": result.get("provider"), "autotune": result.get("autotune")})
+                                          meta={"rationale": result["rationale"], "changes": result["changes"], "provider": result.get("provider"), "autotune": result.get("autotune"), "acceptance": result.get("acceptance")})
             return {"kind": "tune", "answer": result["rationale"], "provider": result["provider"], "result": {**result, "batch_run_id": new.id if new else None}, "batch_run_id": new.id if new else None}
         from apps.vision.batch.api import _run_or_404
 

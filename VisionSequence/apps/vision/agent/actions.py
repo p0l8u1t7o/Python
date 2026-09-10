@@ -7,11 +7,14 @@
 
 from __future__ import annotations
 
+import base64
+import copy
 import json
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+import cv2
 import numpy as np
 
 from apps.vision.agent import analysis as analysis_mod
@@ -24,6 +27,7 @@ from apps.vision.tools import base as tools
 FORBIDDEN_PREFIX = ("dl_",)
 FORBIDDEN_TYPES = frozenset({"write_modbus", "save_image"})
 MAX_RESULT_CHARS = 12000
+MAX_PICTURES = 12
 
 
 @dataclass
@@ -52,6 +56,9 @@ class AgentState:
     owner: Any = None
     priors: dict[tuple[str, str], Any] = field(default_factory=dict)
     examples: str = ""
+    pictures: int = 0
+    groups: list[str] = field(default_factory=list)
+    lessons: dict[str, Any] = field(default_factory=dict)
 
     def step(self, kind: str, title: str, detail: str = "", **extra: Any) -> None:
         self.steps.append({"n": len(self.steps) + 1, "kind": kind, "title": title[:200], "detail": detail[:600], "at": time.time(), **extra})
@@ -217,7 +224,7 @@ def apply_ops(graph: dict[str, Any], ops: list[dict[str, Any]]) -> tuple[dict[st
 # handlers
 # ---------------------------------------------------------------------------
 def _labeled(state: AgentState) -> list[autotune.Labeled]:
-    return [autotune.Labeled(im, e) for im, e in zip(state.images, state.expected) if e]
+    return [autotune.Labeled(im, e, group=state.groups[i] if i < len(state.groups) else "tune") for i, (im, e) in enumerate(zip(state.images, state.expected)) if e]
 
 
 def h_get_state(state: AgentState, args: dict[str, Any]) -> dict[str, Any]:
@@ -230,6 +237,7 @@ def h_get_state(state: AgentState, args: dict[str, Any]) -> dict[str, Any]:
         "analysis": analysis_mod.summarize_for_llm(state.analysis) if state.analysis else "",
         "batch_summary": state.batch_summary, "answers": state.answers,
         "graph": state.graph, "last_trial": state.last_trial, "trials_used": state.trials, "tool_calls_used": state.tool_calls,
+        "groups": state.groups or ["tune"] * len(state.images),
     }
 
 
@@ -319,7 +327,7 @@ def h_run_trial(state: AgentState, args: dict[str, Any]) -> dict[str, Any]:
     results = []
     for i in idxs:
         rep = _trial(state, state.images[i])
-        row = {"image": i + 1, "expected": state.expected[i] if i < len(state.expected) else "", **compact_report(rep)}
+        row = {"image": i + 1, "expected": state.expected[i] if i < len(state.expected) else "", "group": state.groups[i] if i < len(state.groups) else "tune", **compact_report(rep)}
         results.append(row)
     labeled = [(r["status"], r["expected"]) for r in results if r["expected"]]
     summary = {"ok": sum(r["status"] == "ok" for r in results), "ng": sum(r["status"] == "ng" for r in results),
@@ -327,10 +335,18 @@ def h_run_trial(state: AgentState, args: dict[str, Any]) -> dict[str, Any]:
                "matches": sum(s == e for s, e in labeled), "labeled": len(labeled),
                "error_nodes": sorted({nid for r in results for nid, n in r["nodes"].items() if n["status"] == "error"})}
     state.last_trial = [{"image": r["image"], "status": r["status"], "expected": r["expected"], "outputs": r["outputs"]} for r in results]
-    return {"results": results, "summary": summary}
+    accepted = autotune.acceptance_rows(results)
+    tune = [r for r in results if r["group"] == "tune" and r["expected"]]
+    return {"results": results, "summary": summary, "tuning": {"matches": sum(r["status"] == r["expected"] for r in tune), "labeled": len(tune)},
+            "acceptance": accepted, "acceptance_note": autotune.acceptance_text(accepted)}
 
 
 def h_inspect_node(state: AgentState, args: dict[str, Any]) -> dict[str, Any]:
+    from apps.vision.agent import service
+    from apps.vision.images import store
+
+    if state.pictures >= MAX_PICTURES:
+        return {"error": "picture budget exhausted"}
     if state.graph is None:
         return {"error": "還沒有流程"}
     node = str(args.get("node", ""))
@@ -339,12 +355,86 @@ def h_inspect_node(state: AgentState, args: dict[str, Any]) -> dict[str, Any]:
     if not (0 <= idx < len(state.images)):
         return {"error": f"影像編號要在 1～{len(state.images)}"}
     state.trials += 1
-    rep = _trial(state, state.images[idx])
-    nr = rep.nodes.get(node)
-    if nr is None:
-        return {"error": f"節點 {node} 沒有執行（可能被分支略過）", "run_status": rep.status}
-    return {"node": node, "image": idx + 1, "status": nr.status, "message": str(nr.message)[:300], "branch": nr.branch,
-            "outputs": _scalar_outputs(nr.outputs), "overlay_count": len(nr.overlays or []), "detail": nr.detail, "logs": nr.logs[-10:]}
+    rep = service.trial_run(state.graph, state.images[idx], keep_images=True)
+    try:
+        nr = rep.nodes.get(node)
+        if nr is None:
+            return {"error": f"Node {node} did not run", "run_status": rep.status}
+        port = args.get("image_port")
+        if port:
+            ref = (nr.outputs.get(port) or {}).get("ref") if isinstance(nr.outputs.get(port), dict) else None
+        else:
+            ref = next((v["ref"] for k, v in nr.outputs.items() if k != "_image" and isinstance(v, dict) and v.get("ref")), None)
+            ref = ref or nr.detail.get("_input_ref") or (nr.outputs.get("_image") or {}).get("ref")
+        image = store.get(ref) if ref else None
+        result = {"node": node, "image": idx + 1, "status": nr.status, "message": str(nr.message)[:300], "branch": nr.branch,
+                  "outputs": _scalar_outputs(nr.outputs), "overlay_count": len(nr.overlays or []), "detail": nr.detail, "logs": nr.logs[-10:]}
+        if image is None:
+            return {**result, "error": "No image is available for this node or port"}
+        result.update(evidence_picture(image, nr.overlays or [], args.get("crop"), args.get("max_side", 512), nr.status))
+        state.pictures += 1
+        return result
+    finally:
+        store.drop_run(rep.id)
+
+
+def evidence_picture(image, overlays, region=None, max_side=512, status="ok") -> dict[str, Any]:
+    """只在顯示複本畫標記；座標依裁切偏移與最終縮圖尺寸換算。"""
+    from apps.vision.images import encode_image
+    from apps.vision.tools import roi
+    from apps.vision.tools.builtin.output import draw_overlay
+
+    limit = max(1, min(1024, int(max_side)))
+    canvas = image.copy()
+    if canvas.dtype != np.uint8:
+        canvas = cv2.normalize(canvas, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+    if canvas.ndim == 2:
+        canvas = cv2.cvtColor(canvas, cv2.COLOR_GRAY2BGR)
+    elif canvas.shape[2] == 4:
+        canvas = cv2.cvtColor(canvas, cv2.COLOR_BGRA2BGR)
+    colored = copy.deepcopy(overlays)
+    for ov in colored:
+        color = str(ov.get("color", "")).lower()
+        ov["color"] = "#ef4444" if status == "ng" or color in ("red", "#ef4444", "#ff0000", "#f43f5e") else "#22c55e"
+        draw_overlay(canvas, ov)
+    cut = roi.crop(canvas, region)
+    if not cut.image.size:
+        raise ValueError("The crop does not intersect the image")
+    canvas = cut.image.copy()
+    if cut.mask is not None:
+        canvas[cut.mask == 0] = 0
+    h, w = canvas.shape[:2]
+    while True:
+        scale = min(1.0, limit / max(h, w))
+        width, height = max(1, round(w * scale)), max(1, round(h * scale))
+        thumb = cv2.resize(canvas, (width, height), interpolation=cv2.INTER_AREA)
+        data = encode_image(thumb, quality=80)
+        if len(data) <= 200 * 1024:
+            break
+        limit = max(1, int(limit * .8))
+    sx, sy = width / w, height / h
+    summary = []
+    for ov in colored[:20]:
+        out = copy.deepcopy(ov)
+        for key in ("x", "x1", "x2", "cx"):
+            if key in out:
+                out[key] = (out[key] - cut.x0) * sx
+        for key in ("y", "y1", "y2", "cy"):
+            if key in out:
+                out[key] = (out[key] - cut.y0) * sy
+        for key in ("w", "r", "r_inner", "r_outer", "rx"):
+            if key in out:
+                out[key] *= sx
+        for key in ("h", "ry"):
+            if key in out:
+                out[key] *= sy
+        if out.get("points"):
+            out["points"] = ((np.asarray(out["points"], dtype=float) - [cut.x0, cut.y0]) * [sx, sy]).tolist()
+        if out.get("contours"):
+            out["contours"] = [((np.asarray(c, dtype=float) - [cut.x0, cut.y0]) * [sx, sy]).tolist() for c in out["contours"]]
+        summary.append(out)
+    return {"picture": {"mime": "image/jpeg", "width": width, "height": height, "data_base64": base64.b64encode(data).decode("ascii")},
+            "overlay_summary": summary}
 
 
 def h_crop_template(state: AgentState, args: dict[str, Any]) -> dict[str, Any]:
@@ -386,7 +476,8 @@ def h_crop_template(state: AgentState, args: dict[str, Any]) -> dict[str, Any]:
 def h_auto_tune(state: AgentState, args: dict[str, Any]) -> dict[str, Any]:
     if state.graph is None:
         return {"error": "還沒有流程"}
-    labeled = _labeled(state)
+    samples = _labeled(state)
+    labeled = [lb for lb in samples if lb.group == "tune"]
     if len(labeled) < 1:
         return {"error": "沒有影像標記（expected），無法自動調參；可先請使用者標記或用 run_trial 自行判斷"}
     state.trials += 1
@@ -394,7 +485,9 @@ def h_auto_tune(state: AgentState, args: dict[str, Any]) -> dict[str, Any]:
                                      trial=lambda g, im: _trial_graph(g, im), priors=state.priors)
     if res["improved"]:
         state.graph = res["graph"]
-    return {"improved": res["improved"], "before": res["before"], "after": res["after"], "changes": res["change_text"], "evals": res["evals"], "budget_hit": res["budget_hit"]}
+    accepted = autotune.acceptance(state.graph, samples, _trial_graph)
+    return {"improved": res["improved"], "before": res["before"], "after": res["after"], "changes": res["change_text"], "evals": res["evals"], "budget_hit": res["budget_hit"],
+            "acceptance": accepted, "message": f"Tune group: {res['after']['match']}/{res['after']['total']} matched. " + autotune.acceptance_text(accepted)}
 
 
 def _trial_graph(graph: dict[str, Any], image: np.ndarray) -> Any:
@@ -427,8 +520,12 @@ def h_ask_user(state: AgentState, args: dict[str, Any]) -> dict[str, Any]:
 
 
 def h_finish(state: AgentState, args: dict[str, Any]) -> dict[str, Any]:
+    from apps.vision.agent import memory
+
     if state.graph is None:
         return {"error": "還沒有流程，不能完成：先 draft_from_rules 或 replace_graph"}
+    if args.get("lessons") is not None:
+        state.lessons = memory.clean_lessons(args["lessons"])
     state.rationale = str(args.get("rationale") or state.rationale)
     state.finished = True
     return {"ok": True}
@@ -453,7 +550,7 @@ ACTIONS: list[ActionSpec] = [
                    "source": {"type": "string"}, "source_handle": {"type": "string"}, "target": {"type": "string"}, "target_handle": {"type": "string"},
                }, ["op"])}}, ["ops"]), h_patch_graph),
     ActionSpec("run_trial", "把目前流程在影像上試跑，回每張的狀態、具名輸出、各節點訊息與命中摘要。", _obj({"images": {"type": "array", "items": {"type": "integer"}, "description": "影像編號清單（1 起算）；省略＝全部"}}), h_run_trial),
-    ActionSpec("inspect_node", "在一張影像上試跑並回某個節點的完整輸出與訊息（除錯用）。", _obj({"node": {"type": "string"}, "image": {"type": "integer"}}, ["node"]), h_inspect_node),
+    ActionSpec("inspect_node", "在一張影像上試跑並回節點輸出、標記縮圖與縮圖座標。", _obj({"node": {"type": "string"}, "image": {"type": "integer"}, "image_port": {"type": "string"}, "crop": _REGION_SCHEMA, "max_side": {"type": "integer"}}, ["node"]), h_inspect_node),
     ActionSpec("crop_template", "把某張影像的區域裁成範本圖，並加一個固定影像節點接到 target 節點的圖片輸入埠（template_match 的 template_image、defect_diff 的 template_image、shading_correct 的 flat_image）。圖片跟著流程走，不進資產庫。",
                _obj({"image": {"type": "integer"}, "region": _REGION_SCHEMA, "name": {"type": "string"},
                      "target": {"type": "string", "description": "要接的節點 id；省略＝只裁不接"},
@@ -463,7 +560,7 @@ ACTIONS: list[ActionSpec] = [
                _obj({"questions": {"type": "array", "items": _obj({"id": {"type": "string"}, "text": {"type": "string"}, "kind": {"type": "string", "enum": ["choice", "number", "text", "roi"]},
                                                                     "options": {"type": "array", "items": _obj({"value": {"type": "string"}, "label": {"type": "string"}})},
                                                                     "optional": {"type": "boolean"}, "hint": {"type": "string"}}, ["text"])}}, ["questions"]), h_ask_user, terminal=True),
-    ActionSpec("finish", "完成：目前流程就是最終結果。rationale 用繁體中文說明設計理由、假設與建議。", _obj({"rationale": {"type": "string"}}, ["rationale"]), h_finish, terminal=True),
+    ActionSpec("finish", "完成：目前流程就是最終結果。說明調參與驗收結果，可附 lessons 記錄失敗原因與適用條件。", _obj({"rationale": {"type": "string"}, "lessons": {"type": "object"}}, ["rationale"]), h_finish, terminal=True),
 ]
 ACTION_MAP: dict[str, ActionSpec] = {a.name: a for a in ACTIONS}
 

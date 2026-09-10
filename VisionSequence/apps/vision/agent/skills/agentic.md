@@ -34,3 +34,11 @@
 - 改門檻：`{"op":"set_param","node":"thr","key":"threshold","value":"90"}`
 - 新增節點並接線：`{"op":"add_node","node":"open","type":"morphology","label":"開運算","params":{"op":"open","ksize":5}}`、`{"op":"add_edge","source":"thr","target":"open"}`、`{"op":"add_edge","source":"open","target":"blob"}`、`{"op":"remove_edge","source":"thr","target":"blob"}`
 - 停用節點：`{"op":"disable","node":"blur"}`
+
+## 證據與樣本分組
+
+- inspect_node 可指定 image_port、crop（標準 ROI）、max_side（預設 512，最高 1024）。picture 是節點縮圖，overlay_summary 是縮圖座標；只看它支持的證據，不猜原圖外的位置。每個工作階段最多 12 張（含初始影像），達上限後改用已有影像和文字。
+- 工具結果可能註明不支援影像；此時不可宣稱看過縮圖。
+- tune 組用來調參，accept 組用來獨立驗收。auto_tune 的 before／after 只指調參組，acceptance 才是驗收組。分別報告 matches/labeled，沒有驗收組就明講「沒有獨立驗收」，不能把調參命中當驗收。
+- finish 的 lessons 可含 outcome（success／failure／partial）、failure_reasons（glare／wrong_edge／locate_offset／low_contrast／missing_calibration／tolerance_unclear／tool_error／other）、conditions（lighting／material／part／notes）、accepted_on（tune／accept／null）。只記有證據的結果與條件；未完成也要說明原因。
+- 相似案例的「避免 / Avoid」段是已知失敗與限制，不可抄其參數當先驗。

@@ -159,6 +159,10 @@ export function BatchPage() {
     if (setId === null) return
     try { await mut.patchSet.mutateAsync({ id: setId, labels: [{ index, expected }] }) } catch (error) { toast.error(errorMessage(error)) }
   }
+  async function group(index: number, value: 'tune' | 'accept') {
+    if (setId === null) return
+    try { await mut.patchSet.mutateAsync({ id: setId, labels: [{ index, group: value }] }) } catch (error) { toast.error(errorMessage(error)) }
+  }
   async function bulkLabel(expected: Expected) {
     if (setId === null || !set.data?.images) return
     try { await mut.patchSet.mutateAsync({ id: setId, labels: set.data.images.map((im) => ({ index: im.index, expected })) }) } catch (error) { toast.error(errorMessage(error)) }
@@ -278,7 +282,7 @@ export function BatchPage() {
             <div className="mt-3">
               {tab === 'result' ? (currentRun && currentSet ? <BatchRunDetail run={currentRun} set={currentSet} onLabel={(i, e) => void label(i, e)} onPreview={setPreviewIndex} onToGolden={(idx) => void toGolden(idx)} canManage={canManage} />
                 : <EmptyState title={currentSet ? t('batchPage.noRuns') : t('batchPage.noSets')} compact />) : null}
-              {tab === 'images' ? (currentSet ? <BatchImagesGrid set={currentSet} run={currentRun} onLabel={(i, e) => void label(i, e)} onBulk={(e) => void bulkLabel(e)} onPreview={setPreviewIndex} canManage={canManage} /> : <EmptyState title={t('batchPage.noSets')} compact />) : null}
+              {tab === 'images' ? (currentSet ? <BatchImagesGrid set={currentSet} run={currentRun} onGroup={(i, g) => void group(i, g)} onLabel={(i, e) => void label(i, e)} onBulk={(e) => void bulkLabel(e)} onPreview={setPreviewIndex} canManage={canManage} /> : <EmptyState title={t('batchPage.noSets')} compact />) : null}
               {tab === 'insights' ? (currentRun && currentSet ? <BatchInsightsPanel insights={insights.data} runs={runItems} set={currentSet} run={currentRun} onApply={apply} onPreview={setPreviewIndex} /> : <EmptyState title={t('batchPage.noRuns')} compact />) : null}
               {tab === 'compare' ? (
                 <div className="space-y-3">

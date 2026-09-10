@@ -55,6 +55,52 @@ class Labeled:
     expect_status: str = "any"
     expect_outputs: dict[str, Any] = field(default_factory=dict)
     name: str = ""
+    group: str = "tune"
+
+
+def group_of(value: Any) -> str:
+    """舊資料沒有分組時屬於調參組；未知分組拒絕使用。"""
+    value = value.get("group", "tune") if isinstance(value, dict) else value
+    if value not in ("tune", "accept"):
+        raise ValueError("group must be tune or accept")
+    return value
+
+
+def label_groups(labels: list, count: int, groups: list[str] | None = None) -> list[str]:
+    return [group_of(groups[i] if groups and i < len(groups) else labels[i] if i < len(labels) and isinstance(labels[i], dict) else "tune") for i in range(count)]
+
+
+def acceptance_rows(rows: list[dict[str, Any]]) -> dict[str, int]:
+    """只統計驗收組；錯誤與未執行不算命中。"""
+    out = {"ok": 0, "ng": 0, "matches": 0, "labeled": 0}
+    for row in rows:
+        if group_of(row) != "accept":
+            continue
+        status = row.get("after", row.get("status", ""))
+        if status in ("ok", "ng"):
+            out[status] += 1
+        expected = row.get("expected", "")
+        outputs = row.get("expect_outputs") or {}
+        if expected in ("ok", "ng") or outputs:
+            out["labeled"] += 1
+            match, _ = evaluate_expect(expected or "any", outputs or None, status, row.get("outputs") or {})
+            out["matches"] += int(match and status in ("ok", "ng"))
+    return out
+
+
+def acceptance(graph: dict, labeled: list[Labeled], trial: Trial) -> dict[str, int]:
+    rows = []
+    for lb in labeled:
+        if lb.group != "accept":
+            continue
+        rep = trial(graph, lb.image)
+        rows.append({"group": "accept", "status": rep.status, "outputs": rep.outputs,
+                     "expected": lb.expect_status, "expect_outputs": lb.expect_outputs})
+    return acceptance_rows(rows)
+
+
+def acceptance_text(result: dict[str, int]) -> str:
+    return f"Acceptance group: {result['matches']}/{result['labeled']} matched." if result["labeled"] else "No independent acceptance."
 
 
 @dataclass(order=True)
@@ -189,6 +235,7 @@ def coordinate_search(graph: dict[str, Any], labeled: list[Labeled], *, max_eval
                       trial: Trial | None = None, max_passes: int = 3, priors: dict[tuple[str, str], Any] | None = None) -> dict[str, Any]:
     """座標下降：每個維度依序試候選值，嚴格變好就採納並進下一個維度；一輪沒有任何改善或預算用完即停。"""
     trial = trial or _default_trial()
+    labeled = [lb for lb in labeled if group_of(lb.group) == "tune"]
     t0 = time.perf_counter()
     best = json.loads(json.dumps(graph))
     if not labeled:

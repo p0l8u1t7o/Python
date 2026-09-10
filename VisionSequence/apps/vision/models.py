@@ -380,6 +380,7 @@ class AgentSession(models.Model):
     statuses = models.JSONField(default=list, blank=True)
     #: 標記全部命中＝True；沒有標記＝None。
     success = models.BooleanField(null=True, blank=True)
+    lessons = models.JSONField(default=dict, blank=True)
     #: 使用者評分：1 讚、-1 倒讚、0 未評。
     rating = models.SmallIntegerField(default=0)
     note = models.TextField(blank=True, default="")

@@ -151,6 +151,20 @@ def _run(job: AgentJob) -> None:
         job.status, job.error = "error", f"{exc.__class__.__name__}: {str(exc)[:300]}"
         job.finished_at = time.time()
     finally:
+        if job.status in ("error", "done", "budget") and not (job.result or {}).get("session_id"):
+            st = job.state
+            result = job.result or {}
+            statuses = [it.get("after", it.get("status", "")) for it in result.get("items") or []]
+            if not statuses and result.get("report"):
+                statuses = [result["report"]["status"]]
+            if job.status == "error":
+                statuses = ["failed"] * max(1, len(st.images))
+            session = memory.remember(owner=st.owner, task=st.task, prompt=st.prompt or st.feedback, intent_kind=st.intent.kind,
+                                      images=st.images, regions=st.regions, answers=st.answers, labels=st.expected, analysis=st.analysis,
+                                      graph=result.get("graph") or st.graph or {}, rationale=job.error or result.get("rationale", ""), candidates=[], statuses=statuses,
+                                      provider=job.settings.provider, mode=job.settings.mode, turns=job.turns, groups=st.groups,
+                                      lessons={"outcome": "failure", "failure_reasons": ["tool_error"]} if job.status == "error" else st.lessons)
+            job.result = {**(job.result or {}), "session_id": session.id if session else None}
         close_old_connections()
 
 
@@ -186,7 +200,7 @@ def _run_single(job: AgentJob) -> None:
 
     st = job.state
     if job.task == "generate":
-        job.result = service.generate(st.images, st.regions, st.prompt, job.settings, answers=st.answers, labels=st.expected, owner=st.owner)
+        job.result = service.generate(st.images, st.regions, st.prompt, job.settings, answers=st.answers, labels=st.expected, groups=st.groups, owner=st.owner)
     elif job.task == "edit":
         job.result = service.edit(st.graph or {"nodes": [], "edges": []}, st.feedback, st.images[0] if st.images else None, job.settings)
     else:
@@ -207,7 +221,9 @@ def _persist_batch(job: AgentJob, graph: dict[str, Any] | None, items: list[dict
         from apps.vision.batch import store as bstore
 
         new = bstore.persist_tune(job.batch_run_id, graph, items, origin="ai_tune", label=(job.state.feedback or "AI 調整")[:60], owner=job.state.owner,
-                                  meta={"rationale": rationale[:2000], "changes": list(changes)[:50], "provider": job.settings.provider, "agentic": job.task == "tune" and job.status == "running"})
+                                  meta={"rationale": rationale[:2000], "changes": list(changes)[:50], "provider": job.settings.provider,
+                                        "autotune": job.result.get("autotune"), "acceptance": job.result.get("acceptance"),
+                                        "agentic": job.task == "tune" and job.status == "running"})
         job.result["batch_run_id"] = new.id if new else None
     except Exception:  # noqa: BLE001
         log.warning("批次結果落地失敗", exc_info=True)
@@ -233,8 +249,10 @@ def _finalize(job: AgentJob, status: str) -> None:
                                      warnings=warnings, candidates=[], labels=st.expected, agentic=True, turns=job.turns)
         session = memory.remember(owner=st.owner, task="generate", prompt=st.prompt, intent_kind=st.intent.kind, images=st.images, regions=st.regions,
                                   answers=st.answers, labels=st.expected, analysis=st.analysis, graph=graph, rationale=st.rationale, candidates=[],
-                                  statuses=[r.get("status", "") for r in reports], provider=job.settings.provider, mode="agentic", turns=job.turns)
+                                  statuses=[r.get("status", "") for r in reports], provider=job.settings.provider, mode="agentic", turns=job.turns, lessons=st.lessons, groups=st.groups)
         job.result["session_id"] = session.id if session else None
+        job.result["acceptance"] = service.autotune.acceptance_rows([{**r, "expected": st.expected[i], "group": st.groups[i] if i < len(st.groups) else "tune"} for i, r in enumerate(reports)])
+        job.result["acceptance_note"] = service.autotune.acceptance_text(job.result["acceptance"])
     elif job.task == "edit":
         report = service.trial_run(graph, st.images[0]).to_dict(include_node_outputs=True) if st.images else None
         job.result = {"graph": graph, "rationale": st.rationale, "provider": job.settings.provider, "changes": [s["detail"] for s in st.steps if s["kind"] == "tool" and s["title"] == "patch_graph"],
@@ -245,5 +263,7 @@ def _finalize(job: AgentJob, status: str) -> None:
         job.result = {"graph": graph, "rationale": st.rationale, "provider": job.settings.provider, "changes": changes,
                       "before": service._tally([r.get("status", "") for r in job.runs]), "after": service._tally([it["after"] for it in items]), "items": items,
                       "applied": True, "warnings": warnings, "agentic": True, "turns": job.turns}
+        job.result["acceptance"] = service.autotune.acceptance_rows(items)
+        job.result["acceptance_note"] = service.autotune.acceptance_text(job.result["acceptance"])
         _persist_batch(job, graph, items, st.rationale, changes)
     job.status, job.finished_at = status, time.time()

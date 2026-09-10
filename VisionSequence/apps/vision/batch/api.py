@@ -73,14 +73,20 @@ def _max_images() -> int:
     return int(store.cfg("BATCH_MAX_IMAGES", 200))
 
 
-def _create_set(request: HttpRequest, flow: Flow, name: str, source: str, frames: list[tuple[str, Any]]) -> BatchSet:
+def _create_set(request: HttpRequest, flow: Flow, name: str, source: str, frames: list[tuple[str, Any]], accept_every: int = 0) -> BatchSet:
     if not frames:
         raise ValidationError("At least one image is needed", code="no_image")
     if len(frames) > _max_images():
         raise ValidationError(f"An image set holds at most {_max_images()} images", code="too_many_images")
+    if accept_every < 0 or accept_every == 1:
+        raise ValidationError("accept_every must be 0 or at least 2", code="bad_group_interval")
     p = principal(request)
     s = BatchSet.objects.create(flow=flow, owner=p.user, name=(name or f"{flow.name} {time.strftime('%m/%d %H:%M')}")[:120], source=source[:120])
     store.save_images(s, frames)
+    if accept_every:
+        for i, im in enumerate(s.images):
+            im["group"] = "accept" if (i + 1) % accept_every == 0 else "tune"
+        s.save(update_fields=["images"])
     store.prune_sets(flow)
     return s
 
@@ -116,6 +122,7 @@ class FromSourceIn(Schema):
     source_id: int
     count: int = 10
     name: str = ""
+    accept_every: int = 0
 
 
 @router.post("/batch/sets/from-source", response={201: dict})
@@ -135,7 +142,7 @@ def create_set_from_source(request: HttpRequest, payload: FromSourceIn):
         frames.append((f"{source.name}-{i + 1}", img))
     if not frames:
         raise ValidationError("The image source returned no image", code="no_image")
-    s = _create_set(request, flow, payload.name, f"source:{source.name}", frames)
+    s = _create_set(request, flow, payload.name, f"source:{source.name}", frames, payload.accept_every)
     return 201, store.set_out(s, full=True)
 
 
@@ -156,7 +163,11 @@ def create_set(request: HttpRequest, images: list[UploadedFile] = File(...)):
             frames.append((up.name or "image", _decode_upload(up)))
         except ValidationError:
             raise ValidationError(f"Could not decode {up.name}", code="bad_image") from None
-    s = _create_set(request, flow, str(request.POST.get("name") or ""), "upload", frames)
+    try:
+        accept_every = int(request.POST.get("accept_every") or 0)
+    except ValueError:
+        raise ValidationError("accept_every must be an integer", code="bad_group_interval") from None
+    s = _create_set(request, flow, str(request.POST.get("name") or ""), "upload", frames, accept_every)
     return 201, store.set_out(s, full=True)
 
 
@@ -172,6 +183,7 @@ class LabelIn(Schema):
     expected: str | None = None
     expect_outputs: dict[str, Any] | None = None
     note: str | None = None
+    group: str | None = None
 
 
 class SetPatch(Schema):
@@ -204,6 +216,10 @@ def patch_set(request: HttpRequest, set_id: int, payload: SetPatch):
                 im["expect_outputs"] = dict(lb.expect_outputs)
             if lb.note is not None:
                 im["note"] = lb.note[:500]
+            if lb.group is not None:
+                if lb.group not in ("tune", "accept"):
+                    raise ValidationError("group must be tune or accept", code="bad_group")
+                im["group"] = lb.group
         fields.append("images")
     if payload.remove:
         if s.runs.filter(status__in=("queued", "running")).exists():
@@ -343,7 +359,7 @@ def create_run(request: HttpRequest, set_id: int, payload: RunCreate):
         graph = apply_recipe(graph, recipe)
         recipe_name = recipe.name if recipe else ""
     graph = validate_graph(graph)
-    if payload.mode == "autotune" and not any(im.get("expected") in ("ok", "ng") for im in s.images):
+    if payload.mode == "autotune" and not any(im.get("expected") in ("ok", "ng") and im.get("group", "tune") == "tune" for im in s.images):
         raise ValidationError("Auto-tuning needs the images labelled as expected OK or NG first", code="no_labels")
     origin = "autotune" if payload.mode == "autotune" else (payload.origin if payload.origin in ORIGINS else "manual")
     run = BatchRun.objects.create(
