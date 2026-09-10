@@ -471,6 +471,10 @@ class DistanceTool(Tool):
     def execute(self, ctx: ToolContext) -> Result:
         mode = str(ctx.param("mode", "euclid"))
         raw_a, raw_b = ctx.inputs.get("a"), ctx.inputs.get("b")
+        # 有幾何輸入但本次未找到時，保留 NG 語意，勿把下游量測變成執行錯誤。
+        if any(key in ctx.inputs and ctx.inputs[key] is None and any(ctx.inputs.get(f"{key}{axis}") is None for axis in ("x", "y")) for key in ("a", "b")):
+            return Result(outputs={"distance": float("nan"), "distance_world": float("nan"), "dx": float("nan"), "dy": float("nan")},
+                          status="ng", message="The upstream step found no geometry")
         shape_a, shape_b = _as_line(raw_a) or _as_circle(raw_a), _as_line(raw_b) or _as_circle(raw_b)
         if shape_a is not None or shape_b is not None:
             return _shape_distance(raw_a, raw_b, mode, ctx)
@@ -1615,7 +1619,7 @@ class ToleranceJudgeTool(Tool):
     def execute(self, ctx: ToolContext) -> Result:
         raw = ctx.inputs.get("value")
         try:
-            v = float(raw)
+            v = float(raw) if raw is not None else float("nan")
         except (TypeError, ValueError):
             raise ToolError(f"The input is not a number: {raw!r}") from None
         nominal = ctx.number("nominal", 0)

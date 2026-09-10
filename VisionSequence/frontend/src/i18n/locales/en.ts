@@ -2643,6 +2643,8 @@ const enExtra3 = {
 }
 
 const inspectStage6 = { inspect: {
+  "fixedImages": "Fixed images",
+  "missingImage": "Select an image source, upload fixed images, or load a temporary image before running.",
   "title": "Inspection tasks",
   "run": "Try run",
   "save": "Save",

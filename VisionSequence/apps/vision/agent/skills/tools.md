@@ -134,6 +134,7 @@ ROI 處理完要回到全圖座標時使用：`crop.image` 做完濾波/遮罩�
 固定角度旋轉／翻轉（相機裝反）。`keep_size=true` 不改尺寸會裁角。
 
 ## template_match
+旋轉工件可選 `refine_rotation=true` 聯合精修剛體位置與角度；一般工具預設關閉，檢測任務允許旋轉時開啟。含大量背景的範本容易使粗找／角度插值偏移；90° 對稱十字本身不能辨別相差 90° 的方向，應改用不對稱標記。
 範本比對定位：範本圖有兩種給法——**首選** `crop_template` 動作把 ROI 裁成固定影像節點接到 `template_image` 埠（圖片跟著流程走），或 `template` 選既有影像資產；`threshold` 0.6～0.8（NCC 分數），旋轉件給 `angle_range`（±度）與 `angle_step`（5 即可，`subpixel` 預設開會把位置內插到 0.05px、角度內插到步進的 1/10）。角度以畫面順時針為正，與 ROI／找直線一致，可直接餵 shape_align。輸出 `matches` 給 shape_align、`best_x/best_y`；`not_found` 分支接 judge(ng)。兩者都沒有時留空並在 note 提醒使用者補圖。
 有無判定時用 `expected=present/absent`，不要另外接比較節點。`detected` 是這次是否找到，`valid` 是定位補正是否有效；位置補正沒找到時，即使 `expected=absent` 也會判 NG，避免在錯位置誤放行。
 
@@ -532,6 +533,7 @@ ROI 平均色與目標色（`color` 十六進位）距離 ≤ `tolerance` → ma
 ROI 顏色統計輸出（RGB/HSV 平均、hex）給上位機記錄或接 if_number。
 
 ## edge_defect
+`filter_fractures=true` 讓 `min_width` 同時限制所有缺陷（含找不到邊的 fracture），預設關閉以保留原行為。圓周任務用角度或 mm 的 `min_length`，弧長＝教導環域中線半徑 × 角度（弧度）× 標定倍率；執行時透過 calibration 與 formula.value 換算成卡尺數。方向可選 inward／outward／both；杯口缺料預設 inward，以教導中線為基準，凸耳不當缺口。
 `closed_sequence=true` 只用在完整圓周展開後的直線掃描；參考線長度必須恰為一圈的展開寬度，末端不重複取樣。頭尾缺陷合併後，中心與起訖以解包座標表示（可以超過影像右緣）；請將 `defects` 接 `defects_to_geometry`，再以原始 `mapping` 接 `polar_restore` 還原。扇形保持關閉。預設 `false` 保留原本分段、幾何與訊息。
 **整條邊一次檢查完**（缺口、毛刺、崩掉、錯位、寬度不對都在這一顆）：沿參考邊佈一排卡尺，
 偏離理想邊的那幾段就是缺陷，每個都帶種類、外框、沿邊長度與面積。

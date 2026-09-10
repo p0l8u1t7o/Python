@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import partial
+import math
 from typing import Any
 
 from apps.core.errors import ValidationError
@@ -128,14 +129,29 @@ def circular_layout(f: dict) -> TaskLayout:
     mapping = mapping_dict(cx, cy, ri, ro, a0=a0, a1=a1, start_angle=f.get("start_angle", 0), direction=f.get("direction", "cw"), step_deg=.5, radial_step=1)
     width = mapping["width"]
     closed = not mapping["sector"]
-    edge_params = values(f, "threshold min_width max_defects")
+    minimum = float(f.get("min_length", 1))
+    edge_params = values(f, "threshold max_defects")
     edge_params.update(roi={"shape": "rect", "x": 0, "y": (ro - ri) / 2 - 10, "w": width if closed else max(1, width - 1), "h": 20},
                        calipers=width, caliper_width=1, search=f.get("search", 35), edge_threshold=20,
-                       polarity=f.get("polarity", "light_to_dark"), closed_sequence=closed)
-    return TaskLayout({"unwrap": ("polar_unwrap", {**values(f, "roi start_angle direction"), "angle_step": "0.5"}),
+                       polarity=f.get("polarity", "light_to_dark"), closed_sequence=closed,
+                       filter_fractures=True, min_width=minimum / .5, direction=f.get("defect_direction", "both"), baseline="reference")
+    publish(edge_params, "count", f.get("result_name"))
+    steps = {"unwrap": ("polar_unwrap", {**values(f, "roi start_angle direction"), "angle_step": "0.5"}),
                        "defect": ("edge_defect", edge_params), "geom": ("defects_to_geometry", {"output": f.get("geometry", "centres")}),
-                       "restore": ("polar_restore", {})},
-                      (E("unwrap", "image", "defect", "image"), E("defect", "defects", "geom", "defects"),
+                       "restore": ("polar_restore", {})}
+    extra = ()
+    if f.get("unit") == "mm":
+        if not f.get("calibration"):
+            raise ValidationError("Millimetre mode needs a calibration", code="missing_calibration")
+        # 弧長定義在教導環域的中線半徑；標定倍率由執行時的既有工具讀取，不在翻譯器查資料庫。
+        arc = (ri + ro) / 2 * math.radians(.5)
+        steps.update(length=("formula", {"expression": str(minimum)}),
+                     scale=("calibration", {"mode": "asset", "calibration": f["calibration"]}),
+                     limit=("formula", {"expression": f"a / (b * {arc!r})"}))
+        extra = (E("length", "value", "scale", "value"), E("length", "value", "limit", "a"),
+                 E("scale", "scale", "limit", "b"), E("limit", "value", "defect", "param:min_width"))
+    return TaskLayout(steps,
+                      (*extra, E("unwrap", "image", "defect", "image"), E("defect", "defects", "geom", "defects"),
                        E("geom", "points", "restore", "points"), E("geom", "contours", "restore", "contours"), E("unwrap", "mapping", "restore", "mapping"),
                        E("defect", "ok", "restore", "_flow"), E("defect", "defect", "restore", "_flow")),
                       (*inputs("unwrap"), P("restore", "image")), (P("defect", "count"), P("restore", "points"), P("restore", "contours")),
@@ -191,7 +207,7 @@ def locate_layout(f: dict) -> TaskLayout:
     if method == "template":
         tool = "template_match"
         steps["ref"] = ("fixed_image", {"images": f.get("template_images") or [], "mode": "fixed", "index": 1, "role": "reference"})
-        params.update(threshold=f.get("threshold", .7), angle_range=angle, expected="present")
+        params.update(threshold=f.get("threshold", .7), angle_range=angle, expected="present", refine_rotation=rotation)
         edges = (E("ref", "image", "find", "template_image"), *edges)
     elif method == "shape":
         tool = "shape_match"
@@ -201,7 +217,8 @@ def locate_layout(f: dict) -> TaskLayout:
         tool = "register_detect"
         params.update(registrations=f.get("template_images") or [], min_similarity=f.get("threshold", .7), angle_range=angle, mode="detect", expected="present", max_count=1)
     steps["find"] = (tool, params)
-    return TaskLayout(steps, edges, (P("find", "image"),), (P("find", "found"), P("align", "transform")), value_port=P("align", "transform"), verdict_role="find")
+    return TaskLayout(steps, edges, (P("find", "image"),), (P("find", "found"), P("align", "transform")), value_port=P("align", "transform"), verdict_role="find",
+                      summary_expression="a > 0", summary_inputs=(P("find", "count"),))
 
 
 LAYOUTS = {"measure_distance": distance_layout, "count_objects": count_layout, "check_presence": presence_layout,
@@ -240,6 +257,10 @@ def read_fields(kind: str, f: dict, nodes: dict, edges: list[dict]) -> None:
         f["angle_range"] = (p.get("angle_extent", 0) / 2 if f["allow_rotation"] else 0) if f["method"] == "shape" else p.get("angle_range", 0)
         if f["method"] == "register":
             f["template_images"] = p.get("registrations", [])
+    elif kind == "inspect_circular_surface":
+        f["unit"] = "mm" if "scale" in nodes else "deg"
+        f["calibration"] = params("scale").get("calibration", "")
+        f["min_length"] = float(params("length").get("expression", "1")) if "length" in nodes else float(params("defect").get("min_width", 2)) * .5
     layout = LAYOUTS[kind](f)
     if "result_name" in f and layout.value_port:
         ref = layout.value_port
@@ -280,8 +301,13 @@ add("check_presence", "Check presence", {
 add("inspect_circular_surface", "Inspect circular surface", {
     "roi": roi_field(role="unwrap", shapes=("annulus",), required=True),
     **tool_fields("polar_unwrap", "unwrap", "start_angle direction"),
-    **tool_fields("edge_defect", "defect", "threshold min_width max_defects polarity"),
+    **tool_fields("edge_defect", "defect", "threshold max_defects polarity"),
     "threshold": field("threshold", "Defect threshold", role="defect", param="threshold", default=3, minimum=0, unit="px"),
+    "min_length": field("min_length", "Minimum defect length", default=1, minimum=0, help_text="Applies to every fault, including gaps. Arc length uses the midpoint radius of the taught ring."),
+    "unit": field("unit", "Length unit", "select", default="deg", options=options("deg", "mm")),
+    "calibration": field("calibration", "Calibration", "asset", default="", accept="calibration"),
+    "defect_direction": field("defect_direction", "Defect direction", "select", role="defect", param="direction", default="inward", options=options("both", "inward", "outward")),
+    "result_name": field("result_name", "Result name", "output_key", default="defects"),
     "polarity": field("polarity", "Edge polarity", "select", role="defect", param="polarity", default="light_to_dark", options=options("any", "dark_to_light", "light_to_dark")),
     "search": field("search", "Search range", role="defect", param="search", default=35, minimum=2, maximum=2000, unit="px"),
     "geometry": field("geometry", "Defect geometry", "select", role="geom", param="output", default="centres", options=options("centres", "boxes", "spans")),

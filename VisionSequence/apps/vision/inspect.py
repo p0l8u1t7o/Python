@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import math
 import re
 from typing import Any
 
@@ -59,7 +60,7 @@ def read(graph: dict[str, Any]) -> dict[str, Any]:
             shared.append({"id": node["id"], "type": node.get("type")})
         else:
             loose.append({"id": node.get("id"), "type": node.get("type")})
-    tasks = [_read_task(task_id, pile, edges, nodes) for task_id, pile in sorted(piles.items())]
+    tasks = [_read_task(task_id, pile, edges, nodes) for task_id, pile in piles.items()]
     return {"tasks": tasks, "shared": shared, "loose": loose}
 
 
@@ -217,6 +218,9 @@ def evidence(graph: dict[str, Any], report: Any) -> list[dict[str, Any]]:
         skipped = [nid for nid, row in reports.items() if row.get("status") == "skipped"]
         errors = [nid for nid, row in reports.items() if row.get("status") == "error"]
         overlays = [ov for row in reports.values() for ov in (row.get("overlays") or [])]
+        if _skipped_by_locator(graph, task_id, nodes):
+            readings.append(_reading(task_id, "locate_failed", False, None, None, task.get("unit", ""), "Location failed", [], role_ids[0]))
+            continue
         if errors:
             nid = errors[0]
             readings.append(_reading(task_id, "error", False, None, None, task.get("unit", ""), reports[nid].get("message", ""), overlays, nid))
@@ -243,13 +247,27 @@ def evidence(graph: dict[str, Any], report: Any) -> list[dict[str, Any]]:
             detected = (row.get("outputs") or {}).get("detected")
             failed = next((nid for nid, r in reports.items() if r.get("status") != "ok"), None)
             verdict = "pass" if valid and not failed else "fail"
-            if task["kind"] == "measure_distance" and any(r.get("branch") == "not_found" for r in reports.values()):
+            if task["kind"] == "measure_distance" and any(r.get("branch") == "not_found" or (nid != tol_id and r.get("status") == "ng") for nid, r in reports.items()):
                 verdict, detected = "not_found", False
             nid = failed or roles[layout.verdict_role]
             # 展開座標上的掃描標記不疊到原圖；還原節點提供原圖缺陷幾何。
             if task["kind"] == "inspect_circular_surface":
                 overlays = reports[roles["restore"]].get("overlays") or []
-            readings.append(_reading(task_id, verdict, valid, detected, value, task.get("unit", ""), reports[nid].get("message", ""), overlays, nid))
+            reason = reports[nid].get("message", "")
+            unit = task.get("unit", "")
+            if task["kind"] == "inspect_circular_surface":
+                fields = task["fields"]
+                counts = [d.get("count", 0) for d in (reports[roles["defect"]].get("outputs") or {}).get("defects", [])]
+                per_caliper = .5
+                if unit == "mm":
+                    region = fields["roi"]
+                    radius = (region["r_inner"] + region["r_outer"]) / 2
+                    scale = reports[roles["scale"]]["outputs"]["scale"]
+                    per_caliper = radius * math.radians(.5) * scale
+                longest = max(counts, default=0) * per_caliper
+                reason = f"{int(value or 0)} defects, longest {longest:.3f} {unit} (minimum {fields['min_length']:.3f} {unit})"
+                unit = ""
+            readings.append(_reading(task_id, verdict, valid, detected, value, unit, reason, overlays, nid))
             continue
         find_row = reports.get(find_id or "", {})
         tol_row = reports.get(tol_id or "", {})
@@ -406,14 +424,18 @@ def _maintain_summary(graph: dict[str, Any]) -> None:
             elif (inspect_marker(adapter) or {}).get("kind") != "summary":
                 raise ValidationError("An inspection summary step name is already in use", code="task_id_conflict")
             adapter["params"] = {"expression": layout.summary_expression}
-            graph["edges"] = [e for e in graph.get("edges", []) if e.get("target") != adapter_id]
+            adapter_edges = []
             for key, source in zip(("a", "b", "c", "d"), layout.summary_inputs):
-                graph["edges"].append(task_base.edge(task["nodes"][source.role], source.port, adapter_id, key))
+                adapter_edges.append(task_base.edge(task["nodes"][source.role], source.port, adapter_id, key))
             source_id = task["nodes"][layout.summary_inputs[0].role]
             source_node = next(n for n in graph["nodes"] if n["id"] == source_id)
             for port in tools.get(source_node["type"]).outputs:
                 if port.type == "flow":
-                    graph["edges"].append(task_base.edge(source_id, port.key, adapter_id, FLOW_IN))
+                    adapter_edges.append(task_base.edge(source_id, port.key, adapter_id, FLOW_IN))
+            expected_edges = {(e["source"], e["source_handle"], e["target_handle"]) for e in adapter_edges}
+            graph["edges"] = [e for e in graph.get("edges", []) if e.get("target") != adapter_id or (e.get("source"), e.get("source_handle"), e.get("target_handle")) in expected_edges]
+            existing_edges = {(e.get("source"), e.get("source_handle"), e.get("target_handle")) for e in graph["edges"] if e.get("target") == adapter_id}
+            graph["edges"].extend(e for e in adapter_edges if (e["source"], e["source_handle"], e["target_handle"]) not in existing_edges)
             required.append((adapter_id, task_base.PortRef("result", "result")))
         elif ref is not None:
             required.append((task["nodes"][ref.role], ref))

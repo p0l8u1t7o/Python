@@ -5,7 +5,7 @@
 export const USER_SCOPED_KEYS = ['vs.token', 'vs.apiKey', 'vs.assistant.v1', 'vs.assistant.share', 'vs.tcpHistory'] as const
 export const USER_SCOPED_SESSION_KEYS = ['vs.assistant.hints.dismissed'] as const
 /** 說明用：這些故意保留 */
-export const DEVICE_SCOPED_KEYS = ['vs.theme', 'vs.language', 'vs.sidebar', 'vs.navOpen', 'vs.favoriteTools', 'vs.editorLayout', 'vs.canvasMode', 'vs.overlayLimit', 'vs.viewerState.v1', 'vs.editorGridView.v1', 'vs.toolAutoPreview.v1', 'vs.flowDraftAutoVersion.v1', 'vs.flowDescriptionPanelCollapsed.v1', 'vs.editorCollapsed.v1'] as const
+export const DEVICE_SCOPED_KEYS = ['vs.theme', 'vs.language', 'vs.sidebar', 'vs.navOpen', 'vs.favoriteTools', 'vs.editorLayout', 'vs.canvasMode', 'vs.overlayLimit', 'vs.viewerState.v1', 'vs.editorGridView.v1', 'vs.toolAutoPreview.v1', 'vs.flowDraftAutoVersion.v1', 'vs.flowDescriptionPanelCollapsed.v1', 'vs.editorCollapsed.v1', 'vs.inspectionRun.v1:'] as const
 
 export interface ViewerLocalState {
   crosshair: boolean

@@ -2655,6 +2655,8 @@ const zhHans = {
 } as const
 
 export default { queues: {"title": "数据队列", "hint": "流程之间的暂存工件交接；进程重新启动即清空。", "empty": "尚无队列。", "clear": "清空", "stats": "{{size}} 条 · 最旧 {{age}} ms · 已丢弃 {{dropped}} 条"}, ...zhHans, inspect: {
+  "fixedImages": "固定影像",
+  "missingImage": "请先选择影像来源、上传固定影像或载入暂存影像，再试执行。",
   "title": "检测任务",
   "run": "试执行",
   "save": "保存",

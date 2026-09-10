@@ -27,13 +27,32 @@ const runs = new Map<number, InspectionRun>()
 export function rememberInspectionRun(flowId: number, graph: FlowGraph, report: RunReport, readings: InspectReading[]) {
   const snapshot = { report, readings, hash: inspectGraphHash(graph) }
   runs.set(flowId, snapshot)
+  // 裝置層只保留讀值摘要；影像參照、節點輸出及疊圖均不落地。
+  try {
+    localStorage.setItem(`vs.inspectionRun.v1:${flowId}`, JSON.stringify({
+      hash: snapshot.hash, status: report.status, judge: report.outputs.judge,
+      readings: readings.map(({ overlays: _overlays, ...row }) => ({ ...row, overlays: [] })),
+    }))
+  } catch { /* 儲存空間不足時仍保留本次記憶體讀值。 */ }
   return snapshot
 }
 export function inspectionRunFor(flowId: number, report: RunReport | null): InspectionRun | undefined {
   const saved = runs.get(flowId)
-  return saved?.report === report ? saved : undefined
+  if (report) return saved?.report === report ? saved : undefined
+  try {
+    const raw = JSON.parse(localStorage.getItem(`vs.inspectionRun.v1:${flowId}`) ?? 'null')
+    if (!raw || typeof raw.hash !== 'string' || !['ok', 'ng', 'failed'].includes(raw.status) || !Array.isArray(raw.readings)) return undefined
+    if (!raw.readings.every((r: InspectReading) => r && typeof r.task_id === 'string' && typeof r.valid === 'boolean' && ['pass', 'fail', 'not_found', 'locate_failed', 'error', 'skipped'].includes(r.verdict))) return undefined
+    return { hash: raw.hash, readings: raw.readings.map((r: InspectReading) => ({ ...r, overlays: [] })), report: {
+      id: '', flow_id: flowId, flow_version: 0, trigger: 'preview', status: raw.status, started_at: 0,
+      finished_at: null, duration_ms: 0, error: '', outputs: { judge: raw.judge }, nodes: {},
+    } }
+  } catch { return undefined }
 }
-export function forgetInspectionRun(flowId: number) { runs.delete(flowId) }
+export function forgetInspectionRun(flowId: number) {
+  runs.delete(flowId)
+  try { localStorage.removeItem(`vs.inspectionRun.v1:${flowId}`) } catch { /* 私密模式。 */ }
+}
 
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`
@@ -69,8 +88,19 @@ export function inspectionFieldVisible(field: InspectField, values: Record<strin
 }
 export function inspectionValue(reading?: InspectReading): string {
   if (!reading?.valid || !['pass', 'fail'].includes(reading.verdict) || reading.value === null || reading.value === undefined) return '—'
-  if (typeof reading.value === 'number') return Number.isFinite(reading.value) ? String(reading.value) : '—'
+  if (typeof reading.value === 'number') {
+    const digits = reading.unit === 'mm' ? 3 : ['px', 'deg', '°'].includes(reading.unit) ? 2 : 0
+    return Number.isFinite(reading.value) ? String(Number(reading.value.toFixed(digits))) : '—'
+  }
   return typeof reading.value === 'string' ? reading.value : '—'
+}
+export function inspectionHasImage(graph: FlowGraph, reuseRef?: string | null): boolean {
+  const sources = graph.nodes.filter((node) => node.enabled !== false && node.params?.role !== 'reference')
+  return sources.some((node) => {
+    if (node.type === 'fixed_image') return Array.isArray(node.params?.images) && node.params.images.length > 0
+    if (node.type === 'image_source') return Boolean(reuseRef || node.params?.source_id)
+    return ['stereo_grab', 'multi_light_grab'].includes(node.type)
+  })
 }
 export function missingInspectionFields(kind: InspectKind, values: Record<string, unknown>): string[] {
   return kind.fields.filter((f) => {

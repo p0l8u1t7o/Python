@@ -231,6 +231,8 @@ class EdgeDefectTool(Tool):
               help_text="A stretch further than this from the ideal edge is a fault."),
         Param("min_width", "At least this many calipers", kind="number", default=2, minimum=1, teach=True,
               help_text="Stops single-caliper noise being called a fault."),
+        Param("filter_fractures", "Apply minimum length to gaps", kind="boolean", default=False,
+              help_text="Apply the minimum caliper count to every fault, including stretches with no edge."),
         Param("direction", "Which side counts", kind="select", default="both", options=[
             {"value": "both", "label": "Either side"}, {"value": "inward", "label": "Only missing material"}, {"value": "outward", "label": "Only extra material"},
         ], teach=True),
@@ -300,6 +302,22 @@ class EdgeDefectTool(Tool):
         deviation = series - baseline
         found = np.array([h.found for h in hits], dtype=bool)
         flags, kinds = self._flags(ctx, deviation, found, series, pair, wrap)
+        if ctx.flag("filter_fractures") and not pair and ctx.param("direction", "both") != "both" and found.any():
+            # 打空的卡尺沒有 offset；以已找到邊的兩側灰階辨別中心落在材料側或背景側。
+            points = np.array([[h.x, h.y] for h in hits if h.found], dtype=np.float32)
+            normals = np.asarray(scan[found], dtype=np.float32)
+            before = points - normals * 3
+            after = points + normals * 3
+            def sample(points: np.ndarray) -> np.ndarray:
+                return cv2.remap(image, points[:, 0].astype(np.float32), points[:, 1].astype(np.float32), cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE).ravel()
+            lo, hi = float(np.median(sample(before))), float(np.median(sample(after)))
+            if abs(hi - lo) >= ctx.number("edge_threshold", 20):
+                at_center = sample(np.asarray(centers, dtype=np.float32))
+                inward = (at_center - (lo + hi) / 2) * (hi - lo) > 0
+                keep = inward if ctx.param("direction") == "inward" else ~inward
+                for i, fault in enumerate(kinds):
+                    if fault == "fracture" and not keep[i]:
+                        flags[i] = False
         runs = self._runs(ctx, flags, kinds, wrap)
         items = self._describe(runs, hits, deviation, series, positions, pair, period=period)
         limit = ctx.integer("max_defects", 0)
@@ -426,7 +444,7 @@ class EdgeDefectTool(Tool):
     def _runs(ctx: ToolContext, flags: np.ndarray, kinds: list[str], wrap: bool) -> list[tuple[int, int, str]]:
         """連續的缺陷位置串成一段；太短的丟掉（單點雜訊）。"""
         n = len(flags)
-        min_width = ctx.integer("min_width", 2)
+        min_width = ctx.number("min_width", 2) if ctx.flag("filter_fractures") else ctx.integer("min_width", 2)
         out: list[tuple[int, int, str]] = []
         for start, end in defects.segments(flags, wrap):
             indices = defects.seg_indices((start, end), n)
@@ -434,7 +452,7 @@ class EdgeDefectTool(Tool):
             for i in indices:
                 kind_counts[kinds[i]] = kind_counts.get(kinds[i], 0) + 1
             worst = max(kind_counts, key=lambda k: (k == "fracture", kind_counts[k]))
-            if len(indices) < min_width and worst != "fracture":
+            if len(indices) < min_width and (worst != "fracture" or ctx.flag("filter_fractures")):
                 continue
             out.append((start, end, worst or "dislocation"))
         return out

@@ -554,6 +554,8 @@ class TemplateMatchTool(Tool):
         ], help_text="Reading order is what a pick-and-place usually wants; score is what a presence check wants."),
         Param("angle_range", "Rotation range ±", kind="number", default=0, minimum=0, maximum=180, unit="°", help_text="0 disables the rotation search.", group="Rotation", teach=True),
         Param("angle_step", "Angle step", kind="number", default=5, minimum=0.5, maximum=45, unit="°", group="Rotation"),
+        Param("refine_rotation", "Refine rigid pose", kind="boolean", default=False, group="Rotation",
+              help_text="Refine rotation and position together after finding a candidate. Use a distinctive mark; a symmetric cross cannot distinguish rotations 90 degrees apart."),
         Param("scale_x", "Scale across", kind="number", default=1.0, minimum=0.1, maximum=10, step=0.05, group="Advanced",
               help_text="Stretches the template before matching, for a part that images larger or narrower than the one it was taught on."),
         Param("scale_y", "Scale down the picture", kind="number", default=1.0, minimum=0.1, maximum=10, step=0.05, group="Advanced"),
@@ -614,10 +616,15 @@ class TemplateMatchTool(Tool):
                     raise ToolError(f"The search region {search.shape[1]}×{search.shape[0]} is smaller than the template {tw}×{th}")
                 continue
             for x, y, score, angle, rw, rh in _search_template(
-                search, tpl, threshold=threshold, max_n=max_n, angles=angles,
+                search, tpl, threshold=max(0.0, threshold - .25) if ctx.flag("refine_rotation") else threshold, max_n=max_n, angles=angles,
                 pyramid=ctx.flag("pyramid", True), subpixel=ctx.flag("subpixel", True), angle_step=angle_step,
                 deadline=deadline,
             ):
+                if ctx.flag("refine_rotation"):
+                    x, y, score, angle = _refine_rigid_pose(search, tpl, x, y, score, angle)
+                    if score < threshold or abs(angle) > angle_range + 1:
+                        continue
+                    angle = float(np.clip(angle, -angle_range, angle_range))
                 cx, cy = c.to_full(x - pad, y - pad)
                 total_angle = angle + (float(region.get("angle", 0)) if region and region.get("shape") == "rotated_rect" else 0.0)
                 found.append((score, {
@@ -667,6 +674,22 @@ class TemplateMatchTool(Tool):
             status=status,
             message=f"{len(matches)} matches" + (f", best {best['score']:.3f} @ ({best['cx']:.1f}, {best['cy']:.1f})" if best else "") + note,
         )
+
+
+def _refine_rigid_pose(search: np.ndarray, tpl: np.ndarray, x: float, y: float, score: float, angle: float) -> tuple[float, float, float, float]:
+    """以同一剛體矩陣聯合精修角度與位置，避免獨立角度插值受像素格點影響。"""
+    h, w = tpl.shape[:2]
+    theta = math.radians(angle)
+    c, s = math.cos(theta), math.sin(theta)
+    warp = np.array([[c, -s, x - c * w / 2 + s * h / 2],
+                     [s, c, y - s * w / 2 - c * h / 2]], dtype=np.float32)
+    try:
+        refined_score, refined = cv2.findTransformECC(tpl, search, warp, cv2.MOTION_EUCLIDEAN,
+                                                     (cv2.TERM_CRITERIA_COUNT | cv2.TERM_CRITERIA_EPS, 80, 1e-6))
+    except cv2.error:
+        return x, y, score, angle
+    center = refined @ np.array([w / 2, h / 2, 1])
+    return float(center[0]), float(center[1]), float(refined_score), math.degrees(math.atan2(refined[1, 0], refined[0, 0]))
 
 
 def _templates(ctx: ToolContext) -> list[tuple[str, np.ndarray]]:

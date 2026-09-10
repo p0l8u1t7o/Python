@@ -138,7 +138,7 @@ register(TaskDefinition(
         "ref_x": FieldSpec("ref_x", "Reference X", "number", role="align", param="ref_x", required=True, default=0, unit="px"),
         "ref_y": FieldSpec("ref_y", "Reference Y", "number", role="align", param="ref_y", required=True, default=0, unit="px"),
         "ref_angle": FieldSpec("ref_angle", "Reference angle", "number", role="align", param="ref_angle", default=0, unit="deg"),
-        "required": FieldSpec("required", "Required", "boolean", default=False),
+        "required": FieldSpec("required", "Required", "boolean", default=True),
     },
     public_inputs=(PortRef("find", "image"),),
     public_outputs=(PortRef("align", "transform"), PortRef("find", "found"), PortRef("find", "detected")),

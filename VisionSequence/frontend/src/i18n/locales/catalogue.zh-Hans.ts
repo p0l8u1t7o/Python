@@ -362,9 +362,6 @@ export default {
       "threshold": {
         "label": "阈值"
       },
-      "min_width": {
-        "label": "最小缺陷宽度"
-      },
       "max_defects": {
         "label": "允许缺陷数"
       },
@@ -384,6 +381,31 @@ export default {
       },
       "locator": {
         "label": "定位任务"
+      },
+      "min_length": {
+        "label": "最短缺陷长度",
+        "help": "所有缺陷均适用，包括断裂。弧长以教导环域的中线半径计算。"
+      },
+      "unit": {
+        "label": "长度单位",
+        "options": {
+          "deg": "角度",
+          "mm": "毫米"
+        }
+      },
+      "calibration": {
+        "label": "标定"
+      },
+      "defect_direction": {
+        "label": "缺陷方向",
+        "options": {
+          "both": "双向",
+          "inward": "向内缺料",
+          "outward": "向外凸出"
+        }
+      },
+      "result_name": {
+        "label": "结果名称"
       }
     }
   },

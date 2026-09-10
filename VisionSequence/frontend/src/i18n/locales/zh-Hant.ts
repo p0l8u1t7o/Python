@@ -2761,6 +2761,8 @@ const zhHant = {
 } as const
 
 export default { queues: {"title": "資料佇列", "hint": "流程之間的暫存工件交接；行程重新啟動即清空。", "empty": "尚無佇列。", "clear": "清空", "stats": "{{size}} 筆 · 最舊 {{age}} ms · 已丟棄 {{dropped}} 筆"}, ...zhHant, inspect: {
+  "fixedImages": "固定影像",
+  "missingImage": "請先選擇影像來源、上傳固定影像或載入暫存影像，再試執行。",
   "title": "檢測任務",
   "run": "試執行",
   "save": "儲存",

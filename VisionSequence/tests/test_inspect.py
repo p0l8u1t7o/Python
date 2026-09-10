@@ -210,7 +210,7 @@ class InspectTranslatorTests(SimpleTestCase):
         self.assertEqual(reading["verdict"], "skipped")
 
     def test_remove_without_dependents_keeps_source_locator_other_task_and_loose_nodes(self):
-        graph = inspect.build(base_graph(), {"kind": "locate_part", "task_id": "loc", "fields": {"template_images": []}})
+        graph = inspect.build(base_graph(), {"kind": "locate_part", "task_id": "loc", "fields": {"template_images": [], "required": False}})
         graph = inspect.build(graph, diameter_task("d", locator="loc"))
         graph = inspect.build(graph, diameter_task("other"))
         graph["nodes"].append({"id": "note", "type": "note", "params": {}})

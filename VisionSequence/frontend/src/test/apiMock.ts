@@ -54,21 +54,444 @@ INSPECT_KINDS.push(...[
     ],
   },
   {
-    "kind": "inspect_circular_surface", "version": 1, "label": "Inspect circular surface", "help_text": "Configure and run inspect circular surface using the current image.", "roles": {"unwrap": "polar_unwrap", "defect": "edge_defect", "geom": "defects_to_geometry", "restore": "polar_restore"}, "internal_edges": [{"source_role": "unwrap", "source_port": "image", "target_role": "defect", "target_port": "image"}, {"source_role": "defect", "source_port": "defects", "target_role": "geom", "target_port": "defects"}, {"source_role": "geom", "source_port": "points", "target_role": "restore", "target_port": "points"}, {"source_role": "geom", "source_port": "contours", "target_role": "restore", "target_port": "contours"}, {"source_role": "unwrap", "source_port": "mapping", "target_role": "restore", "target_port": "mapping"}, {"source_role": "defect", "source_port": "ok", "target_role": "restore", "target_port": "_flow"}, {"source_role": "defect", "source_port": "defect", "target_role": "restore", "target_port": "_flow"}], "public_inputs": [{"role": "unwrap", "port": "image"}, {"role": "unwrap", "port": "roi"}, {"role": "unwrap", "port": "_transform"}, {"role": "unwrap", "port": "_flow"}, {"role": "restore", "port": "image"}], "public_outputs": [{"role": "defect", "port": "count"}, {"role": "restore", "port": "points"}, {"role": "restore", "port": "contours"}], "pass_port": null,
-    "fields": [
-      {"key": "roi", "label": "Region", "kind": "roi", "role": "unwrap", "param": "roi", "required": true, "default": null, "help_text": "", "unit": "", "options": [], "minimum": null, "maximum": null, "step": null, "shapes": ["annulus"], "accept": "", "visible_when": null, "source_type": ""},
-      {"key": "direction", "label": "Direction", "kind": "select", "role": "unwrap", "param": "direction", "required": false, "default": "ccw", "help_text": "Which way around the ring the strip runs, as seen on screen.", "unit": "", "options": [{"value": "ccw", "label": "Counter-clockwise"}, {"value": "cw", "label": "Clockwise"}], "minimum": null, "maximum": null, "step": null, "shapes": [], "accept": "", "visible_when": null, "source_type": ""},
-      {"key": "start_angle", "label": "Start angle", "kind": "number", "role": "unwrap", "param": "start_angle", "required": false, "default": 0, "help_text": "Where the left edge of the strip sits (0 = 3 o'clock, positive = clockwise). Ignored for a sector, which starts at its own angles.", "unit": "°", "options": [], "minimum": -360, "maximum": 360, "step": null, "shapes": [], "accept": "", "visible_when": null, "source_type": ""},
-      {"key": "polarity", "label": "Edge polarity", "kind": "select", "role": "defect", "param": "polarity", "required": false, "default": "light_to_dark", "help_text": "", "unit": "", "options": [{"value": "any", "label": "Any"}, {"value": "dark_to_light", "label": "Dark to light"}, {"value": "light_to_dark", "label": "Light to dark"}], "minimum": null, "maximum": null, "step": null, "shapes": [], "accept": "", "visible_when": null, "source_type": ""},
-      {"key": "threshold", "label": "Defect threshold", "kind": "number", "role": "defect", "param": "threshold", "required": false, "default": 3, "help_text": "", "unit": "px", "options": [], "minimum": 0, "maximum": null, "step": null, "shapes": [], "accept": "", "visible_when": null, "source_type": ""},
-      {"key": "min_width", "label": "At least this many calipers", "kind": "number", "role": "defect", "param": "min_width", "required": false, "default": 2, "help_text": "Stops single-caliper noise being called a fault.", "unit": "", "options": [], "minimum": 1, "maximum": null, "step": null, "shapes": [], "accept": "", "visible_when": null, "source_type": ""},
-      {"key": "max_defects", "label": "More faults than this is a reject", "kind": "number", "role": "defect", "param": "max_defects", "required": false, "default": 0, "help_text": "0 = any fault is a reject.", "unit": "", "options": [], "minimum": 0, "maximum": null, "step": null, "shapes": [], "accept": "", "visible_when": null, "source_type": ""},
-      {"key": "search", "label": "Search range", "kind": "number", "role": "defect", "param": "search", "required": false, "default": 35, "help_text": "", "unit": "px", "options": [], "minimum": 2, "maximum": 2000, "step": null, "shapes": [], "accept": "", "visible_when": null, "source_type": ""},
-      {"key": "geometry", "label": "Defect geometry", "kind": "select", "role": "geom", "param": "output", "required": false, "default": "centres", "help_text": "", "unit": "", "options": [{"value": "centres", "label": "Centres"}, {"value": "boxes", "label": "Boxes"}, {"value": "spans", "label": "Spans"}], "minimum": null, "maximum": null, "step": null, "shapes": [], "accept": "", "visible_when": null, "source_type": ""},
-      {"key": "required", "label": "Required", "kind": "boolean", "role": null, "param": null, "required": false, "default": true, "help_text": "", "unit": "", "options": [], "minimum": null, "maximum": null, "step": null, "shapes": [], "accept": "", "visible_when": null, "source_type": ""},
-      {"key": "locator", "label": "Locator", "kind": "text", "role": null, "param": null, "required": false, "default": "", "help_text": "", "unit": "", "options": [], "minimum": null, "maximum": null, "step": null, "shapes": [], "accept": "", "visible_when": null, "source_type": ""},
-    ],
+  "kind": "inspect_circular_surface",
+  "version": 1,
+  "label": "Inspect circular surface",
+  "help_text": "Configure and run inspect circular surface using the current image.",
+  "roles": {
+    "unwrap": "polar_unwrap",
+    "defect": "edge_defect",
+    "geom": "defects_to_geometry",
+    "restore": "polar_restore"
   },
+  "internal_edges": [
+    {
+      "source_role": "unwrap",
+      "source_port": "image",
+      "target_role": "defect",
+      "target_port": "image"
+    },
+    {
+      "source_role": "defect",
+      "source_port": "defects",
+      "target_role": "geom",
+      "target_port": "defects"
+    },
+    {
+      "source_role": "geom",
+      "source_port": "points",
+      "target_role": "restore",
+      "target_port": "points"
+    },
+    {
+      "source_role": "geom",
+      "source_port": "contours",
+      "target_role": "restore",
+      "target_port": "contours"
+    },
+    {
+      "source_role": "unwrap",
+      "source_port": "mapping",
+      "target_role": "restore",
+      "target_port": "mapping"
+    },
+    {
+      "source_role": "defect",
+      "source_port": "ok",
+      "target_role": "restore",
+      "target_port": "_flow"
+    },
+    {
+      "source_role": "defect",
+      "source_port": "defect",
+      "target_role": "restore",
+      "target_port": "_flow"
+    }
+  ],
+  "fields": [
+    {
+      "key": "roi",
+      "label": "Region",
+      "kind": "roi",
+      "role": "unwrap",
+      "param": "roi",
+      "required": true,
+      "default": null,
+      "help_text": "",
+      "unit": "",
+      "options": [],
+      "minimum": null,
+      "maximum": null,
+      "step": null,
+      "shapes": [
+        "annulus"
+      ],
+      "accept": "",
+      "visible_when": null,
+      "source_type": ""
+    },
+    {
+      "key": "direction",
+      "label": "Direction",
+      "kind": "select",
+      "role": "unwrap",
+      "param": "direction",
+      "required": false,
+      "default": "ccw",
+      "help_text": "Which way around the ring the strip runs, as seen on screen.",
+      "unit": "",
+      "options": [
+        {
+          "value": "ccw",
+          "label": "Counter-clockwise"
+        },
+        {
+          "value": "cw",
+          "label": "Clockwise"
+        }
+      ],
+      "minimum": null,
+      "maximum": null,
+      "step": null,
+      "shapes": [],
+      "accept": "",
+      "visible_when": null,
+      "source_type": ""
+    },
+    {
+      "key": "start_angle",
+      "label": "Start angle",
+      "kind": "number",
+      "role": "unwrap",
+      "param": "start_angle",
+      "required": false,
+      "default": 0,
+      "help_text": "Where the left edge of the strip sits (0 = 3 o'clock, positive = clockwise). Ignored for a sector, which starts at its own angles.",
+      "unit": "°",
+      "options": [],
+      "minimum": -360,
+      "maximum": 360,
+      "step": null,
+      "shapes": [],
+      "accept": "",
+      "visible_when": null,
+      "source_type": ""
+    },
+    {
+      "key": "polarity",
+      "label": "Edge polarity",
+      "kind": "select",
+      "role": "defect",
+      "param": "polarity",
+      "required": false,
+      "default": "light_to_dark",
+      "help_text": "",
+      "unit": "",
+      "options": [
+        {
+          "value": "any",
+          "label": "Any"
+        },
+        {
+          "value": "dark_to_light",
+          "label": "Dark to light"
+        },
+        {
+          "value": "light_to_dark",
+          "label": "Light to dark"
+        }
+      ],
+      "minimum": null,
+      "maximum": null,
+      "step": null,
+      "shapes": [],
+      "accept": "",
+      "visible_when": null,
+      "source_type": ""
+    },
+    {
+      "key": "threshold",
+      "label": "Defect threshold",
+      "kind": "number",
+      "role": "defect",
+      "param": "threshold",
+      "required": false,
+      "default": 3,
+      "help_text": "",
+      "unit": "px",
+      "options": [],
+      "minimum": 0,
+      "maximum": null,
+      "step": null,
+      "shapes": [],
+      "accept": "",
+      "visible_when": null,
+      "source_type": ""
+    },
+    {
+      "key": "max_defects",
+      "label": "More faults than this is a reject",
+      "kind": "number",
+      "role": "defect",
+      "param": "max_defects",
+      "required": false,
+      "default": 0,
+      "help_text": "0 = any fault is a reject.",
+      "unit": "",
+      "options": [],
+      "minimum": 0,
+      "maximum": null,
+      "step": null,
+      "shapes": [],
+      "accept": "",
+      "visible_when": null,
+      "source_type": ""
+    },
+    {
+      "key": "min_length",
+      "label": "Minimum defect length",
+      "kind": "number",
+      "role": null,
+      "param": null,
+      "required": false,
+      "default": 1,
+      "help_text": "Applies to every fault, including gaps. Arc length uses the midpoint radius of the taught ring.",
+      "unit": "",
+      "options": [],
+      "minimum": 0,
+      "maximum": null,
+      "step": null,
+      "shapes": [],
+      "accept": "",
+      "visible_when": null,
+      "source_type": ""
+    },
+    {
+      "key": "unit",
+      "label": "Length unit",
+      "kind": "select",
+      "role": null,
+      "param": null,
+      "required": false,
+      "default": "deg",
+      "help_text": "",
+      "unit": "",
+      "options": [
+        {
+          "value": "deg",
+          "label": "Deg"
+        },
+        {
+          "value": "mm",
+          "label": "Mm"
+        }
+      ],
+      "minimum": null,
+      "maximum": null,
+      "step": null,
+      "shapes": [],
+      "accept": "",
+      "visible_when": null,
+      "source_type": ""
+    },
+    {
+      "key": "calibration",
+      "label": "Calibration",
+      "kind": "asset",
+      "role": null,
+      "param": null,
+      "required": false,
+      "default": "",
+      "help_text": "",
+      "unit": "",
+      "options": [],
+      "minimum": null,
+      "maximum": null,
+      "step": null,
+      "shapes": [],
+      "accept": "calibration",
+      "visible_when": null,
+      "source_type": ""
+    },
+    {
+      "key": "defect_direction",
+      "label": "Defect direction",
+      "kind": "select",
+      "role": "defect",
+      "param": "direction",
+      "required": false,
+      "default": "inward",
+      "help_text": "",
+      "unit": "",
+      "options": [
+        {
+          "value": "both",
+          "label": "Both"
+        },
+        {
+          "value": "inward",
+          "label": "Inward"
+        },
+        {
+          "value": "outward",
+          "label": "Outward"
+        }
+      ],
+      "minimum": null,
+      "maximum": null,
+      "step": null,
+      "shapes": [],
+      "accept": "",
+      "visible_when": null,
+      "source_type": ""
+    },
+    {
+      "key": "result_name",
+      "label": "Result name",
+      "kind": "output_key",
+      "role": null,
+      "param": null,
+      "required": false,
+      "default": "defects",
+      "help_text": "",
+      "unit": "",
+      "options": [],
+      "minimum": null,
+      "maximum": null,
+      "step": null,
+      "shapes": [],
+      "accept": "",
+      "visible_when": null,
+      "source_type": ""
+    },
+    {
+      "key": "search",
+      "label": "Search range",
+      "kind": "number",
+      "role": "defect",
+      "param": "search",
+      "required": false,
+      "default": 35,
+      "help_text": "",
+      "unit": "px",
+      "options": [],
+      "minimum": 2,
+      "maximum": 2000,
+      "step": null,
+      "shapes": [],
+      "accept": "",
+      "visible_when": null,
+      "source_type": ""
+    },
+    {
+      "key": "geometry",
+      "label": "Defect geometry",
+      "kind": "select",
+      "role": "geom",
+      "param": "output",
+      "required": false,
+      "default": "centres",
+      "help_text": "",
+      "unit": "",
+      "options": [
+        {
+          "value": "centres",
+          "label": "Centres"
+        },
+        {
+          "value": "boxes",
+          "label": "Boxes"
+        },
+        {
+          "value": "spans",
+          "label": "Spans"
+        }
+      ],
+      "minimum": null,
+      "maximum": null,
+      "step": null,
+      "shapes": [],
+      "accept": "",
+      "visible_when": null,
+      "source_type": ""
+    },
+    {
+      "key": "required",
+      "label": "Required",
+      "kind": "boolean",
+      "role": null,
+      "param": null,
+      "required": false,
+      "default": true,
+      "help_text": "",
+      "unit": "",
+      "options": [],
+      "minimum": null,
+      "maximum": null,
+      "step": null,
+      "shapes": [],
+      "accept": "",
+      "visible_when": null,
+      "source_type": ""
+    },
+    {
+      "key": "locator",
+      "label": "Locator",
+      "kind": "text",
+      "role": null,
+      "param": null,
+      "required": false,
+      "default": "",
+      "help_text": "",
+      "unit": "",
+      "options": [],
+      "minimum": null,
+      "maximum": null,
+      "step": null,
+      "shapes": [],
+      "accept": "",
+      "visible_when": null,
+      "source_type": ""
+    }
+  ],
+  "public_inputs": [
+    {
+      "role": "unwrap",
+      "port": "image"
+    },
+    {
+      "role": "unwrap",
+      "port": "roi"
+    },
+    {
+      "role": "unwrap",
+      "port": "_transform"
+    },
+    {
+      "role": "unwrap",
+      "port": "_flow"
+    },
+    {
+      "role": "restore",
+      "port": "image"
+    }
+  ],
+  "public_outputs": [
+    {
+      "role": "defect",
+      "port": "count"
+    },
+    {
+      "role": "restore",
+      "port": "points"
+    },
+    {
+      "role": "restore",
+      "port": "contours"
+    }
+  ],
+  "pass_port": null
+},
   {
     "kind": "inspect_edge_defect", "version": 1, "label": "Inspect edge defect", "help_text": "Configure and run inspect edge defect using the current image.", "roles": {"defect": "edge_defect"}, "internal_edges": [], "public_inputs": [{"role": "defect", "port": "image"}, {"role": "defect", "port": "roi"}, {"role": "defect", "port": "_transform"}, {"role": "defect", "port": "_flow"}, {"role": "defect", "port": "line"}, {"role": "defect", "port": "circle"}], "public_outputs": [{"role": "defect", "port": "count"}, {"role": "defect", "port": "defects"}], "pass_port": null,
     "fields": [
@@ -92,21 +515,285 @@ INSPECT_KINDS.push(...[
     ],
   },
   {
-    "kind": "locate_part", "version": 1, "label": "Locate part", "help_text": "Find a taught template and publish a position correction transform for downstream tasks.", "roles": {"ref": "fixed_image", "find": "template_match", "align": "shape_align"}, "internal_edges": [{"source_role": "ref", "source_port": "image", "target_role": "find", "target_port": "template_image"}, {"source_role": "find", "source_port": "matches", "target_role": "align", "target_port": "matches"}], "public_inputs": [{"role": "find", "port": "image"}], "public_outputs": [{"role": "align", "port": "transform"}, {"role": "find", "port": "found"}, {"role": "find", "port": "detected"}], "pass_port": null,
-    "fields": [
-      {"key": "method", "label": "Method", "kind": "select", "role": null, "param": null, "required": false, "default": "template", "help_text": "", "unit": "", "options": [{"value": "template", "label": "Template"}, {"value": "shape", "label": "Shape model"}, {"value": "register", "label": "Registered examples"}], "minimum": null, "maximum": null, "step": null, "shapes": [], "accept": "", "visible_when": null, "source_type": ""},
-      {"key": "roi", "label": "Search region", "kind": "roi", "role": "find", "param": "roi", "required": false, "default": null, "help_text": "Leave blank to search the whole image.", "unit": "", "options": [], "minimum": null, "maximum": null, "step": null, "shapes": ["rect", "rotated_rect"], "accept": "", "visible_when": null, "source_type": ""},
-      {"key": "template_images", "label": "Locator mark", "kind": "images", "role": "ref", "param": "images", "required": true, "default": [], "help_text": "A fixed reference picture cropped from the taught part.", "unit": "", "options": [], "minimum": null, "maximum": null, "step": null, "shapes": [], "accept": "", "visible_when": {"method": ["template", "register"]}, "source_type": ""},
-      {"key": "model", "label": "Shape model", "kind": "asset", "role": "find", "param": "model", "required": true, "default": "", "help_text": "", "unit": "", "options": [], "minimum": null, "maximum": null, "step": null, "shapes": [], "accept": "file", "visible_when": {"method": "shape"}, "source_type": ""},
-      {"key": "threshold", "label": "Score threshold", "kind": "range", "role": "find", "param": "threshold", "required": false, "default": 0.7, "help_text": "", "unit": "", "options": [], "minimum": 0, "maximum": 1, "step": 0.01, "shapes": [], "accept": "", "visible_when": null, "source_type": ""},
-      {"key": "allow_rotation", "label": "Allow rotation", "kind": "boolean", "role": null, "param": null, "required": false, "default": false, "help_text": "", "unit": "", "options": [], "minimum": null, "maximum": null, "step": null, "shapes": [], "accept": "", "visible_when": null, "source_type": ""},
-      {"key": "angle_range", "label": "Rotation range", "kind": "number", "role": "find", "param": "angle_range", "required": false, "default": 0, "help_text": "", "unit": "deg", "options": [], "minimum": 0, "maximum": 180, "step": null, "shapes": [], "accept": "", "visible_when": null, "source_type": ""},
-      {"key": "ref_x", "label": "Reference X", "kind": "number", "role": "align", "param": "ref_x", "required": true, "default": 0, "help_text": "", "unit": "px", "options": [], "minimum": null, "maximum": null, "step": null, "shapes": [], "accept": "", "visible_when": null, "source_type": ""},
-      {"key": "ref_y", "label": "Reference Y", "kind": "number", "role": "align", "param": "ref_y", "required": true, "default": 0, "help_text": "", "unit": "px", "options": [], "minimum": null, "maximum": null, "step": null, "shapes": [], "accept": "", "visible_when": null, "source_type": ""},
-      {"key": "ref_angle", "label": "Reference angle", "kind": "number", "role": "align", "param": "ref_angle", "required": false, "default": 0, "help_text": "", "unit": "deg", "options": [], "minimum": null, "maximum": null, "step": null, "shapes": [], "accept": "", "visible_when": null, "source_type": ""},
-      {"key": "required", "label": "Required", "kind": "boolean", "role": null, "param": null, "required": false, "default": false, "help_text": "", "unit": "", "options": [], "minimum": null, "maximum": null, "step": null, "shapes": [], "accept": "", "visible_when": null, "source_type": ""},
-    ],
+  "kind": "locate_part",
+  "version": 1,
+  "label": "Locate part",
+  "help_text": "Find a taught template and publish a position correction transform for downstream tasks.",
+  "roles": {
+    "ref": "fixed_image",
+    "find": "template_match",
+    "align": "shape_align"
   },
+  "internal_edges": [
+    {
+      "source_role": "ref",
+      "source_port": "image",
+      "target_role": "find",
+      "target_port": "template_image"
+    },
+    {
+      "source_role": "find",
+      "source_port": "matches",
+      "target_role": "align",
+      "target_port": "matches"
+    }
+  ],
+  "fields": [
+    {
+      "key": "method",
+      "label": "Method",
+      "kind": "select",
+      "role": null,
+      "param": null,
+      "required": false,
+      "default": "template",
+      "help_text": "",
+      "unit": "",
+      "options": [
+        {
+          "value": "template",
+          "label": "Template"
+        },
+        {
+          "value": "shape",
+          "label": "Shape model"
+        },
+        {
+          "value": "register",
+          "label": "Registered examples"
+        }
+      ],
+      "minimum": null,
+      "maximum": null,
+      "step": null,
+      "shapes": [],
+      "accept": "",
+      "visible_when": null,
+      "source_type": ""
+    },
+    {
+      "key": "roi",
+      "label": "Search region",
+      "kind": "roi",
+      "role": "find",
+      "param": "roi",
+      "required": false,
+      "default": null,
+      "help_text": "Leave blank to search the whole image.",
+      "unit": "",
+      "options": [],
+      "minimum": null,
+      "maximum": null,
+      "step": null,
+      "shapes": [
+        "rect",
+        "rotated_rect"
+      ],
+      "accept": "",
+      "visible_when": null,
+      "source_type": ""
+    },
+    {
+      "key": "template_images",
+      "label": "Locator mark",
+      "kind": "images",
+      "role": "ref",
+      "param": "images",
+      "required": true,
+      "default": [],
+      "help_text": "A fixed reference picture cropped from the taught part.",
+      "unit": "",
+      "options": [],
+      "minimum": null,
+      "maximum": null,
+      "step": null,
+      "shapes": [],
+      "accept": "",
+      "visible_when": {
+        "method": [
+          "template",
+          "register"
+        ]
+      },
+      "source_type": ""
+    },
+    {
+      "key": "model",
+      "label": "Shape model",
+      "kind": "asset",
+      "role": "find",
+      "param": "model",
+      "required": true,
+      "default": "",
+      "help_text": "",
+      "unit": "",
+      "options": [],
+      "minimum": null,
+      "maximum": null,
+      "step": null,
+      "shapes": [],
+      "accept": "file",
+      "visible_when": {
+        "method": "shape"
+      },
+      "source_type": ""
+    },
+    {
+      "key": "threshold",
+      "label": "Score threshold",
+      "kind": "range",
+      "role": "find",
+      "param": "threshold",
+      "required": false,
+      "default": 0.7,
+      "help_text": "",
+      "unit": "",
+      "options": [],
+      "minimum": 0,
+      "maximum": 1,
+      "step": 0.01,
+      "shapes": [],
+      "accept": "",
+      "visible_when": null,
+      "source_type": ""
+    },
+    {
+      "key": "allow_rotation",
+      "label": "Allow rotation",
+      "kind": "boolean",
+      "role": null,
+      "param": null,
+      "required": false,
+      "default": false,
+      "help_text": "",
+      "unit": "",
+      "options": [],
+      "minimum": null,
+      "maximum": null,
+      "step": null,
+      "shapes": [],
+      "accept": "",
+      "visible_when": null,
+      "source_type": ""
+    },
+    {
+      "key": "angle_range",
+      "label": "Rotation range",
+      "kind": "number",
+      "role": "find",
+      "param": "angle_range",
+      "required": false,
+      "default": 0,
+      "help_text": "",
+      "unit": "deg",
+      "options": [],
+      "minimum": 0,
+      "maximum": 180,
+      "step": null,
+      "shapes": [],
+      "accept": "",
+      "visible_when": null,
+      "source_type": ""
+    },
+    {
+      "key": "ref_x",
+      "label": "Reference X",
+      "kind": "number",
+      "role": "align",
+      "param": "ref_x",
+      "required": true,
+      "default": 0,
+      "help_text": "",
+      "unit": "px",
+      "options": [],
+      "minimum": null,
+      "maximum": null,
+      "step": null,
+      "shapes": [],
+      "accept": "",
+      "visible_when": null,
+      "source_type": ""
+    },
+    {
+      "key": "ref_y",
+      "label": "Reference Y",
+      "kind": "number",
+      "role": "align",
+      "param": "ref_y",
+      "required": true,
+      "default": 0,
+      "help_text": "",
+      "unit": "px",
+      "options": [],
+      "minimum": null,
+      "maximum": null,
+      "step": null,
+      "shapes": [],
+      "accept": "",
+      "visible_when": null,
+      "source_type": ""
+    },
+    {
+      "key": "ref_angle",
+      "label": "Reference angle",
+      "kind": "number",
+      "role": "align",
+      "param": "ref_angle",
+      "required": false,
+      "default": 0,
+      "help_text": "",
+      "unit": "deg",
+      "options": [],
+      "minimum": null,
+      "maximum": null,
+      "step": null,
+      "shapes": [],
+      "accept": "",
+      "visible_when": null,
+      "source_type": ""
+    },
+    {
+      "key": "required",
+      "label": "Required",
+      "kind": "boolean",
+      "role": null,
+      "param": null,
+      "required": false,
+      "default": true,
+      "help_text": "",
+      "unit": "",
+      "options": [],
+      "minimum": null,
+      "maximum": null,
+      "step": null,
+      "shapes": [],
+      "accept": "",
+      "visible_when": null,
+      "source_type": ""
+    }
+  ],
+  "public_inputs": [
+    {
+      "role": "find",
+      "port": "image"
+    }
+  ],
+  "public_outputs": [
+    {
+      "role": "align",
+      "port": "transform"
+    },
+    {
+      "role": "find",
+      "port": "found"
+    },
+    {
+      "role": "find",
+      "port": "detected"
+    }
+  ],
+  "pass_port": null
+},
   {
     "kind": "measure_distance", "version": 1, "label": "Measure distance", "help_text": "Configure and run measure distance using the current image.", "roles": {"cal": "caliper", "tol": "tolerance_judge"}, "internal_edges": [{"source_role": "cal", "source_port": "width", "target_role": "tol", "target_port": "value"}], "public_inputs": [{"role": "cal", "port": "image"}, {"role": "cal", "port": "roi"}, {"role": "cal", "port": "_transform"}, {"role": "cal", "port": "_flow"}], "public_outputs": [{"role": "cal", "port": "width"}, {"role": "tol", "port": "in_spec"}], "pass_port": {"role": "tol", "port": "in_spec"},
     "fields": [
