@@ -543,7 +543,11 @@ ROI 顏色統計輸出（RGB/HSV 平均、hex）給上位機記錄或接 if_numb
 - 與 `circular_caliper`＋`profile_defect` 的分工：那條路是「半徑序列」拿去別的地方用（畫趨勢、算跳動），
   這一顆是「就是要找缺陷並分類」。範本畫廊兩種都有（圓周崩邊／邊緣缺陷），同一組樣本可以對照。
 
+## char_detect
+散亂／曲線單字元偵測：先選 otsu、sauvola 或 fixed 與文字極性，依字高、寬高比、像素面積排除雜訊。merge_gap 合併破碎筆畫，必須小於字元間距；量測外框與面積仍取原始筆畫。每字輸出旋轉外框 polygon 與 cx/cy/w/h/angle（畫面順時針為正）。classifier=none 只給框；templates 使用固定影像字元樣本，檔名首字為標籤，樣本與輸入需同極性；旋轉正規化後做相關比對。expected_text 必須有分類樣本，空白表示不核對；未找到回 ng/not_found。reading 與 list_sort.xy 相同；arc 以擬合圓心沿畫面順時針排序，從最大空白角後起算，少於三點或退化共線時回閱讀順序；none 保留偵測順序。極相似字型、連黏字元與整圈沒有明確起點的文字需由使用者提供分離或排序條件。本工具不呼叫整行文字辨識引擎。
+
 ## edge_model_defect
+mode=single 維持原輪廓偏移檢查；mode=pair 沿相同模型的法線找兩個邊，以中位數寬度為基線。pair_polarity 選亮帶／暗帶；width_min／width_max 是絕對寬度界限（0 關閉），threshold 是偏離中位數的量。width 為縮窄／變寬，fracture 為連續卡尺找不到一對邊，step 為寬度突變。缺陷 position／length 為沿教導輪廓的弧長位置與長度；模型 JSON 與教導流程不變，若要檢查膠道，教導點應沿膠道中心線。_transform 使整條中心線跟隨工件移動。
 任意輪廓的缺口／毛刺／崩角：把良品外輪廓存成 `model` JSON（`version`、`image_size`、`closed`、`points`），
 每次沿模型等距佈法向卡尺，輸出 `points`、`deviations`、`missing` 與分段後的 `defects`。閉合模型的正偏移是向外，
 所以 `direction=inward` 只抓少料／缺口，`direction=outward` 只抓多料／毛刺；連續打空由 `fracture_run` 判 fracture。

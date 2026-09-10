@@ -1412,6 +1412,23 @@ def caliper_series(
     samples = int(math.ceil(span)) + 1
     offsets = np.linspace(-span / 2.0, span / 2.0, samples)
     rows = max(1, int(round(float(height))))
+    if n * rows >= 32767:
+        if rows >= 32767:
+            raise ToolError("The caliper width exceeds the supported sampling size")
+        # remap 的輸出列數有上限；沿卡尺分批不改剖面平均或缺陷序列的順序。
+        batch = 32766 // rows
+        combined: list[CaliperHit] = []
+        for start in range(0, n, batch):
+            stop = start + batch
+            hits = caliper_series(
+                image, centers[start:stop], scan[start:stop], tangent[start:stop], positions[start:stop],
+                search=search, height=height, polarity=polarity, threshold=threshold, smoothing=smoothing,
+                mode=mode, select=select, pair_mode=pair_mode, pair_polarity=pair_polarity, expected_width=expected_width,
+            )
+            for hit in hits:
+                hit.index += start
+            combined.extend(hits)
+        return combined
     tang = (np.arange(rows, dtype=np.float64) - (rows - 1) / 2.0)
     # (N, rows, samples) 的取樣格：中心 + 掃描方向×位移 + 切向×降噪位移
     cx = centers[:, 0][:, None, None] + scan[:, 0][:, None, None] * offsets[None, None, :] + tangent[:, 0][:, None, None] * tang[None, :, None]

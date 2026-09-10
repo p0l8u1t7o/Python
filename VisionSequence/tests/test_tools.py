@@ -27,6 +27,13 @@ from tests._helpers import (
 
 
 class RegistryTests(SimpleTestCase):
+    def test_character_detection_and_pair_mode(self):
+        from apps.vision.demo_images import character_scene, seal_scene
+        from tests.test_edge_model_pair import EdgeModelPairTests
+
+        self.assertEqual(run_tool("char_detect", character_scene("reading")[0]).outputs["count"], 6)
+        self.assertEqual(run_tool("edge_model_defect", seal_scene(), EdgeModelPairTests().params()).status, "ok")
+
     def test_all_new_tools_registered(self):
         expected = {
             "template_match", "shape_align", "fixture_roi", "find_circle", "find_line", "hough_circles", "hough_lines",
@@ -55,6 +62,9 @@ class RegistryTests(SimpleTestCase):
 
     def test_teach_params_marked(self):
         teach = {t.key: {p.key for p in t.params if p.teach} for t in base.all_types()}
+        self.assertTrue({"mode", "pair_polarity", "width_min", "width_max"} <= teach["edge_model_defect"])
+        self.assertEqual(teach["char_detect"], {"method", "polarity", "threshold", "window", "k", "height_min", "height_max",
+                                               "aspect_min", "aspect_max", "area_min", "area_max", "merge_gap", "expected_text"})
         # offset 是在算出的門檻上再加減一個常數，換線時操作員會調；區域自適應的視窗與 k 屬於工程師。
         self.assertEqual(teach["threshold"], {"threshold", "low", "high", "block", "c", "offset"})
         self.assertEqual(teach["image_source"], {"exposure_us", "gain_db"})

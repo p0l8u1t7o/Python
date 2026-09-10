@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：152 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端約 1349 項＋前端約 156 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：153 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端約 1430 項＋前端約 240 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出（**隱含埠的規格集中在 `tools/base.py` 的 `IMPLICIT_INPUTS`／`IMPLICIT_OUTPUTS`**，graph 驗證、engine 蒐集、工具目錄都讀它，加新的埠只要補一筆＋`toolLocale.ts` 的兩種中文）。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -29,7 +29,7 @@
 - `.\scripts\dev.ps1 -Setup` 第一次；`.\scripts\dev.ps1` 之後；`.\scripts\stop.ps1` 停止。從 Bash 工具重啟要包成 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1`（外掛 INFO 日誌走 stderr，PowerShell 工具直跑會誤觸 `$ErrorActionPreference=Stop`）。
 - 深度學習依賴可選：`.\scripts\setup_dl.ps1`（先 torch cu128 index，再 requirements-dl.txt；`-Cpu` 無 GPU）→ `manage.py dl_check --predict` 驗證。順序錯會拉到 CPU 版 torch。
 - 手動：`manage.py migrate` → `manage.py seed_demo` → `manage.py serve`；前端 `npm run dev`。
-- `seed_demo` 建 2 個示範流程＋每個範例樣板一組合成樣本圖（`apps/vision/demo_images.py` → `data/samples/` 再存成**固定影像** `ASSET_DIR/fixed/`；不再建 folder 來源與影像資產，舊 seed 留下的「Example: …」來源／資產沒人引用就刪）＋統計範本／形狀模型資產，可重複執行；範例樣板本身在範本畫廊（`demo.BUILTIN_TEMPLATES`，71 個：含 5 個 DL 範本——3 個 YOLO 官方底模、2 個 seed 訓練的教導模型，`_seed_demo_models` 用 mlp_classify／patch_segment 幾秒訓好存成 model 資產，`_demo_model` 現查；`TEMPLATES_NEED_DL` 的範本沒有 DL 依賴時 test_demo 只驗 graph）。**71 個範本每個都有一組樣本圖**（`TEMPLATE_SAMPLE_SOURCES` 必須涵蓋所有 key，`test_demo` 鎖住），所以畫廊不選來源時一律以固定影像開頭、載入就能試執行。`tests/test_demo.py` 逐範本用樣本圖實跑並比對 OK/NG 序列。改樣本圖形要刪 `data/samples/<key>/` 重生成。
+- `seed_demo` 建 2 個示範流程＋每個範例樣板一組合成樣本圖（`apps/vision/demo_images.py` → `data/samples/` 再存成**固定影像** `ASSET_DIR/fixed/`；不再建 folder 來源與影像資產，舊 seed 留下的「Example: …」來源／資產沒人引用就刪）＋統計範本／形狀模型資產，可重複執行；範例樣板本身在範本畫廊（`demo.BUILTIN_TEMPLATES`，73 個：含 5 個 DL 範本——3 個 YOLO 官方底模、2 個 seed 訓練的教導模型，`_seed_demo_models` 用 mlp_classify／patch_segment 幾秒訓好存成 model 資產，`_demo_model` 現查；`TEMPLATES_NEED_DL` 的範本沒有 DL 依賴時 test_demo 只驗 graph）。**73 個範本每個都有一組樣本圖**（`TEMPLATE_SAMPLE_SOURCES` 必須涵蓋所有 key，`test_demo` 鎖住），所以畫廊不選來源時一律以固定影像開頭、載入就能試執行。`tests/test_demo.py` 逐範本用樣本圖實跑並比對 OK/NG 序列。改樣本圖形要刪 `data/samples/<key>/` 重生成。
 
 ### 驗證清單（改完就跑，報告附實際結果）
 - 後端：`.venv/Scripts/python.exe manage.py test --noinput`、`.venv/Scripts/python.exe -m ruff check apps tests config vscapture`。`tests/test_smoke_api.py` 掃所有 GET 端點不 5xx／405——新增 GET 端點記得加進清單。
@@ -192,6 +192,9 @@
 - `model` 空但有 `reference`（`kind="images"`）時，執行時用第一張良品自動教一次（`teach_contour`，訊息會標明是自動教導），**不寫回參數**。
 - **位置修正是這顆的關鍵**：輪廓是教導時的座標，工件會位移旋轉——接上游的 `_transform` 就用 `apply_transform` 把輪廓移過去（與 ROI 同一套慣例）。實測：工件平移 (7, −4) 並轉 12° 後，不給修正誤判 8 個缺陷，**給了修正就回到 0 個判良品**。
 - 實測：良品 0 缺陷、最大偏移 0.0；邊上挖半徑 5 的缺口 → 1 個缺陷、最大偏移 4.92、方向 inward、帶外框與沿邊長度面積。
+- **雙邊模式（階段 16a，2026-09-11）**：`edge_mode`＝single（預設，行為一字不變，324 組與舊實作副本逐值相同）／pair（膠道、密封條：每把卡尺找一對邊，**基線取寬度中位數**，`pair_polarity`、`width_min`／`width_max` 絕對限制，teach）；缺陷種類沿用 `tools/defects.py`（width＝寬度偏移或越限、fracture＝連續找不到雙邊、step＝相鄰寬度突變），外框包含兩側邊緣，`position` 是輪廓起點到缺陷起點的弧長。pair 不套用單邊的 polarity（否則只留一個梯度方向，永遠找不到第二邊）。S 形膠道平移並轉 ±12° 後，缺陷起訖誤差 ≤ 1.19 px。範本 `seal_width`。
+- **單字元偵測 `char_detect`（builtin/chars.py，階段 16a）**：散亂、旋轉的單一字元（非整行文字）——otsu／sauvola／fixed 二值化＋極性、連通元件、`merge_gap` 合併被拆開的筆畫、字高／長寬比／面積過濾、旋轉外框；`classifier`＝none／templates（固定影像檔名首字為標籤，四個直角方向比對正規化字元）；排序 reading（同 `list_sort.xy`）／arc（擬合圓最大空白角後順時針）。輸出 chars／text／count，`expected_text` 不符 ng、沒字元 ng／not_found。**OCR 目前沒有單字元模式，所以不提供 classifier=ocr**。範本 `character_count`。
+- **`locate.caliper_series` 超大批次分段**（16a 順修）：卡尺數 × 列數 ≥ 32767 會超過 cv2.remap 的列上限、合法參數也拋底層例外（tool_audit 抓到：1200 把 × 99 px）；現在只在超限時分段取樣再還原全域 index，**未超限時原本的程式碼路徑一字不變**。等價性：288 組（333×97／1001×701 × 三位深 × 單邊各選邊／雙邊各選邊與極性）全欄位相同，bench 410 筆既有結果字串 0 差異（`tests/test_edge_model_pair.py` 保留整批取樣的純函式副本）。
 
 ### 影像顯示增強（K2，純前端，Codex 實作）
 - **`ImageViewer` 是九個頁面共用的**（編輯器、工具頁、教導、良品比對、標定、AI 助手、批次、深度學習、看板）——改它一定要逐頁確認。新 props 全部選填（`compareSrc`／`compareWidth`／`compareHeight`／`stateKey`），未傳時行為與以前完全相同。

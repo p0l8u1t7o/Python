@@ -8,6 +8,25 @@
  * Generated from the catalogue; keep it in step when tool wording changes.
  */
 export default {
+  char_detect: {
+    label: '单字符检测',
+    description: '查找散乱或曲线排列的单字符，合并邻近笔画，并可使用字符样本分类。',
+    params: {
+      roi: { label: '区域' },
+      method: { label: '二值化方式', options: { otsu: '自动', sauvola: '局部对比', fixed: '固定阈值' } },
+      polarity: { label: '字符极性', options: { dark_on_light: '亮底暗字', light_on_dark: '暗底亮字' } },
+      threshold: { label: '阈值' }, window: { label: '局部窗口' }, k: { label: '局部对比系数' },
+      height_min: { label: '最小字高' }, height_max: { label: '最大字高' },
+      aspect_min: { label: '最小宽高比' }, aspect_max: { label: '最大宽高比' },
+      area_min: { label: '最小笔画面积' }, area_max: { label: '最大笔画面积' },
+      merge_gap: { label: '笔画合并间距', help: '允许的最大空白像素间距，须小于字符之间的间距。' },
+      classifier: { label: '分类方式', options: { none: '只检测外框', templates: '字符样本' } },
+      templates: { label: '字符样本', help: '每张图像只含一个字符，文件名的第一个字符作为标签。' },
+      order: { label: '排序', options: { reading: '阅读顺序', arc: '顺时针圆弧', none: '不排序' }, help: '圆弧排序从最大空白角之后开始；共线中心改用阅读顺序。' },
+      expected_text: { label: '预期文本' },
+    },
+    ports: { image: '图像', roi: '区域（动态）', chars: '字符列表', text: '文本', count: '数量', ok: '合格', ng: '文本不符', not_found: '未找到字符' },
+  },
   trigger_flow: {
     label: '触发流程',
     description: '从当前执行中启动另一条流程。异步只排队后继续；同步会在安全容量下等待子流程结果。',
@@ -1352,6 +1371,10 @@ export default {
     label: "轮廓模型缺陷",
     description: "把良品外轮廓教成点集模型，每次沿着那条任意轮廓布法向卡尺；向内连续偏移是少料或缺口，向外连续偏移是多料或毛刺，连续找不到边是崩角或断裂。",
     params: {
+      mode: { label: '边缘模式', options: { single: '单边', pair: '双边' } },
+      pair_polarity: { label: '带状区域极性', options: { any: '不限', bright: '亮带', dark: '暗带' } },
+      width_min: { label: '最小带宽', help: '0 表示停用宽度下限。' },
+      width_max: { label: '最大带宽', help: '0 表示停用宽度上限。' },
       roi: { label: "教学区域", help: "只在自动从参考图像教学时使用。留空则用整张参考图像。" },
       model: { label: "轮廓模型", help: "JSON：{version:1, image_size:[宽,高], closed:true, points:[[x,y],...]}。点是教学图像坐标；闭合模型的正偏移代表向外。" },
       reference: { label: "参考图像", help: "选填良品图像。模型为空时，会用第一张参考图像在本次执行自动教学轮廓。" },

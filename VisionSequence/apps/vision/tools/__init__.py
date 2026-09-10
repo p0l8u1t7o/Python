@@ -33,6 +33,7 @@ BUILTIN_MODULES = [
     "apps.vision.tools.builtin.detect",
     "apps.vision.tools.builtin.barcode_grade",
     "apps.vision.tools.builtin.ocr_tools",
+    "apps.vision.tools.builtin.chars",
     "apps.vision.tools.builtin.lists",
     "apps.vision.tools.builtin.track",
     "apps.vision.tools.builtin.stat",

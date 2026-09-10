@@ -8,6 +8,25 @@
  * Generated from the catalogue; keep it in step when tool wording changes.
  */
 export default {
+  char_detect: {
+    label: '單字元偵測',
+    description: '尋找散亂或曲線排列的單字元，合併鄰近筆畫，並可使用字元樣本分類。',
+    params: {
+      roi: { label: '區域' },
+      method: { label: '二值化方式', options: { otsu: '自動', sauvola: '局部對比', fixed: '固定門檻' } },
+      polarity: { label: '字元極性', options: { dark_on_light: '亮底暗字', light_on_dark: '暗底亮字' } },
+      threshold: { label: '門檻' }, window: { label: '局部視窗' }, k: { label: '局部對比係數' },
+      height_min: { label: '最小字高' }, height_max: { label: '最大字高' },
+      aspect_min: { label: '最小寬高比' }, aspect_max: { label: '最大寬高比' },
+      area_min: { label: '最小筆畫面積' }, area_max: { label: '最大筆畫面積' },
+      merge_gap: { label: '筆畫合併間距', help: '允許的最大空白像素間距，須小於字元之間的間距。' },
+      classifier: { label: '分類方式', options: { none: '只偵測外框', templates: '字元樣本' } },
+      templates: { label: '字元樣本', help: '每張影像只含一個字元，檔名的第一個字元作為標籤。' },
+      order: { label: '排序', options: { reading: '閱讀順序', arc: '順時針圓弧', none: '不排序' }, help: '圓弧排序從最大空白角之後開始；共線中心改用閱讀順序。' },
+      expected_text: { label: '預期文字' },
+    },
+    ports: { image: '影像', roi: '區域（動態）', chars: '字元清單', text: '文字', count: '數量', ok: '合格', ng: '文字不符', not_found: '未找到字元' },
+  },
   trigger_flow: {
     label: '觸發流程',
     description: '從目前執行中啟動另一條流程。非同步只排隊後繼續；同步會在安全容量下等待子流程結果。',
@@ -1352,6 +1371,10 @@ export default {
     label: "輪廓模型缺陷",
     description: "把良品外輪廓教成點集模型，每次沿著那條任意輪廓佈法向卡尺；向內連續偏移是少料或缺口，向外連續偏移是多料或毛刺，連續找不到邊是崩角或斷裂。",
     params: {
+      mode: { label: '邊緣模式', options: { single: '單邊', pair: '雙邊' } },
+      pair_polarity: { label: '帶狀區域極性', options: { any: '不限', bright: '亮帶', dark: '暗帶' } },
+      width_min: { label: '最小帶寬', help: '0 表示停用寬度下限。' },
+      width_max: { label: '最大帶寬', help: '0 表示停用寬度上限。' },
       roi: { label: "教導區域", help: "只在自動從參考影像教導時使用。留空則用整張參考影像。" },
       model: { label: "輪廓模型", help: "JSON：{version:1, image_size:[寬,高], closed:true, points:[[x,y],...]}。點是教導影像座標；閉合模型的正偏移代表向外。" },
       reference: { label: "參考影像", help: "選填良品影像。模型為空時，會用第一張參考影像在本次執行自動教導輪廓。" },

@@ -338,6 +338,8 @@ export default {
     },
   },
   templates: {
+    character_count: { name: '散亂字元計數', description: '在直線、曲線或散亂排列中偵測六個單字元' },
+    seal_width: { name: '自由輪廓膠道寬度', description: '量測曲線膠道的兩側，排除縮窄或斷裂區段' },
     point_fitting: { name: '由邊緣點擬合幾何', description: '由量測邊界擬合直線、圓與橢圓，要求三項結果完整並計算圓面積' },
     polar_edge_check: { name: '展開並還原圓周缺陷', description: '檢查展開後的直邊，僅將檢出的缺口中心映回原圖' },
     absence_check: { name: '禁區異物檢查', description: '區域應保持無物件，出現異物即判 NG' },

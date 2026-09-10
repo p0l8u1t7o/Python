@@ -2355,7 +2355,28 @@ def builtin_fixed_ids() -> set[str]:
 
 #: 範本畫廊的內建範本目錄：(key, 名稱, 說明, 分類, builder)。
 #: builder 在 request 時才呼叫（範例資產 id 由 _demo_asset 現查，seed 過就開箱即用）。
+def character_count_flow(source_id: Any) -> dict[str, Any]:
+    """以字元框計數示範曲線與散亂字元，不要求額外辨識模型。"""
+    return {"nodes": [_node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+                      _node("chars", "char_detect", 1, 0, "Find six characters", height_min=15, height_max=70, order="arc"),
+                      _node("check", "in_range", 2, 0, "Require six", low=6, high=6)],
+            "edges": [_edge("src", "chars", "image", "image"), _edge("chars", "check", "count", "value")]}
+
+
+def seal_width_flow(source_id: Any) -> dict[str, Any]:
+    """沿 S 形模型檢查雙邊寬度與斷裂。"""
+    from apps.vision.demo_images import seal_path
+
+    return {"nodes": [_node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+                      _node("seal", "edge_model_defect", 1, 0, "Check seal width", mode="pair", pair_polarity="bright",
+                            model={"version": 1, "image_size": [1001, 701], "closed": False, "points": seal_path().tolist()},
+                            calipers=1000, search=24, caliper_width=1, smoothing=1, threshold=3, width_min=9, width_max=15)],
+            "edges": [_edge("src", "seal", "image", "image")]}
+
+
 BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
+    ("character_count", "Count scattered characters", "Find six individual characters on straight, curved or scattered layouts", "count", character_count_flow),
+    ("seal_width", "Free contour seal width", "Measure both sides of a curved seal and reject narrow or broken sections", "quality", seal_width_flow),
     ("point_fitting", "Fit geometry from edge points", "Fit a line, circle and ellipse from measured boundaries; require all three results and calculate circular area", "measure", point_fitting_flow),
     ("polar_edge_check", "Unwrap and restore rim defects", "Inspect a straightened rim and map only detected chip centres back to the original image", "quality", polar_edge_check_flow),
     ("absence_check", "Keep an exclusion zone clear", "Reject foreign objects inside a region that must remain empty", "quality", absence_check_flow),
@@ -2458,6 +2479,8 @@ BUILTIN_TEMPLATES = tuple(
 #: builtin 範本 key → 對應的樣本集名稱（`Example: <demo_images.SAMPLE_SETS 的標籤>`）。
 #: **每個內建範本都要有一組**：範本畫廊預設把取像節點換成帶著這些圖的固定影像，載入即可試執行。
 TEMPLATE_SAMPLE_SOURCES: dict[str, str] = {
+    "character_count": "Example: scattered characters",
+    "seal_width": "Example: seal width parts",
     "point_fitting": "Example: fitted boundaries",
     "polar_edge_check": "Example: polar rim chips",
     "absence_check": "Example: clear exclusion zone",

@@ -469,6 +469,17 @@ class EdgeModelDefectTool(Tool):
     category = "detect"
     icon = "Spline"
     params = [
+        Param("mode", "Edge mode", kind="select", default="single", options=[
+            {"value": "single", "label": "One edge"}, {"value": "pair", "label": "A pair of edges"},
+        ], teach=True),
+        Param("pair_polarity", "Band polarity", kind="select", default="any", options=[
+            {"value": "any", "label": "Either"}, {"value": "bright", "label": "Bright band"},
+            {"value": "dark", "label": "Dark band"},
+        ], visible_when={"param": "mode", "in": ["pair"]}, teach=True),
+        Param("width_min", "Minimum band width", kind="number", default=0, minimum=0, unit="px", teach=True,
+              visible_when={"param": "mode", "in": ["pair"]}, help_text="0 disables the lower width limit."),
+        Param("width_max", "Maximum band width", kind="number", default=0, minimum=0, unit="px", teach=True,
+              visible_when={"param": "mode", "in": ["pair"]}, help_text="0 disables the upper width limit."),
         Param("roi", "Teaching region", kind="roi", shapes=["rect", "rotated_rect", "circle", "ellipse", "annulus", "polygon"],
               help_text="Optional region used only when automatically teaching from the reference picture. Leave blank to teach from the whole reference."),
         Param("model", "Contour model", kind="json", default=None,
@@ -551,27 +562,36 @@ class EdgeModelDefectTool(Tool):
                 overlays=[region_overlay(region, label="model")],
                 branch="defect", status="ng", message="The contour model is too short to sample",
             )
+        pair = str(ctx.param("mode", "single")) == "pair"
         hits = caliper_series(
             image, centers, scan, tangent, positions,
             search=ctx.number("search", 24), height=ctx.number("caliper_width", 3),
-            polarity=str(ctx.param("polarity", "light_to_dark")), threshold=ctx.number("edge_threshold", 20),
-            smoothing=ctx.integer("smoothing", 3), mode="single",
+            polarity="any" if pair else str(ctx.param("polarity", "light_to_dark")), threshold=ctx.number("edge_threshold", 20),
+            smoothing=ctx.integer("smoothing", 3), mode="pair" if pair else "single",
             select=str(ctx.param("edge_select", "strongest")),
+            pair_polarity=str(ctx.param("pair_polarity", "any")),
         )
-        series = np.array([h.offset for h in hits], dtype=np.float64)
+        series = np.array([h.width if pair else h.offset for h in hits], dtype=np.float64)
         found = np.array([h.found for h in hits], dtype=bool)
         series[~found] = np.nan
         baseline = np.zeros(len(series), dtype=np.float64)
+        if pair:
+            baseline[:] = float(np.nanmedian(series)) if found.any() else np.nan
         deviation = series - baseline
-        flags, kinds = EdgeDefectTool._flags(ctx, deviation, found, series, False, wrap)
+        flags, kinds = EdgeDefectTool._flags(ctx, deviation, found, series, pair, wrap)
+        if pair:
+            # 成對量的是寬度；偏離中位數也屬寬度缺陷，保留共用的斷裂與階差分類。
+            kinds = ["width" if kind == "dislocation" else kind for kind in kinds]
         runs = EdgeDefectTool._runs(ctx, flags, kinds, wrap)
-        items = self._describe_model(runs, hits, deviation, positions, wrap)
+        items = self._describe_model(runs, hits, deviation, positions, wrap, pair=pair)
         limit = ctx.integer("max_defects", 0)
         bad = len(items) > limit if limit else bool(items)
         hit_points_out = [[round(h.x, 2), round(h.y, 2)] for h in hits if h.found]
         missing = [int(i) for i in np.nonzero(~found)[0]]
         overlays: list[dict[str, Any]] = [region_overlay(region, label="model")]
         overlays.append({"kind": "points", "points": hit_points_out, "color": "#22c55e"})
+        if pair:
+            overlays.append({"kind": "points", "points": [[h.x2, h.y2] for h in hits if h.found], "color": "#22c55e"})
         for item in items:
             rect = item.get("rect")
             if rect:
@@ -597,7 +617,7 @@ class EdgeModelDefectTool(Tool):
 
     @staticmethod
     def _describe_model(runs: list[tuple[int, int, str]], hits: list[CaliperHit], deviation: np.ndarray,
-                        positions: np.ndarray, wrap: bool) -> list[dict[str, Any]]:
+                        positions: np.ndarray, wrap: bool, *, pair: bool = False) -> list[dict[str, Any]]:
         """任意輪廓缺陷段描述；沿邊長度用模型弧長座標，不用端點直線距離。"""
         n = len(hits)
         total = float(positions[-1] + (positions[1] - positions[0])) if wrap and len(positions) > 1 else float(positions[-1] if len(positions) else 0.0)
@@ -608,6 +628,8 @@ class EdgeModelDefectTool(Tool):
             for i in indices:
                 h = hits[i]
                 pts.append([h.x, h.y] if h.found else [h.cx, h.cy])
+                if pair and h.found:
+                    pts.append([h.x2, h.y2])
             values = np.array([deviation[i] for i in indices], dtype=np.float64)
             finite = values[np.isfinite(values)]
             peak = float(finite[np.argmax(np.abs(finite))]) if len(finite) else float("nan")

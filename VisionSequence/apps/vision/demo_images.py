@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 
 import cv2
@@ -1212,8 +1213,86 @@ def clear_exclusion_zone() -> list[np.ndarray]:
     return out
 
 
+def character_tiles() -> dict[str, np.ndarray]:
+    """固定點陣字型，示範與測試不依賴作業系統字型。"""
+    rows = {
+        "F": ["11111", "10000", "10000", "11110", "10000", "10000", "10000"],
+        "P": ["11110", "10001", "10001", "11110", "10000", "10000", "10000"],
+        "R": ["11110", "10001", "10001", "11110", "10100", "10010", "10001"],
+        "A": ["01110", "11011", "10001", "11111", "10001", "10001", "10001"],
+        "T": ["11111", "00100", "00100", "00100", "00100", "00100", "00100"],
+        "E": ["11111", "10000", "10000", "11110", "10000", "10000", "11111"],
+    }
+    return {key: np.pad(255 - np.kron(np.array([[int(c) for c in row] for row in bitmap], np.uint8),
+                                     np.ones((5, 5), np.uint8)) * 255, 8, constant_values=255) for key, bitmap in rows.items()}
+
+
+def character_scene(layout: str = "arc", text: str = "FPRATE") -> tuple[np.ndarray, list[list[float]]]:
+    """直線、120 度圓弧與散亂旋轉字元；回傳按字串排列的中心真值。"""
+    image = np.full((701, 1001), 255, np.uint8)
+    tiles = character_tiles()
+    centers = []
+    random_centers = [(170, 180), (780, 510), (450, 270), (250, 530), (800, 180), (510, 510)]
+    for i, label in enumerate(text):
+        if layout == "arc":
+            theta = -150 + i * 120 / 5
+            angle = theta + 90
+            cx, cy = 500 + 260 * math.cos(math.radians(theta)), 440 + 260 * math.sin(math.radians(theta))
+        elif layout == "scattered":
+            cx, cy = random_centers[i]
+            angle = [-30, 18, -12, 30, 8, -24][i]
+        else:
+            cx, cy, angle = 180 + i * 120, 350, 0
+        tile = tiles[label]
+        h, w = tile.shape
+        matrix = cv2.getRotationMatrix2D(((w - 1) / 2, (h - 1) / 2), -angle, 1)
+        matrix[:, 2] += np.array([cx - (w - 1) / 2, cy - (h - 1) / 2])
+        placed = cv2.warpAffine(tile, matrix, (1001, 701), borderValue=255)
+        image = np.minimum(image, placed)
+        centers.append([cx, cy])
+    return image, centers
+
+
+def scattered_characters() -> list[np.ndarray]:
+    """前三張字數正確，第四張少一個字元。"""
+    return [character_scene(layout)[0] for layout in ("reading", "arc", "scattered")] + [character_scene("arc", "FPRAT")[0]]
+
+
+def seal_path() -> np.ndarray:
+    """S 形膠道中心線，與寬度真值分開建立。"""
+    x = np.linspace(150, 850, 1401)
+    return np.column_stack([x, 350 + 90 * np.sin((x - 150) * 2 * np.pi / 700)])
+
+
+def seal_scene(bad: bool = False, angle: float = 0, dx: float = 0, dy: float = 0) -> np.ndarray:
+    """用平台 ROI 多邊形畫 12 px 膠道；不良段縮至 6 px 並斷開。"""
+    from apps.vision.tools.roi import mask_for
+
+    points = seal_path()
+    tangent = np.gradient(points, axis=0)
+    normals = np.column_stack([-tangent[:, 1], tangent[:, 0]])
+    normals /= np.linalg.norm(normals, axis=1)[:, None]
+    radians = math.radians(angle)
+    rotation = np.array([[math.cos(radians), -math.sin(radians)], [math.sin(radians), math.cos(radians)]])
+    image = np.zeros((701, 1001), np.uint8)
+    sections = [(0, 1400, 12)] if not bad else [(0, 360, 12), (360, 540, 6), (540, 880, 12), (1020, 1400, 12)]
+    for start, end, width in sections:
+        middle, normal = points[start:end + 1], normals[start:end + 1]
+        polygon = np.vstack([middle + normal * width / 2, (middle - normal * width / 2)[::-1]])
+        polygon = (polygon - [500, 350]) @ rotation.T + [500 + dx, 350 + dy]
+        image[mask_for({"shape": "polygon", "points": polygon.tolist()}, 1001, 701) > 0] = 255
+    return image
+
+
+def seal_width_parts() -> list[np.ndarray]:
+    """相同模型下三張良品與一張縮窄且斷裂的膠道。"""
+    return [seal_scene() for _ in range(3)] + [seal_scene(bad=True)]
+
+
 #: key → (顯示名, 產生器)。key 同時是 data/samples/ 下的資料夾名。
 SAMPLE_SETS: dict[str, tuple[str, callable]] = {
+    "scattered_characters": ("scattered characters", scattered_characters),
+    "seal_width_parts": ("seal width parts", seal_width_parts),
     "fitted_boundaries": ("fitted boundaries", fitted_boundaries),
     "polar_rim_chips": ("polar rim chips", polar_rim_chips),
     "clear_exclusion_zone": ("clear exclusion zone", clear_exclusion_zone),

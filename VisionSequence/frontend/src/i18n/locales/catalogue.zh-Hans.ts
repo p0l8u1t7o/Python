@@ -338,6 +338,8 @@ export default {
     },
   },
   templates: {
+    character_count: { name: '散乱字符计数', description: '在直线、曲线或散乱排列中检测六个单字符' },
+    seal_width: { name: '自由轮廓胶道宽度', description: '测量曲线胶道的两侧，排除缩窄或断裂区段' },
     point_fitting: { name: '由边缘点拟合几何', description: '由测量边界拟合直线、圆与椭圆，要求三项结果完整并计算圆面积' },
     polar_edge_check: { name: '展开并还原圆周缺陷', description: '检查展开后的直边，仅将检出的缺口中心映回原图' },
     absence_check: { name: '禁区异物检查', description: '区域应保持无物体，出现异物即判 NG' },
