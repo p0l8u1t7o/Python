@@ -50,15 +50,28 @@ class BuildTests(TestCase):
             },
         }
 
-    def test_default_board_lists_every_named_output_and_last_image(self):
+    def test_default_board_lists_every_named_output_and_source_image(self):
         out = board.build(self.flow, self.run_dict())
         self.assertEqual([v["key"] for v in out["values"]], ["width", "height", "text"])
-        self.assertEqual(out["run"]["image"]["ref"], "r1:blur:image")
+        self.flow.graph = {"nodes": [{"id": "src", "type": "image_source"}, {"id": "blur", "type": "blur"}], "edges": []}
+        out = board.build(self.flow, self.run_dict())
+        self.assertEqual(out["run"]["image"]["ref"], "r1:src:image")
         self.assertEqual(out["run"]["verdict"], "NG")
         self.assertEqual(out["run"]["label"], "gap")
         self.assertEqual(len(out["run"]["overlays"]), 1)
         self.assertEqual(out["flow"]["title"], "b")
         self.assertIsNotNone(out["counts"])
+
+    def test_default_board_prefers_draw_result_when_present(self):
+        run = self.run_dict()
+        run["nodes"]["draw"] = {
+            "status": "ok",
+            "outputs": {"image": {"ref": "r1:draw:image", "width": 64, "height": 48}},
+            "overlays": [],
+        }
+        self.flow.graph = {"nodes": [{"id": "src", "type": "image_source"}, {"id": "draw", "type": "draw_result"}], "edges": []}
+        out = board.build(self.flow, run)
+        self.assertEqual(out["run"]["image"]["ref"], "r1:draw:image")
 
     def test_configured_board_picks_image_formats_and_judges_tolerance(self):
         self.flow.board = {"title": "Line 1", "image": "src", "overlays": False, "show_counts": False,

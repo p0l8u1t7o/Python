@@ -67,7 +67,7 @@ class ArchivePolicyTests(TestCase):
         every = {**ng, "mode": "all"}
         self.assertTrue(archive.wanted(every, "ok", run_index=7))
 
-    def test_pick_refs_keeps_source_and_result(self):
+    def test_pick_refs_keeps_source_when_no_result_image_exists(self):
         class _Node:
             def __init__(self, outputs):
                 self.outputs = outputs
@@ -80,8 +80,23 @@ class ArchivePolicyTests(TestCase):
                 "c": _Node({"image": {"ref": "run1:c:image"}, "count": 5}),
             }
 
-        self.assertEqual(archive.pick_refs(_Report(), {"pictures": "result"}), ["run1:a:image", "run1:c:image"])
+        self.assertEqual(archive.pick_refs(_Report(), {"pictures": "result"}), ["run1:a:image"])
         self.assertEqual(len(archive.pick_refs(_Report(), {"pictures": "all"})), 3)  # _image 直通埠不算
+
+    def test_pick_refs_keeps_source_and_draw_result(self):
+        class _Node:
+            def __init__(self, outputs):
+                self.outputs = outputs
+
+        class _Report:
+            id = "run1"
+            nodes = {
+                "src": _Node({"image": {"ref": "run1:src:image"}}),
+                "b": _Node({"image": {"ref": "run1:b:image"}}),
+                "draw": _Node({"image": {"ref": "run1:draw:image"}}),
+            }
+
+        self.assertEqual(archive.pick_refs(_Report(), {"pictures": "result"}), ["run1:src:image", "run1:draw:image"])
 
 
 @override_settings(VISION={**VISION, "PERSIST_RUNS": True, "ARCHIVE_DIR": str(VISION["ASSET_DIR"].parent / "archive-test")})

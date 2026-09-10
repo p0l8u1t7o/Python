@@ -98,12 +98,17 @@ def _format(value: Any, decimals: int | None) -> str:
     return str(value)[:120]
 
 
-def _pick_image(run: dict[str, Any] | None, node_id: str) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
-    """指定節點的影像，否則最後一張影像；標記＝所有節點的標記（前端總覽頁也是這樣疊）。"""
+def _pick_image(run: dict[str, Any] | None, node_id: str, graph: dict[str, Any] | None = None) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    """指定節點優先，否則用結果圖；沒有結果圖時用取像節點當底圖，標記疊全流程。"""
     if not run:
         return None, []
     nodes = run.get("nodes") or {}
     overlays = [o for n in nodes.values() for o in (n.get("overlays") or [])]
+    graph_types = {
+        str(n.get("id")): str(n.get("type") or "")
+        for n in (graph or {}).get("nodes", [])
+        if isinstance(n, dict)
+    }
 
     def image_of(node: dict[str, Any]) -> dict[str, Any] | None:
         outputs = node.get("outputs") or {}
@@ -113,10 +118,24 @@ def _pick_image(run: dict[str, Any] | None, node_id: str) -> tuple[dict[str, Any
                 return {"ref": value["ref"], "width": value["width"], "height": value["height"]}
         return None
 
+    def first_of_types(types: set[str]) -> dict[str, Any] | None:
+        for nid, node in nodes.items():
+            if graph_types.get(str(nid)) in types:
+                found = image_of(node)
+                if found:
+                    return found
+        return None
+
     if node_id and node_id in nodes:
         found = image_of(nodes[node_id])
         if found:
             return found, overlays
+    found = first_of_types({"draw_result"})
+    if found:
+        return found, overlays
+    found = first_of_types({"image_source", "fixed_image", "stereo_grab"})
+    if found:
+        return found, overlays
     for node in reversed(list(nodes.values())):
         found = image_of(node)
         if found:
@@ -183,7 +202,7 @@ def build(flow: Any, run: dict[str, Any] | None, *, variables: dict[str, Any] | 
             "value": value, "text": _format(value, item.get("decimals")), "ok": ok,
             "low": low, "high": high, "present": key in outputs,
         })
-    image, overlays = _pick_image(run, cfg["image"])
+    image, overlays = _pick_image(run, cfg["image"], getattr(flow, "graph", None))
     verdict = None
     if run:
         verdict = outputs.get("judge") or ("OK" if run.get("status") == "ok" else "NG" if run.get("status") == "ng" else str(run.get("status") or "").upper())

@@ -37,10 +37,12 @@ describe('board evaluation', () => {
     expect(formatValue(null)).toBe('')
   })
 
-  it('picks the configured node image, else the last image, and summarises the run', () => {
-    expect(pickImage(run)?.ref).toBe('r1:blur:image')
+  it('picks the configured node image, else draw/source image, and summarises the run', () => {
+    expect(pickImage(run)?.ref).toBe('r1:src:image')
     expect(pickImage(run, 'src')?.ref).toBe('r1:src:image')
-    expect(pickImage(run, 'nope')?.ref).toBe('r1:blur:image')
+    expect(pickImage(run, 'nope')?.ref).toBe('r1:src:image')
+    const withDraw = { ...run, nodes: { ...run.nodes, draw: { status: 'ok', duration_ms: 1, message: '', outputs: { image: { ref: 'r1:draw:image', width: 64, height: 48 } }, overlays: [] } } } as unknown as RunReport
+    expect(pickImage(withDraw)?.ref).toBe('r1:draw:image')
     const summary = runToBoard(run, { image: 'src', overlays: false })
     expect(summary.verdict).toBe('NG')
     expect(summary.label).toBe('gap')

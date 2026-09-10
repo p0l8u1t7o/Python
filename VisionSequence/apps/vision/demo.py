@@ -11,6 +11,7 @@ folder 來源、群組「範例」）＋範本／良品資產（從樣本圖自�
 from __future__ import annotations
 
 import logging
+import copy
 
 from typing import Any
 
@@ -38,6 +39,285 @@ def _node(nid: str, ntype: str, col: int, row: int, title: str = "", **params: A
 
 def _edge(source: str, target: str, sh: str = "", th: str = "") -> dict[str, Any]:
     return {"id": f"e-{source}-{sh}-{target}-{th}", "source": source, "target": target, "source_handle": sh, "target_handle": th}
+
+
+def _slim_edge_id(source: str, sh: str, target: str, th: str) -> str:
+    return f"e-{source}-{sh}-{target}-{th}"
+
+
+def _tool_for(node: dict[str, Any]) -> Any | None:
+    if node.get("type") == "note":
+        return None
+    return tools.get(str(node.get("type") or ""))
+
+
+def _source_handle(nodes: dict[str, dict[str, Any]], edge: dict[str, Any]) -> str:
+    handle = str(edge.get("source_handle") or "")
+    if handle:
+        return handle
+    tool = _tool_for(nodes[str(edge.get("source"))])
+    return tool.outputs[0].key if tool and tool.outputs else ""
+
+
+def _target_handle(nodes: dict[str, dict[str, Any]], edge: dict[str, Any]) -> str:
+    handle = str(edge.get("target_handle") or "")
+    if handle:
+        return handle
+    tool = _tool_for(nodes[str(edge.get("target"))])
+    return tool.inputs[0].key if tool and tool.inputs else tools.FLOW_IN
+
+
+def _add_edge(edges: list[dict[str, Any]], source: str, target: str, sh: str, th: str) -> None:
+    edge = {"id": _slim_edge_id(source, sh, target, th), "source": source, "target": target, "source_handle": sh, "target_handle": th}
+    if not any(
+        e.get("source") == edge["source"]
+        and e.get("target") == edge["target"]
+        and str(e.get("source_handle") or "") == edge["source_handle"]
+        and str(e.get("target_handle") or "") == edge["target_handle"]
+        for e in edges
+    ):
+        edges.append(edge)
+
+
+def _remove_nodes(graph: dict[str, Any], remove: set[str]) -> None:
+    graph["nodes"] = [n for n in graph.get("nodes", []) if n.get("id") not in remove]
+    graph["edges"] = [e for e in graph.get("edges", []) if e.get("source") not in remove and e.get("target") not in remove]
+
+
+def _remove_formula_diameter(graph: dict[str, Any]) -> None:
+    nodes = {str(n.get("id")): n for n in graph.get("nodes", [])}
+    remove: set[str] = set()
+    new_edges: list[dict[str, Any]] = []
+    edges = list(graph.get("edges", []))
+    for node_id, node in nodes.items():
+        if node.get("type") != "formula" or str((node.get("params") or {}).get("expression") or "").replace(" ", "") not in ("a*2", "2*a"):
+            continue
+        incoming = [e for e in edges if e.get("target") == node_id and _target_handle(nodes, e) == "a"]
+        if len(incoming) != 1:
+            continue
+        src = str(incoming[0].get("source"))
+        if nodes.get(src, {}).get("type") != "find_circle" or _source_handle(nodes, incoming[0]) != "r":
+            continue
+        outgoing = [e for e in edges if e.get("source") == node_id]
+        for out_edge in outgoing:
+            sh = _source_handle(nodes, out_edge)
+            if sh == "value":
+                new_edges.append({
+                    "id": _slim_edge_id(src, "diameter", str(out_edge.get("target")), _target_handle(nodes, out_edge)),
+                    "source": src,
+                    "target": out_edge.get("target"),
+                    "source_handle": "diameter",
+                    "target_handle": _target_handle(nodes, out_edge),
+                })
+        remove.add(node_id)
+    if remove:
+        graph["edges"] = [
+            e for e in edges
+            if e.get("source") not in remove and e.get("target") not in remove
+        ] + new_edges
+        _remove_nodes(graph, remove)
+
+
+def _simplify_concentricity_edges(graph: dict[str, Any]) -> None:
+    nodes = {str(n.get("id")): n for n in graph.get("nodes", [])}
+    edges = list(graph.get("edges", []))
+    for node_id, node in nodes.items():
+        if node.get("type") != "concentricity":
+            continue
+        incoming = [e for e in edges if e.get("target") == node_id]
+        for prefix, target in (("a", "a"), ("b", "b")):
+            want = {f"{prefix}x": "cx", f"{prefix}y": "cy", f"{prefix}r": "r"}
+            found: dict[str, dict[str, Any]] = {}
+            for edge in incoming:
+                th = _target_handle(nodes, edge)
+                if th in want and _source_handle(nodes, edge) == want[th]:
+                    found[th] = edge
+            if set(found) != set(want):
+                continue
+            sources = {str(e.get("source")) for e in found.values()}
+            if len(sources) != 1:
+                continue
+            src = next(iter(sources))
+            if nodes.get(src, {}).get("type") != "find_circle":
+                continue
+            graph["edges"] = [
+                e for e in graph.get("edges", [])
+                if not (e.get("target") == node_id and _target_handle(nodes, e) in want)
+            ]
+            _add_edge(graph["edges"], src, node_id, "circle", target)
+            edges = list(graph.get("edges", []))
+
+
+def _remove_fixture_roi(graph: dict[str, Any]) -> None:
+    nodes = {str(n.get("id")): n for n in graph.get("nodes", [])}
+    edges = list(graph.get("edges", []))
+    remove: set[str] = set()
+    for node_id, node in nodes.items():
+        if node.get("type") != "fixture_roi":
+            continue
+        transform_edges = [e for e in edges if e.get("target") == node_id and _target_handle(nodes, e) == "transform"]
+        region_edges = [e for e in edges if e.get("source") == node_id and _source_handle(nodes, e) == "region"]
+        if len(transform_edges) != 1 or not region_edges:
+            continue
+        roi = copy.deepcopy((node.get("params") or {}).get("roi"))
+        t_edge = transform_edges[0]
+        for edge in region_edges:
+            target = str(edge.get("target"))
+            if target not in nodes:
+                continue
+            params = nodes[target].setdefault("params", {})
+            params.setdefault("roi", copy.deepcopy(roi))
+            _add_edge(graph["edges"], str(t_edge.get("source")), target, _source_handle(nodes, t_edge), tools.TRANSFORM_IN)
+        remove.add(node_id)
+    if remove:
+        _remove_nodes(graph, remove)
+
+
+def _remove_default_outputs(graph: dict[str, Any]) -> None:
+    nodes = {str(n.get("id")): n for n in graph.get("nodes", [])}
+    remove: set[str] = set()
+    for node_id, node in nodes.items():
+        if node.get("type") != "output":
+            continue
+        params = node.get("params") or {}
+        if int(params.get("decimals", 3) or 3) != 3:
+            continue
+        incoming_value = [e for e in graph.get("edges", []) if e.get("target") == node_id and _target_handle(nodes, e) == "value"]
+        incoming_flow = [e for e in graph.get("edges", []) if e.get("target") == node_id and _target_handle(nodes, e) == tools.FLOW_IN]
+        outgoing = [e for e in graph.get("edges", []) if e.get("source") == node_id]
+        if len(incoming_value) != 1 or incoming_flow or outgoing:
+            continue
+        src = str(incoming_value[0].get("source"))
+        sh = _source_handle(nodes, incoming_value[0])
+        src_node = nodes.get(src)
+        if not src_node or not sh:
+            continue
+        publish = src_node.setdefault("params", {}).setdefault("_publish", {})
+        if not isinstance(publish, dict) or (sh in publish and publish[sh] != params.get("name")):
+            continue
+        publish[sh] = params.get("name") or "value"
+        remove.add(node_id)
+    if remove:
+        _remove_nodes(graph, remove)
+
+
+def _remove_compare_judges(graph: dict[str, Any]) -> None:
+    nodes = {str(n.get("id")): n for n in graph.get("nodes", [])}
+    false_branch = {"if_number": "false", "in_range": "outside", "string_match": "not_found"}
+    true_branch = {"if_number": "true", "in_range": "inside", "string_match": "found"}
+    remove: set[str] = set()
+    for node_id, node in nodes.items():
+        if node.get("type") != "judge":
+            continue
+        params = node.get("params") or {}
+        verdict = str(params.get("verdict") or "")
+        incoming = [e for e in graph.get("edges", []) if e.get("target") == node_id]
+        outgoing = [e for e in graph.get("edges", []) if e.get("source") == node_id]
+        if len(incoming) != 1 or outgoing or _target_handle(nodes, incoming[0]) != tools.FLOW_IN:
+            continue
+        src = str(incoming[0].get("source"))
+        src_node = nodes.get(src)
+        if not src_node or src_node.get("type") not in false_branch:
+            continue
+        branch = _source_handle(nodes, incoming[0])
+        if verdict == "ok" and branch == true_branch[str(src_node.get("type"))]:
+            remove.add(node_id)
+        elif verdict == "ng" and branch == false_branch[str(src_node.get("type"))]:
+            src_params = src_node.setdefault("params", {})
+            src_params["on_false"] = "reject"
+            label = str(params.get("label") or "").strip()
+            if label:
+                src_params["ng_label"] = label
+            remove.add(node_id)
+    if remove:
+        _remove_nodes(graph, remove)
+
+
+def _remove_leaf_draws(graph: dict[str, Any]) -> None:
+    nodes = {str(n.get("id")): n for n in graph.get("nodes", [])}
+    remove = {
+        node_id for node_id, node in nodes.items()
+        if node.get("type") == "draw_result"
+        and not any(e.get("source") == node_id and _source_handle(nodes, e) == "image" for e in graph.get("edges", []))
+    }
+    if remove:
+        _remove_nodes(graph, remove)
+
+
+def _remove_notes(graph: dict[str, Any], *, keep_first: bool = False) -> None:
+    notes = [str(n.get("id")) for n in graph.get("nodes", []) if n.get("type") == "note"]
+    if keep_first and notes:
+        notes = notes[1:]
+    if notes:
+        _remove_nodes(graph, set(notes))
+
+
+def _remove_grayscale_passthrough(graph: dict[str, Any]) -> None:
+    nodes = {str(n.get("id")): n for n in graph.get("nodes", [])}
+    remove: set[str] = set()
+    for node_id, node in list(nodes.items()):
+        if node.get("type") != "grayscale":
+            continue
+        incoming = [e for e in graph.get("edges", []) if e.get("target") == node_id]
+        outgoing = [e for e in graph.get("edges", []) if e.get("source") == node_id]
+        if len(incoming) != 1:
+            continue
+        src = str(incoming[0].get("source"))
+        sh = _source_handle(nodes, incoming[0])
+        for edge in outgoing:
+            th = _target_handle(nodes, edge)
+            if th == tools.FLOW_IN:
+                continue
+            _add_edge(graph["edges"], src, str(edge.get("target")), sh, th)
+        remove.add(node_id)
+    if remove:
+        _remove_nodes(graph, remove)
+
+
+def _preserve_cup_tolerance_order(graph: dict[str, Any]) -> None:
+    order = {
+        "src": 0, "ref": 1, "tm": 2, "align": 3, "nf": 4,
+        "wall": 5, "od": 6, "idc": 7,
+        "tol_wall": 8, "tol_od": 9, "tol_id": 10, "conc": 11, "all_ok": 12, "judge": 13,
+    }
+    original_nodes = list(graph.get("nodes", []))
+    graph["nodes"] = sorted(
+        original_nodes,
+        key=lambda node: (order.get(str(node.get("id")), 99), original_nodes.index(node)),
+    )
+    original_edges = list(graph.get("edges", []))
+    graph["edges"] = sorted(
+        original_edges,
+        key=lambda edge: (
+            order.get(str(edge.get("source")), 99),
+            order.get(str(edge.get("target")), 99),
+            original_edges.index(edge),
+        ),
+    )
+
+
+def _slim_graph(key: str, graph: dict[str, Any]) -> dict[str, Any]:
+    """內建範本去管線：只改畫廊範本圖，不影響工具或引擎。"""
+    out = copy.deepcopy(graph)
+    if key not in {"exposure", "preprocess_lab", "shading"}:
+        _remove_grayscale_passthrough(out)
+    _remove_formula_diameter(out)
+    _simplify_concentricity_edges(out)
+    _remove_fixture_roi(out)
+    _remove_default_outputs(out)
+    _remove_compare_judges(out)
+    _remove_leaf_draws(out)
+    _remove_notes(out, keep_first=(key == "hole_count"))
+    if key == "cup_measure":
+        _preserve_cup_tolerance_order(out)
+    return out
+
+
+def _slim_builder(key: str, builder: Any) -> Any:
+    def wrapped(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        return _slim_graph(key, builder(*args, **kwargs))
+
+    return wrapped
 
 
 def _note(nid: str, col: int, row: int, label: str, text: str) -> dict[str, Any]:
@@ -2104,6 +2384,10 @@ BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
     ("dl_retrieval_demo", "Retrieval library that grows without retraining", "A seeded three-class reference library classifies by nearest visual examples; low-similarity images take the not_matched branch instead of failing inference", "quality",
      lambda sid: dl_retrieval_flow(sid, _demo_model("Example: retrieval library (three part types)"))),
     ("multi_light_surface", "Four-direction lighting fused for surface defects", "Each sample is a 2x2 mosaic of one surface under four light directions: crop the four views, fuse them (shadow mode) and find the scratch that only shows as strong relief; multi_light_grab is wired in to show the on-line acquisition", "quality", multi_light_surface_flow),
+)
+BUILTIN_TEMPLATES = tuple(
+    (key, name, desc, category, _slim_builder(key, builder))
+    for key, name, desc, category, builder in BUILTIN_TEMPLATES
 )
 
 #: builtin 範本 key → 對應的樣本集名稱（`Example: <demo_images.SAMPLE_SETS 的標籤>`）。

@@ -92,7 +92,9 @@ export function evaluateValues(config: BoardConfig | undefined, outputs: Record<
   })
 }
 
-/** 指定節點的影像，否則該次 run 最後一張。 */
+const SOURCE_NODE_IDS = new Set(['src', 'source', 'camera', 'grab', 'stereo_grab'])
+
+/** 指定節點的影像，否則結果圖，再否則取像節點影像。 */
 export function pickImage(run: RunReport, nodeId?: string): { ref: string; width: number; height: number } | null {
   const nodes = run.nodes ?? {}
   const imageOf = (report: RunReport['nodes'][string]) => {
@@ -106,6 +108,18 @@ export function pickImage(run: RunReport, nodeId?: string): { ref: string; width
   if (nodeId && nodes[nodeId]) {
     const found = imageOf(nodes[nodeId])
     if (found) return found
+  }
+  for (const [id, report] of Object.entries(nodes)) {
+    if (id === 'draw' || id === 'draw_result') {
+      const found = imageOf(report)
+      if (found) return found
+    }
+  }
+  for (const [id, report] of Object.entries(nodes)) {
+    if (SOURCE_NODE_IDS.has(id)) {
+      const found = imageOf(report)
+      if (found) return found
+    }
   }
   for (const report of Object.values(nodes).reverse()) {
     const found = imageOf(report)

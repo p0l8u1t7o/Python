@@ -108,7 +108,7 @@ def wanted(policy: dict[str, Any], status: str, run_index: int = 0) -> bool:
 # Picking the pictures
 # ---------------------------------------------------------------------------
 def pick_refs(report, policy: dict[str, Any]) -> list[str]:
-    """Image refs worth keeping, in run order. `_image` pass-through ports are ignored."""
+    """Image refs worth keeping. Prefer result images, otherwise keep the acquisition frame."""
     refs: list[str] = []
     for node_id, node in report.nodes.items():
         for port, value in (node.outputs or {}).items():
@@ -120,7 +120,12 @@ def pick_refs(report, policy: dict[str, Any]) -> list[str]:
         _ = node_id
     if policy.get("pictures") == "all" or len(refs) <= 2:
         return refs
-    return [refs[0], refs[-1]]  # source frame and result frame
+    draw = [ref for ref in refs if ":draw:" in ref or ":draw_result:" in ref]
+    source = [ref for ref in refs if any(f":{node}:" in ref for node in ("src", "source", "stereo_grab"))]
+    picked = [*(source[:1] or refs[:1]), *(draw[:1] or [])]
+    if len(picked) == 1 and not draw:
+        return picked
+    return list(dict.fromkeys(picked))
 
 
 def capture(report, store, *, queue_depth: int = 0) -> dict[str, np.ndarray]:
