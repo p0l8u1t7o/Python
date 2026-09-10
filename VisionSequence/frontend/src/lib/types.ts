@@ -1445,3 +1445,10 @@ export interface ConnectionsImportResult {
   failed: { name: string; error: string }[]
   station_rules: number | null
 }
+/** 行程內站台佇列的管理摘要。 */
+export interface QueueStatus {
+  name: string
+  size: number
+  oldest_age_ms: number
+  dropped: number
+}

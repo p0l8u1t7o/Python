@@ -2755,7 +2755,7 @@ const zhHant = {
   helpMenu: { help: '說明頁', shortcuts: '快捷鍵', integration: '整合頁' },
 } as const
 
-export default { ...zhHant, inspect: {
+export default { queues: {"title": "資料佇列", "hint": "流程之間的暫存工件交接；行程重新啟動即清空。", "empty": "尚無佇列。", "clear": "清空", "stats": "{{size}} 筆 · 最舊 {{age}} ms · 已丟棄 {{dropped}} 筆"}, ...zhHant, inspect: {
   "title": "檢測任務",
   "run": "試執行",
   "save": "儲存",

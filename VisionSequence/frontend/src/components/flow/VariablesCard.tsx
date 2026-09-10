@@ -3,6 +3,7 @@
  * 值會即時落地（API 是 write-through），所以換線改料號按下去就生效。
  */
 import { useState } from 'react'
+import { QueuesCard } from './QueuesCard'
 import { useTranslation } from 'react-i18next'
 import { Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { Button, IconButton, TextInput } from '@/components/ui'
@@ -139,6 +140,7 @@ export function VariablesCard({ flowId }: { flowId: number }) {
           </Button>
         </div>
       ) : null}
+      <QueuesCard />
     </div>
   )
 }

@@ -7,6 +7,9 @@ from apps.vision.tools.base import Port, Tool
 
 
 INTENTIONALLY_GENERIC: dict[tuple[str, str, str], str] = {
+    ("queue_push", "data", "input"): "part values dictionary without geometry semantics",
+    ("queue_pop", "values", "output"): "queued part values dictionary without geometry semantics",
+    **{(tool, key, "input"): "queue template variable" for tool in ("queue_push", "queue_pop") for key in "abcd"},
     ("camera_set", "applied", "output"): "camera settings report object",
     ("camera_set", "errors", "output"): "camera settings error report",
     ("image_source", "applied", "output"): "camera settings report object",

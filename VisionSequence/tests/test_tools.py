@@ -27,6 +27,13 @@ from tests._helpers import (
 
 
 class RegistryTests(SimpleTestCase):
+    def test_queue_tools_round_trip(self):
+        context = {}
+        pushed = run_tool("queue_push", params={"queue": "registry_test"}, inputs={"data": {"height": 12}}, context=context)
+        popped = run_tool("queue_pop", params={"queue": "registry_test"}, context=context)
+        self.assertEqual(pushed.outputs["size"], 1)
+        self.assertEqual(popped.outputs["values"], {"height": 12})
+
     def test_registration_segmentation(self):
         from apps.vision import demo, demo_images
         from apps.vision.dl import anomaly
@@ -76,6 +83,8 @@ class RegistryTests(SimpleTestCase):
 
     def test_teach_params_marked(self):
         teach = {t.key: {p.key for p in t.params if p.teach} for t in base.all_types()}
+        self.assertEqual(teach["queue_push"], {"max_items", "ttl_s"})
+        self.assertEqual(teach["queue_pop"], {"wait_ms"})
         self.assertTrue({"mode", "pair_polarity", "width_min", "width_max"} <= teach["edge_model_defect"])
         self.assertEqual(teach["char_detect"], {"method", "polarity", "threshold", "window", "k", "height_min", "height_max",
                                                "aspect_min", "aspect_max", "area_min", "area_max", "merge_gap", "expected_text"})

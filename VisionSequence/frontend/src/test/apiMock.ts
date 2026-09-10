@@ -373,6 +373,7 @@ export function routes(path: string, body?: unknown): unknown {
   if (/\/vision\/flows\/\d+\/board$/.test(path)) return { flow: { id: 1, name: 'demo', title: 'Line 1' }, config: { title: 'Line 1', image: '', overlays: true, values: [{ key: 'width', unit: 'mm', low: 1, high: 2 }], variables: [], show_verdict: true, show_counts: true }, run: null, values: [{ key: 'width', label: 'width', unit: 'mm', value: null, text: '', ok: null, present: false }], variables: { lot: 'A17' }, counts: { date: '2026-09-06', total: 10, ok: 9, ng: 1, failed: 0, yield: 90 }, stats: {} }
   if (/\/vision\/flows\/\d+\/variables$/.test(path)) return { flow_id: 1, items: { parts: 12, lot: 'A17' }, station: { shift: 'day' } }
   if (path.startsWith('/vision/variables')) return { items: { shift: 'day' } }
+  if (path === '/vision/queues') return { items: [{ name: 'parts', size: 2, oldest_age_ms: 120, dropped: 0 }] }
   if (path === '/vision/fixed-images/from-ref') return { id: 'fixed-crop', name: 'Crop', width: 32, height: 24, channels: 3, size: 128 }
   if (path.startsWith('/vision/fixed-images')) return { items: [{ id: 'fixed-1', name: 'Reference' }], count: 1, bytes: 128, orphans: [] }
   if (path.startsWith('/vision/calibration/robot/signals')) {

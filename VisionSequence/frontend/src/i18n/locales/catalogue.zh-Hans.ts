@@ -757,6 +757,7 @@ export default {
     },
   },
   templates: {
+    queue_handoff: {"name": "推入并匹配工件", "description": "交接测量值与图像后匹配、合并判定；尚无实际现场情境验证。"},
     character_count: { name: '散乱字符计数', description: '在直线、曲线或散乱排列中检测六个单字符' },
     seal_width: { name: '自由轮廓胶道宽度', description: '测量曲线胶道的两侧，排除缩窄或断裂区段' },
     point_fitting: { name: '由边缘点拟合几何', description: '由测量边界拟合直线、圆与椭圆，要求三项结果完整并计算圆面积' },

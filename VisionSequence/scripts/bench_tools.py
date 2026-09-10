@@ -669,6 +669,8 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("for_each regions (sandbox)", "for_each", gray, {"target_flow_id": 1, "source": "regions", "max_items": 3},
          {"regions": [s.rect(-0.2, -0.1, 0.1, 0.1), s.rect(0.0, -0.1, 0.1, 0.1), s.rect(0.2, -0.1, 0.1, 0.1)]}, {"_sandbox": True}),
         # output
+        ("queue_push (sandbox)", "queue_push", gray, {"queue": "bench_parts", "values": "height=a", "key": "{serial}"}, {"a": 12}, {"serial": "001", "_sandbox": True}),
+        ("queue_pop (sandbox)", "queue_pop", None, {"queue": "bench_parts"}, {}, {"_sandbox": True}),
         ("judge", "judge", None, {"verdict": "by_input"}, {"value": True}, {}),
         ("output", "output", None, {"name": "v"}, {"value": 1.23456}, {}),
         ("write_log csv", "write_log", None, {"path": "bench", "format": "csv", "fields": "judge\nv\nlot\n{a:.2f}", "filename": "{station}_{date}", "daily_folder": True}, {"a": 12.3456}, {"_judge": "OK", "_outputs": {"v": 1.23456}, "lot": "A17", "_sandbox": True}),

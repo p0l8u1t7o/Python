@@ -2407,7 +2407,25 @@ def seal_width_flow(source_id: Any) -> dict[str, Any]:
             "edges": [_edge("src", "seal", "image", "image")]}
 
 
+def queue_handoff_flow(source_id: Any) -> dict[str, Any]:
+    """同一流程示範交接配對；產線可把取出與判定拆到另一條流程。"""
+    return {"nodes": [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("measure", "intensity", 1, 0, "Measure front"),
+        _node("push", "queue_push", 2, 0, "Queue part", queue="demo_handoff", key="{run_id}", values="front=a"),
+        _node("pop", "queue_pop", 3, 0, "Match part", queue="demo_handoff", key="{run_id}", match="key"),
+        _node("combine", "formula", 4, 0, "Combine measurements", expression="a['front'] + b", _publish={"value": "combined"}),
+        _node("check", "in_range", 5, 0, "Accept combined range", low=190, high=210),
+    ], "edges": [
+        _edge("src", "measure", "image", "image"), _edge("src", "push", "image", "image"),
+        _edge("measure", "push", "mean", "a"), _edge("push", "pop", "pushed", "_flow"),
+        _edge("pop", "combine", "values", "a"), _edge("pop", "combine", "matched", "_flow"),
+        _edge("measure", "combine", "mean", "b"), _edge("combine", "check", "value", "value"),
+    ]}
+
+
 BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
+    ("queue_handoff", "Queue a part and match it", "Queue a measurement and image, retrieve the same part, and combine readings. No real on-site scenario has been validated.", "quality", queue_handoff_flow),
     ("character_count", "Count scattered characters", "Find six individual characters on straight, curved or scattered layouts", "count", character_count_flow),
     ("seal_width", "Free contour seal width", "Measure both sides of a curved seal and reject narrow or broken sections", "quality", seal_width_flow),
     ("point_fitting", "Fit geometry from edge points", "Fit a line, circle and ellipse from measured boundaries; require all three results and calculate circular area", "measure", point_fitting_flow),
@@ -2514,6 +2532,7 @@ BUILTIN_TEMPLATES = tuple(
 #: builtin 範本 key → 對應的樣本集名稱（`Example: <demo_images.SAMPLE_SETS 的標籤>`）。
 #: **每個內建範本都要有一組**：範本畫廊預設把取像節點換成帶著這些圖的固定影像，載入即可試執行。
 TEMPLATE_SAMPLE_SOURCES: dict[str, str] = {
+    "queue_handoff": "Example: queue handoff",
     "character_count": "Example: scattered characters",
     "seal_width": "Example: seal width parts",
     "point_fitting": "Example: fitted boundaries",

@@ -2693,4 +2693,4 @@ const inspectStage6 = { inspect: {
   }
 } }
 
-export default merge(merge(merge(merge(en, enExtra), enExtra2), enExtra3), inspectStage6)
+export default { ...merge(merge(merge(merge(en, enExtra), enExtra2), enExtra3), inspectStage6), queues: {"title": "Queues", "hint": "Temporary part handoffs between flows. Cleared on process restart.", "empty": "No queues yet.", "clear": "Clear", "stats": "{{size}} items · oldest {{age}} ms · {{dropped}} dropped"} }

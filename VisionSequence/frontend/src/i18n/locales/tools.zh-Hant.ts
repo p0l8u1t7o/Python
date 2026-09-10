@@ -4337,4 +4337,7 @@ export default {
       centroids: "重心點",
     },
   },
+
+  queue_push: {"label": "推入佇列", "description": "暫存工件數值與選填影像參照，供另一流程取用。行程重新啟動即清空；試執行使用獨立副本。", "params": {"queue": {"label": "佇列"}, "key": {"label": "工件鍵", "help": "例如 {serial}，取值規則與格式化回覆相同。"}, "values": {"label": "數值", "help": "每行名稱=來源，例如 height=a；data 字典優先，缺來源會失敗。"}, "max_items": {"label": "容量"}, "on_full": {"label": "滿載策略", "options": {"drop_oldest": "丟棄最舊", "reject": "拒絕推入"}}, "ttl_s": {"label": "存活時間", "help": "0 表示不限；每筆資料各自計算期限。"}}, "ports": {"image": "影像", "seq": "序號", "size": "筆數", "dropped": "已丟棄", "pushed": "已推入", "full": "已滿", "age_ms": "年齡", "found": "找到", "oldest_age_ms": "最舊年齡", "matched": "已配對", "not_found": "未找到", "data": "數值", "values": "數值", "key": "工件鍵", "a": "a", "b": "b", "c": "c", "d": "d"}},
+  queue_pop: {"label": "讀取佇列", "description": "依順序或工件鍵配對；試執行只讀取獨立副本。影像可能比數值提早到期。", "params": {"queue": {"label": "佇列"}, "key": {"label": "工件鍵", "help": "例如 {serial}，取值規則與格式化回覆相同。"}, "match": {"label": "配對", "options": {"fifo": "最舊優先", "lifo": "最新優先", "key": "工件鍵"}}, "remove": {"label": "讀取後移除"}, "wait_ms": {"label": "等待"}, "publish": {"label": "發布數值", "help": "將配對字典的欄位發布為具名輸出，覆寫同名值。"}}, "ports": {"image": "影像", "seq": "序號", "size": "筆數", "dropped": "已丟棄", "pushed": "已推入", "full": "已滿", "age_ms": "年齡", "found": "找到", "oldest_age_ms": "最舊年齡", "matched": "已配對", "not_found": "未找到", "data": "數值", "values": "數值", "key": "工件鍵", "a": "a", "b": "b", "c": "c", "d": "d"}},
 }

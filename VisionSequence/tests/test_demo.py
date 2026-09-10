@@ -59,6 +59,7 @@ class DemoSeedTests(TransactionTestCase):
         from apps.vision.runner import runner
 
         expected = {
+            "queue_handoff": "ok ok ok ng",
             "character_count": "ok ok ok ng", "seal_width": "ok ok ok ng",
             "point_fitting": "ok ok ok ng", "polar_edge_check": "ok ok ok ng", "absence_check": "ok ok ok ng",
             "register_count": "ok ok ok ng",
@@ -135,7 +136,7 @@ class DemoSeedTests(TransactionTestCase):
             if _anomaly.backbone_available():
                 expected_models.append("Example: retrieval library (three part types)")
             self.assertEqual([n for n in model_names if "anomaly" not in n], sorted(expected_models))
-            self.assertEqual(len(BUILTIN_TEMPLATES), 75)
+            self.assertEqual(len(BUILTIN_TEMPLATES), 76)
             import importlib.util
             import os
 

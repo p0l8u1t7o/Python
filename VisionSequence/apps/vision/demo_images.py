@@ -1354,7 +1354,13 @@ def seal_width_parts() -> list[np.ndarray]:
 
 
 #: key → (顯示名, 產生器)。key 同時是 data/samples/ 下的資料夾名。
+def queue_handoff():
+    """亮度模擬量測數值；第四件的合併值超出上限。"""
+    return [np.full((97, 333), value, np.uint8) for value in (100, 101, 99, 120)]
+
+
 SAMPLE_SETS: dict[str, tuple[str, callable]] = {
+    "queue_handoff": ("queue handoff", queue_handoff),
     "scattered_characters": ("scattered characters", scattered_characters),
     "seal_width_parts": ("seal width parts", seal_width_parts),
     "fitted_boundaries": ("fitted boundaries", fitted_boundaries),

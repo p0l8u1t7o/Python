@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：154 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端約 1480 項＋前端約 250 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：156 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端約 1500 項＋前端約 260 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出（**隱含埠的規格集中在 `tools/base.py` 的 `IMPLICIT_INPUTS`／`IMPLICIT_OUTPUTS`**，graph 驗證、engine 蒐集、工具目錄都讀它，加新的埠只要補一筆＋`toolLocale.ts` 的兩種中文）。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -29,7 +29,7 @@
 - `.\scripts\dev.ps1 -Setup` 第一次；`.\scripts\dev.ps1` 之後；`.\scripts\stop.ps1` 停止。從 Bash 工具重啟要包成 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1`（外掛 INFO 日誌走 stderr，PowerShell 工具直跑會誤觸 `$ErrorActionPreference=Stop`）。
 - 深度學習依賴可選：`.\scripts\setup_dl.ps1`（先 torch cu128 index，再 requirements-dl.txt；`-Cpu` 無 GPU）→ `manage.py dl_check --predict` 驗證。順序錯會拉到 CPU 版 torch。
 - 手動：`manage.py migrate` → `manage.py seed_demo` → `manage.py serve`；前端 `npm run dev`。
-- `seed_demo` 建 2 個示範流程＋每個範例樣板一組合成樣本圖（`apps/vision/demo_images.py` → `data/samples/` 再存成**固定影像** `ASSET_DIR/fixed/`；不再建 folder 來源與影像資產，舊 seed 留下的「Example: …」來源／資產沒人引用就刪）＋統計範本／形狀模型資產，可重複執行；範例樣板本身在範本畫廊（`demo.BUILTIN_TEMPLATES`，75 個：含 5 個 DL 範本——3 個 YOLO 官方底模、2 個 seed 訓練的教導模型，`_seed_demo_models` 用 mlp_classify／patch_segment 幾秒訓好存成 model 資產，`_demo_model` 現查；`TEMPLATES_NEED_DL` 的範本沒有 DL 依賴時 test_demo 只驗 graph）。**75 個範本每個都有一組樣本圖**（`TEMPLATE_SAMPLE_SOURCES` 必須涵蓋所有 key，`test_demo` 鎖住），所以畫廊不選來源時一律以固定影像開頭、載入就能試執行。`tests/test_demo.py` 逐範本用樣本圖實跑並比對 OK/NG 序列。改樣本圖形要刪 `data/samples/<key>/` 重生成。
+- `seed_demo` 建 2 個示範流程＋每個範例樣板一組合成樣本圖（`apps/vision/demo_images.py` → `data/samples/` 再存成**固定影像** `ASSET_DIR/fixed/`；不再建 folder 來源與影像資產，舊 seed 留下的「Example: …」來源／資產沒人引用就刪）＋統計範本／形狀模型資產，可重複執行；範例樣板本身在範本畫廊（`demo.BUILTIN_TEMPLATES`，76 個：含 5 個 DL 範本——3 個 YOLO 官方底模、2 個 seed 訓練的教導模型，`_seed_demo_models` 用 mlp_classify／patch_segment 幾秒訓好存成 model 資產，`_demo_model` 現查；`TEMPLATES_NEED_DL` 的範本沒有 DL 依賴時 test_demo 只驗 graph）。**76 個範本每個都有一組樣本圖**（`TEMPLATE_SAMPLE_SOURCES` 必須涵蓋所有 key，`test_demo` 鎖住），所以畫廊不選來源時一律以固定影像開頭、載入就能試執行。`tests/test_demo.py` 逐範本用樣本圖實跑並比對 OK/NG 序列。改樣本圖形要刪 `data/samples/<key>/` 重生成。
 
 ### 驗證清單（改完就跑，報告附實際結果）
 - 後端：`.venv/Scripts/python.exe manage.py test --noinput`、`.venv/Scripts/python.exe -m ruff check apps tests config vscapture`。`tests/test_smoke_api.py` 掃所有 GET 端點不 5xx／405——新增 GET 端點記得加進清單。
@@ -175,6 +175,11 @@
   `_sandbox`（bench）一律寫覆蓋層 `_variables_overlay`（鍵 `f"{scope}:{name}"`），讀時先看覆蓋層再看真值——工具頁按十次試執行產線計數不會多十。
 - 值的規則在 `variables.normalize`（numpy 純量轉型、64 KB、非有限數→None）、名稱 `NAME_RE`；`parse_default` 把欄位字串轉數字／布林。
 - 寫入權限＝`flows.teach`（換線是操作員的事），有稽核 `flow.variables`／`station.variables`。新增範圍或型別要同步 `SCOPES`、TCP `SET`、前端 `VariablesCard`。
+
+### 跨流程資料佇列（apps/vision/queues.py、tools/builtin/queue_tools.py、api_queues.py；階段 20，最小可用版）
+- 兩個工位（兩條流程）檢同一個工件時，前一站把量測值或影像交給後一站。**行程內記憶體佇列、熱路徑不碰 DB**（實測真引擎執行期間 0 次查詢），每筆帶單調遞增序號與工件鍵；值走 `variables.normalize` 同一套規則，影像只存 `images.store` 的 ref（**引擎只快取有下游在用的影像輸出**，所以推入端的影像一定要從上游接進來）。
+- `queue_push`／`queue_pop`：pop 依序號或工件鍵配對、空佇列可設等待逾時（喚醒實測 0.309 ms）；preview／`flow_id<=0`／`_sandbox` 用獨立佇列副本，推入的影像只留在該次執行（4 種沙箱情境測過不動正式佇列）。8 執行緒推入 800 筆無重複、無遺失。
+- API `/vision/queues`（檢視、清空；清空要功能鍵＋稽核）；流程設定面板的 Queues 卡（`components/flow/QueuesCard.tsx`，在變數卡旁）。範本 `queue_handoff`。**尚無現場情境驗證**（重啟後佇列清空、跨行程不共享，是刻意的最小版範圍）。
 
 ### 看板（apps/vision/board.py、api_board.py、前端 /board/:flowId、BoardSettings）
 - `Flow.board`（migration 0022）存設定，`board.sanitize` 只留合法欄位（壞設定不讓總覽頁炸），`effective()` 疊預設。

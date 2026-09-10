@@ -2649,7 +2649,7 @@ const zhHans = {
   helpMenu: { help: '说明页', shortcuts: '快捷键', integration: '集成页' },
 } as const
 
-export default { ...zhHans, inspect: {
+export default { queues: {"title": "数据队列", "hint": "流程之间的暂存工件交接；进程重新启动即清空。", "empty": "尚无队列。", "clear": "清空", "stats": "{{size}} 条 · 最旧 {{age}} ms · 已丢弃 {{dropped}} 条"}, ...zhHans, inspect: {
   "title": "检测任务",
   "run": "试执行",
   "save": "保存",

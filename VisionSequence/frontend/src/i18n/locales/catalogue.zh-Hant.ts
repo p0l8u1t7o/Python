@@ -757,6 +757,7 @@ export default {
     },
   },
   templates: {
+    queue_handoff: {"name": "推入並配對工件", "description": "交接量測值與影像後配對、合併判定；尚無實際現場情境驗證。"},
     character_count: { name: '散亂字元計數', description: '在直線、曲線或散亂排列中偵測六個單字元' },
     seal_width: { name: '自由輪廓膠道寬度', description: '量測曲線膠道的兩側，排除縮窄或斷裂區段' },
     point_fitting: { name: '由邊緣點擬合幾何', description: '由量測邊界擬合直線、圓與橢圓，要求三項結果完整並計算圓面積' },

@@ -938,6 +938,15 @@ export function useFlowVariables(flowId: number | null) {
   })
 }
 
+export function useQueues(enabled = true) {
+  return useQuery({
+    queryKey: ['queues'],
+    queryFn: () => api.get<{ items: import('./types').QueueStatus[] }>('/vision/queues'),
+    enabled,
+    refetchInterval: 5000,
+  })
+}
+
 // ---- 配方（FlowRecipe） ----
 export function useRecipes(flowId: number | null) {
   return useQuery({

@@ -4337,4 +4337,7 @@ export default {
       centroids: "重心点",
     },
   },
+
+  queue_push: {"label": "推入队列", "description": "暂存工件数值与可选图像引用，供另一流程取用。进程重新启动即清空；试执行使用独立副本。", "params": {"queue": {"label": "队列"}, "key": {"label": "工件键", "help": "例如 {serial}，取值规则与格式化回复相同。"}, "values": {"label": "数值", "help": "每行名称=来源，例如 height=a；data 字典优先，缺来源会失败。"}, "max_items": {"label": "容量"}, "on_full": {"label": "满载策略", "options": {"drop_oldest": "丢弃最旧", "reject": "拒绝推入"}}, "ttl_s": {"label": "存活时间", "help": "0 表示不限；每条数据各自计算期限。"}}, "ports": {"image": "图像", "seq": "序号", "size": "条数", "dropped": "已丢弃", "pushed": "已推入", "full": "已满", "age_ms": "年龄", "found": "找到", "oldest_age_ms": "最旧年龄", "matched": "已匹配", "not_found": "未找到", "data": "数值", "values": "数值", "key": "工件键", "a": "a", "b": "b", "c": "c", "d": "d"}},
+  queue_pop: {"label": "读取队列", "description": "按顺序或工件键匹配；试执行只读取独立副本。图像可能比数值提早到期。", "params": {"queue": {"label": "队列"}, "key": {"label": "工件键", "help": "例如 {serial}，取值规则与格式化回复相同。"}, "match": {"label": "匹配", "options": {"fifo": "最旧优先", "lifo": "最新优先", "key": "工件键"}}, "remove": {"label": "读取后移除"}, "wait_ms": {"label": "等待"}, "publish": {"label": "发布数值", "help": "将匹配字典的字段发布为具名输出，覆盖同名值。"}}, "ports": {"image": "图像", "seq": "序号", "size": "条数", "dropped": "已丢弃", "pushed": "已推入", "full": "已满", "age_ms": "年龄", "found": "找到", "oldest_age_ms": "最旧年龄", "matched": "已匹配", "not_found": "未找到", "data": "数值", "values": "数值", "key": "工件键", "a": "a", "b": "b", "c": "c", "d": "d"}},
 }

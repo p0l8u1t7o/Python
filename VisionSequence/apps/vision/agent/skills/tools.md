@@ -731,3 +731,20 @@ find_line.line（或點集、`{"angle": 度}`），`b` 是基準：垂直度把�
 `dl_segment`：逐像素分類——`target_class` 決定 `mask` 是哪一類的 0/255 圖、`class_map` 保留全部類別（接 `blob_label` 逐類數）、
 `min_area`／`max_area` 用目標面積判 ok／ng，`classes` 列每類面積。這四顆都是 heavy 工具，`device` 由深度學習設定決定；
 第一片會慢（載模型），伺服器可開暖機。
+
+## queue_push
+
+工位 A 每次觸發量完一件，把數值與選填 image 參照放進站台佇列；名稱遵循流程變數命名。
+values 每行 `名稱=來源`，或接 data 字典（優先）；key 樣板沿用 format_text，例如 `{serial}`。
+缺少來源會失敗；不可把 ndarray 放進 values。每筆上限 64 KB，容量預設 64、上限 1024。
+滿載預設丟最舊，reject 則步驟 NG／full；ttl_s=0 不限期限，每筆各自到期。
+行程重啟即清空。preview、批次與試跑用本次副本，不改正式佇列。尚無實際現場情境驗證。
+分工：變數存最新狀態；trigger_flow 啟動另一流程；call_flow／for_each 重用當次處理；佇列交接跨觸發的逐件紀錄。
+
+## queue_pop
+
+工位 B 另一次觸發以相同 queue 與 key 取回 A 的數值，或使用 fifo／lifo；重複 key 取最舊一筆。
+remove=false 只查看，wait_ms 最多 2000、用 Condition 等待；沒有匹配走 not_found，不消耗其他工件。
+把 matched 分支接下游判定，避免缺測量值仍繼續；values 可接 formula，publish 選填攤成具名輸出並覆寫同名值。
+image 只依記憶體參照取得；快取被淘汰時回 None 與步驟警告，數值仍在。size／oldest_age_ms 是取出後摘要。
+行程重啟即清空；取出後下游失敗不會自動放回，沒有落地、確認收件或多行程協調。需要持久交接用 MES。
