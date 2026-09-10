@@ -53,6 +53,8 @@ class FieldSpec:
     accept: str = ""
     read: Callable[[dict[str, Any]], Any] | None = None
     write: Callable[[dict[str, Any], Any], None] | None = None
+    visible_when: dict[str, Any] | None = None
+    source_type: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -71,11 +73,30 @@ class FieldSpec:
             "step": self.step,
             "shapes": list(self.shapes),
             "accept": self.accept,
+            "visible_when": self.visible_when,
+            "source_type": self.source_type,
         }
 
 
 BuildHook = Callable[["TaskDefinition", dict[str, Any], dict[str, Any]], tuple[list[dict[str, Any]], list[dict[str, Any]]]]
 EdgesHook = Callable[["TaskDefinition", dict[str, Any]], tuple[EdgeSpec, ...]]
+
+
+@dataclass(slots=True)
+class TaskLayout:
+    """同一種類各方式的實際節點、接線與讀值；不增加圖格式欄位。"""
+
+    steps: dict[str, tuple[str, dict[str, Any]]]
+    edges: tuple[EdgeSpec, ...] = ()
+    inputs: tuple[PortRef, ...] = ()
+    outputs: tuple[PortRef, ...] = ()
+    pass_port: PortRef | None = None
+    value_port: PortRef | None = None
+    verdict_role: str = ""
+    locator_roles: tuple[str, ...] = ()
+    summary_expression: str = ""
+    summary_inputs: tuple[PortRef, ...] = ()
+    external: tuple[dict[str, str], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,6 +113,8 @@ class TaskDefinition:
     pass_port: PortRef | None = None
     build_hook: BuildHook | None = None
     edges_hook: EdgesHook | None = None
+    layout_hook: Callable[[dict[str, Any]], TaskLayout] | None = None
+    read_hook: Callable[[dict[str, Any], dict[str, dict[str, Any]], list[dict[str, Any]]], None] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -112,11 +135,35 @@ class TaskDefinition:
         return {p.key: p.default for p in tool.params if p.default is not None}
 
     def edges_for(self, fields: dict[str, Any]) -> tuple[EdgeSpec, ...]:
+        if self.layout_hook is not None:
+            return self.layout_hook(fields).edges
         if self.edges_hook is not None:
             return self.edges_hook(self, fields)
         return self.internal_edges
 
+    def inputs_for(self, fields: dict[str, Any]) -> tuple[PortRef, ...]:
+        return self.layout_hook(fields).inputs if self.layout_hook else self.public_inputs
+
     def build(self, task: dict[str, Any], ctx: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        if self.layout_hook is not None:
+            fields = task_fields(task, self)
+            if fields.get("unit") == "mm" and not fields.get("calibration"):
+                raise ValidationError("Millimetre mode needs a calibration", code="missing_calibration")
+            for key, spec in self.fields.items():
+                value = fields.get(key)
+                if spec.kind == "roi" and isinstance(value, dict) and spec.shapes and value.get("shape") not in spec.shapes:
+                    raise ValidationError(f"Unsupported region shape for '{key}'", code="invalid_task_field")
+            layout = self.layout_hook(fields)
+            task_id = str(task.get("task_id") or task.get("id") or self.kind)
+            required = bool(task.get("required", fields.get("required", True)))
+            nodes = []
+            for role, (tool_key, supplied) in layout.steps.items():
+                params = {p.key: p.default for p in tools.get(tool_key).params if p.default is not None}
+                params.update(supplied)
+                nodes.append(task_node(task_id, role, tool_key, params, self.kind, self.version, required))
+            links = [edge(f"{task_id}_{e.source_role}", e.source_port, f"{task_id}_{e.target_role}", e.target_port) for e in layout.edges]
+            links.extend(edge(e["source"], e["port"], f"{task_id}_{e['role']}", e["input"]) for e in layout.external)
+            return nodes, links
         if self.build_hook is not None:
             return self.build_hook(self, task, ctx)
         fields = task_fields(task, self)
@@ -174,7 +221,8 @@ def task_fields(task: dict[str, Any], definition: TaskDefinition) -> dict[str, A
             values[key] = task[key]
         if key not in values:
             values[key] = spec.default
-        if spec.required and values.get(key) in (None, ""):
+        visible = not spec.visible_when or not any(values.get(k, definition.fields[k].default) not in (v if isinstance(v, list) else [v]) for k, v in spec.visible_when.items())
+        if visible and spec.required and values.get(key) in (None, ""):
             raise ValidationError(f"Field '{key}' is required", code="task_field_required", details={"field": key})
     return values
 

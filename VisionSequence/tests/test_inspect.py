@@ -39,7 +39,7 @@ def patterned_scene(present: bool = True) -> tuple[np.ndarray, np.ndarray]:
     return image, tpl
 
 
-def run_graph(graph: dict, image: np.ndarray) -> engine.RunReport:
+def run_graph(graph: dict, image: np.ndarray, assets: dict | None = None) -> engine.RunReport:
     compiled = compile_graph(validate_graph(copy.deepcopy(graph)))
     return engine.execute(
         compiled,
@@ -47,7 +47,7 @@ def run_graph(graph: dict, image: np.ndarray) -> engine.RunReport:
         flow_version=1,
         trigger="test",
         grab=lambda _sid: None,
-        asset_path=lambda _aid: None,
+        asset_path=lambda aid: (assets or {}).get(aid),
         preview=True,
         input_image=image,
     )
@@ -416,3 +416,341 @@ class InspectApiTests(TransactionTestCase):
         bad = self.client.post("/api/vision/inspect/build", data=json.dumps({"graph": {"nodes": [], "edges": []}, "task": {"kind": "nope"}}), content_type="application/json")
         self.assertEqual(bad.status_code, 422)
         self.assertEqual(bad.json()["error"]["code"], "unknown_task_kind")
+
+
+def stage8_task(kind: str, **fields) -> dict:
+    defaults = {
+        "measure_distance": {"roi": {"shape": "rect", "x": 400, "y": 300, "w": 200, "h": 40}, "nominal": 100, "upper_tol": 2, "lower_tol": -2},
+        "count_objects": {"min_count": 2, "max_count": 2},
+        "check_presence": {"method": "blob", "expected": "present"},
+        "inspect_circular_surface": {"roi": {"shape": "annulus", "cx": 500, "cy": 350, "r_inner": 220, "r_outer": 280}},
+        "inspect_edge_defect": {"roi": {"shape": "rect", "x": 200, "y": 190, "w": 400, "h": 20}},
+        "read_and_verify": {"mode": "code", "expected": "STAGE8"},
+    }
+    return {"kind": kind, "task_id": "item", "fields": {**defaults[kind], **fields}}
+
+
+def stage8_scene(kind: str) -> np.ndarray:
+    image = np.zeros((701, 1001), np.uint8)
+    if kind == "measure_distance":
+        image[:, 450:550] = 220
+    elif kind in ("count_objects", "check_presence"):
+        image[100:130, 100:130] = image[200:230, 200:230] = 220
+    elif kind == "inspect_circular_surface":
+        from tests.test_edge_defect_periodic import rim_image
+        image = rim_image()
+    elif kind == "inspect_edge_defect":
+        image[200:, :] = 220
+    else:
+        qr = cv2.QRCodeEncoder_create().encode("STAGE8")
+        qr = cv2.resize(qr, None, fx=6, fy=6, interpolation=cv2.INTER_NEAREST)
+        image[:] = 255
+        image[100:100 + qr.shape[0], 100:100 + qr.shape[1]] = qr
+    return image
+
+
+STAGE8_KINDS = ("measure_distance", "count_objects", "check_presence", "inspect_circular_surface", "inspect_edge_defect", "read_and_verify")
+
+
+class Stage8TaskTests(SimpleTestCase):
+    def test_empty_images_missing_input_and_real_engine_tool_errors(self):
+        from apps.vision.tasks import get
+        from apps.vision.tools import base as tools
+        for kind in STAGE8_KINDS:
+            with self.subTest(kind=kind):
+                graph = inspect.build(base_graph(), stage8_task(kind))
+                empty = run_graph(graph, np.zeros((701, 1001), np.uint8))
+                self.assertNotEqual(inspect.evidence(graph, empty)[0]["verdict"], "pass")
+                missing = run_graph(graph, None)
+                self.assertNotEqual(inspect.evidence(graph, missing)[0]["verdict"], "pass")
+                record = inspect.read(graph)["tasks"][0]
+                layout = get(kind).layout_hook(record["fields"])
+                tool_key = layout.steps[layout.locator_roles[0]][0]
+                with patch.object(tools.get(tool_key), "execute", side_effect=tools.ToolError("Synthetic task failure")):
+                    failed = run_graph(graph, stage8_scene(kind))
+                self.assertEqual(inspect.evidence(graph, failed)[0]["verdict"], "error")
+                self.assertNotEqual(failed.status, "ok")
+
+    def test_modes_rebuild_keep_unrelated_tasks_and_geometry_sources(self):
+        _, template = patterned_scene()
+        desc = fixed_images.store(template, "Presence mark")
+        base = inspect.build(base_graph(), diameter_task("other"))
+        graph = inspect.build(base, stage8_task("check_presence", method="template", template_images=[desc]))
+        before = copy.deepcopy([n for n in graph["nodes"] if (inspect.inspect_marker(n) or {}).get("task_id") == "other"])
+        updated = inspect.update(graph, {"task_id": "item", "fields": {"method": "print", "min_ratio": .02}})
+        self.assertEqual(before, [n for n in updated["nodes"] if (inspect.inspect_marker(n) or {}).get("task_id") == "other"])
+        self.assertFalse(next(t for t in inspect.read(updated)["tasks"] if t["task_id"] == "item")["custom"])
+        self.assertEqual(next(n for n in updated["nodes"] if n["id"] == "item_det")["type"], "text_presence")
+
+    def test_circular_fractional_starts_and_translated_rotated_part(self):
+        import math
+        from tests.test_edge_defect_periodic import rim_image
+        template = np.zeros((61, 61), np.uint8)
+        template[10:50, 10:20] = 220
+        template[40:50, 10:45] = 220
+        desc = fixed_images.store(template, "Asymmetric locator")
+        for direction in ("cw", "ccw"):
+            for start in (.13, 5.27, 40.41, 90.03, 180.19, 270.37, 350.11, 355.23):
+                graph = inspect.build(base_graph(), stage8_task("inspect_circular_surface", start_angle=start, direction=direction))
+                report = run_graph(graph, rim_image())
+                points = report.nodes["item_restore"].outputs["points"]
+                self.assertEqual(len(points), 1)
+                error = math.dist(points[0], [740, 350])
+                self.assertLessEqual(error, 1.5, (start, direction, points))
+                print(f"fractional start={start:.2f} direction={direction} error_px={error:.6f}")
+        for dx, dy, angle in ((37, -21, 0), (-29, 17, 90), (23, 31, -90)):
+            with self.subTest(dx=dx, dy=dy, angle=angle):
+                # 實際物件在影像座標順時針旋轉；模板同樣旋轉，真值由幾何推導。
+                image = rim_image(angle, 500 + dx, 350 + dy)
+                mark = np.rot90(template, -angle // 90)
+                image[320 + dy:381 + dy, 470 + dx:531 + dx] = mark
+                locator = {"kind": "locate_part", "task_id": "loc", "fields": {"template_images": [desc], "threshold": .85,
+                           "allow_rotation": True, "angle_range": 90, "ref_x": 500.5, "ref_y": 350.5}}
+                graph = inspect.build(inspect.build(base_graph(), locator), stage8_task("inspect_circular_surface", locator="loc", start_angle=5.13))
+                report = run_graph(graph, image)
+                self.assertEqual(report.nodes["loc_find"].status, "ok", report.to_dict())
+                pts = report.nodes["item_restore"].outputs["points"]
+                self.assertEqual(len(pts), 1)
+                theta = math.radians(angle)
+                truth = [500 + dx + 240 * math.cos(theta), 350 + dy + 240 * math.sin(theta)]
+                error = math.dist(pts[0], truth)
+                self.assertLessEqual(error, 1.5, (pts, truth))
+                print(f"located dx={dx} dy={dy} angle={angle} error_px={error:.6f}")
+
+    def test_freeform_teaching_pair_mode_and_external_line_precedence(self):
+        from apps.vision.tools.builtin.edge_defect import teach_contour_model
+        image = np.zeros((701, 1001), np.uint8)
+        image[200:500, 250:750] = 220
+        model, _ = teach_contour_model(image)
+        fields = {"method": "freeform", "model": model, "roi": None}
+        graph = inspect.build(base_graph(), stage8_task("inspect_edge_defect", **fields))
+        self.assertFalse(inspect.read(graph)["tasks"][0]["custom"])
+        report = run_graph(graph, image)
+        self.assertEqual(inspect.evidence(graph, report)[0]["verdict"], "pass", report.to_dict())
+        simple = inspect.build(base_graph(), stage8_task("inspect_edge_defect"))
+        self.assert_graph_equivalent(inspect.update(simple, {"task_id": "item", "fields": fields}), graph)
+        paired = inspect.update(graph, {"task_id": "item", "fields": {"mode": "pair", "width_min": 5, "width_max": 20}})
+        self.assertEqual(inspect.read(paired)["tasks"][0]["fields"]["mode"], "pair")
+        base = base_graph()
+        base["nodes"].append({"id": "line", "type": "find_line", "params": {"roi": {"shape": "rect", "x": 200, "y": 190, "w": 400, "h": 20}}})
+        base["edges"].append(edge("src", "line", "image", "image"))
+        graph = inspect.build(base, stage8_task("inspect_edge_defect", reference={"node_id": "line", "port": "line", "type": "line"},
+                                              roi={"shape": "rect", "x": 10, "y": 10, "w": 50, "h": 10}))
+        self.assertFalse(inspect.read(graph)["tasks"][0]["custom"])
+        report = run_graph(graph, stage8_scene("inspect_edge_defect"))
+        self.assertEqual(inspect.evidence(graph, report)[0]["verdict"], "pass", report.to_dict())
+        updated = inspect.update(graph, {"task_id": "item", "fields": {"threshold": 5}})
+        self.assertIn(edge("line", "item_defect", "line", "line"), [{k: e[k] for k in ("source", "target", "source_handle", "target_handle")} for e in updated["edges"]])
+
+    def test_text_read_verify_with_offline_font_and_code_mode_switch(self):
+        import tempfile
+        from pathlib import Path
+        from apps.vision import ocr
+        from tests.test_ocr import render
+        tiles, labels = [], []
+        for size in (32, 36, 40):
+            line = render("0123456789", size=size)
+            boxes = ocr.segment_chars(line, "projection")
+            for box, char in zip(boxes, "0123456789"):
+                tiles.append(ocr.char_tile(line, box))
+                labels.append(char)
+        model = ocr.train_font(tiles, labels, epochs=300)
+        with tempfile.TemporaryDirectory(prefix="vs-s8-font-") as folder:
+            path = Path(folder) / "font.npz"
+            path.write_bytes(ocr.pack_font(model))
+            image = np.full((701, 1001), 255, np.uint8)
+            image[100:180, 100:500] = render("123456")
+            fields = {"mode": "text", "font_model": "font", "charset": "digits", "expected": "123456", "roi": {"shape": "rect", "x": 100, "y": 100, "w": 400, "h": 80}}
+            graph = inspect.build(base_graph(), stage8_task("read_and_verify", **fields))
+            report = run_graph(graph, image, {"font": str(path)})
+            self.assertEqual(inspect.evidence(graph, report)[0]["value"], "123456", report.to_dict())
+            self.assertEqual(inspect.evidence(graph, report)[0]["verdict"], "pass")
+            code = inspect.build(base_graph(), stage8_task("read_and_verify"))
+            self.assert_graph_equivalent(inspect.update(code, {"task_id": "item", "fields": fields}), graph)
+            bad = inspect.update(graph, {"task_id": "item", "fields": {"expected": "654321"}})
+            self.assertEqual(inspect.evidence(bad, run_graph(bad, image, {"font": str(path)}))[0]["verdict"], "fail")
+
+    def test_shape_and_registered_locators_execute_and_update(self):
+        import tempfile
+        from pathlib import Path
+        from django.conf import settings
+        from django.test import override_settings
+        from apps.vision import shapemodel
+        from apps.vision.dl import anomaly
+        from tests._helpers import fake_backbone
+        from tests.test_shapematch import scene, template_crop
+        with tempfile.TemporaryDirectory(prefix="vs-s8-loc-") as folder:
+            path = Path(folder) / "shape.npz"
+            shapemodel.save(str(path), shapemodel.teach(template_crop()))
+            f = {"method": "shape", "model": "shape", "roi": {"shape": "rect", "x": 350, "y": 200, "w": 300, "h": 300}}
+            task = {"kind": "locate_part", "task_id": "loc", "fields": f}
+            graph = inspect.build(base_graph(), task)
+            report = run_graph(graph, scene(500, 350, 0, size=(701, 1001)), {"shape": str(path)})
+            self.assertEqual(inspect.evidence(graph, report)[0]["verdict"], "pass", report.to_dict())
+            self.assertEqual(inspect.read(graph)["tasks"][0]["fields"]["method"], "shape")
+            updated = inspect.update(graph, {"task_id": "loc", "fields": {"allow_rotation": True, "angle_range": 30}})
+            direct = inspect.build(base_graph(), {**task, "fields": {**f, "allow_rotation": True, "angle_range": 30}})
+            self.assert_graph_equivalent(updated, direct)
+            with override_settings(VISION={**settings.VISION, "ASSET_DIR": folder}):
+                fake_backbone(anomaly.backbone_path(), 320)
+                image = np.full((701, 1001, 3), 30, np.uint8)
+                template = np.full((96, 96, 3), 30, np.uint8)
+                template[16:80, 16:80] = 220
+                image[280:376, 450:546] = template
+                desc = fixed_images.store(template, "Registered mark")
+                f = {"method": "register", "template_images": [desc], "threshold": .9, "roi": {"shape": "rect", "x": 400, "y": 230, "w": 200, "h": 200}}
+                task = {"kind": "locate_part", "task_id": "loc", "fields": f}
+                graph = inspect.build(base_graph(), task)
+                report = run_graph(graph, image)
+                self.assertEqual(inspect.evidence(graph, report)[0]["verdict"], "pass", report.to_dict())
+                self.assertEqual(inspect.read(graph)["tasks"][0]["fields"]["template_images"], [desc])
+                updated = inspect.update(graph, {"task_id": "loc", "fields": {"threshold": .85}})
+                self.assert_graph_equivalent(updated, inspect.build(base_graph(), {**task, "fields": {**f, "threshold": .85}}))
+                anomaly.clear_sessions()
+
+    def test_all_six_build_validate_execute_read_and_update(self):
+        changes = {"measure_distance": ("upper_tol", 3), "count_objects": ("max_count", 3), "check_presence": ("expected", "absent"),
+                   "inspect_circular_surface": ("threshold", 4), "inspect_edge_defect": ("threshold", 4), "read_and_verify": ("expected", "OTHER")}
+        for kind in STAGE8_KINDS:
+            with self.subTest(kind=kind):
+                task = stage8_task(kind)
+                graph = inspect.build(base_graph(), task)
+                validate_graph(graph)
+                record = inspect.read(graph)["tasks"][0]
+                self.assertFalse(record["custom"], record["reasons"])
+                for key, value in task["fields"].items():
+                    self.assertEqual(record["fields"][key], value, key)
+                report = run_graph(graph, stage8_scene(kind))
+                reading = inspect.evidence(graph, report)[0]
+                self.assertEqual(reading["verdict"], "fail" if kind == "inspect_circular_surface" else "pass", report.to_dict())
+                key, value = changes[kind]
+                updated = inspect.update(graph, {"task_id": "item", "fields": {key: value}})
+                direct = inspect.build(base_graph(), stage8_task(kind, **{key: value}))
+                self.assert_graph_equivalent(updated, direct)
+                self.assertEqual(inspect.read(updated)["tasks"][0]["fields"][key], value)
+
+    def assert_graph_equivalent(self, left, right):
+        self.assertEqual({n["id"]: (n["type"], n["params"], n.get("meta")) for n in left["nodes"]},
+                         {n["id"]: (n["type"], n["params"], n.get("meta")) for n in right["nodes"]})
+        self.assertEqual({(e["source"], e["source_handle"], e["target"], e["target_handle"]) for e in left["edges"]},
+                         {(e["source"], e["source_handle"], e["target"], e["target_handle"]) for e in right["edges"]})
+
+    def test_six_kinds_preserve_external_public_output_connections(self):
+        from apps.vision.tasks import get
+        for kind in STAGE8_KINDS:
+            with self.subTest(kind=kind):
+                graph = inspect.build(base_graph(), stage8_task(kind))
+                record = inspect.read(graph)["tasks"][0]
+                ref = get(kind).layout_hook(record["fields"]).value_port
+                graph["nodes"].append({"id": "consumer", "type": "formula", "params": {"expression": "1"}})
+                link = edge(record["nodes"][ref.role], "consumer", ref.port, "a")
+                graph["edges"].append(link)
+                self.assertFalse(inspect.read(graph)["tasks"][0]["custom"])
+                updated = inspect.update(graph, {"task_id": "item", "fields": {"required": False}})
+                self.assertIn(link, updated["edges"])
+
+    def test_six_kinds_custom_missing_input_error_and_empty_report(self):
+        for kind in STAGE8_KINDS:
+            with self.subTest(kind=kind):
+                graph = inspect.build(base_graph(), stage8_task(kind))
+                self.assertEqual(inspect.evidence(graph, {})[0]["verdict"], "skipped")
+                missing = copy.deepcopy(graph)
+                missing["edges"] = [e for e in missing["edges"] if e["source"] != "src"]
+                self.assertTrue(inspect.read(missing)["tasks"][0]["custom"])
+                self.assertNotEqual(inspect.evidence(missing, run_graph(missing, stage8_scene(kind)))[0]["verdict"], "pass")
+                broken = copy.deepcopy(graph)
+                record = inspect.read(broken)["tasks"][0]
+                role = next(iter(record["nodes"]))
+                node = next(n for n in broken["nodes"] if n["id"] == record["nodes"][role])
+                node["type"] = "formula"
+                self.assertTrue(inspect.read(broken)["tasks"][0]["custom"])
+                report = run_graph(graph, stage8_scene(kind))
+                report.nodes[record["nodes"][role]].status = "error"
+                self.assertEqual(inspect.evidence(graph, report)[0]["verdict"], "error")
+
+    def test_count_boundaries_include_zero_without_detector_rejecting(self):
+        for low, high, count, expected in ((0, 2, 0, "pass"), (2, 4, 2, "pass"), (0, 2, 2, "pass"), (3, 4, 2, "fail"), (0, 1, 2, "fail")):
+            with self.subTest(low=low, high=high, count=count):
+                graph = inspect.build(base_graph(), stage8_task("count_objects", min_count=low, max_count=high))
+                report = run_graph(graph, stage8_scene("count_objects") if count else np.zeros((701, 1001), np.uint8))
+                self.assertEqual(report.nodes["item_blob"].status, "ok")
+                self.assertEqual(inspect.evidence(graph, report)[0]["verdict"], expected)
+                self.assertEqual(report.nodes["inspection_summary"].status, "ok" if expected == "pass" else "ng")
+
+    def test_count_above_detector_default_limit_cannot_pass_as_truncated_count(self):
+        image = np.zeros((701, 1001), np.uint8)
+        for i in range(101):
+            x, y = 20 + (i % 11) * 30, 20 + (i // 11) * 30
+            image[y:y + 10, x:x + 10] = 220
+        graph = inspect.build(base_graph(), stage8_task("count_objects", min_count=0, max_count=100))
+        report = run_graph(graph, image)
+        self.assertEqual(report.nodes["item_blob"].outputs["count"], 101)
+        self.assertEqual(inspect.evidence(graph, report)[0]["verdict"], "fail")
+        self.assertEqual(report.nodes["inspection_summary"].status, "ng")
+
+    def test_presence_truth_table_and_invalid_absence(self):
+        for method in ("blob", "print", "template"):
+            image = stage8_scene("check_presence")
+            tpl = image[80:150, 80:150]
+            ref = fixed_images.store(tpl, "Presence mark")
+            for present, expected in ((True, "present"), (False, "present"), (True, "absent"), (False, "absent")):
+                with self.subTest(method=method, present=present, expected=expected):
+                    graph = inspect.build(base_graph(), stage8_task("check_presence", method=method, expected=expected, template_images=[ref],
+                                                                   roi={"shape": "rect", "x": 80, "y": 80, "w": 70, "h": 70}, print_polarity="light", min_ratio=.01, max_ratio=.9))
+                    report = run_graph(graph, image if present else np.zeros_like(image))
+                    reading = inspect.evidence(graph, report)[0]
+                    verdict = "pass" if present == (expected == "present") else "fail"
+                    self.assertEqual((reading["valid"], reading["detected"], reading["verdict"]), (True, present, verdict), report.to_dict())
+                    self.assertEqual(report.nodes["inspection_summary"].status, "ok" if verdict == "pass" else "ng")
+            graph = inspect.build(base_graph(), stage8_task("check_presence", method=method, expected="absent", template_images=[ref]))
+            report = run_graph(graph, None)
+            self.assertNotEqual(inspect.evidence(graph, report)[0]["verdict"], "pass")
+            self.assertNotEqual(report.status, "ok")
+
+    def test_hole_centres_distance_and_variant_rebuild(self):
+        region_a = {"shape": "annulus", "cx": 300, "cy": 350, "r_inner": 20, "r_outer": 70}
+        region_b = {**region_a, "cx": 700}
+        fields = {"mode": "hole_centres", "roi_a": region_a, "roi_b": region_b, "nominal": 400}
+        graph = inspect.build(base_graph(), stage8_task("measure_distance", **fields))
+        image = np.maximum(annulus_image(cx=300, r_inner=0, r_outer=50), annulus_image(cx=700, r_inner=0, r_outer=50))
+        report = run_graph(graph, image)
+        self.assertAlmostEqual(report.nodes["item_dist"].outputs["distance"], 400, delta=.5)
+        self.assertEqual(inspect.evidence(graph, report)[0]["verdict"], "pass")
+        updated = inspect.update(inspect.build(base_graph(), stage8_task("measure_distance")), {"task_id": "item", "fields": fields})
+        self.assert_graph_equivalent(updated, graph)
+        empty = run_graph(graph, np.zeros_like(image))
+        self.assertNotEqual(inspect.evidence(graph, empty)[0]["verdict"], "pass")
+
+    def test_circular_task_mapping_seam_sector_and_only_defect_geometry(self):
+        import math
+        from tests.test_edge_defect_periodic import rim_image
+        for direction in ("cw", "ccw"):
+            for start in (0, 5, 40, 90, 180, 270, 350, 355):
+                with self.subTest(direction=direction, start=start):
+                    graph = inspect.build(base_graph(), stage8_task("inspect_circular_surface", direction=direction, start_angle=start))
+                    report = run_graph(graph, rim_image())
+                    self.assertEqual(report.nodes["item_defect"].outputs["count"], 1, report.to_dict())
+                    pts = report.nodes["item_restore"].outputs["points"]
+                    self.assertEqual(len(pts), 1)
+                    error = math.dist(pts[0], [740, 350])
+                    self.assertLessEqual(error, 1.5)
+                    print(f"task seam start={start:3d} direction={direction} count=1 error_px={error:.6f}")
+            roi = {"shape": "annulus", "cx": 500, "cy": 350, "r_inner": 220, "r_outer": 280, "a0": 20, "a1": 160}
+            graph = inspect.build(base_graph(), stage8_task("inspect_circular_surface", roi=roi, direction=direction))
+            report = run_graph(graph, rim_image(90))
+            pts = report.nodes["item_restore"].outputs["points"]
+            self.assertEqual(len(pts), 1)
+            self.assertLessEqual(math.dist(pts[0], [500, 590]), 1.5)
+
+    def test_all_required_tasks_fail_when_locator_is_not_found(self):
+        _, template = patterned_scene()
+        desc = fixed_images.store(template, "Locator")
+        base = inspect.build(base_graph(), {"kind": "locate_part", "task_id": "loc", "fields": {"template_images": [desc], "threshold": .99}})
+        for kind in STAGE8_KINDS:
+            with self.subTest(kind=kind):
+                graph = inspect.build(base, stage8_task(kind, locator="loc"))
+                report = run_graph(graph, np.zeros((701, 1001), np.uint8))
+                reading = next(r for r in inspect.evidence(graph, report) if r["task_id"] == "item")
+                self.assertEqual(reading["verdict"], "locate_failed", report.to_dict())
+                self.assertFalse(reading["valid"])
+                self.assertEqual(report.nodes["inspection_summary"].status, "ng")

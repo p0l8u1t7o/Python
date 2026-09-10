@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createMemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
-import { FLOW, INSPECT_GRAPH, installApiMock } from './apiMock'
+import { FLOW, INSPECT_GRAPH, INSPECT_KINDS, installApiMock } from './apiMock'
 import { renderPage } from './render'
 import { expandOnDrop } from '@/lib/nodeGroups'
 import { AuthProvider } from '@/providers/AuthProvider'
@@ -35,6 +35,25 @@ function renderDataPage(ui: React.ReactElement, route: string, path: string) {
 }
 
 describe('pages render (smoke)', () => {
+  it.each(INSPECT_KINDS.filter((item) => item.kind !== 'measure_diameter'))('offers $kind and renders its active form', async (kind) => {
+    const { InspectPage } = await import('@/pages/InspectPage')
+    const { clearSession } = await import('@/lib/flowDraft')
+    clearSession(6)
+    renderDataPage(<InspectPage />, '/flows/6/inspect', '/flows/:flowId/inspect')
+    const picker = await screen.findByTestId('inspect-add')
+    await waitFor(() => expect(picker).toBeEnabled())
+    expect(within(picker).getByRole('option', { name: kind.label })).toBeInTheDocument()
+    fireEvent.change(picker, { target: { value: kind.kind } })
+    const form = screen.getByTestId('inspect-form')
+    expect(await within(form).findByRole('heading', { name: kind.label })).toBeInTheDocument()
+    for (const field of kind.fields.filter((field) => !field.visible_when)) expect(form.querySelector(`[data-field="${field.key}"]`)).not.toBeNull()
+    if (kind.kind === 'inspect_edge_defect') {
+      expect(screen.getByTestId('inspect-geometry-source')).toBeInTheDocument()
+      fireEvent.change(within(form).getByLabelText('Method'), { target: { value: 'freeform' } })
+      expect(await within(form).findByRole('button', { name: 'Teach contour from current image' })).toBeDisabled()
+      expect(screen.queryByTestId('inspect-geometry-source')).not.toBeInTheDocument()
+    }
+  })
   it.each([
     ['managed_edge_missing', 'tol', 'd_tol', 'An internal task connection is missing.', 'measure_diameter'],
     ['unexpected_node', 'extra', 'extra', 'An extra step was added to this task.', 'measure_diameter'],

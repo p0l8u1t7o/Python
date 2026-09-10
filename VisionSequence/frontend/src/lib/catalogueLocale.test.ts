@@ -8,6 +8,19 @@ import { localiseInspectKinds, localiseList } from './catalogueLocale'
 import { INSPECT_KINDS } from '@/test/apiMock'
 
 describe('catalogueLocale', () => {
+  it('translates every new task field and option in both Chinese locales', () => {
+    const fresh = INSPECT_KINDS.filter((item) => !['locate_part', 'measure_diameter'].includes(item.kind))
+    expect(fresh).toHaveLength(6)
+    for (const language of ['zh-Hant', 'zh-Hans'] as const) {
+      for (const item of localiseInspectKinds(fresh, language)) {
+        expect(item.label).toMatch(/[\u3400-\u9fff]/)
+        for (const field of item.fields) {
+          expect(field.label).toMatch(/[\u3400-\u9fff]/)
+          for (const option of field.options) expect(option.label).toMatch(/[\u3400-\u9fff]/)
+        }
+      }
+    }
+  })
   it('translates inspection display text while preserving kind, roles, fields and option values', () => {
     for (const language of ['zh-Hant', 'zh-Hans'] as const) {
       const result = localiseInspectKinds(INSPECT_KINDS, language)

@@ -545,6 +545,7 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("circular_caliper 360", "circular_caliper", big, {"roi": {"shape": "annulus", "cx": s.cx, "cy": s.cy, "r_inner": m * 0.06, "r_outer": m * 0.18}, "caliper_count": 360}, {}, {}),
         ("edge_defect line 180", "edge_defect", gray, {"roi": top_edge, "calipers": 180, "search": 30}, {}, {}),
         ("edge_defect arc 180", "edge_defect", gray, {"roi": center_circle, "calipers": 180, "search": 30}, {}, {}),
+        ("edge_defect closed 180", "edge_defect", gray, {"roi": top_edge, "calipers": 180, "search": 30, "closed_sequence": True}, {}, {}),
         ("edge_model_defect 240", "edge_model_defect", path_block, {"model": edge_model_square, "calipers": 240, "search": 28, "threshold": 3, "polarity": "light_to_dark", "edge_threshold": 12}, {}, {}),
         ("edge_model_defect pair", "edge_model_defect", seal_image, {"model": seal_model, "mode": "pair", "pair_polarity": "bright", "calipers": 1200, "search": 24, "caliper_width": 1, "smoothing": 1, "threshold": 3, "width_min": 9, "width_max": 15}, {}, {}),
         ("char_detect arc", "char_detect", char_image, {"merge_gap": 2, "order": "arc"}, {}, {}),

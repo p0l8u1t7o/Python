@@ -103,6 +103,8 @@ export interface InspectMeta {
 export interface InspectField extends Omit<ToolParam, 'visible_when' | 'group'> {
   role: string | null
   param: string | null
+  visible_when?: Record<string, unknown> | null
+  source_type?: string
 }
 
 export interface InspectKind {
@@ -112,6 +114,7 @@ export interface InspectKind {
   help_text: string
   fields: InspectField[]
   roles: Record<string, string>
+  internal_edges?: { source_role: string; source_port: string; target_role: string; target_port: string }[]
   public_inputs: { role: string; port: string }[]
   public_outputs: { role: string; port: string }[]
   pass_port: { role: string; port: string } | null

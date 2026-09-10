@@ -177,7 +177,7 @@ export default {
           "shape": "形狀模型",
           "register": "註冊範例"
         },
-        "help": "形狀與註冊範例定位將在後續版本提供。"
+        "help": "選擇範本、形狀模型或註冊影像定位。"
       },
       "template_images": {
         "label": "定位標記",
@@ -200,6 +200,425 @@ export default {
       },
       "ref_angle": {
         "label": "參考角度"
+      },
+      "model": {
+        "label": "形狀模型"
+      }
+    }
+  },
+  "check_presence": {
+    "label": "檢查有無",
+    "help": "使用目前影像設定並執行此檢測。",
+    "fields": {
+      "method": {
+        "label": "方式",
+        "options": {
+          "template": "範本",
+          "blob": "物件",
+          "print": "印字"
+        }
+      },
+      "roi": {
+        "label": "檢測區域"
+      },
+      "expected": {
+        "label": "期望內容",
+        "options": {
+          "present": "應存在",
+          "absent": "應不存在"
+        }
+      },
+      "template_images": {
+        "label": "參考影像"
+      },
+      "threshold": {
+        "label": "門檻"
+      },
+      "threshold_method": {
+        "label": "門檻方式",
+        "options": {
+          "otsu": "自動",
+          "fixed": "固定",
+          "hysteresis": "雙門檻",
+          "soft": "柔和門檻",
+          "none": "不處理"
+        }
+      },
+      "blob_threshold": {
+        "label": "亮度門檻"
+      },
+      "polarity": {
+        "label": "目標極性",
+        "options": {
+          "bright": "亮",
+          "dark": "暗"
+        }
+      },
+      "min_area": {
+        "label": "最小面積"
+      },
+      "max_area": {
+        "label": "最大面積"
+      },
+      "print_polarity": {
+        "label": "印字極性",
+        "options": {
+          "dark": "暗",
+          "bright": "亮"
+        }
+      },
+      "min_ratio": {
+        "label": "筆畫比例下限"
+      },
+      "max_ratio": {
+        "label": "筆畫比例上限"
+      },
+      "required": {
+        "label": "必要任務"
+      },
+      "locator": {
+        "label": "定位任務"
+      }
+    }
+  },
+  "count_objects": {
+    "label": "數數量",
+    "help": "使用目前影像設定並執行此檢測。",
+    "fields": {
+      "roi": {
+        "label": "檢測區域"
+      },
+      "threshold_method": {
+        "label": "門檻方式",
+        "options": {
+          "otsu": "自動",
+          "fixed": "固定",
+          "hysteresis": "雙門檻",
+          "soft": "柔和門檻",
+          "none": "不處理"
+        }
+      },
+      "threshold": {
+        "label": "門檻"
+      },
+      "polarity": {
+        "label": "目標極性",
+        "options": {
+          "bright": "亮",
+          "dark": "暗"
+        }
+      },
+      "min_area": {
+        "label": "最小面積"
+      },
+      "max_area": {
+        "label": "最大面積"
+      },
+      "min_circularity": {
+        "label": "圓形度下限"
+      },
+      "min_count": {
+        "label": "最少數量"
+      },
+      "max_count": {
+        "label": "最多數量"
+      },
+      "result_name": {
+        "label": "結果名稱"
+      },
+      "required": {
+        "label": "必要任務"
+      },
+      "locator": {
+        "label": "定位任務"
+      }
+    }
+  },
+  "inspect_circular_surface": {
+    "label": "圓周表面檢測",
+    "help": "使用目前影像設定並執行此檢測。",
+    "fields": {
+      "roi": {
+        "label": "檢測區域"
+      },
+      "direction": {
+        "label": "方向",
+        "options": {
+          "ccw": "逆時針",
+          "cw": "順時針"
+        }
+      },
+      "start_angle": {
+        "label": "起始角度"
+      },
+      "polarity": {
+        "label": "目標極性",
+        "options": {
+          "any": "不限",
+          "dark_to_light": "暗到亮",
+          "light_to_dark": "亮到暗"
+        }
+      },
+      "threshold": {
+        "label": "門檻"
+      },
+      "min_width": {
+        "label": "最小缺陷寬度"
+      },
+      "max_defects": {
+        "label": "允許缺陷數"
+      },
+      "search": {
+        "label": "搜尋範圍"
+      },
+      "geometry": {
+        "label": "缺陷位置表示",
+        "options": {
+          "centres": "中心點",
+          "boxes": "外框",
+          "spans": "起訖點"
+        }
+      },
+      "required": {
+        "label": "必要任務"
+      },
+      "locator": {
+        "label": "定位任務"
+      }
+    }
+  },
+  "inspect_edge_defect": {
+    "label": "邊緣缺陷檢測",
+    "help": "使用目前影像設定並執行此檢測。",
+    "fields": {
+      "method": {
+        "label": "方式",
+        "options": {
+          "simple": "直線或圓弧",
+          "freeform": "自由輪廓"
+        }
+      },
+      "roi": {
+        "label": "檢測區域"
+      },
+      "reference": {
+        "label": "參考幾何來源",
+        "help": "選填上游直線或圓形來源；有接線時優先於繪製的區域。"
+      },
+      "mode": {
+        "label": "模式",
+        "options": {
+          "single": "單邊",
+          "pair": "成對"
+        }
+      },
+      "polarity": {
+        "label": "目標極性",
+        "options": {
+          "any": "不限",
+          "dark_to_light": "暗到亮",
+          "light_to_dark": "亮到暗"
+        }
+      },
+      "pair_polarity": {
+        "label": "帶狀區域極性",
+        "options": {
+          "any": "不限",
+          "bright": "亮",
+          "dark": "暗"
+        }
+      },
+      "search": {
+        "label": "搜尋範圍"
+      },
+      "threshold": {
+        "label": "門檻"
+      },
+      "min_width": {
+        "label": "最小缺陷寬度"
+      },
+      "direction": {
+        "label": "方向",
+        "options": {
+          "both": "兩側",
+          "inward": "向內",
+          "outward": "向外"
+        }
+      },
+      "width_min": {
+        "label": "寬度下限"
+      },
+      "width_max": {
+        "label": "寬度上限"
+      },
+      "max_defects": {
+        "label": "允許缺陷數"
+      },
+      "baseline": {
+        "label": "理想邊緣",
+        "options": {
+          "fit": "擬合",
+          "median": "中位數",
+          "reference": "參考幾何"
+        }
+      },
+      "model": {
+        "label": "輪廓模型"
+      },
+      "required": {
+        "label": "必要任務"
+      },
+      "locator": {
+        "label": "定位任務"
+      }
+    }
+  },
+  "measure_distance": {
+    "label": "量邊距",
+    "help": "使用目前影像設定並執行此檢測。",
+    "fields": {
+      "mode": {
+        "label": "模式",
+        "options": {
+          "edge_pair": "邊對",
+          "hole_centres": "兩孔中心"
+        }
+      },
+      "roi": {
+        "label": "檢測區域"
+      },
+      "roi_a": {
+        "label": "孔 A 區域"
+      },
+      "roi_b": {
+        "label": "孔 B 區域"
+      },
+      "polarity": {
+        "label": "目標極性",
+        "options": {
+          "any": "不限",
+          "dark_to_light": "暗到亮",
+          "light_to_dark": "亮到暗"
+        }
+      },
+      "edge_pair": {
+        "label": "邊對選擇",
+        "options": {
+          "first_last": "第一條與最後一條",
+          "widest": "最寬",
+          "narrowest": "最窄",
+          "strongest": "最強"
+        }
+      },
+      "pair_polarity": {
+        "label": "帶狀區域極性",
+        "options": {
+          "any": "不限",
+          "bright": "亮",
+          "dark": "暗"
+        }
+      },
+      "nominal": {
+        "label": "標稱值"
+      },
+      "upper_tol": {
+        "label": "上公差"
+      },
+      "lower_tol": {
+        "label": "下公差"
+      },
+      "unit": {
+        "label": "單位",
+        "options": {
+          "px": "像素",
+          "mm": "毫米"
+        }
+      },
+      "result_name": {
+        "label": "結果名稱"
+      },
+      "calibration": {
+        "label": "標定"
+      },
+      "required": {
+        "label": "必要任務"
+      },
+      "locator": {
+        "label": "定位任務"
+      }
+    }
+  },
+  "read_and_verify": {
+    "label": "讀取與驗證",
+    "help": "使用目前影像設定並執行此檢測。",
+    "fields": {
+      "mode": {
+        "label": "模式",
+        "options": {
+          "code": "條碼",
+          "text": "文字"
+        }
+      },
+      "roi": {
+        "label": "檢測區域"
+      },
+      "types": {
+        "label": "碼別",
+        "options": {
+          "all": "全部",
+          "qr": "QR 碼",
+          "2d": "二維碼",
+          "1d": "一維碼"
+        }
+      },
+      "expected": {
+        "label": "期望內容"
+      },
+      "font_model": {
+        "label": "字型模型"
+      },
+      "charset": {
+        "label": "字元集",
+        "options": {
+          "alnum": "英數字",
+          "digits": "數字",
+          "upper": "大寫字母與數字",
+          "any": "不限",
+          "custom": "自訂"
+        }
+      },
+      "custom_charset": {
+        "label": "自訂字元集"
+      },
+      "polarity": {
+        "label": "目標極性",
+        "options": {
+          "dark_on_light": "亮底暗字",
+          "light_on_dark": "暗底亮字"
+        }
+      },
+      "min_confidence": {
+        "label": "最低信心"
+      },
+      "pattern": {
+        "label": "位置樣板"
+      },
+      "verify_mode": {
+        "label": "比對方式",
+        "options": {
+          "exact": "完全相同",
+          "contains": "包含",
+          "regex": "正規表示式"
+        }
+      },
+      "result_name": {
+        "label": "結果名稱"
+      },
+      "required": {
+        "label": "必要任務"
+      },
+      "locator": {
+        "label": "定位任務"
       }
     }
   }

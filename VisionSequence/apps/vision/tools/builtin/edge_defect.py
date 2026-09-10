@@ -245,6 +245,8 @@ class EdgeDefectTool(Tool):
         Param("max_defects", "More faults than this is a reject", kind="number", default=0, minimum=0, teach=True,
               help_text="0 = any fault is a reject."),
         Param("smoothing", "Profile smoothing", kind="number", default=3, minimum=1, maximum=31, group="Advanced"),
+        Param("closed_sequence", "Closed sequence", kind="boolean", default=False, group="Advanced",
+              help_text="Join the ends of a straight scan of an unwrapped full ring. The reference line must span exactly one full period. Seam-crossing geometry may extend past the strip end; restore it with the original mapping."),
         Param("edge_select", "Which edge", kind="select", default="strongest", options=[
             {"value": "strongest", "label": "Strongest"}, {"value": "first", "label": "First"}, {"value": "last", "label": "Last"},
         ], group="Advanced", visible_when={"param": "mode", "in": ["single"]}),
@@ -269,8 +271,17 @@ class EdgeDefectTool(Tool):
         kind, geometry, reference_overlay = _reference(ctx, image)
         count = ctx.integer("calipers", 60)
         wrap = kind == "arc" and abs(geometry[4] - geometry[3]) >= 359.9
+        period = None
         if kind == "line":
-            centers, scan, tangent, positions = line_geometry(*geometry, count)
+            if bool(ctx.param("closed_sequence", False)):
+                # 封閉直線的終點代表下一圈起點，不重複取樣；保留週期向量供跨縫幾何解包。
+                period = np.asarray(geometry[2:4], dtype=float) - np.asarray(geometry[:2], dtype=float)
+                if np.linalg.norm(period) < 1:
+                    raise ToolError("A closed sequence needs a reference line at least 1 px long")
+                centers, scan, tangent, positions = (v[:-1] for v in line_geometry(*geometry, count + 1))
+                wrap = True
+            else:
+                centers, scan, tangent, positions = line_geometry(*geometry, count)
         else:
             cx, cy, radius, a0, a1 = geometry
             centers, scan, tangent, positions = arc_geometry(cx, cy, radius, count, a0=a0, a1=a1)
@@ -290,7 +301,7 @@ class EdgeDefectTool(Tool):
         found = np.array([h.found for h in hits], dtype=bool)
         flags, kinds = self._flags(ctx, deviation, found, series, pair, wrap)
         runs = self._runs(ctx, flags, kinds, wrap)
-        items = self._describe(runs, hits, deviation, series, positions, pair)
+        items = self._describe(runs, hits, deviation, series, positions, pair, period=period)
         limit = ctx.integer("max_defects", 0)
         bad = len(items) > limit if limit else bool(items)
         overlays: list[dict[str, Any]] = [reference_overlay] if reference_overlay else []
@@ -385,7 +396,11 @@ class EdgeDefectTool(Tool):
                 flags[i], kinds[i] = True, "dislocation"
         step = ctx.number("step_threshold", 0)
         if step > 0:
-            for i in np.nonzero(step_flags(series, step))[0]:
+            step_mask = step_flags(series, step)
+            if wrap and ctx.param("closed_sequence", False) and len(series) > 1:
+                if np.isfinite(series[0]) and np.isfinite(series[-1]) and abs(series[0] - series[-1]) > step:
+                    step_mask[0] = step_mask[-1] = True
+            for i in np.nonzero(step_mask)[0]:
                 if not flags[i]:
                     flags[i], kinds[i] = True, "step"
         if pair:
@@ -426,7 +441,7 @@ class EdgeDefectTool(Tool):
 
     @staticmethod
     def _describe(runs: list[tuple[int, int, str]], hits: list[CaliperHit], deviation: np.ndarray,
-                  series: np.ndarray, positions: np.ndarray, pair: bool) -> list[dict[str, Any]]:
+                  series: np.ndarray, positions: np.ndarray, pair: bool, *, period: np.ndarray | None = None) -> list[dict[str, Any]]:
         """每一段缺陷的完整描述：外框、沿邊長度、面積、最嚴重的那一點。"""
         n = len(hits)
         items: list[dict[str, Any]] = []
@@ -441,6 +456,10 @@ class EdgeDefectTool(Tool):
                         points.append([h.x2, h.y2])
                 else:
                     points.append([h.cx, h.cy])  # 打空的位置用卡尺中心，缺口才框得起來
+                if period is not None and end < start and i < start:
+                    for point in points[-(2 if pair and h.found else 1):]:
+                        point[0] += period[0]
+                        point[1] += period[1]
             values = np.array([deviation[i] for i in indices], dtype=np.float64)
             finite = values[np.isfinite(values)]
             peak = float(finite[np.argmax(np.abs(finite))]) if len(finite) else float("nan")
@@ -455,6 +474,11 @@ class EdgeDefectTool(Tool):
                 "position": round(float(positions[start]), 3),
                 "rect": rect,
             })
+            if period is not None:
+                # 解包後再取中心與起訖，避免跨縫缺口的中心被算到半圈之外。
+                # 少數過渡點可能落在缺口肩部，中心採解包點的中位數，避免外框把徑向中心拉偏。
+                items[-1]["centre"] = np.median(np.asarray(points, dtype=float), axis=0).tolist()
+                items[-1]["span"] = [points[0], points[-1]]
         return items
 
 

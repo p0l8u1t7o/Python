@@ -64,6 +64,9 @@ export function inspectionDefaults(kind: InspectKind): Record<string, unknown> {
 export function inspectionParam(field: InspectField): ToolParam {
   return { ...field, visible_when: null, group: '', shapes: field.shapes ?? [], options: field.options ?? [] }
 }
+export function inspectionFieldVisible(field: InspectField, values: Record<string, unknown>): boolean {
+  return !field.visible_when || Object.entries(field.visible_when).every(([key, allowed]) => (Array.isArray(allowed) ? allowed : [allowed]).includes(values[key]))
+}
 export function inspectionValue(reading?: InspectReading): string {
   if (!reading?.valid || !['pass', 'fail'].includes(reading.verdict) || reading.value === null || reading.value === undefined) return '—'
   if (typeof reading.value === 'number') return Number.isFinite(reading.value) ? String(reading.value) : '—'
@@ -71,6 +74,7 @@ export function inspectionValue(reading?: InspectReading): string {
 }
 export function missingInspectionFields(kind: InspectKind, values: Record<string, unknown>): string[] {
   return kind.fields.filter((f) => {
+    if (!inspectionFieldVisible(f, values)) return false
     const value = values[f.key]
     if (f.required && (value === null || value === undefined || value === '' || (Array.isArray(value) && !value.length))) return true
     if (value !== null && value !== undefined && value !== '' && ['number', 'range'].includes(f.kind)) {

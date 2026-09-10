@@ -7,7 +7,9 @@ import { ParamField, type InspectorActions } from '@/components/editor/ParamFiel
 import { useSaveConflictDialog } from '@/components/flow/SaveConflictDialog'
 import { Button, ErrorState, LoadingState, Modal } from '@/components/ui'
 import { ImageViewer } from '@/components/viewer/ImageViewer'
-import { fixedImageFromRef, imageUrl } from '@/lib/api'
+import { fixedImageFromRef, imageUrl, teachContourFromImage } from '@/lib/api'
+import { GeometrySourceField } from '@/components/inspect/GeometrySourceField'
+import { inspectionFieldVisible } from '@/lib/inspect'
 import { errorMessage } from '@/lib/errors'
 import { getSession, setDraft, updateSession, useFlowSession } from '@/lib/flowDraft'
 import { INSPECT_DOTS, forgetInspectionRun, inspectGraphHash, inspectionAdvancedPath, inspectionDefaults, inspectionEditableKind, inspectionOverall, inspectionParam, inspectionReasonKey, inspectionRemovalGraph, inspectionRunFor, inspectionStale, inspectionStatus, inspectionValue, missingInspectionFields, rememberInspectionRun } from '@/lib/inspect'
@@ -157,8 +159,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
   }
   const invalid = kind ? missingInspectionFields(kind, values) : []
   const needsCalibration = values.unit === 'mm' && !values.calibration
-  const unsupportedLocator = kind?.kind === 'locate_part' && values.method !== 'template'
-  const formInvalid = invalid.length > 0 || needsCalibration || unsupportedLocator
+  const formInvalid = invalid.length > 0 || needsCalibration
 
   async function createTask() {
     if (!kind || readOnly || formInvalid) return
@@ -349,12 +350,16 @@ function InspectPageInner({ flowId }: { flowId: number }) {
       <section className="w-full shrink-0 space-y-4 overflow-y-auto border-r border-line bg-surface p-4 md:w-[340px] xl:w-[380px]" data-testid="inspect-form">
         {task?.custom && !newKind ? <div data-testid="inspect-custom"><p className="text-warning">{t('inspect.customHint')}</p>{task.reasons.map((reason, index) => <p key={index} className="mt-1 text-xs">{t(inspectionReasonKey(reason.code))}</p>)}<Link className="btn-secondary mt-3" to={inspectionAdvancedPath(flowId, graph, task)}>{t('inspect.openAdvanced')}</Link><Button className="mt-3" variant="danger" disabled={readOnly || busy} onClick={() => void action(deleteTask)}>{t('inspect.remove')}</Button></div> : kind ? <><h2 className="font-semibold">{kind.label}</h2><p className="text-xs text-muted">{kind.help_text}</p>
             <fieldset disabled={readOnly || busy} className="space-y-4">
-              {kind.fields.map((field) => <div key={field.key} data-field={field.key}>
-                {field.key === 'locator' ? <label className="label">{field.label}<select className="input" value={String(values.locator ?? '')} onChange={(event) => changeField('locator', event.target.value)}><option value="">{t('common.none')}</option>{list.tasks.filter((entry) => entry.kind === 'locate_part' && entry.task_id !== selected && !entry.custom).map((entry) => <option key={entry.task_id} value={entry.task_id}>{String(entry.fields.result_name || entry.task_id)}</option>)}</select></label> : <ParamField param={inspectionParam(field)} value={values[field.key]} onChange={(value) => changeField(field.key, value)} actions={actions} />}
+              {kind.fields.filter((field) => inspectionFieldVisible(field, values)).map((field) => <div key={field.key} data-field={field.key}>
+                {field.key === 'locator' ? <label className="label">{field.label}<select className="input" value={String(values.locator ?? '')} onChange={(event) => changeField('locator', event.target.value)}><option value="">{t('common.none')}</option>{list.tasks.filter((entry) => entry.kind === 'locate_part' && entry.task_id !== selected && !entry.custom).map((entry) => <option key={entry.task_id} value={entry.task_id}>{String(entry.fields.result_name || entry.task_id)}</option>)}</select></label> : field.source_type === 'geometry' ? <GeometrySourceField field={field} value={values[field.key]} graph={graph} nodeId={newKind ? undefined : task?.nodes.defect} defs={defs} onChange={(value) => changeField(field.key, value)} /> : <ParamField param={inspectionParam(field)} value={values[field.key]} onChange={(value) => changeField(field.key, value)} actions={actions} />}
+                {kind.kind === 'inspect_edge_defect' && field.key === 'model' ? <Button size="sm" disabled={!image?.ref || readOnly || busy} onClick={() => void action(async () => {
+                  if (!image?.ref) return
+                  const result = await teachContourFromImage(flowId, { ref: image.ref, roi: values.roi as Region | null })
+                  changeField('model', result.model)
+                })}>{t('editor.teachContour.action')}</Button> : null}
               </div>)}
             </fieldset>
             {needsCalibration ? <p className="text-sm text-warning" role="alert">{t('inspect.needsCalibration')} <Link className="underline" to="/calibration">{t('inspect.openCalibration')}</Link></p> : null}
-            {unsupportedLocator ? <p className="text-sm text-warning">{t('inspect.templateOnly')}</p> : null}
             {newKind ? <div className="flex gap-2"><Button icon={<Plus size={14} />} disabled={readOnly || formInvalid || busy} onClick={() => void action(createTask)} data-testid="inspect-create">{t('inspect.add')}</Button><Button onClick={() => { setNewKind(null); setValues(task?.fields ?? {}) }}>{t('common.cancel')}</Button></div> : null}
           {!newKind && !task?.custom ? <details><summary className="cursor-pointer text-sm font-medium">{t('inspect.advanced')}</summary><fieldset disabled={readOnly || busy} className="space-y-4 pt-3">{taskNodes.map((node) => <section key={node.id}><h3 className="mb-2 text-sm font-semibold">{node.label || defs.get(node.type)?.label || node.type}</h3>{defs.get(node.type)?.params.filter((param) => !param.visible_when || param.visible_when.in.includes(node.params?.[param.visible_when.param])).map((param) => <div className="mb-3" key={param.key}><ParamField param={param} value={node.params?.[param.key] ?? param.default} actions={{ ...actions, addImageFromCurrent: undefined,
             roiEditingKey: advancedRoi?.nodeId === node.id ? advancedRoi.key : null,

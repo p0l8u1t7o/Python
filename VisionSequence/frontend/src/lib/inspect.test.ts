@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { inspectionFieldVisible } from './inspect'
 import { INSPECT_REASON_CODES, forgetInspectionRun, inspectGraphHash, inspectionAdvancedPath, inspectionDefaults, inspectionEditableKind, inspectionOverall, inspectionReasonKey, inspectionRemovalGraph, inspectionRunFor, inspectionStale, inspectionStatus, inspectionValue, missingInspectionFields, rememberInspectionRun } from './inspect'
 import type { FlowGraph, InspectKind, InspectReading, InspectTask, RunReport } from './types'
 import { INSPECT_GRAPH, INSPECT_KINDS, installApiMock } from '@/test/apiMock'
@@ -11,6 +12,16 @@ const reading: InspectReading = { task_id: 'd', verdict: 'pass', valid: true, de
 const kind = { fields: [{ key: 'pictures', kind: 'images', required: true, default: [] }, { key: 'name', kind: 'text', required: false, default: '' }, { key: 'enabled', kind: 'boolean', default: false }, { key: 'n', kind: 'number', required: true, default: 0, minimum: 0, maximum: 10 }] } as InspectKind
 
 describe('inspection state', () => {
+  it('validates only the active method fields and exposes shape and hole inputs', () => {
+    const locator = INSPECT_KINDS.find((item) => item.kind === 'locate_part')!
+    const values = { ...inspectionDefaults(locator), method: 'shape' }
+    expect(missingInspectionFields(locator, values)).toContain('model')
+    expect(missingInspectionFields(locator, values)).not.toContain('template_images')
+    expect(missingInspectionFields(locator, { ...values, model: 'shape-asset' })).toEqual([])
+    const distance = INSPECT_KINDS.find((item) => item.kind === 'measure_distance')!
+    expect(distance.fields.filter((field) => inspectionFieldVisible(field, { mode: 'hole_centres' })).map((field) => field.key)).toEqual(expect.arrayContaining(['roi_a', 'roi_b']))
+    expect(inspectionFieldVisible(distance.fields.find((field) => field.key === 'roi')!, { mode: 'hole_centres' })).toBe(false)
+  })
   it('ignores object key order but detects parameters and wiring changes', () => {
     expect(inspectGraphHash(graph)).toBe(inspectGraphHash({ edges: [], nodes: [{ params: { roi: null, nominal: 3 }, type: 'find_circle', id: 'find' }] }))
     const changed = structuredClone(graph)

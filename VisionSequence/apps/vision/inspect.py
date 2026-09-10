@@ -80,7 +80,7 @@ def update(graph: dict[str, Any], task: dict[str, Any]) -> dict[str, Any]:
     supplied = dict(task.get("fields") if isinstance(task.get("fields"), dict) else {})
     supplied.update({k: task[k] for k in definition.fields if k in task})
     fields = {**current["fields"], **supplied}
-    if definition.kind == "measure_diameter" and "calibration" in supplied and "unit" not in supplied:
+    if "calibration" in definition.fields and "calibration" in supplied and "unit" not in supplied:
         fields["unit"] = "mm" if fields.get("calibration") else "px"
     if "required" in task:
         fields["required"] = task["required"]
@@ -99,10 +99,15 @@ def update(graph: dict[str, Any], task: dict[str, Any]) -> dict[str, Any]:
     after = {inspect_marker(n)["role"]: n for n in new_nodes}
     removed_ids = {str(n["id"]) for n in nodes if inspect_marker(n)["role"] not in after}
     node_ids = {str(n["id"]) for n in nodes}
+    old_inputs = {(current["nodes"].get(p.role), p.port) for p in definition.inputs_for(current["fields"])}
+    image_source = next((e["source"] for e in out.get("edges", []) if (e.get("target"), e.get("target_handle")) in old_inputs and e.get("target_handle") == "image"), None)
+    shared_ids = {n["id"] for n in out["nodes"] if (inspect_marker(n) or {}).get("kind") == "summary"}
     if any((e.get("source") in removed_ids and e.get("target") not in node_ids) or
-           (e.get("target") in removed_ids and e.get("source") not in node_ids) for e in out.get("edges", [])):
+           (e.get("target") in removed_ids and e.get("source") not in node_ids and (e.get("target"), e.get("target_handle")) not in old_inputs)
+           for e in out.get("edges", []) if e.get("target") not in shared_ids):
         raise ValidationError("A step needed by another connection would be removed; edit the advanced flow first", code="task_dependency")
     out["nodes"] = [n for n in out["nodes"] if n["id"] not in removed_ids]
+    out["edges"] = [e for e in out.get("edges", []) if e.get("source") not in removed_ids and e.get("target") not in removed_ids]
     added = [n for n in new_nodes if inspect_marker(n)["role"] not in before]
     _place_nodes(out, added)
     out["nodes"].extend(added)
@@ -118,7 +123,11 @@ def update(graph: dict[str, Any], task: dict[str, Any]) -> dict[str, Any]:
             node["type"] = new["type"]
             node["params"] = copy.deepcopy(new["params"])
             if published:
-                node["params"]["_publish"] = copy.deepcopy(published)
+                ports = {p.key for p in tools.get(new["type"]).outputs}
+                retained = {p: name for p, name in published.items() if p in ports}
+                retained.update(new["params"].get("_publish") or {})
+                if retained:
+                    node["params"]["_publish"] = retained
         else:
             for key in old["params"].keys() | new["params"].keys():
                 if old["params"].get(key) == new["params"].get(key):
@@ -144,15 +153,17 @@ def update(graph: dict[str, Any], task: dict[str, Any]) -> dict[str, Any]:
     new_connections = {connection(e) for e in new_edges}
     out["edges"] = [e for e in out.get("edges", []) if connection(e) not in old_connections - new_connections]
     out["edges"].extend(e for e in new_edges if connection(e) not in old_connections)
+    if image_source:
+        _connect_image_inputs(out, definition, task_id, image_source)
     if "required" in supplied or "required" in task:
         required = bool(task.get("required", supplied.get("required", marker.get("required", True))))
         for node in nodes:
             marker = inspect_marker(node)
             if marker:
                 marker["required"] = required
-    if "locator" in supplied or "locator" in task:
-        _connect_locator(out, task_id, str(supplied.get("locator") or task.get("locator") or ""))
-    if fields.get("required") != current["required"]:
+    if "locator" in supplied or "locator" in task or set(before) != set(after):
+        _connect_locator(out, task_id, str(fields.get("locator") or ""))
+    if fields.get("required") != current["required"] or definition.layout_hook:
         _maintain_summary(out)
     return validate_graph(out)
 
@@ -221,6 +232,24 @@ def evidence(graph: dict[str, Any], report: Any) -> list[dict[str, Any]]:
             else:
                 value = (reports.get(align_id or "", {}).get("outputs") or {}).get("transform")
                 readings.append(_reading(task_id, "pass", True, True, value, "", reports.get(align_id or "", {}).get("message", ""), overlays, align_id or find_id or ""))
+            continue
+        definition = get_definition(task["kind"], task["version"])
+        if definition.layout_hook:
+            layout = definition.layout_hook(task["fields"])
+            ref = layout.value_port
+            value = (reports[roles[ref.role]].get("outputs") or {}).get(ref.port) if ref else None
+            row = reports[roles[layout.verdict_role]]
+            valid = all((r.get("outputs") or {}).get("valid", True) for r in reports.values())
+            detected = (row.get("outputs") or {}).get("detected")
+            failed = next((nid for nid, r in reports.items() if r.get("status") != "ok"), None)
+            verdict = "pass" if valid and not failed else "fail"
+            if task["kind"] == "measure_distance" and any(r.get("branch") == "not_found" for r in reports.values()):
+                verdict, detected = "not_found", False
+            nid = failed or roles[layout.verdict_role]
+            # 展開座標上的掃描標記不疊到原圖；還原節點提供原圖缺陷幾何。
+            if task["kind"] == "inspect_circular_surface":
+                overlays = reports[roles["restore"]].get("overlays") or []
+            readings.append(_reading(task_id, verdict, valid, detected, value, task.get("unit", ""), reports[nid].get("message", ""), overlays, nid))
             continue
         find_row = reports.get(find_id or "", {})
         tol_row = reports.get(tol_id or "", {})
@@ -299,11 +328,16 @@ def _image_source_node(graph: dict[str, Any], *, exclude: set[str]) -> str | Non
 
 
 def _connect_image_inputs(graph: dict[str, Any], definition: task_base.TaskDefinition, task_id: str, source: str) -> None:
-    for ref in definition.public_inputs:
+    nodes = _task_nodes(graph, task_id)
+    fields_item = {"task_id": task_id, "required": bool((inspect_marker(nodes[0]) or {}).get("required")), "fields": {}}
+    _read_fields(fields_item, definition, nodes, graph.get("edges", []), graph["nodes"])
+    by_role = {inspect_marker(n)["role"]: n["id"] for n in nodes}
+    for ref in definition.inputs_for(fields_item["fields"]):
         if ref.port != "image":
             continue
-        target = f"{task_id}_{ref.role}"
-        _replace_single_edge(graph, target, "image", task_base.edge(source, "image", target, "image"))
+        target = by_role.get(ref.role)
+        if target and not any(e.get("target") == target and e.get("target_handle") == "image" for e in graph.get("edges", [])):
+            graph.setdefault("edges", []).append(task_base.edge(source, "image", target, "image"))
 
 
 def _connect_locator(graph: dict[str, Any], task_id: str, locator_id: str) -> None:
@@ -322,9 +356,12 @@ def _connect_locator(graph: dict[str, Any], task_id: str, locator_id: str) -> No
     align = loc_nodes.get("align")
     if not find or not align:
         raise ValidationError(f"Locator task '{locator_id}' was not found", code="locator_not_found")
+    task = next(t for t in read(graph)["tasks"] if t["task_id"] == task_id)
+    definition = get_definition(task["kind"], task["version"])
+    locator_roles = definition.layout_hook(task["fields"]).locator_roles if definition.layout_hook else ("find",)
     for target in sorted(target_ids):
         node = next((n for n in graph.get("nodes", []) if str(n.get("id")) == target), None)
-        if node is None or node.get("type") not in ("find_circle", "template_match"):
+        if node is None or (inspect_marker(node) or {}).get("role") not in locator_roles:
             continue
         graph.setdefault("edges", []).append(task_base.edge(align, "transform", target, tools.TRANSFORM_IN))
         graph.setdefault("edges", []).append(task_base.edge(find, "found", target, FLOW_IN))
@@ -346,6 +383,7 @@ def _place_nodes(graph: dict[str, Any], nodes: list[dict[str, Any]]) -> None:
 def _maintain_summary(graph: dict[str, Any]) -> None:
     tasks = read({k: v for k, v in graph.items() if k in ("nodes", "edges")})["tasks"]
     required: list[tuple[str, task_base.PortRef]] = []
+    adapter_ids: set[str] = set()
     for task in tasks:
         if not task.get("required") or task.get("custom"):
             continue
@@ -353,8 +391,35 @@ def _maintain_summary(graph: dict[str, Any]) -> None:
             definition = get_definition(task["kind"], task.get("version"))
         except ValidationError:
             continue
-        if definition.pass_port is not None:
-            required.append((task["nodes"][definition.pass_port.role], definition.pass_port))
+        layout = definition.layout_hook(task["fields"]) if definition.layout_hook else None
+        ref = layout.pass_port if layout else definition.pass_port
+        if layout and layout.summary_expression:
+            # 單節點任務沒有布林埠時，用既有工具在共用彙總層轉換；控制線防止沿用缺席值。
+            adapter_id = f"inspection_result_{task['task_id']}"
+            adapter_ids.add(adapter_id)
+            adapter = next((n for n in graph["nodes"] if n["id"] == adapter_id), None)
+            if adapter is None:
+                adapter = task_base.task_node(SUMMARY_TASK_ID, f"result_{task['task_id']}", "formula", {}, "summary", 1, False)
+                adapter["id"] = adapter_id
+                _place_nodes(graph, [adapter])
+                graph["nodes"].append(adapter)
+            elif (inspect_marker(adapter) or {}).get("kind") != "summary":
+                raise ValidationError("An inspection summary step name is already in use", code="task_id_conflict")
+            adapter["params"] = {"expression": layout.summary_expression}
+            graph["edges"] = [e for e in graph.get("edges", []) if e.get("target") != adapter_id]
+            for key, source in zip(("a", "b", "c", "d"), layout.summary_inputs):
+                graph["edges"].append(task_base.edge(task["nodes"][source.role], source.port, adapter_id, key))
+            source_id = task["nodes"][layout.summary_inputs[0].role]
+            source_node = next(n for n in graph["nodes"] if n["id"] == source_id)
+            for port in tools.get(source_node["type"]).outputs:
+                if port.type == "flow":
+                    graph["edges"].append(task_base.edge(source_id, port.key, adapter_id, FLOW_IN))
+            required.append((adapter_id, task_base.PortRef("result", "result")))
+        elif ref is not None:
+            required.append((task["nodes"][ref.role], ref))
+    obsolete = {n["id"] for n in graph["nodes"] if (inspect_marker(n) or {}).get("kind") == "summary" and n["type"] == "formula" and n["id"] not in adapter_ids}
+    graph["nodes"] = [n for n in graph["nodes"] if n["id"] not in obsolete]
+    graph["edges"] = [e for e in graph.get("edges", []) if e.get("source") not in obsolete and e.get("target") not in obsolete]
     if not required:
         graph["nodes"] = [n for n in graph.get("nodes", []) if n.get("id") != SUMMARY_ID]
         graph["edges"] = [e for e in graph.get("edges", []) if e.get("source") != SUMMARY_ID and e.get("target") != SUMMARY_ID]
@@ -372,7 +437,7 @@ def _maintain_summary(graph: dict[str, Any]) -> None:
     else:
         summary.setdefault("params", {})["expected_count"] = len(required)
     expected = {(node_id, ref.port) for node_id, ref in required}
-    task_ids = {nid for task in tasks for nid in task["nodes"].values()}
+    task_ids = {nid for task in tasks for nid in task["nodes"].values()} | adapter_ids
     graph["edges"] = [e for e in graph.get("edges", []) if not (
         e.get("target") == SUMMARY_ID and e.get("target_handle") == "results"
         and e.get("source") in task_ids and (e.get("source"), e.get("source_handle")) not in expected
@@ -441,6 +506,13 @@ def _read_fields(item: dict[str, Any], definition: task_base.TaskDefinition, nod
         item["unit"] = fields.get("unit") or "px"
     elif definition.kind == "locate_part":
         fields["allow_rotation"] = bool(((by_role.get("align") or {}).get("params") or {}).get("use_angle", False))
+    if definition.read_hook:
+        definition.read_hook(fields, by_role, edges)
+        for key, spec in definition.fields.items():
+            if spec.visible_when and any(fields.get(k) not in (v if isinstance(v, list) else [v]) for k, v in spec.visible_when.items()):
+                fields[key] = copy.deepcopy(spec.default)
+    if "unit" in fields:
+        item["unit"] = fields.get("unit") or "px"
 
 
 def _locator_for(task_id: str, edges: list[dict[str, Any]], nodes: list[dict[str, Any]]) -> str:
@@ -470,6 +542,8 @@ def _custom_reasons(task_id: str, definition: task_base.TaskDefinition, nodes: l
     _read_fields(item, definition, nodes, edges, all_nodes)
     fields = item["fields"]
     expected_roles = dict(definition.roles)
+    if definition.layout_hook:
+        expected_roles = {r: t for r, (t, _) in definition.layout_hook(fields).steps.items()}
     if definition.kind == "measure_diameter" and fields.get("mode") == "roundness" and fields.get("unit") == "mm":
         expected_roles["scale"] = "calibration"
     by_role = {inspect_marker(n)["role"]: n for n in nodes}
@@ -498,7 +572,7 @@ def _custom_reasons(task_id: str, definition: task_base.TaskDefinition, nodes: l
         reasons.append(_reason("managed_edge_missing", roles.get(entry[2], ""), entry[2] if entry[2] in ids else "", f"Missing {entry[0]}.{entry[1]} -> {entry[2]}.{entry[3]}"))
     for entry in sorted(actual - expected):
         reasons.append(_reason("managed_edge_changed", roles[entry[2]], entry[2], f"Unexpected {entry[0]}.{entry[1]} -> {entry[2]}.{entry[3]}"))
-    allowed_inputs = {(role_id(p.role), p.port) for p in definition.public_inputs}
+    allowed_inputs = {(role_id(p.role), p.port) for p in definition.inputs_for(fields)}
     by_id = {str(n["id"]): n for n in all_nodes}
     for e in edges:
         target = (str(e.get("target")), str(e.get("target_handle") or ""))
@@ -522,7 +596,9 @@ def _allowed_source(node: dict[str, Any] | None, port_key: str, target_port: str
         return False
     if target_port == tools.TRANSFORM_IN:
         return port.semantic == "transform"
-    return port.type == {"image": "image", "roi": "roi", FLOW_IN: "flow"}.get(target_port)
+    if target_port in ("line", "circle"):
+        return port.semantic == target_port
+    return port.type == {"image": "image", "roi": "region", FLOW_IN: "flow"}.get(target_port)
 
 
 def _external_users(graph: dict[str, Any], node_ids: set[str]) -> list[dict[str, str]]:

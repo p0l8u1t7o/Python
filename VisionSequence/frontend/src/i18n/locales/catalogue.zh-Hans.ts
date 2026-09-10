@@ -177,7 +177,7 @@ export default {
           "shape": "形状模型",
           "register": "注册示例"
         },
-        "help": "形状与注册示例定位将在后续版本提供。"
+        "help": "选择模板、形状模型或注册图像定位。"
       },
       "template_images": {
         "label": "定位标记",
@@ -200,6 +200,425 @@ export default {
       },
       "ref_angle": {
         "label": "参考角度"
+      },
+      "model": {
+        "label": "形状模型"
+      }
+    }
+  },
+  "check_presence": {
+    "label": "检查有无",
+    "help": "使用当前图像设置并执行此检测。",
+    "fields": {
+      "method": {
+        "label": "方式",
+        "options": {
+          "template": "模板",
+          "blob": "对象",
+          "print": "印字"
+        }
+      },
+      "roi": {
+        "label": "检测区域"
+      },
+      "expected": {
+        "label": "期望内容",
+        "options": {
+          "present": "应存在",
+          "absent": "应不存在"
+        }
+      },
+      "template_images": {
+        "label": "参考图像"
+      },
+      "threshold": {
+        "label": "阈值"
+      },
+      "threshold_method": {
+        "label": "阈值方式",
+        "options": {
+          "otsu": "自动",
+          "fixed": "固定",
+          "hysteresis": "双阈值",
+          "soft": "柔和阈值",
+          "none": "不处理"
+        }
+      },
+      "blob_threshold": {
+        "label": "亮度阈值"
+      },
+      "polarity": {
+        "label": "目标极性",
+        "options": {
+          "bright": "亮",
+          "dark": "暗"
+        }
+      },
+      "min_area": {
+        "label": "最小面积"
+      },
+      "max_area": {
+        "label": "最大面积"
+      },
+      "print_polarity": {
+        "label": "印字极性",
+        "options": {
+          "dark": "暗",
+          "bright": "亮"
+        }
+      },
+      "min_ratio": {
+        "label": "笔画比例下限"
+      },
+      "max_ratio": {
+        "label": "笔画比例上限"
+      },
+      "required": {
+        "label": "必要任务"
+      },
+      "locator": {
+        "label": "定位任务"
+      }
+    }
+  },
+  "count_objects": {
+    "label": "计数",
+    "help": "使用当前图像设置并执行此检测。",
+    "fields": {
+      "roi": {
+        "label": "检测区域"
+      },
+      "threshold_method": {
+        "label": "阈值方式",
+        "options": {
+          "otsu": "自动",
+          "fixed": "固定",
+          "hysteresis": "双阈值",
+          "soft": "柔和阈值",
+          "none": "不处理"
+        }
+      },
+      "threshold": {
+        "label": "阈值"
+      },
+      "polarity": {
+        "label": "目标极性",
+        "options": {
+          "bright": "亮",
+          "dark": "暗"
+        }
+      },
+      "min_area": {
+        "label": "最小面积"
+      },
+      "max_area": {
+        "label": "最大面积"
+      },
+      "min_circularity": {
+        "label": "圆形度下限"
+      },
+      "min_count": {
+        "label": "最少数量"
+      },
+      "max_count": {
+        "label": "最多数量"
+      },
+      "result_name": {
+        "label": "结果名称"
+      },
+      "required": {
+        "label": "必要任务"
+      },
+      "locator": {
+        "label": "定位任务"
+      }
+    }
+  },
+  "inspect_circular_surface": {
+    "label": "圆周表面检测",
+    "help": "使用当前图像设置并执行此检测。",
+    "fields": {
+      "roi": {
+        "label": "检测区域"
+      },
+      "direction": {
+        "label": "方向",
+        "options": {
+          "ccw": "逆时针",
+          "cw": "顺时针"
+        }
+      },
+      "start_angle": {
+        "label": "起始角度"
+      },
+      "polarity": {
+        "label": "目标极性",
+        "options": {
+          "any": "不限",
+          "dark_to_light": "暗到亮",
+          "light_to_dark": "亮到暗"
+        }
+      },
+      "threshold": {
+        "label": "阈值"
+      },
+      "min_width": {
+        "label": "最小缺陷宽度"
+      },
+      "max_defects": {
+        "label": "允许缺陷数"
+      },
+      "search": {
+        "label": "搜索范围"
+      },
+      "geometry": {
+        "label": "缺陷位置表示",
+        "options": {
+          "centres": "中心点",
+          "boxes": "外框",
+          "spans": "起止点"
+        }
+      },
+      "required": {
+        "label": "必要任务"
+      },
+      "locator": {
+        "label": "定位任务"
+      }
+    }
+  },
+  "inspect_edge_defect": {
+    "label": "边缘缺陷检测",
+    "help": "使用当前图像设置并执行此检测。",
+    "fields": {
+      "method": {
+        "label": "方式",
+        "options": {
+          "simple": "直线或圆弧",
+          "freeform": "自由轮廓"
+        }
+      },
+      "roi": {
+        "label": "检测区域"
+      },
+      "reference": {
+        "label": "参考几何来源",
+        "help": "可选上游直线或圆形来源；连线优先于绘制的区域。"
+      },
+      "mode": {
+        "label": "模式",
+        "options": {
+          "single": "单边",
+          "pair": "成对"
+        }
+      },
+      "polarity": {
+        "label": "目标极性",
+        "options": {
+          "any": "不限",
+          "dark_to_light": "暗到亮",
+          "light_to_dark": "亮到暗"
+        }
+      },
+      "pair_polarity": {
+        "label": "带状区域极性",
+        "options": {
+          "any": "不限",
+          "bright": "亮",
+          "dark": "暗"
+        }
+      },
+      "search": {
+        "label": "搜索范围"
+      },
+      "threshold": {
+        "label": "阈值"
+      },
+      "min_width": {
+        "label": "最小缺陷宽度"
+      },
+      "direction": {
+        "label": "方向",
+        "options": {
+          "both": "两侧",
+          "inward": "向内",
+          "outward": "向外"
+        }
+      },
+      "width_min": {
+        "label": "宽度下限"
+      },
+      "width_max": {
+        "label": "宽度上限"
+      },
+      "max_defects": {
+        "label": "允许缺陷数"
+      },
+      "baseline": {
+        "label": "理想边缘",
+        "options": {
+          "fit": "拟合",
+          "median": "中位数",
+          "reference": "参考几何"
+        }
+      },
+      "model": {
+        "label": "轮廓模型"
+      },
+      "required": {
+        "label": "必要任务"
+      },
+      "locator": {
+        "label": "定位任务"
+      }
+    }
+  },
+  "measure_distance": {
+    "label": "测量边距",
+    "help": "使用当前图像设置并执行此检测。",
+    "fields": {
+      "mode": {
+        "label": "模式",
+        "options": {
+          "edge_pair": "边对",
+          "hole_centres": "两孔中心"
+        }
+      },
+      "roi": {
+        "label": "检测区域"
+      },
+      "roi_a": {
+        "label": "孔 A 区域"
+      },
+      "roi_b": {
+        "label": "孔 B 区域"
+      },
+      "polarity": {
+        "label": "目标极性",
+        "options": {
+          "any": "不限",
+          "dark_to_light": "暗到亮",
+          "light_to_dark": "亮到暗"
+        }
+      },
+      "edge_pair": {
+        "label": "边对选择",
+        "options": {
+          "first_last": "第一条与最后一条",
+          "widest": "最宽",
+          "narrowest": "最窄",
+          "strongest": "最强"
+        }
+      },
+      "pair_polarity": {
+        "label": "带状区域极性",
+        "options": {
+          "any": "不限",
+          "bright": "亮",
+          "dark": "暗"
+        }
+      },
+      "nominal": {
+        "label": "标称值"
+      },
+      "upper_tol": {
+        "label": "上公差"
+      },
+      "lower_tol": {
+        "label": "下公差"
+      },
+      "unit": {
+        "label": "单位",
+        "options": {
+          "px": "像素",
+          "mm": "毫米"
+        }
+      },
+      "result_name": {
+        "label": "结果名称"
+      },
+      "calibration": {
+        "label": "标定"
+      },
+      "required": {
+        "label": "必要任务"
+      },
+      "locator": {
+        "label": "定位任务"
+      }
+    }
+  },
+  "read_and_verify": {
+    "label": "读取与验证",
+    "help": "使用当前图像设置并执行此检测。",
+    "fields": {
+      "mode": {
+        "label": "模式",
+        "options": {
+          "code": "条码",
+          "text": "文字"
+        }
+      },
+      "roi": {
+        "label": "检测区域"
+      },
+      "types": {
+        "label": "码制",
+        "options": {
+          "all": "全部",
+          "qr": "QR 码",
+          "2d": "二维码",
+          "1d": "一维码"
+        }
+      },
+      "expected": {
+        "label": "期望内容"
+      },
+      "font_model": {
+        "label": "字体模型"
+      },
+      "charset": {
+        "label": "字符集",
+        "options": {
+          "alnum": "英数字",
+          "digits": "数字",
+          "upper": "大写字母与数字",
+          "any": "不限",
+          "custom": "自定义"
+        }
+      },
+      "custom_charset": {
+        "label": "自定义字符集"
+      },
+      "polarity": {
+        "label": "目标极性",
+        "options": {
+          "dark_on_light": "亮底暗字",
+          "light_on_dark": "暗底亮字"
+        }
+      },
+      "min_confidence": {
+        "label": "最低置信度"
+      },
+      "pattern": {
+        "label": "位置样板"
+      },
+      "verify_mode": {
+        "label": "比对方式",
+        "options": {
+          "exact": "完全相同",
+          "contains": "包含",
+          "regex": "正则表达式"
+        }
+      },
+      "result_name": {
+        "label": "结果名称"
+      },
+      "required": {
+        "label": "必要任务"
+      },
+      "locator": {
+        "label": "定位任务"
       }
     }
   }

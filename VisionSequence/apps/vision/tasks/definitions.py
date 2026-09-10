@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+from functools import partial
 from typing import Any
 
 from apps.core.errors import ValidationError
 from apps.vision.tasks.base import EdgeSpec, FieldSpec, PortRef, TaskDefinition, edge, register, task_fields, task_node
-from apps.vision.tools import base as tools
-
+from apps.vision.tasks.kinds import locate_layout, read_fields
 
 EDGE_OPTIONS = (
     {"value": "outer", "label": "Outer edge"},
@@ -91,42 +91,6 @@ def _measure_build(definition: TaskDefinition, task: dict[str, Any], ctx: dict[s
     return nodes, [edge(f"{task_id}_{e.source_role}", e.source_port, f"{task_id}_{e.target_role}", e.target_port) for e in _measure_edges(definition, fields)]
 
 
-def _locate_build(definition: TaskDefinition, task: dict[str, Any], ctx: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    fields = task_fields(task, definition)
-    method = str(fields.get("method") or "template")
-    if method != "template":
-        raise ValidationError("Only template location is available in this version", code="unsupported_locator_method")
-    task_id = str(task.get("task_id") or task.get("id") or "locator")
-    required = bool(task.get("required", fields.get("required", False)))
-    ref_params = tools.get("fixed_image").params
-    ref_defaults = {p.key: p.default for p in ref_params if p.default is not None}
-    ref_defaults.update({"images": fields.get("template_images") or [], "mode": "fixed", "index": 1, "role": "reference"})
-    find_params = definition.default_params("find")
-    find_params.update({
-        "roi": fields.get("roi"),
-        "threshold": fields.get("threshold"),
-        "angle_range": fields.get("angle_range") if fields.get("allow_rotation") else 0,
-        "expected": "present",
-    })
-    align_params = definition.default_params("align")
-    align_params.update({
-        "ref_x": fields.get("ref_x"),
-        "ref_y": fields.get("ref_y"),
-        "ref_angle": fields.get("ref_angle"),
-        "use_angle": bool(fields.get("allow_rotation")),
-    })
-    nodes = [
-        task_node(task_id, "ref", "fixed_image", ref_defaults, definition.kind, definition.version, required),
-        task_node(task_id, "find", "template_match", find_params, definition.kind, definition.version, required),
-        task_node(task_id, "align", "shape_align", align_params, definition.kind, definition.version, required),
-    ]
-    edges = [
-        edge(f"{task_id}_ref", "image", f"{task_id}_find", "template_image"),
-        edge(f"{task_id}_find", "matches", f"{task_id}_align", "matches"),
-    ]
-    return nodes, edges
-
-
 register(TaskDefinition(
     kind="measure_diameter",
     version=1,
@@ -164,9 +128,10 @@ register(TaskDefinition(
     roles={"ref": "fixed_image", "find": "template_match", "align": "shape_align"},
     internal_edges=(EdgeSpec("ref", "image", "find", "template_image"), EdgeSpec("find", "matches", "align", "matches")),
     fields={
-        "method": FieldSpec("method", "Method", "select", default="template", options=LOCATE_METHOD_OPTIONS, help_text="Shape and registered-example locators are reserved for later versions."),
+        "method": FieldSpec("method", "Method", "select", default="template", options=LOCATE_METHOD_OPTIONS),
         "roi": FieldSpec("roi", "Search region", "roi", role="find", param="roi", shapes=("rect", "rotated_rect"), help_text="Leave blank to search the whole image."),
-        "template_images": FieldSpec("template_images", "Locator mark", "images", role="ref", param="images", required=True, default=[], help_text="A fixed reference picture cropped from the taught part."),
+        "template_images": FieldSpec("template_images", "Locator mark", "images", role="ref", param="images", required=True, default=[], help_text="A fixed reference picture cropped from the taught part.", visible_when={"method": ["template", "register"]}),
+        "model": FieldSpec("model", "Shape model", "asset", role="find", param="model", required=True, default="", accept="file", visible_when={"method": "shape"}),
         "threshold": FieldSpec("threshold", "Score threshold", "range", role="find", param="threshold", default=0.7, minimum=0, maximum=1, step=0.01),
         "allow_rotation": FieldSpec("allow_rotation", "Allow rotation", "boolean", default=False),
         "angle_range": FieldSpec("angle_range", "Rotation range", "number", role="find", param="angle_range", default=0, minimum=0, maximum=180, unit="deg"),
@@ -178,5 +143,6 @@ register(TaskDefinition(
     public_inputs=(PortRef("find", "image"),),
     public_outputs=(PortRef("align", "transform"), PortRef("find", "found"), PortRef("find", "detected")),
     pass_port=None,
-    build_hook=_locate_build,
+    layout_hook=locate_layout,
+    read_hook=partial(read_fields, "locate_part"),
 ))
