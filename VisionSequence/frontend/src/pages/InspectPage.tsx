@@ -396,8 +396,9 @@ function InspectPageInner({ flowId }: { flowId: number }) {
   const taskNodes = graph.nodes.filter((node) => Object.values(task?.nodes ?? {}).includes(node.id))
   const fixedImages = Array.isArray(source?.params?.images) ? (source.params.images as unknown[]) : []
   const visibleFields = kind ? kind.fields.filter((field) => inspectionFieldVisible(field, values)) : []
-  // 還沒選種類時先顯示完整三步（大多數種類都有區域步驟），選了才依欄位收斂；步驟數不會中途從 2 變 3
-  const wizardSteps: WizardStep[] = !kind || visibleFields.some((field) => wizardStepOf(field) === 1) ? [1, 2] : [2]
+  // 步驟數固定三步（PM-REVIEW-R2 A2：以前選完種類會從 3 步縮成 2 步）；不需要畫區域的種類照樣直接跳到規格，區域那一步標「不需要」
+  const hasRegionStep = !kind || visibleFields.some((field) => wizardStepOf(field) === 1)
+  const wizardSteps: WizardStep[] = [1, 2]
   const overall = inspectionOverall(run, stale)
   // 停用一律帶原因（PM-REVIEW-R2 D1）：使用者才分得出「按鈕壞了」與「我少填了東西」
   const runBlocked = locked ? t('inspect.blocked.locked') : !auth.can('flows.run') ? t('inspect.blocked.permission') : busy ? t('inspect.blocked.busy') : pending && formInvalid ? t('inspect.blocked.invalid') : null
@@ -467,7 +468,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
             <ol className="flex flex-wrap gap-1 text-xs" aria-label={t('inspect.add')}>
               {([0, ...wizardSteps] as WizardStep[]).map((step, index, all) => <li key={step}>
                 <button type="button" className={`rounded-full px-2 py-0.5 ${wizard === step ? 'bg-brand text-white' : 'bg-surface-muted text-muted'}`} disabled={step !== 0 && !newKind} onClick={() => setWizard(step)} aria-current={wizard === step ? 'step' : undefined}>
-                  {index + 1}. {t(`inspect.wizard.${step === 0 ? 'kind' : step === 1 ? 'region' : 'spec'}`)}
+                  {index + 1}. {t(`inspect.wizard.${step === 0 ? 'kind' : step === 1 ? (hasRegionStep ? 'region' : 'regionNone') : 'spec'}`)}
                 </button>{index < all.length - 1 ? <span className="px-1 text-muted">›</span> : null}
               </li>)}
             </ol>
@@ -479,7 +480,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
               <Button onClick={cancelWizard}>{t('common.cancel')}</Button>
             </> : kind ? <>
               <h2 className="font-semibold">{kind.label}</h2>
-              <p className="text-xs text-muted">{t(wizard === 1 ? 'inspect.wizard.regionHint' : 'inspect.wizard.specHint')}</p>
+              <p className="text-xs text-muted" data-testid={wizard === 1 && !hasRegionStep ? 'inspect-wizard-no-region' : undefined}>{t(wizard === 1 ? (hasRegionStep ? 'inspect.wizard.regionHint' : 'inspect.wizard.noRegionHint') : 'inspect.wizard.specHint')}</p>
               {wizard === 1 && !image ? <div className="rounded-md border border-warning/40 bg-warning-soft p-2 text-xs" role="status" data-testid="inspect-wizard-no-image">
                 <p className="text-warning">{t('inspect.wizard.noImage')}</p>
                 <Button size="sm" className="mt-2" icon={<Play size={14} />} loading={preview.isPending} disabled={Boolean(runBlocked)} title={runBlocked ?? undefined} onClick={() => void action(() => runPreview())} data-testid="inspect-wizard-grab">{t('inspect.wizard.grabImage')}</Button>
@@ -487,7 +488,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
               <fieldset disabled={readOnly} className="space-y-4">{visibleFields.filter((field) => wizardStepOf(field) === wizard).map(renderField)}</fieldset>
               {wizard === 2 && needsCalibration ? <p className="text-sm text-warning" role="alert">{t('inspect.needsCalibration')} <Link className="underline" to="/calibration">{t('inspect.openCalibration')}</Link></p> : null}
               <div className="flex flex-wrap gap-2">
-                <Button icon={<ChevronLeft size={14} />} onClick={() => setWizard(wizard === 2 && wizardSteps.length > 1 ? 1 : 0)} data-testid="inspect-back">{t('inspect.wizard.back')}</Button>
+                <Button icon={<ChevronLeft size={14} />} onClick={() => setWizard(wizard === 2 && hasRegionStep ? 1 : 0)} data-testid="inspect-back">{t('inspect.wizard.back')}</Button>
                 {wizard === 1 ? <Button variant="primary" icon={<ChevronRight size={14} />} onClick={() => setWizard(2)} data-testid="inspect-next">{t('inspect.wizard.next')}</Button>
                   : <Button variant="primary" icon={<Plus size={14} />} disabled={Boolean(createBlocked)} title={createBlocked ?? undefined} onClick={() => void action(createTask)} data-testid="inspect-create">{t('inspect.wizard.create')}</Button>}
                 <Button onClick={cancelWizard}>{t('common.cancel')}</Button>

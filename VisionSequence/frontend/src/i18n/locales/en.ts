@@ -2454,6 +2454,7 @@ const enExtra3 = {
       noteTarget: 'Notes cannot be connected to',
       cycle: 'Cannot connect back upstream (that would be a loop)',
       groupCollapsed: 'Expand the task before connecting its steps',
+      noCompatiblePort: 'That step has no free port this wire can connect to',
       publishBadPort: 'Published output "{{port}}" is not a data output port',
       publishBadName: 'Published output "{{port}}" has an invalid name "{{name}}"',
     },
@@ -2929,6 +2930,7 @@ const inspectStage6 = { inspect: {
     "regionHint": "Draw the search region on the image on the right; for locating, crop the locator mark from the image.",
     "noImage": "No image yet. Grab one from the image source, then draw the region on it.",
     "grabImage": "Grab an image now",
+    "regionNone": "Region (not needed)", "noRegionHint": "This task needs no region; continue to the specification.",
     "specHint": "Fill in the specification. Values in millimetres need a calibration.",
     "back": "Back", "next": "Next", "create": "Create task", "step": "Step {{n}} of {{total}}"
   },

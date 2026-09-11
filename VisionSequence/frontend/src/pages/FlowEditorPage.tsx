@@ -66,7 +66,7 @@ import { GRID_COUNTS, bindGridCell, gridCellImage, gridPlacement, normalizeGridL
 import { countFolderPreviewFiles, countPreviewSequenceResult, createPreviewSequenceState, findPreviewSequenceSource, graphForPreviewSequenceItem, isPreviewSequenceDone, nextPreviewSequenceIndex, previewSequenceStatusLabel, type PreviewSequenceSource, type PreviewSequenceState } from '@/lib/previewSequence'
 import { describeReport, publishAssistantProgress, useRegisterAssistantContext } from '@/lib/assistantContext'
 import { useFlowStream, type StreamEvent } from '@/lib/flowStream'
-import { DECORATION_TYPES, checkConnection, graphProblems } from '@/lib/graphValidation'
+import { DECORATION_TYPES, checkConnection, dropConnection, graphProblems } from '@/lib/graphValidation'
 import { fetchCompositeUsage, useAssetMutations, useClearRecent, useCompositeToolMutations, useContinuous, useFlow, useFlowMutations, usePreviewFlow, useRecentRuns, useRecipes, useScratchImage, useSources, useToolTypes, type FlowPatch } from '@/lib/queries'
 import { graphOutputNames } from '@/lib/portLayout'
 import { isImageRef, type FlowGraph, type GraphEdge, type GraphNode, type NodeInterface, type NodeReport, type Overlay, type Region, type RoiShape, type RunReport, type ToolTypeDef } from '@/lib/types'
@@ -776,8 +776,20 @@ function EditorInner({ flowId }: { flowId: number }) {
     [defs],
   )
   // React Flow 對 isValidConnection 回 false 的連線不會呼叫 onConnect，所以被拒的原因要在 onConnectEnd 說出來。
+  // 放在步驟本體上（沒碰到把手、也不在吸附半徑內）＝自動挑第一個相容的埠接上（dropConnection）。
   const onConnectEnd = useCallback(
-    (_e: MouseEvent | TouchEvent, state: FinalConnectionState) => {
+    (e: MouseEvent | TouchEvent, state: FinalConnectionState) => {
+      if (!state.toHandle && !state.isValid && state.fromNode && state.fromHandle) {
+        const point = 'changedTouches' in e ? e.changedTouches[0] : e
+        const hit = point ? document.elementFromPoint(point.clientX, point.clientY)?.closest('.react-flow__node') : null
+        const dropNode = hit?.getAttribute('data-id')
+        if (!dropNode || dropNode === state.fromNode.id) return
+        const from = { node: state.fromNode.id, handle: state.fromHandle.id ?? null, type: state.fromHandle.type }
+        const conn = dropConnection(from, dropNode, payloads.current, graphFrom(nodesRef.current, edgesRef.current, payloads.current).edges, defs)
+        if (conn) onConnect(conn)
+        else toast.warning(t('editor.validation.noCompatiblePort'))
+        return
+      }
       if (!state.toHandle || !state.toNode || state.isValid !== false) return
       const from = { node: state.fromNode.id, handle: state.fromHandle.id ?? null, type: state.fromHandle.type }
       const to = { node: state.toNode.id, handle: state.toHandle.id ?? null, type: state.toHandle.type }
@@ -785,7 +797,7 @@ function EditorInner({ flowId }: { flowId: number }) {
       const rejection = checkConnection({ source: src.node, sourceHandle: src.handle, target: dst.node, targetHandle: dst.handle }, payloads.current, graphFrom(nodesRef.current, edgesRef.current, payloads.current).edges, defs)
       if (rejection) toast.warning(t(`editor.validation.${rejection.code}`, rejection.values))
     },
-    [defs, toast, t],
+    [defs, toast, t, onConnect],
   )
 
   const insertNode = useCallback(

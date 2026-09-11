@@ -1069,7 +1069,7 @@ const zhHans = {
         measure_diameter: '量直径',
         measure_distance: '量边距',
         locate_part: '定位工件',
-        count_objects: '数数量',
+        count_objects: '计数',
         check_presence: '检查有无',
         inspect_circular_surface: '圆周表面',
         inspect_edge_defect: '边缘缺陷',
@@ -1112,6 +1112,7 @@ const zhHans = {
       noteTarget: '注解无法被连入',
       cycle: '无法连回上游（会形成循环）',
       groupCollapsed: '请先展开任务再连接其中步骤',
+      noCompatiblePort: '该步骤没有此线可接的空闲端口',
       publishBadPort: '已发布输出「{{port}}」不是数据输出端口',
       publishBadName: '已发布输出「{{port}}」的名称「{{name}}」不合法',
     },
@@ -2939,7 +2940,8 @@ export default { queues: {"title": "数据队列", "hint": "流程之间的暂�
     "specHint": "填写规格。使用毫米时需要选择标定。",
     "back": "上一步", "next": "下一步", "create": "建立任务", "step": "第 {{n}} 步，共 {{total}} 步",
     "noImage": "尚无图像。请先从图像来源取一张，再在其上画出区域。",
-    "grabImage": "立即取一张图像"
+    "grabImage": "立即取一张图像",
+    "regionNone": "区域（不需要）", "noRegionHint": "此任务不需要画区域，请继续填写规格。"
   },
   "saveCrop": "使用此裁剪",
   "cropHint": "裁剪参考标记：在图像上拖动框出标记（检测区域不会改变）",

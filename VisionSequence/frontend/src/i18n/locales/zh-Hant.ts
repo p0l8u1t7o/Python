@@ -1069,7 +1069,7 @@ const zhHant = {
         measure_diameter: '量直徑',
         measure_distance: '量邊距',
         locate_part: '定位工件',
-        count_objects: '數數量',
+        count_objects: '計數',
         check_presence: '檢查有無',
         inspect_circular_surface: '圓周表面',
         inspect_edge_defect: '邊緣缺陷',
@@ -1112,6 +1112,7 @@ const zhHant = {
       noteTarget: '註解無法被連入',
       cycle: '無法連回上游（會形成迴圈）',
       groupCollapsed: '請先展開任務再連接其中步驟',
+      noCompatiblePort: '該步驟沒有此線可接的空閒埠',
       publishBadPort: '已發布輸出「{{port}}」不是資料輸出埠',
       publishBadName: '已發布輸出「{{port}}」的名稱「{{name}}」不合法',
     },
@@ -3045,7 +3046,8 @@ export default { queues: {"title": "資料佇列", "hint": "流程之間的暫�
     "specHint": "填寫規格。使用毫米時需要選擇標定。",
     "back": "上一步", "next": "下一步", "create": "建立任務", "step": "第 {{n}} 步，共 {{total}} 步",
     "noImage": "尚無影像。請先從影像來源取一張，再於其上畫出區域。",
-    "grabImage": "立即取一張影像"
+    "grabImage": "立即取一張影像",
+    "regionNone": "區域（不需要）", "noRegionHint": "此任務不需要畫區域，請繼續填寫規格。"
   },
   "saveCrop": "使用此裁切",
   "cropHint": "裁切參考標記：於影像上拖曳框出標記（檢測區域不會改變）",

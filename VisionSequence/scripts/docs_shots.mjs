@@ -12,7 +12,10 @@ import { fileURLToPath } from 'node:url'
 import { chromium } from '../frontend/node_modules/playwright/index.mjs'  // 從 scripts/ 解析不到 frontend 的套件，走相對路徑
 
 const here = path.dirname(fileURLToPath(import.meta.url))
-const IMG = path.resolve(here, '..', 'docs', 'img')
+// VS_SHOTS_OUT＝輸出到別的資料夾（先試跑、不覆蓋 docs/img 與 callouts）
+const OUT = process.env.VS_SHOTS_OUT ? path.resolve(process.env.VS_SHOTS_OUT) : ''
+const IMG = OUT || path.resolve(here, '..', 'docs', 'img')
+const CALLOUTS = path.join(OUT || here, 'docs_shots_callouts.txt')
 fs.mkdirSync(IMG, { recursive: true })
 const token = process.env.VS_TOKEN || ''
 const token2 = process.env.VS_TOKEN2 || ''
@@ -21,6 +24,11 @@ const FRONT = 'http://127.0.0.1:5173'
 const API = 'http://127.0.0.1:8000/api'
 const H = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
 const j = async (p, init = {}) => { const r = await fetch(`${API}${p}`, { ...init, headers: { ...H, ...(init.headers || {}) } }); if (r.status === 204) return null; const t = await r.text(); try { return JSON.parse(t) } catch { throw new Error(`${init.method || 'GET'} ${p} -> ${r.status}`) } }
+
+// 語言存在帳號偏好，/auth/me 會蓋掉 localStorage：先把帳號切成英文，結束時還原（與 docs_shot_page.mjs 同一套）
+const me0 = await j('/auth/me')
+const prevLanguage = me0 && me0.prefs ? me0.prefs.language : undefined
+await j('/auth/prefs', { method: 'PATCH', body: JSON.stringify({ language: 'en' }) })
 
 const flows = (await j('/vision/flows?limit=50')).items
 const flow = flows.find((f) => f.node_count > 3) ?? flows[0]
@@ -54,7 +62,7 @@ async function resolve(page, target) {
 }
 
 const missing = []
-fs.writeFileSync(path.join(here, 'docs_shots_callouts.txt'), '')
+fs.writeFileSync(CALLOUTS, '')
 async function capture(page, name, callouts) {
   const rects = []
   const resolved = []
@@ -66,7 +74,7 @@ async function capture(page, name, callouts) {
     rects.push({ n, x: Math.max(0, b.x), y: Math.max(0, b.y), w: Math.min(b.width, 1440 - b.x), h: Math.min(b.height, 900 - b.y) })
     resolved.push(`${n}=${label}`)
   }
-  fs.appendFileSync(path.join(here, 'docs_shots_callouts.txt'), `${name}: ${resolved.join(' | ')}
+  fs.appendFileSync(CALLOUTS, `${name}: ${resolved.join(' | ')}
 `)
   await page.evaluate(OVERLAY, rects)
   await page.waitForTimeout(150)
@@ -147,7 +155,7 @@ try {
   // 10 影像來源（清單＋新增表單的測試擷取）
   await go('/sources', 'main')
   await capture(page, 'sources', [
-    { target: page.getByRole('button', { name: 'New source' }), label: 'New source' }, { target: T('Download capture client'), label: 'download' }, { target: '[data-testid="manage-groups"]' }, { target: 'main table' },
+    { target: page.getByRole('button', { name: 'New source' }), label: 'New source' }, { target: T('Download capture client'), label: 'download' }, { target: '[data-testid="manage-groups"]' }, { target: '[data-testid="source-tree"]', label: 'source tree' },
   ])
   await page.getByRole('button', { name: 'New source' }).first().click()
   await page.waitForTimeout(700)
@@ -179,7 +187,7 @@ try {
   ])
   // 11 資產
   await go('/assets', 'main')
-  await capture(page, 'assets', [{ target: page.getByRole('button', { name: 'Upload asset' }), label: 'Upload asset' }, { target: '[data-testid="manage-groups"]' }, { target: 'main .grid', label: 'asset cards' }])
+  await capture(page, 'assets', [{ target: page.getByRole('button', { name: 'Upload asset' }), label: 'Upload asset' }, { target: '[data-testid="manage-groups"]' }, { target: '[data-testid="asset-tree"]', label: 'asset tree' }])
   // 12 深度學習
   await go('/dl', 'main')
   await capture(page, 'dl', [
@@ -224,10 +232,10 @@ try {
   await go('/audit', 'main')
   try { await page.waitForSelector('[data-testid^="audit-row-"]', { timeout: 5000 }) } catch { /* 沒有紀錄也照拍 */ }
   await capture(page, 'audit', [{ target: '[data-testid="audit-action"]' }, { target: '[data-testid="audit-search"]' }, { target: '[data-testid="audit-export"]' }, { target: '[data-testid^="audit-row-"]' }])
-  await go('/settings', 'main')
+  await go('/settings?tab=account', '[data-testid="settings-tab-account"]')  // 顯示名稱、密碼、語言、主題在「我的帳號」分頁
   await capture(page, 'settings', [{ target: '[data-testid="profile-display-name"]' }, { target: T('Change password'), label: 'password' }, { target: T('Language'), label: 'language' }, { target: '[data-testid="theme-picker"]' }])
-  await go('/help', 'main')
-  await capture(page, 'help', [{ target: page.getByRole('tab', { name: 'Quick start' }), label: 'Quick start tab' }, { target: page.getByRole('tab', { name: 'Glossary' }), label: 'Glossary tab' }, { target: page.getByRole('tab', { name: 'Tool catalogue' }), label: 'Tool catalogue tab' }, { target: '[data-testid="help-quickstart"]' }])
+  await go('/help/user-guide', '[data-testid="help-article"]')
+  await capture(page, 'help', [{ target: '[data-testid="help-nav"]' }, { target: '[data-testid="help-search"]' }, { target: '[data-testid="help-toc"]' }, { target: '[data-testid="help-article"]' }])
   // 19 鎖定橫幅（另一個管理員鎖住）
   if (token2) {
     const H2 = { Authorization: `Bearer ${token2}`, 'Content-Type': 'application/json' }
@@ -241,6 +249,7 @@ try {
   }
 } finally {
   await browser.close()
+  if (prevLanguage && prevLanguage !== 'en') await j('/auth/prefs', { method: 'PATCH', body: JSON.stringify({ language: prevLanguage }) }).catch(() => {})
 }
 console.log('missing:', JSON.stringify(missing, null, 1))
 const sizes = fs.readdirSync(IMG).filter((f) => f.endsWith('.jpg')).map((f) => `${f} ${Math.round(fs.statSync(path.join(IMG, f)).size / 1024)}KB`)

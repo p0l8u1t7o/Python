@@ -174,6 +174,67 @@ export function checkConnection(
   return null
 }
 
+export interface DropFrom {
+  node: string
+  handle: string | null
+  /** 從哪一種把手拉出來：source＝輸出埠、target＝輸入埠 */
+  type: 'source' | 'target'
+}
+
+export interface DropConnection {
+  source: string
+  sourceHandle: string
+  target: string
+  targetHandle: string
+}
+
+/** 候選埠的排序：型別完全相同最先、any 最後，隱含埠（_flow／_transform／_image）殿後；同分依目錄順序。 */
+function dropRank(port: ToolPort, want: string): number {
+  const typeScore = port.type === want ? 0 : port.type === 'any' || want === 'any' ? 2 : 1
+  return (port.implicit || port.key.startsWith('_') ? 10 : 0) + typeScore
+}
+
+/**
+ * 拉線放在步驟本體上（沒碰到把手）時，挑出要接的那一個埠。
+ *
+ * 從輸出埠拉：挑目標步驟第一個「現在就接得上」的輸入埠（`checkConnection` 會擋型別不合、單一輸入已接、迴圈）；
+ * 從輸入埠拉：反過來挑對方的輸出埠。沒有合適的回 null。被收合的埠也在候選內——接上線之後它自然會顯示。
+ */
+export function dropConnection(
+  from: DropFrom,
+  dropNode: string,
+  nodes: Map<string, GraphNode>,
+  edges: GraphEdge[],
+  defs: Map<string, ToolTypeDef>,
+): DropConnection | null {
+  if (dropNode === from.node || dropNode.startsWith('group:') || from.node.startsWith('group:')) return null
+  const fromNode = nodes.get(from.node)
+  const other = nodes.get(dropNode)
+  if (!fromNode || !other || DECORATION_TYPES.has(other.type)) return null
+  const ordered = (ports: ToolPort[], want: string) =>
+    ports.map((port, index) => ({ port, index })).sort((a, b) => dropRank(a.port, want) - dropRank(b.port, want) || a.index - b.index).map((item) => item.port)
+  if (from.type === 'source') {
+    const sDef = defs.get(fromNode.type)
+    const sHandle = from.handle || sDef?.outputs[0]?.key || ''
+    const sType = sDef?.outputs.find((p) => p.key === sHandle)?.type ?? (/^case_\d+$/.test(sHandle) ? 'flow' : 'any')
+    const inputs = [...(defs.get(other.type)?.inputs ?? [])]
+    if (!inputs.some((p) => p.key === FLOW_HANDLE)) inputs.push({ key: FLOW_HANDLE, label: FLOW_HANDLE, type: 'flow', required: false, multiple: true, tone: 'neutral', implicit: true })
+    for (const port of ordered(inputs, sType)) {
+      const conn = { source: from.node, sourceHandle: sHandle, target: dropNode, targetHandle: port.key }
+      if (!checkConnection(conn, nodes, edges, defs)) return conn
+    }
+    return null
+  }
+  const tDef = defs.get(fromNode.type)
+  const tHandle = from.handle || tDef?.inputs[0]?.key || ''
+  const tType = tHandle === FLOW_HANDLE ? 'flow' : (tDef?.inputs.find((p) => p.key === tHandle)?.type ?? 'any')
+  for (const port of ordered(defs.get(other.type)?.outputs ?? [], tType)) {
+    const conn = { source: dropNode, sourceHandle: port.key, target: from.node, targetHandle: tHandle }
+    if (!checkConnection(conn, nodes, edges, defs)) return conn
+  }
+  return null
+}
+
 /** target 是否能沿著既有的邊走到 source（若能，新邊會形成迴圈）。 */
 function reaches(from: string, to: string, edges: GraphEdge[]): boolean {
   if (from === to) return true
