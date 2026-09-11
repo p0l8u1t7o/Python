@@ -119,7 +119,7 @@ export function UsersPage() {
                         <Select aria-label={t('users.role')} value={user.role ?? (user.is_staff ? 'admin' : 'engineer')} disabled={self} className="!w-36" onChange={(e) => setPendingRole({ user, role: e.target.value as Role })} options={ROLE_OPTIONS.map((r) => ({ value: r, label: t(`auth.roles.${r}`) }))} />
                       </Td>
                       <Td align="center">
-                        <Switch checked={user.is_active} disabled={self} label={t('common.enabled')} onChange={(v) => setPendingActive({ user, is_active: v })} />
+                        <Switch checked={user.is_active} disabled={self} disabledReason={t('users.selfLocked')} label={t('common.enabled')} onChange={(v) => setPendingActive({ user, is_active: v })} />
                       </Td>
                       <Td className="tnum max-md:hidden whitespace-nowrap text-xs text-muted"><span title={formatDateTimeFull(user.last_login)}>{formatDateTime(user.last_login)}</span></Td>
                       <Td align="right">

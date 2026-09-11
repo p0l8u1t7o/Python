@@ -693,6 +693,10 @@ class I18nTests(SimpleTestCase):
         banned = ["點一下", "試跑", "還沒有", "這個", "看看", "試試", "太敏感", "漏抓", "幫我", "搞", "丟掉", "一堆"]
         hits = [f"{k} ⟶ {w}" for k, entry in i18n.TEXTS.items() for w in banned if w in entry["zh-Hant"]]
         self.assertEqual(hits, [], f"用詞不符規範：{hits}")
+        # 简中要用大陸慣用詞（与网页 `src/test/i18n.test.ts` 同一份清单；PM-REVIEW-R2 L-2）：影像→图像、范本→模板、储存→保存、拖曳→拖动、批次→批量
+        hans_banned = ["影像", "范本", "储存", "拖曳", "批次", "視窗", "檔案", "設定", "點選"]
+        hans_hits = [f"{k} ⟶ {w}" for k, entry in i18n.TEXTS.items() for w in hans_banned if w in entry["zh-Hans"]]
+        self.assertEqual(hans_hits, [], f"简中用詞不一致：{hans_hits}")
         try:
             self.assertEqual(i18n.set_language("en"), "en")
             self.assertEqual(i18n.tr("connection.title"), "Connection")

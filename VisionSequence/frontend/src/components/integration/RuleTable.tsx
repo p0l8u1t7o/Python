@@ -87,7 +87,7 @@ function RuleRow({ rule, index, onChange, onRemove, readOnly }: {
   return (
     <div className="rounded-lg border border-line p-3" data-testid={`rule-${index}`}>
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <Switch checked={rule.enabled} disabled={readOnly} onChange={(v) => set({ enabled: v })} />
+        <Switch checked={rule.enabled} disabled={readOnly} disabledReason={t('dashboardRun.noPermission')} onChange={(v) => set({ enabled: v })} />
         <TextInput className="flex-1 basis-48" placeholder={t('integration.rules.namePlaceholder')} value={rule.name} disabled={readOnly} onChange={(e) => set({ name: e.target.value })} />
         <IconButton label={t('common.delete')} disabled={readOnly} onClick={onRemove}><Trash2 size={15} className="text-critical" /></IconButton>
       </div>

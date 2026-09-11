@@ -277,10 +277,10 @@
   }
   /* Tailwind v4 的 @apply 不能引用同一層定義的 .btn，所以每個變體把共用樣式寫開。 */
   .btn { @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50; }
-  .btn-primary { @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 bg-gradient-to-b from-brand-ink to-brand-ink-strong text-on-brand shadow-sm shadow-brand/30 hover:brightness-105 active:translate-y-px active:shadow-none; }
+  .btn-primary { @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 bg-gradient-to-b from-brand-ink to-brand-ink-strong text-on-brand shadow-sm shadow-brand/30 hover:brightness-105 active:translate-y-px active:shadow-none disabled:bg-none disabled:bg-surface-muted disabled:text-subtle disabled:border disabled:border-line disabled:shadow-none; }
   .btn-secondary { @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 border border-line bg-surface text-content shadow-xs hover:bg-surface-muted active:translate-y-px active:shadow-none; }
   .btn-ghost { @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 text-muted hover:bg-surface-muted hover:text-content; }
-  .btn-danger { @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 bg-critical-fill text-white shadow-sm shadow-critical/30 hover:opacity-90 active:translate-y-px active:shadow-none; }
+  .btn-danger { @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 bg-critical-fill text-white shadow-sm shadow-critical/30 hover:opacity-90 active:translate-y-px active:shadow-none disabled:bg-surface-muted disabled:text-subtle disabled:border disabled:border-line disabled:shadow-none; }
   .btn-icon { @apply rounded-md p-1.5 text-muted transition hover:bg-surface-muted hover:text-content; }
   /* 觸控裝置（操作站的觸控螢幕）：按鈕、輸入框、下拉、分頁鈕至少 40px，圖示鈕與側欄項目更大；滑鼠不受影響 */
   @media (pointer: coarse) {

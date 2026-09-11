@@ -345,6 +345,10 @@ function TrainPanel({ project, trainer }: { project: DlProject; trainer: DlTrain
         <Select label={t('dl.device')} value={device || devices.data?.train_device || 'cpu'} onChange={(e) => setDevice(e.target.value)}
           hint={devices.data?.gpus?.length ? devices.data.gpus.map((g) => g.name).join(', ') : t('dl.noGpu')}
           options={(devices.data?.train_devices ?? ['cpu']).filter((d) => trainer.devices.includes(d) || d === 'cpu').map((d) => ({ value: d, label: d.toUpperCase() }))} />
+        {devices.data?.train_devices?.includes('cuda') && !trainer.devices.includes('cuda') ? (
+          // 伺服器有 GPU、預設也是 cuda，但這個教導方式本身只跑 CPU：說清楚，免得以為忘了切（PM-REVIEW-R2 V7）
+          <p className="hint" data-testid="dl-cpu-only-hint">{t('dl.cpuOnlyTrainer')}</p>
+        ) : null}
         <TextInput label={t(isRetrieval ? 'dl.libraryAssetName' : 'dl.assetName')} placeholder={`${project.name}-${isRetrieval ? 'library' : 'model'}`} value={assetName} onChange={(e) => setAssetName(e.target.value)} />
         {Object.entries(groups).map(([name, list]) => (
           <details key={name} className="rounded-md border border-line px-2.5 py-1.5">

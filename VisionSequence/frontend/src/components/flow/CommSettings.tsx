@@ -64,7 +64,7 @@ export function CommSettings({ config, nodes, readOnly, saving, onSave }: Props)
       {draft.map((rule, i) => (
         <div key={rule.id || i} className="space-y-2 rounded border border-line p-2" data-testid={`comm-rule-${i}`}>
           <div className="flex items-center gap-2">
-            <Switch checked={rule.enabled} disabled={readOnly} onChange={(v) => update(i, { enabled: v })} />
+            <Switch checked={rule.enabled} disabled={readOnly} disabledReason={t('dashboardRun.noPermission')} onChange={(v) => update(i, { enabled: v })} />
             <Select
               className="flex-1"
               value={rule.connection}

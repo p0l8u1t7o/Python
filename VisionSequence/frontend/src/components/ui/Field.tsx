@@ -93,17 +93,21 @@ export function Checkbox({ label, hint, checked, onChange, disabled }: { label: 
 }
 
 /** 小型開關（列表列的啟用切換） */
-export function Switch({ checked, onChange, label, disabled }: { checked: boolean; onChange: (value: boolean) => void; label?: string; disabled?: boolean }) {
+/** 開關。停用時保留「已開啟」的色相只降對比（以前 opacity 50 的灰看起來與「已關閉」一樣），
+ * `disabledReason` 放進 title：停用的控制項一律要說得出為什麼（PM-REVIEW-R2 D1／D2）。 */
+export function Switch({ checked, onChange, label, disabled, disabledReason }: { checked: boolean; onChange: (value: boolean) => void; label?: string; disabled?: boolean; disabledReason?: string }) {
+  const reason = disabled ? disabledReason : undefined
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
       aria-label={label}
-      title={label}
+      title={reason ?? label}
       disabled={disabled}
+      data-disabled-reason={reason}
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${checked ? 'bg-brand' : 'bg-line-strong'}`}
+      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 disabled:saturate-50 ${checked ? 'bg-brand' : 'bg-line-strong'}`}
     >
       <span className={`inline-block size-4 rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-4' : 'translate-x-0.5'}`} />
     </button>

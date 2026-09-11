@@ -204,7 +204,7 @@ export function FlowsPage() {
                     </Td>
                     <Td align="center">
                       <span onClick={(e) => e.stopPropagation()} title={readOnly(flow) ? t('flows.readOnly') : undefined}>
-                        <Switch checked={flow.is_enabled} disabled={readOnly(flow)} label={t('flows.enabledToggle')} onChange={(v) => patch.mutate({ id: flow.id, is_enabled: v }, { onError: (error) => toast.error(errorMessage(error)) })} />
+                        <Switch checked={flow.is_enabled} disabled={readOnly(flow)} disabledReason={t('flows.readOnlyHint')} label={t('flows.enabledToggle')} onChange={(v) => patch.mutate({ id: flow.id, is_enabled: v }, { onError: (error) => toast.error(errorMessage(error)) })} />
                       </span>
                     </Td>
                     <Td align="right" className="tnum max-xl:hidden">{flow.node_count}</Td>

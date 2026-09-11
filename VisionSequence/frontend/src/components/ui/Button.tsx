@@ -5,11 +5,12 @@ type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'subtle'
 type Size = 'xs' | 'sm' | 'md' | 'lg'
 
 // 立體感：primary/danger 漸層＋色影、secondary 淡影；按下沉 1px 收影（ghost/subtle 保持扁平）
+// 停用：主要／危險鈕退成中性灰邊框（PM-REVIEW-R2 D2：半透明的實心綠仍很醒目，看不出不能按）
 const VARIANTS: Record<Variant, string> = {
-  primary: 'bg-gradient-to-b from-brand-ink to-brand-ink-strong text-on-brand shadow-sm shadow-brand/30 hover:brightness-105 active:translate-y-px active:shadow-none border border-transparent',
+  primary: 'bg-gradient-to-b from-brand-ink to-brand-ink-strong text-on-brand shadow-sm shadow-brand/30 hover:brightness-105 active:translate-y-px active:shadow-none border border-transparent disabled:bg-none disabled:bg-surface-muted disabled:text-subtle disabled:border-line disabled:shadow-none disabled:hover:brightness-100',
   secondary: 'bg-surface text-content border border-line shadow-xs hover:bg-surface-muted active:translate-y-px active:shadow-none',
   ghost: 'bg-transparent text-muted hover:text-content hover:bg-surface-muted border border-transparent',
-  danger: 'bg-critical-fill text-white shadow-sm shadow-critical/30 hover:opacity-90 active:translate-y-px active:shadow-none border border-transparent',
+  danger: 'bg-critical-fill text-white shadow-sm shadow-critical/30 hover:opacity-90 active:translate-y-px active:shadow-none border border-transparent disabled:bg-surface-muted disabled:text-subtle disabled:border-line disabled:shadow-none disabled:hover:opacity-100',
   subtle: 'bg-surface-muted text-content border border-transparent hover:bg-line',
 }
 
