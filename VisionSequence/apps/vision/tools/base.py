@@ -652,7 +652,8 @@ IMPLICIT_INPUTS: tuple[ImplicitPort, ...] = (
 IMPLICIT_OUTPUTS: tuple[ImplicitPort, ...] = (
     # 複合工具的直通＝送進第一個對外影像輸入的那張影像（composites.flatten 把邊改接到上游）
     ImplicitPort(IMAGE_THRU, "Image (pass-through)", "image", on_composite=True),
-    ImplicitPort(OVERLAYS_OUT, "Overlays", "list"),
+    # 複合工具的標記＝內部步驟各自的標記（composites.flatten 把邊改接到內部；多重埠每個步驟一條、單一埠接第一個對外輸出的步驟）
+    ImplicitPort(OVERLAYS_OUT, "Overlays", "list", on_composite=True),
 )
 
 

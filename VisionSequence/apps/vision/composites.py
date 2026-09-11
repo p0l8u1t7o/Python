@@ -68,7 +68,7 @@ class CompositeToolType:
     accepts: tuple[str, ...] = ("u8",)
     wants_gray = False
     source = "composite"
-    #: 隱含埠只留位置修正輸入與直通影像輸出（`ImplicitPort.on_composite`）；標記埠內部節點各自有
+    #: 隱含埠只留位置修正輸入、直通影像與標記輸出（`ImplicitPort.on_composite`）；其餘隱含埠內部節點各自有
     implicit_ports = False
 
     def __init__(self, row, graph: dict[str, Any], resolve) -> None:
@@ -406,9 +406,13 @@ def flatten(graph: dict[str, Any], *, depth: int = 0) -> tuple[dict[str, Any], d
                                             "inputs": {k: (prefix + v[0], v[1]) for k, v in info["inputs"].items()},
                                             "params": {k: (prefix + v[0], v[1]) for k, v in info["params"].items()},
                                             "outputs": {k: (prefix + v[0], v[1], v[2]) for k, v in info["outputs"].items()}}
+    node_types = {str(x.get("id")): str(x.get("type") or "") for x in out_nodes}
     for e in edges:
         s, t = str(e.get("source")), str(e.get("target"))
         edge = dict(e)
+        if s in instances and str(e.get("source_handle") or "") == tools.OVERLAYS_OUT:
+            out_edges.extend(_overlay_edges(edge, instances, s, t, node_types))
+            continue
         if s in instances:
             ct = inst_types[s]
             sh = str(e.get("source_handle") or (ct.outputs[0].key if ct.outputs else ""))
@@ -434,6 +438,32 @@ def flatten(graph: dict[str, Any], *, depth: int = 0) -> tuple[dict[str, Any], d
             edge["target"], edge["target_handle"] = _resolve_target(instances, t, th)
         out_edges.append(edge)
     return {**graph, "nodes": out_nodes, "edges": out_edges}, instances
+
+
+def _overlay_edges(edge: dict[str, Any], instances: dict[str, dict[str, Any]], inst: str, target: str,
+                   node_types: dict[str, str]) -> list[dict[str, Any]]:
+    """實例的標記輸出 → 內部步驟各自的 `_overlays`。
+
+    下游是多重埠（例如畫結果的 overlays）就每個內部步驟一條，引擎本來就把多條線收成清單；
+    單一埠只能接一條，接第一個對外輸出所在的步驟（通常是做判斷的那一步），沒有對外輸出就接最後一步。
+    """
+    th = str(edge.get("target_handle") or "")
+    if target in instances:
+        target, th = _resolve_target(instances, target, th)
+    inner = [nid for nid in instances[inst]["inner"] if node_types.get(nid) not in (None, "", "note")]
+    if not inner:
+        return []
+    multiple = False
+    try:
+        port = next((p for p in tools.get(node_types.get(target, "")).inputs if p.key == th), None)
+        multiple = bool(port and port.multiple)
+    except Exception:  # noqa: BLE001 — 目標型別查不到就當單一埠（驗證會另外擋下）
+        multiple = False
+    if not multiple:
+        first = next(iter(instances[inst]["outputs"].values()), None)
+        inner = [first[0] if first and first[0] in inner else inner[-1]]
+    return [{**edge, "id": f"{edge.get('id') or ''}#ov{i}", "source": nid, "source_handle": tools.OVERLAYS_OUT,
+             "target": target, "target_handle": th} for i, nid in enumerate(inner)]
 
 
 def _image_feed(edges: list[dict[str, Any]], instances: dict[str, dict[str, Any]], inst: str, ct: CompositeToolType) -> tuple[str, str] | None:

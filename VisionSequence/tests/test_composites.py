@@ -91,13 +91,13 @@ class RegistryTests(CompositeBase):
         with self.assertRaises(tools.UnknownToolType):
             tools.get("composite:nope")
 
-    def test_catalogue_lists_the_composite_with_its_source_and_only_the_pass_through_implicit_output(self):
+    def test_catalogue_lists_the_composite_with_its_source_and_the_image_and_overlay_implicit_outputs(self):
         entry = next(item for item in tools.catalogue() if item["key"] == "composite:count_blobs")
         self.assertEqual(entry["source"], "composite")
         self.assertEqual(entry["composite"]["tool_key"], "count_blobs")
         self.assertEqual(entry["composite"]["flow_id"], self.tool.flow_id)
         self.assertIn("_image", [p["key"] for p in entry["outputs"]])
-        self.assertNotIn("_overlays", [p["key"] for p in entry["outputs"]])
+        self.assertIn("_overlays", [p["key"] for p in entry["outputs"]])
         self.assertNotIn("_image", [p["key"] for p in entry["inputs"]])
         self.assertTrue(next(p for p in entry["outputs"] if p["key"] == "blob:found")["primary"])
 
@@ -155,6 +155,23 @@ class FlattenTests(CompositeBase):
         bare = {"nodes": [n("count", "composite:count_blobs"), n("blur", "blur", ksize=3)], "edges": [e("count", "blur", "_image", "image")]}
         flat, _ = composites.flatten(validate_graph(bare))
         self.assertFalse(any(edge["target"] == "blur" for edge in flat["edges"]))
+
+    def test_overlays_fan_out_into_a_multiple_port_and_pick_the_output_step_for_a_single_one(self):
+        """實例的標記：接進多重埠＝內部每個步驟一條；接進單一埠＝第一個對外輸出所在的步驟。"""
+        graph = self.flow_graph()
+        graph["nodes"].append(n("draw", "draw_result"))
+        graph["edges"] += [e("src", "draw", "image", "image"), e("count", "draw", "_overlays", "overlays")]
+        flat, _ = composites.flatten(validate_graph(graph))
+        into_draw = sorted(edge["source"] for edge in flat["edges"] if edge["target"] == "draw" and edge.get("target_handle") == "overlays")
+        self.assertEqual(into_draw, ["count.blob", "count.gray", "count.thr"])
+        report = run_graph(graph)
+        self.assertEqual((report.nodes["draw"].status, report.nodes["count"].status), ("ok", "ok"))
+        self.assertTrue(report.nodes["count"].overlays)  # 摺疊後實例本身仍帶合併的標記
+        single = {"nodes": [n("src", "image_source", mode="source", source_id=1), n("count", "composite:count_blobs"), n("out", "output", name="marks")],
+                  "edges": [e("src", "count", "image", "gray:image"), e("count", "out", "_overlays", "value")]}
+        flat, _ = composites.flatten(validate_graph(single))
+        into_out = [(edge["source"], edge.get("source_handle")) for edge in flat["edges"] if edge["target"] == "out"]
+        self.assertEqual(into_out, [("count.blob", "_overlays")])
 
     def test_engine_runs_the_flattened_graph_and_folds_the_instance_report(self):
         report = run_graph(self.flow_graph())
