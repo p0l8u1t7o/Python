@@ -145,7 +145,7 @@ BILINGUAL = {
     "埠": "port", "參數": "parameter param", "教導參數": "teaching parameter teach", "參數卡": "teach page",
     "區域": "region roi", "標記": "overlay label", "執行": "run execute", "試執行": "preview", "執行一次": "run once",
     "連續執行": "continuous", "暫存影像": "scratch image", "資產": "asset", "判定": "judge verdict",
-    "具名輸出": "named output", "引擎鎖定": "engine lock locked 423", "鎖定": "lock locked", "整合方": "integrator api key",
+    "具名輸出": "named output", "埠介面": "port interface ports", "已發布輸出": "published output alias", "引擎鎖定": "engine lock locked 423", "鎖定": "lock locked", "整合方": "integrator api key",
     "金鑰": "api key", "角色": "role", "管理員": "administrator admin", "工程師": "engineer", "操作員": "operator",
     "重置": "reset", "範本": "template", "範本畫廊": "template gallery", "固定影像": "fixed image picture", "範例樣板": "example template sample",
     "文字辨識": "ocr text read", "字串驗證": "ocv text verify expected", "字型教導": "font teaching taught font ocr", "日期碼": "date code lot number ocr",

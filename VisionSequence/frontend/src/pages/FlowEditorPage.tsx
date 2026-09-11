@@ -64,6 +64,7 @@ import { describeReport, publishAssistantProgress, useRegisterAssistantContext }
 import { useFlowStream, type StreamEvent } from '@/lib/flowStream'
 import { DECORATION_TYPES, checkConnection, graphProblems } from '@/lib/graphValidation'
 import { useAssetMutations, useClearRecent, useContinuous, useFlow, useFlowMutations, usePreviewFlow, useRecentRuns, useRecipes, useScratchImage, useSources, useToolTypes, type FlowPatch } from '@/lib/queries'
+import { graphOutputNames } from '@/lib/portLayout'
 import { isImageRef, type FlowGraph, type GraphEdge, type GraphNode, type NodeReport, type Overlay, type Region, type RunReport, type ToolTypeDef } from '@/lib/types'
 import { isLockHolder, useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
@@ -540,7 +541,7 @@ function EditorInner({ flowId }: { flowId: number }) {
   }, [collapsedTasks, taskGroupById, storeCollapsedTasks])
 
   const problemMap = useMemo(() => graphProblems(graphNodes, graphEdges, defs), [graphNodes, graphEdges, defs])
-  const boardOutputNames = useMemo(() => Array.from(new Set(graphNodes.filter((n) => n.type === 'output' || n.type === 'format_text').map((n) => String(n.params?.name ?? '')).filter(Boolean))), [graphNodes])
+  const boardOutputNames = useMemo(() => graphOutputNames(graphNodes, defs), [graphNodes, defs])
   const boardImageNodes = useMemo(
     () => graphNodes.filter((n) => defs.get(n.type)?.outputs.some((p) => p.type === 'image' && !p.implicit)).map((n) => ({ id: n.id, label: n.label || defs.get(n.type)?.label || n.id })),
     [graphNodes, defs],

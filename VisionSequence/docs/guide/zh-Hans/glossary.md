@@ -84,6 +84,8 @@
 | Edge | 边 | 步骤間的連线，從输出连接埠到输入连接埠。 |
 | Port | 连接埠 | 步骤左側為输入、右側為输出，各有型別。 |
 | Flow handle | 流程把手 | 型別為 `flow` 的输出，只能接到菱形控制输入。 |
+| Port interface | 端口界面 | 每个步骤的哪些输入与输出端口要画在画布上、顺序为何、发布成什么名称；在工具页编辑，随流程保存（`node.interface`）。 |
+| Published output | 已发布输出 | 在端口界面上取了名称的输出端口；其值以该名称并进该次运行的命名输出。 |
 | Parameter | 参数 | 步骤设置，種类為封閉集合。 |
 | Teaching parameter / teach page | 教导参数 / 教导页 | 需在產线上調整的参数，標為 `teach=True`。 |
 | Tolerance judge | 公差判定 | 以名目值与上下偏差判斷 pass/fail，並寫入 tolerances。 |

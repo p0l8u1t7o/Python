@@ -555,14 +555,15 @@ describe('pages render (smoke)', () => {
     expect(moved.edges).toEqual(graph.edges)
   })
 
-  it('FlowEditorPage shows published outputs for a selected node', async () => {
+  it('FlowEditorPage shows the port summary for a selected node', async () => {
     const { FlowEditorPage } = await import('@/pages/FlowEditorPage')
     const view = renderDataPage(<FlowEditorPage />, '/flows/1', '/flows/:flowId')
     await screen.findByTestId('editor-toolbar')
     const row = view.container.querySelector('[data-node-id="thr"]')
     expect(row).not.toBeNull()
     fireEvent.click(row as Element)
-    expect(await screen.findByTestId('published-outputs')).toBeInTheDocument()
+    expect(await screen.findByTestId('ports-summary')).toBeInTheDocument()
+    expect(screen.getByTestId('open-port-editor')).toHaveAttribute('href', '/flows/1/tools/thr?section=ports')
     expect(await screen.findByTestId('source-picker')).toBeInTheDocument()
   })
 
@@ -598,6 +599,11 @@ describe('pages render (smoke)', () => {
     fireEvent.click(toggle)
     expect(toggle).toHaveAttribute('aria-checked', 'true')
     expect(localStorage.getItem('vs.toolAutoPreview.v1')).toBe('1')
+    // 埠編輯區（PRODUCT-DIRECTION v2 §2）：收合著，點開才有清單
+    expect(screen.queryByTestId('port-editor')).toBeNull()
+    fireEvent.click(screen.getByTestId('tool-ports-toggle'))
+    expect(screen.getByTestId('port-editor')).toBeInTheDocument()
+    expect(screen.getByTestId('port-list-out')).toBeInTheDocument()
   })
 
   it('DashboardsPage lists operation dashboards from the API', async () => {

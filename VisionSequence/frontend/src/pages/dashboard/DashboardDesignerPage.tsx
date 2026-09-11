@@ -15,6 +15,7 @@ import { errorMessage } from '@/lib/errors'
 import { api } from '@/lib/api'
 import { useConfirm } from '@/lib/useConfirm'
 import { useDashboard, useDashboardData, useDashboardMutations, useDashboards, useFlow, useFlows, useToolTypes } from '@/lib/queries'
+import { graphOutputNames } from '@/lib/portLayout'
 import type { DashboardCell, DashboardLayout, DashboardSourceKind, DashboardWidget, DashboardWidgetSource, DashboardWidgetType, Flow, ToolCatalogue } from '@/lib/types'
 import { useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
@@ -646,7 +647,7 @@ function useFixedImages() {
 }
 
 function sourceKeyOptions(kind: DashboardSourceKind, flow?: Flow, catalogue?: ToolCatalogue, flowVars?: VariablesPayload, stationVars?: VariablesPayload, fixedImages?: FixedImagesPayload) {
-  if (kind === 'output' || kind === 'spc') return namedOutputKeys(flow).map((key) => ({ value: key, label: key }))
+  if (kind === 'output' || kind === 'spc') return namedOutputKeys(flow, catalogue).map((key) => ({ value: key, label: key }))
   if (kind === 'variable') return [
     ...Object.keys(flowVars?.items ?? {}).map((key) => ({ value: key, label: key })),
     ...Object.keys(flowVars?.station ?? {}).map((key) => ({ value: `station.${key}`, label: `station.${key}` })),
@@ -663,8 +664,9 @@ function sourceKeyOptions(kind: DashboardSourceKind, flow?: Flow, catalogue?: To
   return []
 }
 
-function namedOutputKeys(flow?: Flow): string[] {
-  const found = new Set<string>()
+function namedOutputKeys(flow?: Flow, catalogue?: ToolCatalogue): string[] {
+  // 步驟依埠順序發布的名稱（alias）排前面，再補 output 步驟與判定鍵
+  const found = new Set<string>(graphOutputNames(flow?.graph?.nodes ?? [], new Map((catalogue?.items ?? []).map((item) => [item.key, item]))))
   for (const node of flow?.graph?.nodes ?? []) {
     const params = node.params ?? {}
     if (node.type === 'output') {

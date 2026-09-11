@@ -86,6 +86,8 @@ The words the industry uses, and what each one means here. Coordinates, angles a
 | Edge | 連線 | A line between steps: an output port to an input port |
 | Port | 埠 | Inputs on the left of a step, outputs on the right; each has a type |
 | Flow handle | 分支把手 | An output port of type `flow` (true, false and so on); it can only connect to a step's diamond-shaped control input |
+| Port interface | 埠介面 | Per step, which input and output ports are drawn on the canvas, in what order, and under which published name; edited on the tool page and stored with the flow (`node.interface`) |
+| Published output | 已發布輸出 | An output port given a name on the port interface; its value is returned with the run's named outputs under that name |
 | Parameter | 參數 | A step's setting; the kinds are a closed set (number, select, roi, …) |
 | Teaching parameter / teach page | 教導參數／參數卡 | A parameter that has to be adjusted on the line (a threshold, a polarity, a tolerance), marked `teach=True` in the tool definition. The teach page lists only these, grouped by step, so a changeover needs no canvas. |
 | Tolerance judge | 公差判定 | Compares a measurement against a nominal with upper and lower deviations and branches pass or fail. The verdict, nominal, upper, lower, unit and spec_source (where on the drawing it comes from) are written into `run.outputs.tolerances` for Cpk and traceability. |

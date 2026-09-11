@@ -56,6 +56,70 @@ export function withOutputAlias(node: Pick<GraphNode, 'interface'>, port: string
   return compact(iface)
 }
 
+/** 條目只剩 key 就不留（圖裡不放沒有資訊的物件）。 */
+function pruned(spec: PortSpec): PortSpec | null {
+  const { key: _key, ...rest } = spec
+  return Object.keys(rest).length ? spec : null
+}
+
+function sideOf(iface: Required<NodeInterface>, side: 'in' | 'out'): PortSpec[] {
+  return side === 'in' ? iface.inputs : iface.outputs
+}
+
+/**
+ * 畫布上顯示／隱藏一個埠：`exposed` 為 undefined＝回到預設規則。
+ * 參數訂閱埠（`param:<key>`）隱藏＝收回外露（與 withParamExposed 同義），不留 exposed:false 的殘骸。
+ */
+export function withPortExposed(node: Pick<GraphNode, 'interface'>, side: 'in' | 'out', port: string, exposed: boolean | undefined): Partial<GraphNode> {
+  if (side === 'in' && port.startsWith(PARAM_PREFIX) && exposed !== true) return withParamExposed(node, port.slice(PARAM_PREFIX.length), false)
+  const iface = nodeInterface(node)
+  const list = sideOf(iface, side)
+  const index = list.findIndex((spec) => spec.key === port)
+  const current = index >= 0 ? list[index] : { key: port }
+  const { exposed: _dropped, ...rest } = current
+  const next = pruned(exposed === undefined ? rest : { ...rest, exposed })
+  if (next) {
+    if (index >= 0) list[index] = next
+    else list.push(next)
+  } else if (index >= 0) list.splice(index, 1)
+  return compact(iface)
+}
+
+/** 整側重新排序：依給的 key 順序寫 order 0..n-1（沒列到的埠拿掉 order，回到目錄順序殿後）。 */
+export function withPortOrder(node: Pick<GraphNode, 'interface'>, side: 'in' | 'out', keys: string[]): Partial<GraphNode> {
+  const iface = nodeInterface(node)
+  const list = sideOf(iface, side)
+  const byKey = new Map(list.map((spec) => [spec.key, spec]))
+  const next: PortSpec[] = []
+  keys.forEach((key, order) => {
+    const { order: _dropped, ...rest } = byKey.get(key) ?? { key }
+    next.push({ ...rest, order })
+    byKey.delete(key)
+  })
+  for (const spec of byKey.values()) {
+    const { order: _dropped, ...rest } = spec
+    const kept = pruned(rest)
+    if (kept) next.push(kept)
+  }
+  if (side === 'in') iface.inputs = next
+  else iface.outputs = next
+  return compact(iface)
+}
+
+/** 還原這一側的顯示與順序（alias 與參數訂閱埠的外露保留）。 */
+export function withPortLayoutReset(node: Pick<GraphNode, 'interface'>, side: 'in' | 'out'): Partial<GraphNode> {
+  const iface = nodeInterface(node)
+  const next: PortSpec[] = []
+  for (const spec of sideOf(iface, side)) {
+    const { order: _order, exposed, ...rest } = spec
+    const kept = pruned(side === 'in' && spec.key.startsWith(PARAM_PREFIX) && exposed === true ? { ...rest, exposed } : rest)
+    if (kept) next.push(kept)
+  }
+  if (side === 'in') iface.inputs = next
+  else iface.outputs = next
+  return compact(iface)
+}
+
 /** 把參數外露成輸入埠（或收回）。 */
 export function withParamExposed(node: Pick<GraphNode, 'interface'>, paramKey: string, exposed: boolean): Partial<GraphNode> {
   const iface = nodeInterface(node)

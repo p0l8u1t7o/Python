@@ -70,6 +70,12 @@ export function dataOutputPorts(def: ToolTypeDef | undefined): ToolPort[] {
   return (def?.outputs ?? []).filter((port) => port.type !== 'flow' && port.implicit !== true)
 }
 
+/** 必填輸入埠算不算「有東西」：接了線，或 ROI 埠的同名參數已填（工具 ctx.roi() 會退回參數）。隱藏的埠也用同一條規則——看不見不代表不檢查。 */
+export function inputSatisfied(port: ToolPort, params: Record<string, unknown>, incoming: ReadonlySet<string>): boolean {
+  if (incoming.has(port.key)) return true
+  return port.type === 'region' && Boolean(params[port.key]) && typeof params[port.key] === 'object'
+}
+
 export function validatePublishName(name: string): boolean {
   return name.trim() === '' || PUBLISH_NAME_PATTERN.test(name)
 }
@@ -95,9 +101,7 @@ export function nodeProblems(node: GraphNode, def: ToolTypeDef | undefined, edge
   }
   const incoming = new Set(edges.filter((e) => e.target === node.id).map((e) => e.target_handle ?? ''))
   for (const port of def.inputs) {
-    if (!port.required || incoming.has(port.key)) continue
-    // ROI 輸入埠若同名參數已填就不算缺（工具 ctx.roi() 會退回參數）。
-    if (port.type === 'region' && params[port.key] && typeof params[port.key] === 'object') continue
+    if (!port.required || inputSatisfied(port, params, incoming)) continue
     problems.push({ key: `in:${port.key}`, code: 'inputMissing', severity: 'error', values: { label: port.label } })
   }
   const outgoing = new Set(edges.filter((e) => e.source === node.id).map((e) => e.source_handle ?? ''))

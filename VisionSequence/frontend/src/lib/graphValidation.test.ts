@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { checkConnection, graphProblems, nodeProblems } from './graphValidation'
+import { checkConnection, graphProblems, inputSatisfied, nodeProblems } from './graphValidation'
 import type { GraphEdge, GraphNode, ToolPort, ToolTypeDef } from './types'
 
 // 與後端 graph.validate_graph 同一條規則：多重埠本來就收多張同型別，所以一條 list 線可以接進去；單一埠不放行。
@@ -24,6 +24,18 @@ const nodes = new Map<string, GraphNode>([
   ['m', { id: 'm', type: 'measure' }],
 ])
 const edges: GraphEdge[] = []
+
+describe('inputSatisfied', () => {
+  it('reports a hidden required input exactly like a visible one', () => {
+    const port: ToolPort = { key: 'region', label: 'Region', type: 'region', required: true, multiple: false, tone: 'neutral' }
+    expect(inputSatisfied(port, {}, new Set())).toBe(false)
+    expect(inputSatisfied(port, {}, new Set(['region']))).toBe(true)
+    expect(inputSatisfied(port, { region: { shape: 'rect' } }, new Set())).toBe(true)
+    const def: ToolTypeDef = { key: 'm', label: 'M', description: '', category: 'measure', category_label: 'Measure', icon: 'Ruler', heavy: false, params: [], inputs: [port], outputs: [] }
+    const hidden = nodeProblems({ id: 'm', type: 'm', params: {}, interface: { inputs: [{ key: 'region', exposed: false }] } }, def, [])
+    expect(hidden.map((p) => p.code)).toEqual(['inputMissing'])
+  })
+})
 
 describe('checkConnection', () => {
   it('lets a list output feed a multiple image port', () => {

@@ -135,9 +135,14 @@ export function autoConnectOnInsert(
   }
 }
 
+/** 節點實際的埠定義：目錄定義＋外露的參數訂閱埠＋動態分支埠（卡片、埠編輯區、側欄摘要都用它）。 */
+export function effectiveDefinition(definition: ToolTypeDef | undefined, payload: GraphNode): ToolTypeDef | undefined {
+  return withCasePorts(withParamPorts(definition, exposedParamKeys(payload)), payload)
+}
+
 export function nodeDataFrom(payload: GraphNode, definition: ToolTypeDef | undefined): ToolNodeData {
   return {
-    definition: withCasePorts(withParamPorts(definition, exposedParamKeys(payload)), payload),
+    definition: effectiveDefinition(definition, payload),
     label: payload.label ?? '',
     description: payload.description ?? '',
     enabled: payload.enabled !== false,

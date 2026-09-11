@@ -11,14 +11,15 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, useBlocker, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Check, FlaskConical, ImageUp, Loader2, Save } from 'lucide-react'
+import { Link, useBlocker, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { ArrowLeft, Check, ChevronDown, ChevronRight, FlaskConical, ImageUp, Loader2, Save } from 'lucide-react'
 
 import { ScratchBadge } from '@/components/editor/EditorToolbar'
-import { isTypingTarget } from '@/components/editor/graphMapping'
+import { effectiveDefinition, isTypingTarget } from '@/components/editor/graphMapping'
 import { Histogram, binValues, fmtNum } from '@/components/editor/Histogram'
 import type { InspectorActions } from '@/components/editor/ParamField'
 import { ParamForm } from '@/components/editor/ParamForm'
+import { PortInterfaceEditor } from '@/components/editor/PortInterfaceEditor'
 import { formatValue } from '@/components/editor/ResultsPanel'
 import { iconFor } from '@/components/editor/ToolNode'
 import { useSaveConflictDialog } from '@/components/flow/SaveConflictDialog'
@@ -89,6 +90,16 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
   const [askTemplateName, setAskTemplateName] = useState(false)
   const scratchInput = useRef<HTMLInputElement>(null)
   const saveBaseline = useRef<string | null>(null)
+  //: 埠編輯區：側欄的「編輯埠…」帶 ?section=ports 進來就展開並捲到位
+  const [searchParams] = useSearchParams()
+  const [showPorts, setShowPorts] = useState(() => searchParams.get('section') === 'ports')
+  const portsRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (searchParams.get('section') === 'ports') {
+      setShowPorts(true)
+      portsRef.current?.scrollIntoView?.({ block: 'start' })
+    }
+  }, [searchParams])
 
   const defs = useMemo(() => {
     const map = new Map<string, ToolTypeDef>()
@@ -461,6 +472,17 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
           <p className="mb-2 text-xs font-semibold text-muted">{t('editor.parameters')}</p>
           {def.description ? <p className="mb-3 text-xs leading-relaxed text-muted">{def.description}</p> : null}
           <ParamForm node={node} definition={def} edges={edges} actions={actions} onChange={onChange} />
+          <div className="mt-4 border-t border-line pt-3" ref={portsRef} data-testid="tool-ports">
+            <button type="button" className="flex w-full items-center gap-1 text-xs font-semibold text-muted hover:text-content" onClick={() => setShowPorts((value) => !value)} aria-expanded={showPorts} data-testid="tool-ports-toggle">
+              {showPorts ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+              {t('editor.ports.title')}
+            </button>
+            {showPorts ? (
+              <div className="mt-2">
+                <PortInterfaceEditor node={node} definition={effectiveDefinition(def, node)} edges={edges} nodes={graph?.nodes ?? []} readOnly={readOnly} onChange={onChange} />
+              </div>
+            ) : null}
+          </div>
         </aside>
 
         {/* 中：前／後影像 */}

@@ -2,7 +2,7 @@
  * 側欄（Inspector）：選取步驟的基本設定（名稱、備註、顏色、啟用、出錯時繼續）＋「開啟工具頁」。
  * 完整參數表單在工具頁（ToolPage）。
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { SlidersHorizontal } from 'lucide-react'
@@ -12,8 +12,9 @@ import { Button, Checkbox, Select, TextArea, TextInput } from '@/components/ui'
 import { sourcePreviewUrl } from '@/lib/api'
 import { useAuth } from '@/providers/AuthProvider'
 import { ImagesField } from '@/components/editor/ParamField'
-import { dataOutputPorts, nodeProblems, validatePublishName } from '@/lib/graphValidation'
-import { outputAliases, withOutputAlias } from '@/lib/nodeInterface'
+import { effectiveDefinition } from '@/components/editor/graphMapping'
+import { portSummary } from '@/components/editor/PortInterfaceEditor'
+import { nodeProblems } from '@/lib/graphValidation'
 import { useSources } from '@/lib/queries'
 import { localiseDataName } from '@/lib/catalogueLocale'
 import type { Language } from '@/i18n'
@@ -75,7 +76,7 @@ export function Inspector({ flowId, node, definition, edges, graph, defs, onChan
         <>
           <Checkbox label={t('editor.nodeEnabled')} hint={t('editor.nodeEnabledHint')} checked={node.enabled !== false} onChange={(enabled) => onChange({ enabled })} />
           <Checkbox label={t('editor.continueOnError')} hint={t('editor.continueOnErrorHint')} checked={node.continue_on_error === true} onChange={(continue_on_error) => onChange({ continue_on_error })} />
-          <PublishedOutputsSection node={node} definition={definition} onChange={onChange} />
+          <PortsSummary node={node} definition={definition} edges={edges} toolPage={toolPage} />
 
           {problems.length ? (
             <p className="rounded-lg bg-warning-soft px-3 py-2 text-xs text-warning">{t('editor.problemsOnNode', { count: problems.length })}</p>
@@ -104,49 +105,26 @@ export function Inspector({ flowId, node, definition, edges, graph, defs, onChan
   )
 }
 
-/** 固定影像步驟：直接在檢視器上傳／移除圖片（與工具頁的 images 參數同一份值）。 */
-function PublishedOutputsSection({ node, definition, onChange }: { node: GraphNode; definition: ToolTypeDef | undefined; onChange: (patch: Partial<GraphNode>) => void }) {
+/** 埠的一行摘要＋「編輯埠…」入口：顯示／順序／具名輸出名稱只在工具頁改（PRODUCT-DIRECTION v2 §2-1）。 */
+function PortsSummary({ node, definition, edges, toolPage }: { node: GraphNode; definition: ToolTypeDef | undefined; edges: GraphEdge[]; toolPage: string }) {
   const { t } = useTranslation()
-  const ports = useMemo(() => dataOutputPorts(definition), [definition])
-  const published = useMemo(() => outputAliases(node), [node])
-  const [draft, setDraft] = useState<Record<string, string>>({})
-
-  useEffect(() => {
-    setDraft(Object.fromEntries(ports.map((port) => [port.key, published[port.key] ?? ''])))
-  }, [node.id, ports, published])
-
+  const summary = useMemo(() => portSummary(node, effectiveDefinition(definition, node), edges), [node, definition, edges])
   if (!definition) return null
-
-  const update = (key: string, value: string) => {
-    setDraft((current) => ({ ...current, [key]: value }))
-    if (!validatePublishName(value)) return
-
-    onChange(withOutputAlias(node, key, value))
-  }
-
   return (
-    <div className="space-y-2 rounded-md border border-line bg-surface p-2" data-testid="published-outputs">
-      <p className="text-xs font-semibold text-heading">{t('editor.publishedOutputs.title')}</p>
-      {ports.length ? ports.map((port) => {
-        const value = draft[port.key] ?? published[port.key] ?? ''
-        const invalid = !validatePublishName(value)
-        return (
-          <TextInput
-            key={port.key}
-            label={port.label || port.key}
-            value={value}
-            placeholder={t('editor.publishedOutputs.placeholder')}
-            className="font-mono"
-            error={invalid ? t('editor.publishedOutputs.invalidName') : undefined}
-            onChange={(event) => update(port.key, event.target.value)}
-            data-testid={`publish-output-${port.key}`}
-          />
-        )
-      }) : <p className="text-[11px] text-muted">{t('editor.publishedOutputs.empty')}</p>}
+    <div className="space-y-1 rounded-md border border-line bg-surface p-2" data-testid="ports-summary">
+      <p className="text-xs font-semibold text-heading">{t('editor.ports.title')}</p>
+      <p className="text-[11px] text-muted">{t('editor.ports.summary', { shown: summary.shown, total: summary.total })}</p>
+      <p className="text-[11px] text-muted">
+        {t('editor.ports.published')}: <span className="font-mono">{summary.published.join(', ') || t('editor.ports.none')}</span>
+      </p>
+      <Link to={`${toolPage}?section=ports`} className="inline-block text-[11px] text-brand hover:underline" data-testid="open-port-editor">
+        {t('editor.ports.edit')}
+      </Link>
     </div>
   )
 }
 
+/** 固定影像步驟：直接在檢視器上傳／移除圖片（與工具頁的 images 參數同一份值）。 */
 function FixedImagesSection({ node, onChange }: { node: GraphNode; onChange: (patch: Partial<GraphNode>) => void }) {
   const { t } = useTranslation()
   const auth = useAuth()

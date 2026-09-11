@@ -16,3 +16,12 @@ if (!window.matchMedia) {
   }) as unknown as MediaQueryList
 }
 Element.prototype.scrollIntoView = Element.prototype.scrollIntoView ?? (() => {})
+
+// jsdom 沒有 DOMMatrixReadOnly：React Flow 重量把手位置（updateNodeInternals）時用它讀節點的 transform 縮放，給一個 m22=1 的最小替身即可
+if (!('DOMMatrixReadOnly' in window)) {
+  class DOMMatrixStub {
+    m22 = 1
+    constructor(_transform?: string) {}
+  }
+  ;(window as unknown as { DOMMatrixReadOnly: typeof DOMMatrixStub }).DOMMatrixReadOnly = DOMMatrixStub
+}

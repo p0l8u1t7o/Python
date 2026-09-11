@@ -155,6 +155,7 @@ Use **Grid** in the image viewer strip to switch the editor into grid view. Choo
 - ROIs: a tool with a region parameter shows its ROI as soon as you open the page. Draw on the input image — rectangle, rotated rectangle, circle, ellipse, annulus (optionally a sector), polygon, polyline, line or point. Coordinates are pixels in that step's input image; a positive angle is clockwise on screen.
 - "Re-run with last image" pins the same image while you tune; a template for locating or golden comparison can be created from a box drawn on the current image and saved as an asset directly.
 - Tools with picture-list parameters can add a crop from the current preview image directly to that list; press Add from current image, draw a rectangle or rotated rectangle, then confirm. The free-form edge defect tool can also teach its contour model from the current image.
+- **Ports** (below the parameters): tick which input and output ports are drawn on the canvas, drag a row or use the arrows to change their order, and give an output a published name. Connected ports are always drawn (remove the link first to hide one); "Order by downstream position" sorts the outputs so the edges do not cross. Hiding a required input that is not connected keeps the problem visible: the step gets a red badge and the check still fails. See [Ports](#ports) for the default rule.
 
 ## 6. The teach page, on-site parameters and recipes {#teach}
 
@@ -541,6 +542,8 @@ The trail records changes, not runs: who changed which flow, parameter, recipe, 
 | `list` | teal `#14b8a6` | General lists, overlays included |
 | `any` | grey-white `#cbd5e1` | Anything |
 | `flow` | grey (diamond) `#94a3b8` | Branching |
+
+Not every port is drawn. A step shows its connected ports, the tool's default ports (the first image port and the branch outputs), outputs with a published name, and required inputs that are not connected; the rest are collapsed behind a "+N" badge on the card — click it to expand the step for this view only. Which ports are shown, their order and their published names are edited on the tool page (Ports section, also reachable from "Edit ports…" in the inspector) and stored with the flow.
 
 ### Keyboard shortcuts {#shortcuts}
 
