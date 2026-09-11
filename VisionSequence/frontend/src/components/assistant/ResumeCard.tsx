@@ -11,6 +11,15 @@ export function draftProgress(drafts: TaskDraft[]): Pick<AssistantWorkState, 'dr
   }
 }
 
+/** 恢復卡上的值：數字取三位、區域只給形狀，不把原始 JSON 丟給使用者（階段 15）。 */
+export function resumeValue(value: unknown): string {
+  if (typeof value === 'number') return String(Number(value.toFixed(3)))
+  if (value === null || value === undefined || value === '') return '-'
+  if (Array.isArray(value)) return String(value.length)
+  if (typeof value === 'object') return 'shape' in value ? String((value as { shape: unknown }).shape) : '...'
+  return String(value)
+}
+
 export function ResumeCard({ resume, onContinue }: { resume: AssistantResume; onContinue: () => void }) {
   const { t } = useTranslation()
   const state = resume.work_state
@@ -19,8 +28,8 @@ export function ResumeCard({ resume, onContinue }: { resume: AssistantResume; on
     {resume.flow_missing && <p role="alert">{t('assistant.resume.missing')}</p>}
     {resume.changed && <p role="status">{t('assistant.resume.changed')} {resume.diff_summary}</p>}
     {!!state.pending_questions?.length && <div><p>{t('assistant.resume.questions')}</p><ul className="list-inside list-disc">{state.pending_questions.map((q, i) => <li key={i}>{q.text}</li>)}</ul></div>}
-    {!!state.assumptions?.length && <div><p>{t('assistant.resume.assumptions')}</p>{state.assumptions.map((a, i) => <p key={i}>{a.field}: {JSON.stringify(a.value)} {a.note}</p>)}</div>}
-    {state.last_trial && <div><p>{t('assistant.resume.trial')}: {state.last_trial.status} · {state.last_trial.at}</p><p>{state.last_trial.summary}</p>{state.last_trial.per_task.map((task, i) => <p key={i}>{task.task_id}: {task.status} · {JSON.stringify(task.value)}</p>)}</div>}
+    {!!state.assumptions?.length && <div><p>{t('assistant.resume.assumptions')}</p>{state.assumptions.map((a, i) => <p key={i}>{a.field}: {resumeValue(a.value)}</p>)}</div>}
+    {state.last_trial && <div><p>{t('assistant.resume.trial')}: {t(`inspect.status.${state.last_trial.status}`, { defaultValue: state.last_trial.status })} · {state.last_trial.at}</p><p>{state.last_trial.summary}</p>{state.last_trial.per_task.map((task, i) => <p key={i}>{task.task_id}: {t(`inspect.status.${task.status}`, { defaultValue: task.status })} · {resumeValue(task.value)}</p>)}</div>}
     <Button size="xs" disabled={resume.flow_missing} onClick={onContinue}>{t('assistant.resume.continue')}</Button>
   </section>
 }

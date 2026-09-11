@@ -81,6 +81,14 @@ bus = EventBus()
 # ---------------------------------------------------------------------------
 # 持久化（背景）
 # ---------------------------------------------------------------------------
+def _is_uuid(value: str) -> bool:
+    try:
+        uuid.UUID(str(value))
+    except ValueError:
+        return False
+    return True
+
+
 class _Persister(threading.Thread):
     def __init__(self) -> None:
         super().__init__(name="vision-persist", daemon=True)
@@ -500,7 +508,8 @@ class Runner:
                 log.warning("影像來源 %s 預先開啟失敗", source.name, exc_info=True)
         if asset_ids:
             with self._lock:
-                for asset in Asset.objects.filter(pk__in=asset_ids):
+                # 資產 id 是 UUID；參數裡寫了名稱之類的值要當成「查不到」交給工具回報，不能讓整次試執行 500
+                for asset in Asset.objects.filter(pk__in=[a for a in asset_ids if _is_uuid(a)]):
                     self._asset_paths[str(asset.id)] = asset.path
 
     # -- 執行 ---------------------------------------------------------------

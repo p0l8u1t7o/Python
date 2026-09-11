@@ -426,6 +426,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
           <p title={reading?.value == null ? undefined : `${String(reading.value)} ${readingUnit}`} className={`font-mono text-2xl ${stale ? 'text-muted line-through' : ''}`}>{inspectionValue(reading)} {inspectionValue(reading) !== '—' ? readingUnit : ''}</p>
           {stale && !newKind ? <p className="text-xs text-muted">{t('inspect.staleHint')}</p> : null}
           {reading?.reason ? <p className="text-xs text-muted">{reading.reason}</p> : null}
+          {task?.kind === 'locate_part' && !newKind ? <p className="text-xs text-muted" data-testid="inspect-teach-hint">{t('inspect.teachHint')}</p> : null}
           {task?.kind === 'locate_part' && reading?.verdict === 'pass' && !stale && !newKind ? <Button disabled={!run?.id || readOnly || preview.isPending} onClick={() => void action(teachPose)} data-testid="inspect-teach-pose">{t('inspect.teachPose')}</Button> : null}
           {cropKey ? <div className="flex gap-2"><Button disabled={!cropRegion} onClick={() => void action(saveCrop)}>{t('inspect.saveCrop')}</Button><Button onClick={() => setCropKey(null)}>{t('common.cancel')}</Button></div> : null}
         </div>

@@ -111,6 +111,11 @@ HELP_SYSTEM = """You are the documentation assistant for VisionSequence, a machi
 - "Things the user asked you to remember" are facts this user stored on purpose: treat them as true for this user and use them when relevant.
 - You may end with ONE extra line `ACTIONS: [...]` (a JSON array, at most 3 items) offering shortcuts: {"kind":"navigate","to":"<route from the interface map with real ids filled in>","tab":"<tab key, optional>","label":"<short label in the user's language>"} or, in the flow editor, {"kind":"focus_node","node":"<node id>","label":"..."} / {"kind":"open_tool","node":"<node id>","label":"..."}. Only routes from the map; omit the line when nothing applies."""
 
+#: 在檢測任務頁回答時的附加規則：那一頁的使用者不看流程圖（階段 15：回覆列出 find_circle、叫人進畫布接 Fixed image）
+INSPECT_GUIDANCE = """The user is on the Inspection tasks page, which builds an inspection from a task list without wiring.
+- Answer in terms of inspection tasks and their fields as that page shows them (Add task, the task form, Try run, Save, Advanced flow); do not name internal tool keys, node ids or port names.
+- Do not tell the user to add steps, wire connections or edit parameters in the advanced flow unless they ask about the advanced flow. Changes to the task list can be made by asking the assistant to add, change or remove a task, which proposes a card to confirm."""
+
 #: 中英對照：docs 是英文，中文提問先把詞彙補成英文再檢索（來源＝docs/guide/en/glossary.md 的對照表）。
 BILINGUAL = {
     "工程筆記": "engineering note", "工程笔记": "engineering note",
@@ -755,6 +760,8 @@ def answer(question: str, settings: providers.AgentSettings, *, context: dict[st
             text = "\n\n".join(x for x in [("Current situation:\n" + where) if where else "", ("最近對話：\n" + recent) if recent else "", notes.examples_text(remembered),
                                            "文件片段：\n" + docs_text, f"問題：{question[:4000]}", f"Answer language: {lang_name}."] if x)
             system = HELP_SYSTEM + "\n\n" + skills.with_custom(skills.platform_text(), "platform", user)[:2500] + "\n\n" + ui_brief(str(ctx.get("lang") or "en"))
+            if ctx.get("kind") == "inspect":
+                system += "\n\n" + INSPECT_GUIDANCE
             images = [screenshot] if screenshot else []
             steps: list[dict[str, Any]] = []
             reply = ""

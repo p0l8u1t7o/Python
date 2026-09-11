@@ -164,6 +164,146 @@ class TaskListTests(SimpleTestCase):
         self.assertIsNone(tasklist._rounded(None))
         self.assertEqual(tasklist._rounded("rect"), "rect")
 
+
+STAGE15 = ("幫我建立杯口檢測：先定位工件，用左上角的十字標記加上一段杯緣當範本，允許旋轉，角度範圍 ±60°。"
+           "然後量外徑 35±0.2 mm、內徑 26±0.2 mm、壁厚 4.5±0.15 mm、同心度不超過 0.05 mm，圓周缺口長度 2 mm 以上判不合格。尺寸用 mm。")
+ROI = {"shape": "annulus", "cx": 100, "cy": 100, "r_inner": 30, "r_outer": 60}
+
+
+def two_diameters():
+    graph = inspect.build(base_graph(), {"kind": "measure_diameter", "task_id": "outer", "fields": {"roi": ROI, "edge": "outer"}})
+    return inspect.build(graph, {"kind": "measure_diameter", "task_id": "inner", "fields": {"roi": ROI, "edge": "inner"}})
+
+
+def cup_image():
+    """合成杯口：亮環（外 200、內孔 150）＋右側凸耳＋左上十字。"""
+    import cv2
+
+    image = np.full((600, 800), 30, np.uint8)
+    cv2.circle(image, (400, 300), 200, 200, -1)
+    cv2.circle(image, (400, 300), 150, 30, -1)
+    cv2.rectangle(image, (590, 280), (640, 320), 200, -1)
+    cv2.line(image, (60, 60), (100, 60), 255, 5)
+    cv2.line(image, (80, 40), (80, 80), 255, 5)
+    return image
+
+
+class Stage15ParsingTests(SimpleTestCase):
+    """階段 15 對話驗收抓到的解析問題（P1／P3／P4／P5／P7）。"""
+
+    def test_one_sentence_cup_specification(self):
+        drafts = tasklist.parse(STAGE15, graph=base_graph())
+        self.assertEqual([d["kind"] for d in drafts], ["locate_part", "measure_diameter", "measure_diameter", "measure_distance", "measure_distance", "inspect_circular_surface"])
+        locate, outer, inner, wall, concentric, _ = drafts
+        self.assertEqual(locate["fields"]["angle_range"]["value"], 60)
+        self.assertEqual((outer["fields"]["nominal"]["value"], outer["fields"]["edge"]["value"]), (35, "outer"))
+        self.assertEqual((inner["fields"]["nominal"]["value"], inner["fields"]["edge"]["value"]), (26, "inner"))
+        self.assertEqual(wall["fields"]["nominal"]["value"], 4.5, "壁厚不能拿到同心度的 0.05")
+        self.assertEqual(concentric["fields"]["mode"]["value"], "hole_centres")
+        self.assertEqual([concentric["fields"][k]["value"] for k in ("nominal", "lower_tol", "upper_tol")], [0, 0, .05])
+
+    def test_coordinates_and_tolerance_only_are_not_nominals(self):
+        graph = two_diameters()
+        draft = tasklist.parse("修改第 1 項外徑：圓環中心 (638, 480)，內半徑 305、外半徑 396", graph=graph)[0]
+        self.assertEqual(draft["task_id"], "outer")
+        self.assertNotIn("nominal", draft["fields"])
+        draft = tasklist.parse("外徑公差改成 ±0.1 mm", graph=graph)[0]
+        self.assertEqual((draft["op"], draft["task_id"]), ("update", "outer"))
+        self.assertEqual((draft["fields"]["upper_tol"]["value"], draft["fields"]["lower_tol"]["value"]), (.1, -.1))
+        self.assertNotIn("nominal", draft["fields"])
+        self.assertTrue(tasklist.is_request("外徑公差改成 ±0.1 mm", graph))
+
+    def test_ambiguous_update_asks_which_task(self):
+        draft = tasklist.parse("直徑公差改成 ±0.1", graph=two_diameters())[0]
+        self.assertEqual((draft["op"], draft["kind"]), ("answer", "measure_diameter"))
+        self.assertTrue(tasklist.is_request("直徑公差改成 ±0.1", two_diameters()))
+
+    def test_locator_reference_is_not_a_new_locate_task(self):
+        drafts = tasklist.parse("新增同心度，用這個定位做位置修正，不超過 0.05 px", graph=base_graph())
+        self.assertEqual([d["kind"] for d in drafts], ["measure_distance"])
+
+    def test_llm_cards_are_matched_by_edge_not_order(self):
+        settings = providers.AgentSettings(provider="openai", api_key="test")
+        reply = {"drafts": [{"op": "add", "kind": "measure_diameter", "fields": {"edge": "inner", "nominal": 26, "upper_tol": .2, "lower_tol": -.2}},
+                            {"op": "add", "kind": "measure_diameter", "fields": {"edge": "outer", "nominal": 35, "upper_tol": .2, "lower_tol": -.2}}]}
+        with mock.patch.object(providers, "complete", return_value=json.dumps(reply)):
+            out = tasklist.propose("外徑 35±0.2 px、內徑 26±0.2 px", "zh-Hant", base_graph(), settings)
+        inner, outer = out["drafts"]
+        self.assertEqual((inner["fields"]["edge"]["value"], inner["fields"]["nominal"]["value"]), ("inner", 26))
+        self.assertEqual((outer["fields"]["edge"]["value"], outer["fields"]["nominal"]["value"]), ("outer", 35))
+
+    def test_provider_failure_reason_is_reported_once(self):
+        settings = providers.AgentSettings(provider="gemini", api_key="test")
+        error = RuntimeError('HTTP 429: {"error": {"message": "You exceeded your current quota, please check your plan and billing details. '
+                             'Quota exceeded for metric: generate_content_free_tier_requests, limit: 20. Please retry in 36s."}}')
+        with mock.patch.object(providers, "complete", side_effect=error):
+            out = tasklist.propose("外徑 35±0.2 px、內徑 26±0.2 px、壁厚 4.5±0.15 px", "zh-Hant", base_graph(), settings)
+        self.assertEqual(out["provider"], "offline")
+        self.assertEqual(len(out["warnings"]), len(set(out["warnings"])))
+        self.assertTrue(any("request limit" in w for w in out["warnings"]), out["warnings"])
+        self.assertEqual(providers.explain(error)[0], "rate_limit")
+        # 真的沒有額度仍然是 no_credit（test_agent 鎖住的另一句）
+        self.assertEqual(providers.explain(RuntimeError("HTTP 429: You exceeded your current quota, please check your plan and billing details"))[0], "no_credit")
+
+    def test_question_markers_do_not_match_ren_he(self):
+        from apps.vision.agent import api as agent_api
+
+        self.assertFalse(any(m in "工件可能轉到任何位置" for m in agent_api._QUESTION_MARKERS))
+        self.assertTrue(any(m in "批次測試與 golden set 有何不同" for m in agent_api._QUESTION_MARKERS))
+
+    def test_candidate_regions_follow_the_ring_edges(self):
+        image = cup_image()
+
+        def region(text, index=0):
+            out = tasklist.propose(text, "zh-Hant", base_graph(), providers.AgentSettings(), image=image)
+            return out["drafts"][0]["regions"][index]["region"] if out["drafts"][0]["regions"] else None
+
+        outer = region("量外徑 35±0.2 px")
+        self.assertLess(abs(outer["cx"] - 400) + abs(outer["cy"] - 300), 3)
+        self.assertTrue(150 < outer["r_inner"] < 199 and outer["r_outer"] > 201, outer)
+        inner = region("量內徑 26±0.2 px")
+        self.assertTrue(inner["r_inner"] < 149 and 151 < inner["r_outer"] < 200, inner)
+        wall = region("壁厚 4.5±0.15 px")
+        self.assertEqual(wall["shape"], "rect")
+        self.assertTrue(wall["x"] < 200 and wall["x"] + wall["w"] > 250 and wall["y"] < 300 < wall["y"] + wall["h"], wall)
+        self.assertIsNone(region("定位工件"), "定位的搜尋區留空＝整張影像")
+
+    def test_placeholder_locator_maps_to_the_only_locate_task(self):
+        graph = inspect.build(base_graph(), {"kind": "locate_part", "task_id": "loc"})
+        draft = tasklist.parse("量外徑 70±0.5 px", graph=graph)[0]
+        draft["fields"]["locator"] = tasklist.cell("locate_part_1", "confirmed", "llm")
+        confirm = {draft["draft_id"]: {"confirmed": True, "fields": {"roi": {"value": {"shape": "circle", "cx": 100, "cy": 100, "r": 40}}}}}
+        out = tasklist.apply(graph, [draft], confirm)
+        self.assertEqual(out["applied"], [draft["draft_id"]], out["skipped"])
+        task = next(t for t in out["tasks"] if t["kind"] == "measure_diameter")
+        self.assertEqual(task["fields"]["locator"], "loc")
+
+
+class Stage15CalibrationTests(TestCase):
+    """標定寫成名稱：提案時轉成資產 id；流程裡真的有名稱時試執行也不能 500（P2）。"""
+
+    def setUp(self):
+        from apps.vision.models import Asset
+
+        self.asset = Asset.objects.create(kind="calibration", name="Cup cal", path="cup-cal.json")
+
+    def test_names_resolve_to_asset_ids(self):
+        graph = inspect.build(base_graph(), {"kind": "measure_diameter", "task_id": "outer", "fields": {"roi": ROI}})
+        drafts = tasklist.parse("把所有任務的標定改成「Cup cal」", graph=graph)
+        self.assertEqual([(d["op"], d["task_id"]) for d in drafts], [("update", "outer")])
+        self.assertEqual(drafts[0]["fields"]["calibration"]["value"], str(self.asset.id))
+        self.assertEqual(drafts[0]["fields"]["unit"]["value"], "mm")
+        unknown = tasklist.parse("所有任務的標定改成 No such calibration", graph=graph)[0]
+        self.assertEqual(unknown["fields"]["calibration"]["status"], "missing")
+
+    def test_preview_with_a_calibration_name_is_not_a_server_error(self):
+        from apps.vision.models import Flow
+
+        graph = inspect.build(base_graph(), {"kind": "measure_diameter", "task_id": "outer", "fields": {"roi": ROI, "calibration": "Cup cal", "unit": "mm"}})
+        flow = Flow.objects.create(name="stage15 calibration name", graph=graph)
+        response = self.client.post(f"/api/vision/flows/{flow.id}/preview", data=json.dumps({"graph": graph}), content_type="application/json")
+        self.assertLess(response.status_code, 500, response.content[:400])
+
     def test_provider_failure_and_field_type_validation(self):
         settings = providers.AgentSettings(provider="openai", api_key="test")
         with mock.patch.object(providers, "complete", side_effect=TimeoutError):

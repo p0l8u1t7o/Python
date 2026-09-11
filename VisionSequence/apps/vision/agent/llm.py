@@ -24,7 +24,7 @@ log = logging.getLogger("vision.agent")
 _MAX_SIDE = 1024
 
 
-def tasklist(settings, message: str, kinds: list[dict], current: dict, history: list, lang: str) -> dict:
+def tasklist(settings, message: str, kinds: list[dict], current: dict, history: list, lang: str, calibrations: list | None = None) -> dict:
     """清單任務只提供核心欄位規格，不允許供應商產生節點或接線。"""
     system = (
         "Translate the request into inspection task proposals. Return JSON only: "
@@ -32,9 +32,10 @@ def tasklist(settings, message: str, kinds: list[dict], current: dict, history: 
         '"task_id":"existing id for update/remove","fields":{"field_key":"value"}}]}. '
         "Never output a graph, nodes, or edges. Use only the supplied field definitions. "
         "Preserve engineering specifications. Do not invent calibration or convert units. "
+        "A calibration field takes the id of one of the supplied calibrations (match the name the user gave); leave it empty when none matches. "
         "All inferred values require user confirmation. Field specifications:\n" + json.dumps(kinds, ensure_ascii=False)
     )
-    text = json.dumps({"message": message, "current": current, "history": history[-6:], "lang": lang}, ensure_ascii=False)
+    text = json.dumps({"message": message, "current": current, "calibrations": calibrations or [], "history": history[-6:], "lang": lang}, ensure_ascii=False)
     return parse_reply(providers.complete(settings, system, [], text, json_mode=True))
 
 

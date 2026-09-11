@@ -1,6 +1,7 @@
 /** 清單卡只編輯提案；送出時使用頁面當下的圖並防止非同步覆蓋新變更。 */
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { Button } from '@/components/ui'
 import { ParamField } from '@/components/editor/ParamField'
 import { api } from '@/lib/api'
@@ -9,6 +10,28 @@ import { errorMessage } from '@/lib/errors'
 import { useInspectKinds } from '@/lib/queries'
 import { inspectionParam } from '@/lib/inspect'
 import type { FlowGraph, InspectKind, InspectTask, Region, TaskDraft } from '@/lib/types'
+
+const TASKLIST_MESSAGES: Record<string, string> = {
+  'Choose one image source before adding tasks.': 'errors.source',
+  'Select a calibration before using millimetres.': 'errors.calibration',
+  'Choose the locate task to use.': 'errors.locator',
+  'Other tasks or steps depend on this task.': 'errors.dependency',
+  'Select an existing task of this kind.': 'errors.task',
+  'Several tasks match. Say which item to change, for example "item 2".': 'errors.ambiguous',
+  'Some proposed fields need valid values or additional information.': 'warnings.missing',
+  'An explicit value from your request was preserved.': 'warnings.preserved',
+}
+
+/** 後端的清單訊息是英文正本；認得的換成介面語言，其餘原樣顯示（階段 15：繁中介面出現英文且重複六次）。 */
+export function tasklistMessage(t: TFunction, text: string): string {
+  const required = /^Confirm required fields: (.+)$/.exec(text)
+  if (required) return t('assistant.tasklist.errors.required', { fields: required[1] })
+  const invalid = /^Provide a valid value for '(.+)'\.$/.exec(text)
+  if (invalid) return t('assistant.tasklist.errors.value', { field: invalid[1] })
+  if (TASKLIST_MESSAGES[text]) return t(`assistant.tasklist.${TASKLIST_MESSAGES[text]}`)
+  if (text.includes('offline parser')) return t(text.includes('request limit') ? 'assistant.tasklist.warnings.rateLimit' : 'assistant.tasklist.warnings.offline')
+  return text
+}
 
 export function mergeDraft(draft: TaskDraft, key: string, value: unknown): TaskDraft {
   return { ...draft, fields: { ...draft.fields, [key]: { value, status: 'confirmed', source: 'user', note: '' } },
@@ -91,12 +114,12 @@ export function TaskListCard({ drafts, flowId, context, onChange, kinds: supplie
       }, undefined, control.signal)
       const current = getAssistantContext()
       if (current?.flowId !== flowId || JSON.stringify(current.getGraph?.()) !== signature) throw new Error(t('assistant.tasklist.changed'))
-      if (out.skipped.length) { setError(out.skipped.map((s) => s.reason).join(' ')); return }
+      if (out.skipped.length) { setError(out.skipped.map((s) => tasklistMessage(t, s.reason)).join(' ')); return }
       current.applyGraph?.(out.graph, '')
       current.showProposals?.([])
       if (flowId) publishAssistantProgress(flowId, {}, `Confirmed ${draft.op} proposal: ${draft.kind}.`)
       onChange(drafts.filter((d) => d.draft_id !== draft.draft_id))
-    } catch (e) { if (!control.signal.aborted) setError(errorMessage(e)) } finally { setBusy(false) }
+    } catch (e) { if (!control.signal.aborted) setError(tasklistMessage(t, errorMessage(e))) } finally { setBusy(false) }
   }
   return <div className="space-y-2" data-testid="assistant-tasklist">
     <p className="text-xs text-muted">{t('assistant.tasklist.review')}</p>
@@ -115,7 +138,7 @@ export function TaskListCard({ drafts, flowId, context, onChange, kinds: supplie
             {value.note && <p className="text-[11px] text-muted">{t(`assistant.tasklist.notes.${key === 'unit' ? value.status === 'missing' ? 'calibration' : 'unit' : spec?.kind === 'roi' ? 'region' : value.status === 'missing' ? 'missing' : 'assumed'}`)}</p>}
           </div>
         })}
-        {draft.note && <p className="text-xs">{draft.note}</p>}
+        {draft.note && <p className="text-xs">{tasklistMessage(t, draft.note)}</p>}
         <div className="flex flex-wrap gap-2">
           {draft.regions.length > 0 && <Button size="xs" disabled={!sameFlow || !context.showProposals} onClick={() => show(draft)}>{t('assistant.tasklist.show')}</Button>}
           <Button size="xs" variant="primary" disabled={busy || !sameFlow || draft.op === 'answer' || (draft.op === 'run' ? !context.runInspection || context.execLocked : !context.applyGraph)} onClick={() => void apply(draft)}>{t(draft.op === 'run' ? 'assistant.tasklist.ops.run' : 'assistant.tasklist.confirm')}</Button>

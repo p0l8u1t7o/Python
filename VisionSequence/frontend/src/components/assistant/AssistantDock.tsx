@@ -10,7 +10,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowRight, Bot, Brain, Camera, Check, ExternalLink, Eye, EyeOff, History, Lightbulb, Monitor, MonitorOff, Plus, Send, Sparkles, Square, ThumbsDown, ThumbsUp, Trash2, X } from 'lucide-react'
 
 import { AgentTimeline } from '@/components/agent/AgentTimeline'
-import { TaskListCard } from './TaskListCard'
+import { TaskListCard, tasklistMessage } from './TaskListCard'
 import { DecisionNotes } from '@/components/notes/DecisionNotes'
 import { draftProgress, ResumeCard, ResumeQuestions } from './ResumeCard'
 import { Badge, Button } from '@/components/ui'
@@ -623,7 +623,7 @@ export function AssistantDock() {
                   setWorkState((old) => ({ ...old, ...draftProgress(next.flatMap((entry) => entry.tasklist?.flowId === boundFlow ? entry.tasklist.drafts : [])) }))
                 }} /> : null}
                 {m.provider ? <p className="mt-1 text-[10px] text-subtle">{m.provider}{m.kind ? ` · ${t(`assistant.mode.${m.kind}`)}` : ''}</p> : null}
-                {m.warnings?.length ? <ul className="mt-1 list-disc pl-4 text-[11px] text-warning">{m.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul> : null}
+                {m.warnings?.length ? <ul className="mt-1 list-disc pl-4 text-[11px] text-warning">{m.warnings.map((w, i) => <li key={i}>{m.kind === 'tasklist' ? tasklistMessage(t, w) : w}</li>)}</ul> : null}
                 {m.sources?.length ? (
                   <ul className="mt-1.5 space-y-0.5 border-t border-line pt-1.5 text-[11px]">
                     <li className="font-semibold text-muted">{t('assistant.sources')}</li>

@@ -272,7 +272,11 @@ def explain(exc: BaseException, timeout: float = TEST_TIMEOUT) -> tuple[str, str
         hint = re.search(r"use models/([\w.\-]+)", msg)
         suggested = f"; the provider suggests {hint.group(1)}" if hint else ""
         return "bad_model", f"That model does not exist, is retired, or is not available to this key{suggested}: {msg[:140]}"
-    # 額度用完與速率限制都是 429，但要做的事完全不同（儲值 vs 等一下再試）
+    # 額度用完與速率限制都是 429，但要做的事完全不同（儲值 vs 等一下再試）。
+    # Gemini 免費方案的次數上限也寫「exceeded your current quota…billing」，但帶著 free_tier／limit: N／retry in，那是等一下就好
+    if ("429" in msg or "quota" in low or "resource_exhausted" in low) and (
+            "free_tier" in low or "retry in" in low or "retrydelay" in low or re.search(r"limit:\s*\d+", low) or "per minute" in low or "per day" in low):
+        return "rate_limit", f"The provider's request limit is used up for now (free tier or per-minute quota): wait and try again, or use a paid plan ({detail})"
     if "no credits" in low or "insufficient_quota" in low or "insufficient quota" in low or "exceeded your current quota" in low or "billing" in low or "credit balance" in low:
         return "no_credit", f"The account has no credit left: top it up with the provider, then try again ({detail})"
     if "429" in msg or "rate" in low and "limit" in low:
