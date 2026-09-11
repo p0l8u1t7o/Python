@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -190,6 +192,14 @@ def register(definition: TaskDefinition) -> TaskDefinition:
     key = (definition.kind, definition.version)
     if key in _REGISTRY:
         raise RuntimeError(f"Task definition '{definition.kind}' v{definition.version} is already registered")
+    # 說明文字：罐頭句換成「什麼時候用它」、沒有說明的欄位補一句（tasks/help.py；工具帶的說明不動）
+    from apps.vision.tasks import help as task_help  # 延後 import：help 只有字典，避免循環
+
+    definition = dataclasses.replace(
+        definition,
+        help_text=task_help.kind_help(definition.kind, definition.help_text),
+        fields={k: dataclasses.replace(f, help_text=task_help.field_help(definition.kind, k, f.help_text)) for k, f in definition.fields.items()},
+    )
     for role, tool_key in definition.roles.items():
         if not role or not tool_key:
             raise RuntimeError("Task roles must have a role and a tool key")

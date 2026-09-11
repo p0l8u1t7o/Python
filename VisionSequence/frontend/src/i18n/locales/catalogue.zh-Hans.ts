@@ -7,644 +7,661 @@
  */
 export default {
   inspectKinds: {
-  "measure_diameter": {
-    "label": "测量直径",
-    "help": "查找圆形边缘，并根据规格检查直径或真圆度。",
-    "fields": {
-      "mode": {
-        "label": "模式",
-        "options": {
-          "check": "直径",
-          "roundness": "真圆度"
-        }
-      },
-      "roi": {
-        "label": "检测区域",
-        "help": "在目标边缘周围绘制圆形或环形搜索区域。"
-      },
-      "edge": {
-        "label": "测量边缘",
-        "options": {
-          "outer": "外缘",
-          "inner": "内缘"
-        }
-      },
-      "polarity": {
-        "label": "边缘极性",
-        "options": {
-          "any": "任意",
-          "dark_to_light": "暗到亮",
-          "light_to_dark": "亮到暗"
-        }
-      },
-      "calibration": {
-        "label": "标定",
-        "help": "可选；留空时使用像素测量。"
-      },
-      "nominal": {
-        "label": "标称值"
-      },
-      "upper_tol": {
-        "label": "上公差"
-      },
-      "lower_tol": {
-        "label": "下公差"
-      },
-      "unit": {
-        "label": "单位",
-        "options": {
-          "px": "像素",
-          "mm": "毫米"
-        }
-      },
-      "result_name": {
-        "label": "结果名称",
-        "help": "执行结果中使用的名称。"
-      },
-      "required": {
-        "label": "必要任务",
-        "help": "必要任务会纳入检测汇总。"
-      },
-      "locator": {
-        "label": "定位任务",
-        "help": "可选；用于位置修正的定位任务。"
-      },
-      "num_rays": {
-        "label": "扫描线数"
-      },
-      "method": {
-        "label": "定位方式",
-        "options": {
-          "template": "模板",
-          "shape": "形状模型",
-          "register": "注册示例"
+    "check_presence": {
+      "label": "检查有无",
+      "help": "检查零件或特征在不在：比对参考图像、找亮／暗物体，或检测印字。适用漏锁螺丝、缺标签、缺盖、漏印。",
+      "fields": {
+        "method": {
+          "label": "方式",
+          "help": "模板：比对参考图像。物体：找亮或暗物体。印字：找印刷文字。",
+          "options": {
+            "template": "模板",
+            "blob": "对象",
+            "print": "印字"
+          }
         },
-        "help": "形状与注册示例定位将在后续版本提供。"
-      },
-      "template_images": {
-        "label": "定位标记",
-        "help": "从示教工件裁剪出的固定参考图像。"
-      },
-      "threshold": {
-        "label": "分数阈值"
-      },
-      "allow_rotation": {
-        "label": "允许旋转"
-      },
-      "angle_range": {
-        "label": "旋转范围"
-      },
-      "ref_x": {
-        "label": "参考 X"
-      },
-      "ref_y": {
-        "label": "参考 Y"
-      },
-      "ref_angle": {
-        "label": "参考角度"
-      }
-    }
-  },
-  "locate_part": {
-    "label": "定位工件",
-    "help": "查找示教模板，提供下游任务的位置修正。",
-    "fields": {
-      "mode": {
-        "label": "模式",
-        "options": {
-          "check": "直径",
-          "roundness": "真圆度"
-        }
-      },
-      "roi": {
-        "label": "检测区域",
-        "help": "留空时搜索整张图像。"
-      },
-      "edge": {
-        "label": "测量边缘",
-        "options": {
-          "outer": "外缘",
-          "inner": "内缘"
-        }
-      },
-      "polarity": {
-        "label": "边缘极性",
-        "options": {
-          "any": "任意",
-          "dark_to_light": "暗到亮",
-          "light_to_dark": "亮到暗"
-        }
-      },
-      "calibration": {
-        "label": "标定",
-        "help": "可选；留空时使用像素测量。"
-      },
-      "nominal": {
-        "label": "标称值"
-      },
-      "upper_tol": {
-        "label": "上公差"
-      },
-      "lower_tol": {
-        "label": "下公差"
-      },
-      "unit": {
-        "label": "单位",
-        "options": {
-          "px": "像素",
-          "mm": "毫米"
-        }
-      },
-      "result_name": {
-        "label": "结果名称",
-        "help": "执行结果中使用的名称。"
-      },
-      "required": {
-        "label": "必要任务",
-        "help": "必要任务会纳入检测汇总。"
-      },
-      "locator": {
-        "label": "定位任务",
-        "help": "可选；用于位置修正的定位任务。"
-      },
-      "num_rays": {
-        "label": "扫描线数"
-      },
-      "method": {
-        "label": "定位方式",
-        "options": {
-          "template": "模板",
-          "shape": "形状模型",
-          "register": "注册示例"
+        "roi": {
+          "label": "检测区域",
+          "help": "在图像上框出要检测的范围；贴近目标、避开背景。"
         },
-        "help": "选择模板、形状模型或注册图像定位。"
-      },
-      "template_images": {
-        "label": "定位标记",
-        "help": "从示教工件裁剪出的固定参考图像。"
-      },
-      "threshold": {
-        "label": "分数阈值"
-      },
-      "allow_rotation": {
-        "label": "允许旋转"
-      },
-      "angle_range": {
-        "label": "旋转范围"
-      },
-      "ref_x": {
-        "label": "参考 X"
-      },
-      "ref_y": {
-        "label": "参考 Y"
-      },
-      "ref_angle": {
-        "label": "参考角度"
-      },
-      "model": {
-        "label": "形状模型"
+        "expected": {
+          "label": "期望内容",
+          "help": "应存在：必须找到。应不存在：找到即 NG。",
+          "options": {
+            "present": "应存在",
+            "absent": "应不存在"
+          }
+        },
+        "template_images": {
+          "label": "参考图像",
+          "help": "要找的物体图像，从良品裁切。"
+        },
+        "threshold": {
+          "label": "分数阈值",
+          "help": "分数 0～1，低于此值不算匹配。"
+        },
+        "threshold_method": {
+          "label": "阈值方式",
+          "help": "像素分成目标与背景的方式；「自动」适合大多数光照。",
+          "options": {
+            "otsu": "自动",
+            "fixed": "固定",
+            "hysteresis": "双阈值",
+            "soft": "柔和阈值",
+            "none": "不处理"
+          }
+        },
+        "blob_threshold": {
+          "label": "亮度阈值",
+          "help": "固定方式的灰度阈值（0～255）；自动时不用。"
+        },
+        "polarity": {
+          "label": "目标极性",
+          "help": "物体比背景亮还是暗。",
+          "options": {
+            "bright": "亮",
+            "dark": "暗"
+          }
+        },
+        "min_area": {
+          "label": "最小面积",
+          "help": "小于此面积的物体忽略（像素）。"
+        },
+        "max_area": {
+          "label": "最大面积",
+          "help": "0 表示不限。"
+        },
+        "print_polarity": {
+          "label": "印字极性",
+          "help": "亮底暗字，或暗底亮字。",
+          "options": {
+            "dark": "暗",
+            "bright": "亮"
+          }
+        },
+        "min_ratio": {
+          "label": "笔画比例下限",
+          "help": "区域内油墨覆盖比例至少要到此值才算有印字。"
+        },
+        "max_ratio": {
+          "label": "笔画比例上限",
+          "help": "高于此值视为糊印或整片实心。"
+        },
+        "required": {
+          "label": "必要任务",
+          "help": "必要任务会纳入检测汇总；未通过即整次 NG。"
+        },
+        "locator": {
+          "label": "定位任务",
+          "help": "可选；把该定位任务的位置修正应用到此任务的区域。"
+        }
+      }
+    },
+    "count_objects": {
+      "label": "计数",
+      "help": "计算区域内亮或暗物体的数量，并检查是否落在最少与最多之间。适用针脚、孔、药片、盘中零件。",
+      "fields": {
+        "roi": {
+          "label": "检测区域",
+          "help": "在图像上框出要检测的范围；贴近目标、避开背景。"
+        },
+        "threshold_method": {
+          "label": "阈值方式",
+          "help": "像素分成目标与背景的方式；「自动」适合大多数光照。",
+          "options": {
+            "otsu": "自动",
+            "fixed": "固定",
+            "hysteresis": "双阈值",
+            "soft": "柔和阈值",
+            "none": "不处理"
+          }
+        },
+        "threshold": {
+          "label": "阈值",
+          "help": "固定方式的灰度阈值（0～255）；自动时不用。"
+        },
+        "polarity": {
+          "label": "目标极性",
+          "help": "物体比背景亮还是暗。",
+          "options": {
+            "bright": "亮",
+            "dark": "暗"
+          }
+        },
+        "min_area": {
+          "label": "最小面积",
+          "help": "小于此面积的物体忽略（像素）。"
+        },
+        "max_area": {
+          "label": "最大面积",
+          "help": "0 表示不限。"
+        },
+        "min_circularity": {
+          "label": "圆形度下限",
+          "help": "4πA/P²，正圆为 1；调高可排除细长形状。"
+        },
+        "min_count": {
+          "label": "最少数量",
+          "help": "少于此数即 NG。"
+        },
+        "max_count": {
+          "label": "最多数量",
+          "help": "多于此数即 NG。"
+        },
+        "result_name": {
+          "label": "结果名称",
+          "help": "执行结果中使用的名称（英数与下划线）。"
+        },
+        "required": {
+          "label": "必要任务",
+          "help": "必要任务会纳入检测汇总；未通过即整次 NG。"
+        },
+        "locator": {
+          "label": "定位任务",
+          "help": "可选；把该定位任务的位置修正应用到此任务的区域。"
+        }
+      }
+    },
+    "inspect_circular_surface": {
+      "label": "圆周表面检测",
+      "help": "把环形（杯口、瓶口、轴承滚道）展开成直条，沿其边缘找缺口、断裂与毛边。",
+      "fields": {
+        "roi": {
+          "label": "检测区域",
+          "help": "画一个盖住环形边缘的环域；内外半径就是搜索范围。"
+        },
+        "direction": {
+          "label": "方向",
+          "help": "带状区在屏幕上是沿哪个方向绕行。",
+          "options": {
+            "ccw": "逆时针",
+            "cw": "顺时针"
+          }
+        },
+        "start_angle": {
+          "label": "起始角度",
+          "help": "带状区左缘所在的位置（0＝3 点钟方向，正值＝顺时针）。"
+        },
+        "polarity": {
+          "label": "目标极性",
+          "help": "沿扫描方向，环形边缘的明暗变化。",
+          "options": {
+            "any": "不限",
+            "dark_to_light": "暗到亮",
+            "light_to_dark": "亮到暗"
+          }
+        },
+        "threshold": {
+          "label": "阈值",
+          "help": "边缘偏离理想环多远才算缺陷（px）。"
+        },
+        "max_defects": {
+          "label": "允许缺陷数",
+          "help": "0 表示任何缺陷都判 NG。"
+        },
+        "min_length": {
+          "label": "最短缺陷长度",
+          "help": "所有缺陷均适用，包括断裂。弧长以教导环域的中线半径计算。"
+        },
+        "unit": {
+          "label": "长度单位",
+          "help": "沿环的角度，或选了标定后以毫米计。",
+          "options": {
+            "deg": "角度",
+            "mm": "毫米"
+          }
+        },
+        "calibration": {
+          "label": "标定",
+          "help": "可选；留空时以像素测量。"
+        },
+        "defect_direction": {
+          "label": "缺陷方向",
+          "help": "向内＝缺料（缺口、断裂）；向外＝多料（毛边）。",
+          "options": {
+            "both": "双向",
+            "inward": "向内缺料",
+            "outward": "向外凸出"
+          }
+        },
+        "result_name": {
+          "label": "结果名称",
+          "help": "执行结果中使用的名称（英数与下划线）。"
+        },
+        "search": {
+          "label": "搜索范围",
+          "help": "每把卡尺在理想边缘两侧各搜索多远（px）。"
+        },
+        "geometry": {
+          "label": "缺陷位置表示",
+          "help": "每个缺陷交给下游的表示法：中心点、外框或起止点。",
+          "options": {
+            "centres": "中心点",
+            "boxes": "外框",
+            "spans": "起止点"
+          }
+        },
+        "required": {
+          "label": "必要任务",
+          "help": "必要任务会纳入检测汇总；未通过即整次 NG。"
+        },
+        "locator": {
+          "label": "定位任务",
+          "help": "可选；把该定位任务的位置修正应用到此任务的区域。"
+        }
+      }
+    },
+    "inspect_edge_defect": {
+      "label": "边缘缺陷检测",
+      "help": "沿直线、圆弧或教导轮廓布卡尺，报告实际边缘偏离理想边缘之处：缺口、毛边、断裂；成对模式另可检查胶道宽度。",
+      "fields": {
+        "method": {
+          "label": "方式",
+          "help": "直线或圆弧：由绘制的区域或接入的直线／圆形决定。自由轮廓：从良品教导的轮廓。",
+          "options": {
+            "simple": "直线或圆弧",
+            "freeform": "自由轮廓"
+          }
+        },
+        "roi": {
+          "label": "检测区域",
+          "help": "在图像上框出要检测的范围；贴近目标、避开背景。"
+        },
+        "reference": {
+          "label": "参考几何来源",
+          "help": "可选上游直线或圆形来源；连线优先于绘制的区域。"
+        },
+        "mode": {
+          "label": "模式",
+          "help": "单边：一条边。成对：两条平行边与其间的带状区（密封条、胶道）。",
+          "options": {
+            "single": "单边",
+            "pair": "成对"
+          }
+        },
+        "polarity": {
+          "label": "目标极性",
+          "help": "横越边缘扫描时，哪种明暗变化算作边缘。",
+          "options": {
+            "any": "不限",
+            "dark_to_light": "暗到亮",
+            "light_to_dark": "亮到暗"
+          }
+        },
+        "pair_polarity": {
+          "label": "带状区域极性",
+          "help": "两条边之间的带状区域比周围亮还是暗。",
+          "options": {
+            "any": "不限",
+            "bright": "亮",
+            "dark": "暗"
+          }
+        },
+        "search": {
+          "label": "搜索范围",
+          "help": "每把卡尺在理想边缘两侧各搜索多远（px）。"
+        },
+        "threshold": {
+          "label": "阈值",
+          "help": "分数 0～1，低于此值不算匹配。"
+        },
+        "min_width": {
+          "label": "最小缺陷宽度",
+          "help": "至少连续这么多把卡尺才算缺陷，避免单把卡尺的噪声。"
+        },
+        "direction": {
+          "label": "方向",
+          "help": "理想边缘的哪一侧算缺陷。",
+          "options": {
+            "both": "两侧",
+            "inward": "向内",
+            "outward": "向外"
+          }
+        },
+        "width_min": {
+          "label": "宽度下限",
+          "help": "0 表示不检查。"
+        },
+        "width_max": {
+          "label": "宽度上限",
+          "help": "0 表示不检查。"
+        },
+        "max_defects": {
+          "label": "允许缺陷数",
+          "help": "0 表示任何缺陷都判 NG。"
+        },
+        "baseline": {
+          "label": "理想边缘",
+          "help": "「拟合」适合会位移的工件；「区域本身」适合边缘必须固定在一处的治具。",
+          "options": {
+            "fit": "拟合",
+            "median": "中位数",
+            "reference": "参考几何"
+          }
+        },
+        "model": {
+          "label": "轮廓模型",
+          "help": "从良品教导的轮廓；可从当前图像教导。"
+        },
+        "required": {
+          "label": "必要任务",
+          "help": "必要任务会纳入检测汇总；未通过即整次 NG。"
+        },
+        "locator": {
+          "label": "定位任务",
+          "help": "可选；把该定位任务的位置修正应用到此任务的区域。"
+        }
+      }
+    },
+    "locate_part": {
+      "label": "定位工件",
+      "help": "查找示教模板，提供下游任务的位置修正。",
+      "fields": {
+        "method": {
+          "label": "定位方式",
+          "help": "模板：比对裁切下来的标记图像。形状模型：以边缘为基础的形状模型。注册示例：已注册的参考图像。",
+          "options": {
+            "template": "模板",
+            "shape": "形状模型",
+            "register": "注册示例"
+          }
+        },
+        "roi": {
+          "label": "检测区域",
+          "help": "留空时搜索整张图像。"
+        },
+        "template_images": {
+          "label": "定位标记",
+          "help": "从教导工件裁切出的固定参考图像。"
+        },
+        "model": {
+          "label": "形状模型",
+          "help": "从标记教导出的形状模型资产。"
+        },
+        "threshold": {
+          "label": "分数阈值",
+          "help": "最低匹配分数 0～1；低于此值视为定位失败。"
+        },
+        "allow_rotation": {
+          "label": "允许旋转",
+          "help": "也搜索旋转后的位置；较慢，但工件可能转动时必须开启。"
+        },
+        "angle_range": {
+          "label": "旋转范围",
+          "help": "搜索的最大旋转角，正负各此角度。"
+        },
+        "ref_x": {
+          "label": "参考 X",
+          "help": "标记的教导 X 位置；第一次试执行后按「教导姿态」设置。"
+        },
+        "ref_y": {
+          "label": "参考 Y",
+          "help": "标记的教导 Y 位置；第一次试执行后按「教导姿态」设置。"
+        },
+        "ref_angle": {
+          "label": "参考角度",
+          "help": "标记的教导角度；第一次试执行后按「教导姿态」设置。"
+        },
+        "required": {
+          "label": "必要任务",
+          "help": "必要任务会纳入检测汇总。"
+        }
+      }
+    },
+    "measure_diameter": {
+      "label": "测量直径",
+      "help": "查找圆形边缘，并根据规格检查直径或真圆度。",
+      "fields": {
+        "mode": {
+          "label": "模式",
+          "help": "按规格检查直径，或检查边缘的圆度。",
+          "options": {
+            "check": "直径",
+            "roundness": "真圆度"
+          }
+        },
+        "roi": {
+          "label": "检测区域",
+          "help": "在目标边缘周围绘制圆形或环形搜索区域。"
+        },
+        "edge": {
+          "label": "测量边缘",
+          "help": "测量环的外缘或内缘。",
+          "options": {
+            "outer": "外缘",
+            "inner": "内缘"
+          }
+        },
+        "polarity": {
+          "label": "边缘极性",
+          "help": "由中心向外扫描时，哪种明暗变化算作边缘。",
+          "options": {
+            "any": "任意",
+            "dark_to_light": "暗到亮",
+            "light_to_dark": "亮到暗"
+          }
+        },
+        "calibration": {
+          "label": "标定",
+          "help": "可选；留空时使用像素测量。"
+        },
+        "nominal": {
+          "label": "标称值",
+          "help": "图纸上的目标值。"
+        },
+        "upper_tol": {
+          "label": "上公差",
+          "help": "有符号；上限＝标称值＋此值。"
+        },
+        "lower_tol": {
+          "label": "下公差",
+          "help": "有符号，通常为负；下限＝标称值＋此值。"
+        },
+        "unit": {
+          "label": "单位",
+          "help": "像素，或选了标定后以毫米计。",
+          "options": {
+            "px": "像素",
+            "mm": "毫米"
+          }
+        },
+        "result_name": {
+          "label": "结果名称",
+          "help": "执行结果中使用的名称。"
+        },
+        "required": {
+          "label": "必要任务",
+          "help": "必要任务会纳入检测汇总。"
+        },
+        "locator": {
+          "label": "定位任务",
+          "help": "可选；用于位置修正的定位任务。"
+        },
+        "num_rays": {
+          "label": "扫描线数",
+          "help": "圆周上的扫描线数；越多拟合越稳，但较慢。"
+        }
+      }
+    },
+    "measure_distance": {
+      "label": "测量边距",
+      "help": "测量两条边之间的宽度，或两孔中心的距离，并按标称值与公差判定。",
+      "fields": {
+        "mode": {
+          "label": "模式",
+          "help": "边对：同一区域内两条边的宽度。两孔中心：区域 A 与 B 各找到一个孔，测量两孔中心的距离。",
+          "options": {
+            "edge_pair": "边对",
+            "hole_centres": "两孔中心"
+          }
+        },
+        "roi": {
+          "label": "检测区域",
+          "help": "在图像上框出要检测的范围；贴近目标、避开背景。"
+        },
+        "roi_a": {
+          "label": "孔 A 区域",
+          "help": "围住孔 A 的圆形或环形区域。"
+        },
+        "roi_b": {
+          "label": "孔 B 区域",
+          "help": "围住孔 B 的圆形或环形区域。"
+        },
+        "polarity": {
+          "label": "目标极性",
+          "help": "沿扫描方向，哪种明暗变化算作边缘。",
+          "options": {
+            "any": "不限",
+            "dark_to_light": "暗到亮",
+            "light_to_dark": "亮到暗"
+          }
+        },
+        "edge_pair": {
+          "label": "边对选择",
+          "help": "找到多条边时要测量哪一对。",
+          "options": {
+            "first_last": "第一条与最后一条",
+            "widest": "最宽",
+            "narrowest": "最窄",
+            "strongest": "最强"
+          }
+        },
+        "pair_polarity": {
+          "label": "带状区域极性",
+          "help": "两条边之间的带状区域比周围亮还是暗。",
+          "options": {
+            "any": "不限",
+            "bright": "亮",
+            "dark": "暗"
+          }
+        },
+        "nominal": {
+          "label": "标称值",
+          "help": "图纸上的目标值。"
+        },
+        "upper_tol": {
+          "label": "上公差",
+          "help": "有符号；上限＝标称值＋此值。"
+        },
+        "lower_tol": {
+          "label": "下公差",
+          "help": "有符号，通常为负；下限＝标称值＋此值。"
+        },
+        "unit": {
+          "label": "单位",
+          "help": "像素，或选了标定后以毫米计。",
+          "options": {
+            "px": "像素",
+            "mm": "毫米"
+          }
+        },
+        "result_name": {
+          "label": "结果名称",
+          "help": "执行结果中使用的名称（英数与下划线）。"
+        },
+        "calibration": {
+          "label": "标定",
+          "help": "可选；留空时以像素测量。"
+        },
+        "required": {
+          "label": "必要任务",
+          "help": "必要任务会纳入检测汇总；未通过即整次 NG。"
+        },
+        "locator": {
+          "label": "定位任务",
+          "help": "可选；把该定位任务的位置修正应用到此任务的区域。"
+        }
+      }
+    },
+    "read_and_verify": {
+      "label": "读取与验证",
+      "help": "读取区域内的条码、二维码或印字，并与期望内容比对。",
+      "fields": {
+        "mode": {
+          "label": "模式",
+          "help": "条码：读一维或二维码。文字：读印刷字符。",
+          "options": {
+            "code": "条码",
+            "text": "文字"
+          }
+        },
+        "roi": {
+          "label": "检测区域",
+          "help": "在图像上框出要检测的范围；贴近目标、避开背景。"
+        },
+        "types": {
+          "label": "码制",
+          "help": "只解某一类码，较快也较不易误读。",
+          "options": {
+            "all": "全部",
+            "qr": "QR 码",
+            "2d": "二维码",
+            "1d": "一维码"
+          }
+        },
+        "expected": {
+          "label": "期望内容",
+          "help": "读到的内容必须与此相符；留空表示读得到就通过。"
+        },
+        "font_model": {
+          "label": "字体模型",
+          "help": "留空＝内置通用模型；教导字体（.npz）改走分割加逐字分类。"
+        },
+        "charset": {
+          "label": "字符集",
+          "help": "可能出现的字符；限缩可提高识别正确率。",
+          "options": {
+            "alnum": "英数字",
+            "digits": "数字",
+            "upper": "大写字母与数字",
+            "any": "不限",
+            "custom": "自定义"
+          }
+        },
+        "custom_charset": {
+          "label": "自定义字符集",
+          "help": "可能出现的每一个字符，例如 0123456789ABCDEF-。"
+        },
+        "polarity": {
+          "label": "目标极性",
+          "help": "亮底暗字，或暗底亮字。",
+          "options": {
+            "dark_on_light": "亮底暗字",
+            "light_on_dark": "暗底亮字"
+          }
+        },
+        "min_confidence": {
+          "label": "最低置信度",
+          "help": "有一个字符低于此置信度，整次读取就算未找到。"
+        },
+        "pattern": {
+          "label": "位置样板",
+          "help": "N＝数字、A＝字母、X＝任意，其他字符必须逐字相符；留空不检查。"
+        },
+        "verify_mode": {
+          "label": "比对方式",
+          "help": "完全相同：一字不差。包含：期望内容出现在读值里。正则表达式：以规则比对。",
+          "options": {
+            "exact": "完全相同",
+            "contains": "包含",
+            "regex": "正则表达式"
+          }
+        },
+        "result_name": {
+          "label": "结果名称",
+          "help": "执行结果中使用的名称（英数与下划线）。"
+        },
+        "required": {
+          "label": "必要任务",
+          "help": "必要任务会纳入检测汇总；未通过即整次 NG。"
+        },
+        "locator": {
+          "label": "定位任务",
+          "help": "可选；把该定位任务的位置修正应用到此任务的区域。"
+        }
       }
     }
   },
-  "check_presence": {
-    "label": "检查有无",
-    "help": "使用当前图像设置并执行此检测。",
-    "fields": {
-      "method": {
-        "label": "方式",
-        "options": {
-          "template": "模板",
-          "blob": "对象",
-          "print": "印字"
-        }
-      },
-      "roi": {
-        "label": "检测区域"
-      },
-      "expected": {
-        "label": "期望内容",
-        "options": {
-          "present": "应存在",
-          "absent": "应不存在"
-        }
-      },
-      "template_images": {
-        "label": "参考图像"
-      },
-      "threshold": {
-        "label": "阈值"
-      },
-      "threshold_method": {
-        "label": "阈值方式",
-        "options": {
-          "otsu": "自动",
-          "fixed": "固定",
-          "hysteresis": "双阈值",
-          "soft": "柔和阈值",
-          "none": "不处理"
-        }
-      },
-      "blob_threshold": {
-        "label": "亮度阈值"
-      },
-      "polarity": {
-        "label": "目标极性",
-        "options": {
-          "bright": "亮",
-          "dark": "暗"
-        }
-      },
-      "min_area": {
-        "label": "最小面积"
-      },
-      "max_area": {
-        "label": "最大面积"
-      },
-      "print_polarity": {
-        "label": "印字极性",
-        "options": {
-          "dark": "暗",
-          "bright": "亮"
-        }
-      },
-      "min_ratio": {
-        "label": "笔画比例下限"
-      },
-      "max_ratio": {
-        "label": "笔画比例上限"
-      },
-      "required": {
-        "label": "必要任务"
-      },
-      "locator": {
-        "label": "定位任务"
-      }
-    }
-  },
-  "count_objects": {
-    "label": "计数",
-    "help": "使用当前图像设置并执行此检测。",
-    "fields": {
-      "roi": {
-        "label": "检测区域"
-      },
-      "threshold_method": {
-        "label": "阈值方式",
-        "options": {
-          "otsu": "自动",
-          "fixed": "固定",
-          "hysteresis": "双阈值",
-          "soft": "柔和阈值",
-          "none": "不处理"
-        }
-      },
-      "threshold": {
-        "label": "阈值"
-      },
-      "polarity": {
-        "label": "目标极性",
-        "options": {
-          "bright": "亮",
-          "dark": "暗"
-        }
-      },
-      "min_area": {
-        "label": "最小面积"
-      },
-      "max_area": {
-        "label": "最大面积"
-      },
-      "min_circularity": {
-        "label": "圆形度下限"
-      },
-      "min_count": {
-        "label": "最少数量"
-      },
-      "max_count": {
-        "label": "最多数量"
-      },
-      "result_name": {
-        "label": "结果名称"
-      },
-      "required": {
-        "label": "必要任务"
-      },
-      "locator": {
-        "label": "定位任务"
-      }
-    }
-  },
-  "inspect_circular_surface": {
-    "label": "圆周表面检测",
-    "help": "使用当前图像设置并执行此检测。",
-    "fields": {
-      "roi": {
-        "label": "检测区域"
-      },
-      "direction": {
-        "label": "方向",
-        "options": {
-          "ccw": "逆时针",
-          "cw": "顺时针"
-        }
-      },
-      "start_angle": {
-        "label": "起始角度"
-      },
-      "polarity": {
-        "label": "目标极性",
-        "options": {
-          "any": "不限",
-          "dark_to_light": "暗到亮",
-          "light_to_dark": "亮到暗"
-        }
-      },
-      "threshold": {
-        "label": "阈值"
-      },
-      "max_defects": {
-        "label": "允许缺陷数"
-      },
-      "search": {
-        "label": "搜索范围"
-      },
-      "geometry": {
-        "label": "缺陷位置表示",
-        "options": {
-          "centres": "中心点",
-          "boxes": "外框",
-          "spans": "起止点"
-        }
-      },
-      "required": {
-        "label": "必要任务"
-      },
-      "locator": {
-        "label": "定位任务"
-      },
-      "min_length": {
-        "label": "最短缺陷长度",
-        "help": "所有缺陷均适用，包括断裂。弧长以教导环域的中线半径计算。"
-      },
-      "unit": {
-        "label": "长度单位",
-        "options": {
-          "deg": "角度",
-          "mm": "毫米"
-        }
-      },
-      "calibration": {
-        "label": "标定"
-      },
-      "defect_direction": {
-        "label": "缺陷方向",
-        "options": {
-          "both": "双向",
-          "inward": "向内缺料",
-          "outward": "向外凸出"
-        }
-      },
-      "result_name": {
-        "label": "结果名称"
-      }
-    }
-  },
-  "inspect_edge_defect": {
-    "label": "边缘缺陷检测",
-    "help": "使用当前图像设置并执行此检测。",
-    "fields": {
-      "method": {
-        "label": "方式",
-        "options": {
-          "simple": "直线或圆弧",
-          "freeform": "自由轮廓"
-        }
-      },
-      "roi": {
-        "label": "检测区域"
-      },
-      "reference": {
-        "label": "参考几何来源",
-        "help": "可选上游直线或圆形来源；连线优先于绘制的区域。"
-      },
-      "mode": {
-        "label": "模式",
-        "options": {
-          "single": "单边",
-          "pair": "成对"
-        }
-      },
-      "polarity": {
-        "label": "目标极性",
-        "options": {
-          "any": "不限",
-          "dark_to_light": "暗到亮",
-          "light_to_dark": "亮到暗"
-        }
-      },
-      "pair_polarity": {
-        "label": "带状区域极性",
-        "options": {
-          "any": "不限",
-          "bright": "亮",
-          "dark": "暗"
-        }
-      },
-      "search": {
-        "label": "搜索范围"
-      },
-      "threshold": {
-        "label": "阈值"
-      },
-      "min_width": {
-        "label": "最小缺陷宽度"
-      },
-      "direction": {
-        "label": "方向",
-        "options": {
-          "both": "两侧",
-          "inward": "向内",
-          "outward": "向外"
-        }
-      },
-      "width_min": {
-        "label": "宽度下限"
-      },
-      "width_max": {
-        "label": "宽度上限"
-      },
-      "max_defects": {
-        "label": "允许缺陷数"
-      },
-      "baseline": {
-        "label": "理想边缘",
-        "options": {
-          "fit": "拟合",
-          "median": "中位数",
-          "reference": "参考几何"
-        }
-      },
-      "model": {
-        "label": "轮廓模型"
-      },
-      "required": {
-        "label": "必要任务"
-      },
-      "locator": {
-        "label": "定位任务"
-      }
-    }
-  },
-  "measure_distance": {
-    "label": "测量边距",
-    "help": "使用当前图像设置并执行此检测。",
-    "fields": {
-      "mode": {
-        "label": "模式",
-        "options": {
-          "edge_pair": "边对",
-          "hole_centres": "两孔中心"
-        }
-      },
-      "roi": {
-        "label": "检测区域"
-      },
-      "roi_a": {
-        "label": "孔 A 区域"
-      },
-      "roi_b": {
-        "label": "孔 B 区域"
-      },
-      "polarity": {
-        "label": "目标极性",
-        "options": {
-          "any": "不限",
-          "dark_to_light": "暗到亮",
-          "light_to_dark": "亮到暗"
-        }
-      },
-      "edge_pair": {
-        "label": "边对选择",
-        "options": {
-          "first_last": "第一条与最后一条",
-          "widest": "最宽",
-          "narrowest": "最窄",
-          "strongest": "最强"
-        }
-      },
-      "pair_polarity": {
-        "label": "带状区域极性",
-        "options": {
-          "any": "不限",
-          "bright": "亮",
-          "dark": "暗"
-        }
-      },
-      "nominal": {
-        "label": "标称值"
-      },
-      "upper_tol": {
-        "label": "上公差"
-      },
-      "lower_tol": {
-        "label": "下公差"
-      },
-      "unit": {
-        "label": "单位",
-        "options": {
-          "px": "像素",
-          "mm": "毫米"
-        }
-      },
-      "result_name": {
-        "label": "结果名称"
-      },
-      "calibration": {
-        "label": "标定"
-      },
-      "required": {
-        "label": "必要任务"
-      },
-      "locator": {
-        "label": "定位任务"
-      }
-    }
-  },
-  "read_and_verify": {
-    "label": "读取与验证",
-    "help": "使用当前图像设置并执行此检测。",
-    "fields": {
-      "mode": {
-        "label": "模式",
-        "options": {
-          "code": "条码",
-          "text": "文字"
-        }
-      },
-      "roi": {
-        "label": "检测区域"
-      },
-      "types": {
-        "label": "码制",
-        "options": {
-          "all": "全部",
-          "qr": "QR 码",
-          "2d": "二维码",
-          "1d": "一维码"
-        }
-      },
-      "expected": {
-        "label": "期望内容"
-      },
-      "font_model": {
-        "label": "字体模型"
-      },
-      "charset": {
-        "label": "字符集",
-        "options": {
-          "alnum": "英数字",
-          "digits": "数字",
-          "upper": "大写字母与数字",
-          "any": "不限",
-          "custom": "自定义"
-        }
-      },
-      "custom_charset": {
-        "label": "自定义字符集"
-      },
-      "polarity": {
-        "label": "目标极性",
-        "options": {
-          "dark_on_light": "亮底暗字",
-          "light_on_dark": "暗底亮字"
-        }
-      },
-      "min_confidence": {
-        "label": "最低置信度"
-      },
-      "pattern": {
-        "label": "位置样板"
-      },
-      "verify_mode": {
-        "label": "比对方式",
-        "options": {
-          "exact": "完全相同",
-          "contains": "包含",
-          "regex": "正则表达式"
-        }
-      },
-      "result_name": {
-        "label": "结果名称"
-      },
-      "required": {
-        "label": "必要任务"
-      },
-      "locator": {
-        "label": "定位任务"
-      }
-    }
-  }
-},
   dataNames: {
     'Example: camera mapping (A→B)': '示例：相机间映射（A→B）',
     'Example: stereo calibration (conveyor)': '示例：立体标定（输送带）',
