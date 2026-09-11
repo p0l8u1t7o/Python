@@ -211,6 +211,32 @@ describe('pages render (smoke)', () => {
     localStorage.removeItem('vs.editorCollapsed.v1')
   })
 
+  it('FlowEditorPage offers to restore an unsaved draft after a reload', async () => {
+    // PM-REVIEW #3：F5 或分頁當掉以前直接丟掉未儲存的圖；現在髒草稿另存在瀏覽器，同一版才提示還原
+    const { FlowEditorPage } = await import('@/pages/FlowEditorPage')
+    const { clearSession, persistDraft, readPersistedDraft } = await import('@/lib/flowDraft')
+    clearSession(1)
+    const graph = { nodes: [{ id: 'camera', type: 'image_source', params: { source_id: 1 } }], edges: [] }
+    persistDraft(1, { baseVersion: 2, graph, name: 'Restored name', description: '', dirty: true })  // 假後端的流程 1 是 v2
+    const view = renderDataPage(<FlowEditorPage />, '/flows/1', '/flows/:flowId')
+    await screen.findByTestId('editor-toolbar')
+    expect(await screen.findByTestId('draft-restore-banner')).toBeInTheDocument()
+    expect(screen.getByLabelText('Name')).toHaveValue('示範流程')
+    fireEvent.click(screen.getByTestId('draft-restore-apply'))
+    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveValue('Restored name'))
+    expect(screen.queryByTestId('draft-restore-banner')).not.toBeInTheDocument()
+    // 還原後草稿仍在瀏覽器（還沒儲存）；離開頁面時會再寫一次
+    expect(readPersistedDraft(1)).not.toBeNull()
+    view.unmount()
+    clearSession(1)
+    persistDraft(1, { baseVersion: 99, graph, name: 'stale', description: '', dirty: true })
+    renderDataPage(<FlowEditorPage />, '/flows/1', '/flows/:flowId')
+    await screen.findByTestId('editor-toolbar')
+    await waitFor(() => expect(readPersistedDraft(1)).toBeNull())  // 版本對不上（別人存過）：直接丟掉
+    expect(screen.queryByTestId('draft-restore-banner')).not.toBeInTheDocument()
+    clearSession(1)
+  })
+
   it('FlowEditorPage shows the empty-canvas guide on a flow without steps', async () => {
     // PM-REVIEW-R2 P3：建立進階流程後是白紙，引導卡帶三步驟與兩個入口
     const { FlowEditorPage } = await import('@/pages/FlowEditorPage')

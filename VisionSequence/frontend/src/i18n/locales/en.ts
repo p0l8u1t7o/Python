@@ -434,6 +434,7 @@ const en = {
     sourceSection: 'Image source',
     sourcePreviewHint: 'Preview of the current source; test runs use images from this source',
     leaveTitle: 'Leave this page?',
+    draftRestore: { found: 'An unsaved draft from {{time}} was found in this browser.', restore: 'Restore draft', discard: 'Discard', restored: 'Draft restored; save the flow to keep it.' },
     leaveAnyway: 'Discard changes and leave',
     saveAndLeave: 'Save and leave',
     emptyGuide: { title: 'Empty canvas - three steps to a first result', step1: 'Add an image source step and pick a source (or upload a temporary image).', step2: 'Add tools and drag from an output port to the next step\'s input port; a new tool connects to the selected step for you.', step3: 'Press Preview to run the canvas and see every intermediate image.', addTool: 'Add a tool', useTasks: 'Use inspection tasks instead', manual: 'Open the manual' },

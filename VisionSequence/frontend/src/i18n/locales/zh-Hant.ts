@@ -882,6 +882,7 @@ const zhHant = {
     sourceSection: '影像來源',
     sourcePreviewHint: '目前來源的預覽；試執行即以此來源的影像執行',
     leaveTitle: '離開此頁？',
+    draftRestore: { found: '此瀏覽器留有 {{time}} 尚未儲存的草稿。', restore: '還原草稿', discard: '放棄', restored: '已還原草稿；請儲存流程以保留變更。' },
     leaveAnyway: '放棄變更並離開',
     saveAndLeave: '儲存並離開',
     emptyGuide: { title: '空畫布——三步得到第一個結果', step1: '新增「影像來源」步驟並選來源（或上傳暫存影像）。', step2: '新增工具，從輸出埠拖到下一步的輸入埠；新工具會自動接到選取的步驟。', step3: '按「試執行」跑一次畫布，看每一步的中間影像。', addTool: '新增工具', useTasks: '改用檢測任務', manual: '開啟手冊' },

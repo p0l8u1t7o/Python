@@ -52,8 +52,9 @@ import { api, downloadFile, imageUrl } from '@/lib/api'
 import { useConfirm } from '@/lib/useConfirm'
 import { selectVisibleRun } from '@/lib/clearResults'
 import { errorMessage } from '@/lib/errors'
+import { formatDateTime } from '@/lib/format'
 import { createHistory, pushHistory as pushEditHistory, redoHistory, undoHistory } from '@/lib/flowHistory'
-import { settingsOf, type FlowSettings, getSession, setDraft, updateSession, useFlowSession } from '@/lib/flowDraft'
+import { settingsOf, type FlowSettings, type PersistedDraft, clearPersistedDraft, getSession, persistDraft, persistedDraftMatches, readPersistedDraft, setDraft, updateSession, useFlowSession } from '@/lib/flowDraft'
 import { flowGraphSignature, shouldSaveDraftVersion } from '@/lib/flowAutoVersion'
 import { searchNodes } from '@/lib/nodeSearch'
 import { readEditorCollapsedTasks, readEditorEdgeValues, readEditorGridView, readFlowDescriptionPanelCollapsed, readFlowDraftAutoVersion, writeEditorCollapsedTasks, writeEditorEdgeValues, writeEditorGridView, writeFlowDescriptionPanelCollapsed } from '@/lib/localState'
@@ -388,6 +389,8 @@ function EditorInner({ flowId }: { flowId: number }) {
   edgesRef.current = edges
   const history = useRef(createHistory<FlowGraph>(HISTORY_LIMIT))
   const clipboard = useRef<{ nodes: GraphNode[]; edges: GraphEdge[] } | null>(null)
+  /** 瀏覽器裡找到、還沒決定要不要還原的草稿（重新整理保護） */
+  const [storedDraft, setStoredDraft] = useState<PersistedDraft | null>(null)
   const loadedFor = useRef('')
   const saveBaseline = useRef<string | null>(null)
   const lastAutoVersionSignature = useRef<string | null>(null)
@@ -409,6 +412,12 @@ function EditorInner({ flowId }: { flowId: number }) {
     saveBaseline.current = data.updated_at
     const draft = getSession(flowId).draft
     const source = draft && draft.baseVersion === data.version ? draft : null
+    // 記憶體裡沒有草稿（重新整理過）：瀏覽器裡若有同一版的髒草稿就提示還原，版本對不上（別人存過）直接丟掉
+    if (!draft) {
+      const stored = readPersistedDraft(flowId)
+      if (stored && persistedDraftMatches(stored, data)) setStoredDraft(stored)
+      else if (stored) clearPersistedDraft(flowId)
+    }
     const graph = source ? source.graph : data.graph
     payloads.current = new Map((graph.nodes ?? []).map((n) => [n.id, n]))
     setNodes(toFlowNodes(graph, defs))
@@ -436,6 +445,8 @@ function EditorInner({ flowId }: { flowId: number }) {
   )
 
   const markSaved = useCallback((saved: { id: number; version: number; updated_at: string }) => {
+    clearPersistedDraft(saved.id)
+    setStoredDraft(null)
     publishAssistantProgress(saved.id, { flow_updated_at: saved.updated_at, flow_version: saved.version }, 'Flow saved.')
     loadedFor.current = `${saved.id}:${saved.version}`
     saveBaseline.current = saved.updated_at
@@ -674,6 +685,22 @@ function EditorInner({ flowId }: { flowId: number }) {
     window.addEventListener('beforeunload', warn)
     return () => window.removeEventListener('beforeunload', warn)
   }, [dirty])
+  // 髒草稿另存到瀏覽器：離開前一次、編輯中每 5 秒一次（分頁當掉也留得住），儲存成功就清掉
+  const persistNow = useCallback(() => {
+    const l = latest.current
+    if (!l.loaded || !l.dirty) return
+    persistDraft(flowId, { baseVersion: l.version, graph: currentGraph(), name: l.meta.name, description: l.meta.description, settings: l.meta.settings, toolInterface: l.toolInterface, dirty: true }, new Date(), saveBaseline.current ?? undefined)
+  }, [flowId, currentGraph])
+  useEffect(() => {
+    if (!dirty) return
+    const timer = window.setInterval(persistNow, DRAFT_PERSIST_MS)
+    window.addEventListener('beforeunload', persistNow)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('beforeunload', persistNow)
+      persistNow()
+    }
+  }, [dirty, persistNow])
 
   // ---- 編輯操作 ----
   const pushHistory = useCallback(() => {
@@ -699,6 +726,20 @@ function EditorInner({ flowId }: { flowId: number }) {
     toast.success(t('editor.composite.encapsulated', { name: pendingGraph.label }))
     setPendingGraph(null)
   }, [pendingGraph, defs, pushHistory, restoreGraph, toast, t])
+  const restoreStoredDraft = useCallback(() => {
+    const stored = storedDraft
+    if (!stored) return
+    pushHistory()
+    restoreGraph(stored.graph)
+    setMeta({ name: stored.name, description: stored.description, settings: stored.settings ?? (flow.data ? settingsOf(flow.data) : meta.settings) })
+    if (stored.toolInterface) setToolInterface(stored.toolInterface)
+    setStoredDraft(null)
+    toast.success(t('editor.draftRestore.restored'))
+  }, [storedDraft, pushHistory, restoreGraph, flow.data, meta.settings, toast, t])
+  const discardStoredDraft = useCallback(() => {
+    clearPersistedDraft(flowId)
+    setStoredDraft(null)
+  }, [flowId])
 
   const undo = useCallback(() => {
     const previous = undoHistory(history.current, currentGraph())
@@ -1663,6 +1704,13 @@ function EditorInner({ flowId }: { flowId: number }) {
         onExport={() => void exportFlow()}
       />
 
+      {storedDraft && !readOnly ? (
+        <div className="flex flex-wrap items-center gap-2 border-b border-info/40 bg-info-soft px-3 py-1.5 text-xs text-info" role="status" data-testid="draft-restore-banner">
+          <span className="font-medium">{t('editor.draftRestore.found', { time: formatDateTime(storedDraft.savedAt) })}</span>
+          <Button size="xs" variant="primary" onClick={restoreStoredDraft} data-testid="draft-restore-apply">{t('editor.draftRestore.restore')}</Button>
+          <Button size="xs" onClick={discardStoredDraft} data-testid="draft-restore-discard">{t('editor.draftRestore.discard')}</Button>
+        </div>
+      ) : null}
       {missingSourceNode && !scratch && !toolMode ? (
         <div className="flex flex-wrap items-center gap-2 border-b border-warning/40 bg-warning-soft px-3 py-1.5 text-xs text-warning" role="status" data-testid="no-source-banner">
           <span className="font-medium">{t('editor.noSourceBanner')}</span>
@@ -2176,6 +2224,9 @@ function EditorInner({ flowId }: { flowId: number }) {
     </div>
   )
 }
+
+/** 髒草稿另存到瀏覽器的間隔（毫秒） */
+const DRAFT_PERSIST_MS = 5000
 
 export function FlowEditorPage() {
   const { flowId } = useParams<{ flowId: string }>()

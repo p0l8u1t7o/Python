@@ -882,6 +882,7 @@ const zhHans = {
     sourceSection: '图像来源',
     sourcePreviewHint: '当前来源的预览；试执行即以此来源的图像执行',
     leaveTitle: '离开此页？',
+    draftRestore: { found: '此浏览器留有 {{time}} 尚未保存的草稿。', restore: '还原草稿', discard: '放弃', restored: '已还原草稿；请保存流程以保留变更。' },
     leaveAnyway: '放弃变更并离开',
     saveAndLeave: '保存并离开',
     emptyGuide: { title: '空画布——三步得到第一个结果', step1: '新增「图像来源」步骤并选来源（或上传临时图像）。', step2: '新增工具，从输出端口拖到下一步的输入端口；新工具会自动接到选中的步骤。', step3: '按「试执行」跑一次画布，看每一步的中间图像。', addTool: '新增工具', useTasks: '改用检测任务', manual: '打开手册' },
