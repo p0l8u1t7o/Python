@@ -58,7 +58,7 @@ export function CanvasModePanel({ interaction, onChange }: { interaction: Intera
   )
 }
 
-export function FlowCanvas({ interaction, onInteractionChange, onAutoLayout, children, ...rest }: ReactFlowProps & { interaction: InteractionMode; onInteractionChange: (mode: InteractionMode) => void; onAutoLayout: () => void }) {
+export function FlowCanvas({ interaction, onInteractionChange, onAutoLayout, edgeValues, onEdgeValuesChange, children, ...rest }: ReactFlowProps & { interaction: InteractionMode; onInteractionChange: (mode: InteractionMode) => void; onAutoLayout: () => void; edgeValues?: boolean; onEdgeValuesChange?: (on: boolean) => void }) {
   return (
     <ReactFlow
       nodeTypes={NODE_TYPES}
@@ -79,7 +79,7 @@ export function FlowCanvas({ interaction, onInteractionChange, onAutoLayout, chi
       <Background />
       {/* 手機寬度只留畫布與工具列（CLAUDE.md 的響應式規則）：小地圖會壓到縮放列與右下角的助手鈕 */}
       <MiniMap pannable zoomable className="!h-24 !w-36 max-md:hidden" />
-      <ZoomSlider onAutoLayout={onAutoLayout} />
+      <ZoomSlider onAutoLayout={onAutoLayout} edgeValues={edgeValues} onEdgeValuesChange={onEdgeValuesChange} />
       <CanvasModePanel interaction={interaction} onChange={onInteractionChange} />
       {children}
     </ReactFlow>

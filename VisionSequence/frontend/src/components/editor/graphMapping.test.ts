@@ -110,6 +110,24 @@ describe('graphMapping', () => {
     expect(layout.get('g')!.x).toBeGreaterThan(layout.get('src')!.x)
   })
 
+  it('computeLayout stacks rows by measured height so tall steps never overlap', () => {
+    // 使用者回報：自動排列後方塊互相重疊——以前固定 150 px 行距，埠多的方塊比行距高
+    const tall: FlowGraph = {
+      nodes: [{ id: 'src', type: 'image_source' }, { id: 'a', type: 'blob' }, { id: 'b', type: 'blob' }, { id: 'c', type: 'blob' }],
+      edges: [
+        { source: 'src', target: 'a', source_handle: 'image', target_handle: 'image' },
+        { source: 'src', target: 'b', source_handle: 'image', target_handle: 'image' },
+        { source: 'src', target: 'c', source_handle: 'image', target_handle: 'image' },
+      ],
+    }
+    const sizes = new Map([['src', { width: 224, height: 120 }], ['a', { width: 260, height: 320 }], ['b', { width: 224, height: 200 }], ['c', { width: 224, height: 90 }]])
+    const layout = computeLayout(tall, sizes)
+    const column = ['a', 'b', 'c'].map((id) => layout.get(id)!).sort((p, q) => p.y - q.y)
+    expect(column[1].y - column[0].y).toBeGreaterThanOrEqual(320)
+    expect(column[2].y - column[1].y).toBeGreaterThanOrEqual(200)
+    expect(layout.get('a')!.x - layout.get('src')!.x).toBeGreaterThanOrEqual(224)
+  })
+
   it('replaces only the selected single input edge', () => {
     const source: FlowGraph = {
       nodes: [{ id: 'a', type: 'measure' }, { id: 'b', type: 'measure' }, { id: 'c', type: 'measure' }, { id: 't', type: 'measure' }],

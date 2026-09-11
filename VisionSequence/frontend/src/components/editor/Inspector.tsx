@@ -14,6 +14,8 @@ import { useAuth } from '@/providers/AuthProvider'
 import { ImagesField } from '@/components/editor/ParamField'
 import { dataOutputPorts, nodeProblems, publishMap, validatePublishName } from '@/lib/graphValidation'
 import { useSources } from '@/lib/queries'
+import { localiseDataName } from '@/lib/catalogueLocale'
+import type { Language } from '@/i18n'
 import type { FlowGraph, GraphEdge, GraphNode, ToolTypeDef } from '@/lib/types'
 
 const NODE_COLORS = ['#0f766e', '#1d4ed8', '#7c3aed', '#b45309', '#be123c', '#0891b2', '#4d7c0f', '#334155']
@@ -164,7 +166,7 @@ function FixedImagesSection({ node, onChange }: { node: GraphNode; onChange: (pa
 
 /** 取像步驟：直接在檢視器選來源並看預覽縮圖，不必進工具頁或來源頁。 */
 function SourceSection({ node, onChange }: { node: GraphNode; onChange: (patch: Partial<GraphNode>) => void }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const sources = useSources()
   const items = sources.data?.items ?? []
   const id = Number(node.params?.source_id ?? 0) || 0
@@ -174,7 +176,7 @@ function SourceSection({ node, onChange }: { node: GraphNode; onChange: (patch: 
       <Select
         label={t('editor.sourceSection')}
         value={id ? String(id) : ''}
-        options={[{ value: '', label: t('editor.noSourcePick') }, ...items.map((s) => ({ value: String(s.id), label: s.name }))]}
+        options={[{ value: '', label: t('editor.noSourcePick') }, ...items.map((s) => ({ value: String(s.id), label: localiseDataName(s.name, i18n.language as Language) }))]}
         onChange={(e) => {
           const next = Number(e.target.value) || 0
           const params = { ...(node.params ?? {}) }

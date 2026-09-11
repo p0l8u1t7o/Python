@@ -39,6 +39,13 @@ interface CatalogueDict {
   /** Param.group 的名稱（Advanced／Augment），所有訓練方式共用。 */
   paramGroups?: Record<string, string>
   templates?: Record<string, Entry>
+  /** seed_demo 建的示範資料（來源、流程、資產）的名稱：資料本身是英文，中文介面只換顯示。 */
+  dataNames?: Record<string, string>
+}
+
+/** 示範資料的名稱翻譯（只在下拉與清單顯示用；使用者自己命名的資料原樣顯示）。 */
+export function localiseDataName(name: string, language: Language): string {
+  return DICTS[language]?.dataNames?.[name] ?? name
 }
 
 export function localiseInspectKinds(items: InspectKind[], language: Language): InspectKind[] {

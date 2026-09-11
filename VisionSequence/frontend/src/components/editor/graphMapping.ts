@@ -283,11 +283,17 @@ export function removeInputSource(
   }
 }
 
+export interface NodeSize { width: number; height: number }
+const LAYOUT_GAP_X = 80
+const LAYOUT_GAP_Y = 40
+const DEFAULT_SIZE: NodeSize = { width: 224, height: 92 }
+
 /**
  * 自動排列：依「距來源的最長路徑」分欄（左→右），每欄依父節點平均列排序。
- * note 不動。
+ * note 不動。欄寬與列高依每個方塊的實際尺寸累加（`sizes` 是畫布量到的尺寸，沒有就用流程圖存的
+ * width／height，再沒有才用預設）——以前用固定 150 px 行距，埠多的方塊比行距高，就疊到下一個上面。
  */
-export function computeLayout(graph: FlowGraph): Map<string, { x: number; y: number }> {
+export function computeLayout(graph: FlowGraph, sizes?: Map<string, Partial<NodeSize> | undefined>): Map<string, { x: number; y: number }> {
   const executable = (graph.nodes ?? []).filter((node) => !DECORATION_TYPES.has(node.type))
   const ids = executable.map((n) => n.id)
   const idSet = new Set(ids)
@@ -317,8 +323,14 @@ export function computeLayout(graph: FlowGraph): Map<string, { x: number; y: num
     if (list) list.push(id)
     else columns.set(col, [id])
   }
+  const sizeOf = (id: string): NodeSize => {
+    const node = executable.find((n) => n.id === id)
+    const measured = sizes?.get(id)
+    return { width: measured?.width || node?.width || DEFAULT_SIZE.width, height: measured?.height || node?.height || DEFAULT_SIZE.height }
+  }
   const row = new Map<string, number>()
   const positions = new Map<string, { x: number; y: number }>()
+  let x = 60
   for (const col of [...columns.keys()].sort((a, b) => a - b)) {
     const members = columns.get(col) ?? []
     const keyed = members.map((id) => {
@@ -327,10 +339,16 @@ export function computeLayout(graph: FlowGraph): Map<string, { x: number; y: num
       return { id, barycenter }
     })
     keyed.sort((a, b) => a.barycenter - b.barycenter || a.id.localeCompare(b.id))
+    let y = 60
+    let widest = 0
     keyed.forEach((entry, index) => {
       row.set(entry.id, index)
-      positions.set(entry.id, { x: 60 + col * LAYOUT_X, y: 60 + index * LAYOUT_Y })
+      const size = sizeOf(entry.id)
+      positions.set(entry.id, { x, y })
+      y += size.height + LAYOUT_GAP_Y
+      widest = Math.max(widest, size.width)
     })
+    x += widest + LAYOUT_GAP_X
   }
   return positions
 }

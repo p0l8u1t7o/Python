@@ -645,6 +645,23 @@ export default {
     }
   }
 },
+  dataNames: {
+    'Demo: synthetic parts': '示範：合成零件',
+    'Demo: hole count': '示範：零件孔數檢測',
+    'Demo: exposure check': '示範：曝光檢查',
+    'Example: pixel scale (0.05 mm)': '範例：像素比例（0.05 mm）',
+    'Example: circle gauge': '範例：圓孔量測',
+    'Example: edge angle': '範例：邊線夾角',
+    'Example: print compare': '範例：印刷良品比對',
+    'Example: fabric defect': '範例：織紋瑕疵',
+    'Example: preprocessing lab': '範例：前處理教學圖',
+    'Example: circles and lines': '範例：多圓幾何',
+    'Example: colour blocks': '範例：顏色檢驗',
+    'Example: barcode label': '範例：條碼標籤',
+    'Example: cup gauge': '範例：杯件量測',
+    'Example: locate and gauge': '範例：定位量測',
+    'Example: stop sign': '範例：停止標誌',
+  },
   sourceKinds: {
     folder: { label: '資料夾（循環讀取影像檔）' },
     file: { label: '單一影像檔' },

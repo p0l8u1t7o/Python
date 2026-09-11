@@ -158,6 +158,9 @@ export function collapseView(
       },
       width: GROUP_NODE_WIDTH,
       height: GROUP_NODE_HEIGHT,
+      // React Flow 接手節點時，沒有 measured 的節點會被清掉把手位置，接到它的邊就永遠畫不出來
+      //（工具方塊的 measured 由畫布量完寫回節點狀態；群組方塊是每次摺疊現組的，尺寸固定就直接帶上）
+      measured: { width: GROUP_NODE_WIDTH, height: GROUP_NODE_HEIGHT },
       data: {
         group,
         inputHandles: Array.from(inputHandles.get(group.task_id) ?? []),
@@ -173,14 +176,22 @@ export function collapseView(
     return { edge, flowEdge }
   })
   const merged = new Map<string, { edge: Edge; count: number; ids: string[] }>()
+  const untouched: Edge[] = []
   for (const { edge, flowEdge } of sourceEdges) {
     const sourceGroup = nodeToGroup.get(edge.source)
     const targetGroup = nodeToGroup.get(edge.target)
     if (sourceGroup && targetGroup && sourceGroup.task_id === targetGroup.task_id) continue
+    if (!sourceGroup && !targetGroup) {
+      // 兩端都不在摺疊群組裡：畫布上的邊原樣保留。以前也走下面的重組，沒寫來源埠的邊會變成
+      // sourceHandle null，React Flow 找不到把手就整條丟掉——使用者看到「摺疊後工具間的線不見了」。
+      if (flowEdge) untouched.push(flowEdge)
+      continue
+    }
     const source = sourceGroup ? groupNodeId(sourceGroup.task_id) : edge.source
     const target = targetGroup ? groupNodeId(targetGroup.task_id) : edge.target
-    const sourceHandle = sourceGroup ? groupHandleId(edge.source, edge.source_handle) : (edge.source_handle ?? '')
-    const targetHandle = targetGroup ? groupHandleId(edge.target, edge.target_handle) : (edge.target_handle ?? '')
+    // 非群組那一端沿用畫布邊的把手（toFlowEdges 已把空的來源埠補成第一個輸出埠）
+    const sourceHandle = sourceGroup ? groupHandleId(edge.source, edge.source_handle) : (flowEdge?.sourceHandle ?? edge.source_handle ?? '')
+    const targetHandle = targetGroup ? groupHandleId(edge.target, edge.target_handle) : (flowEdge?.targetHandle ?? edge.target_handle ?? '')
     const key = edgeKey(source, sourceHandle, target, targetHandle)
     const existing = merged.get(key)
     if (existing) {
@@ -205,12 +216,12 @@ export function collapseView(
 
   return {
     nodes: visibleNodes,
-    edges: Array.from(merged.values()).map(({ edge, count, ids }) => ({
+    edges: [...untouched, ...Array.from(merged.values()).map(({ edge, count, ids }) => ({
       ...edge,
       id: count > 1 ? `${edge.id}#${count}` : edge.id,
       label: count > 1 ? String(count) : edge.label,
       data: { ...(edge.data as Record<string, unknown> | undefined), originalCount: count, originalEdgeIds: ids },
-    })),
+    }))],
   }
 }
 

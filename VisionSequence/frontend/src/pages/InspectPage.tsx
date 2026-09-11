@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useBlocker, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Plus, Play, Save, Trash2, ImageUp } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, Play, Save, Trash2, ImageUp } from 'lucide-react'
 import { ImagesField, ParamField, type InspectorActions } from '@/components/editor/ParamField'
 import { useSaveConflictDialog } from '@/components/flow/SaveConflictDialog'
 import { Button, ErrorState, LoadingState, Modal } from '@/components/ui'
@@ -13,17 +13,26 @@ import { inspectionFieldVisible, inspectionHasImage, inspectionReuseRef, normali
 import { errorMessage } from '@/lib/errors'
 import { publishAssistantProgress, useRegisterAssistantContext } from '@/lib/assistantContext'
 import { getSession, setDraft, updateSession, useFlowSession } from '@/lib/flowDraft'
-import { INSPECT_DOTS, forgetInspectionRun, inspectGraphHash, inspectionAdvancedPath, inspectionDefaults, inspectionEditableKind, inspectionOverall, inspectionParam, inspectionReasonKey, inspectionRemovalGraph, inspectionRunFor, inspectionStale, inspectionStatus, inspectionValue, missingInspectionFields, rememberInspectionRun } from '@/lib/inspect'
+import { INSPECT_DOTS, OUTPUT_NAME, forgetInspectionRun, inspectGraphHash, inspectionAdvancedPath, inspectionDefaults, inspectionEditableKind, inspectionOverall, inspectionParam, inspectionReasonKey, inspectionRemovalGraph, inspectionRunFor, inspectionStale, inspectionStatus, inspectionValue, missingInspectionFields, rememberInspectionRun } from '@/lib/inspect'
 import { inspectionEvidence, readInspection, readLastInspectionTrial, saveLastInspectionTrial, removeInspection, teachInspectionPose, useFlow, useFlowMutations, useInspectKinds, usePreviewFlow, useScratchImage, useSources, useToolTypes, writeInspection } from '@/lib/queries'
-import type { FlowGraph, ImageRef, InspectDependency, InspectKind, InspectList, InspectReading, Region, RoiShape, RunReport } from '@/lib/types'
+import type { FlowGraph, ImageRef, InspectDependency, InspectField, InspectKind, InspectList, InspectReading, Region, RoiShape, RunReport } from '@/lib/types'
 import { useConfirm } from '@/lib/useConfirm'
 import { isLockHolder, useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
+import { localiseDataName } from '@/lib/catalogueLocale'
+import type { Language } from '@/i18n'
 
 const EMPTY_LIST: InspectList = { tasks: [], shared: [], loose: [] }
+/** 欄位改了多久沒再動才送去伺服器；太短會在打字中途送出（中文輸入一個字要好幾個按鍵）。 */
+const EDIT_DEBOUNCE_MS = 600
+/** 新增精靈：0＝選種類、1＝畫區域（roi／參考圖／幾何）、2＝填規格。 */
+type WizardStep = 0 | 1 | 2
+function wizardStepOf(field: InspectField): 1 | 2 {
+  return ['roi', 'images', 'json'].includes(field.kind) || field.source_type === 'geometry' ? 1 : 2
+}
 
 function InspectPageInner({ flowId }: { flowId: number }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const auth = useAuth()
   const toast = useToast()
   const flow = useFlow(flowId)
@@ -41,6 +50,8 @@ function InspectPageInner({ flowId }: { flowId: number }) {
   const [readError, setReadError] = useState<string | null>(null)
   const [selected, setSelected] = useState('')
   const [newKind, setNewKind] = useState<string | null>(null)
+  const [wizard, setWizard] = useState<WizardStep | null>(null)
+  const [fixedOpen, setFixedOpen] = useState<boolean | null>(null)
   const [values, setValues] = useState<Record<string, unknown>>({})
   const [busy, setBusy] = useState(false)
   const [pending, setPending] = useState(false)
@@ -135,9 +146,17 @@ function InspectPageInner({ flowId }: { flowId: number }) {
   }
   function flushEdits(): Promise<void> {
     clearTimeout(timer.current)
-    const change = edits.current
-    if (!change) return queue.current
-    edits.current = null
+    const pendingChange = edits.current
+    if (!pendingChange) return queue.current
+    // 還不合法的欄位（打到一半的結果名稱、超出範圍的數字）留在本機，只送合法的；送去只會被伺服器打回並清掉正在打的字
+    const activeKind = list.tasks.find((item) => item.task_id === pendingChange.task_id)
+    const kindDef = activeKind ? inspectionEditableKind(activeKind, kinds.data?.items ?? []) : undefined
+    const invalid = new Set(kindDef ? missingInspectionFields(kindDef, { ...activeKind?.fields, ...pendingChange.fields }) : [])
+    const sendable = Object.fromEntries(Object.entries(pendingChange.fields).filter(([key]) => !invalid.has(key)))
+    const kept = Object.fromEntries(Object.entries(pendingChange.fields).filter(([key]) => invalid.has(key)))
+    edits.current = Object.keys(kept).length ? { task_id: pendingChange.task_id, fields: kept } : null
+    if (!Object.keys(sendable).length) return queue.current
+    const change = { task_id: pendingChange.task_id, fields: sendable }
     return enqueue(async () => {
       setBusy(true)
       try {
@@ -168,18 +187,29 @@ function InspectPageInner({ flowId }: { flowId: number }) {
     edits.current = { task_id: task.task_id, fields: { ...edits.current?.fields, ...changed } }
     setPending(true)
     clearTimeout(timer.current)
-    if (kind && !missingInspectionFields(kind, nextValues).length && !(nextValues.unit === 'mm' && !nextValues.calibration)) {
-      timer.current = setTimeout(() => void action(flushEdits), 250)
+    if (kind && !(nextValues.unit === 'mm' && !nextValues.calibration)) {
+      timer.current = setTimeout(() => void action(flushEdits), EDIT_DEBOUNCE_MS)
     }
   }
   async function selectTask(id: string) {
     await flushEdits()
-    setNewKind(null); setSelected(id); setRoiKey('roi'); setCropKey(null); setAdvancedRoi(null)
+    setNewKind(null); setWizard(null); setSelected(id); setRoiKey('roi'); setCropKey(null); setAdvancedRoi(null)
     setValues(list.tasks.find((item) => item.task_id === id)?.fields ?? {})
+  }
+  async function openWizard() {
+    await flushEdits()
+    setNewKind(null); setWizard(0); setCropKey(null); setAdvancedRoi(null)
+  }
+  function cancelWizard() {
+    setNewKind(null); setWizard(null); setCropKey(null); setValues(task?.fields ?? {})
   }
   async function beginTask(item: InspectKind) {
     await flushEdits()
-    setNewKind(item.kind); setValues(inspectionDefaults(item)); setRoiKey('roi'); setCropKey(null); setAdvancedRoi(null)
+    const defaults = inspectionDefaults(item)
+    const firstRoi = item.fields.find((field) => field.kind === 'roi' && inspectionFieldVisible(field, defaults))
+    setNewKind(item.kind); setValues(defaults); setRoiKey(firstRoi?.key ?? 'roi'); setCropKey(null); setAdvancedRoi(null)
+    // 沒有區域類欄位的任務（讀碼等）直接進規格
+    setWizard(item.fields.some((field) => wizardStepOf(field) === 1 && inspectionFieldVisible(field, defaults)) ? 1 : 2)
   }
   const invalid = kind ? missingInspectionFields(kind, values) : []
   const needsCalibration = values.unit === 'mm' && !values.calibration
@@ -192,7 +222,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
       const next = await writeInspection('build', currentGraph(), { kind: kind.kind, version: kind.version, fields: values })
       const previousIds = new Set(list.tasks.map((item) => item.task_id))
       const result = await readInspection(next.graph)
-      putGraph(next.graph); setList(result); setNewKind(null)
+      putGraph(next.graph); setList(result); setNewKind(null); setWizard(null); setRoiKey('roi')
       setSelected(result.tasks.find((item) => !previousIds.has(item.task_id))?.task_id ?? '')
     } finally { setBusy(false) }
   }
@@ -353,6 +383,18 @@ function InspectPageInner({ flowId }: { flowId: number }) {
   const readingUnit = reading && ['defect', 'defects'].includes(reading.unit) ? t('inspect.defectCount', { count: Number(reading.value) }) : reading?.unit
   const taskTitle = (entry: typeof list.tasks[number]) => `${String(entry.fields.result_name || kinds.data?.items.find((item) => item.kind === entry.kind)?.label || entry.kind)} ${list.tasks.filter((item) => item.kind === entry.kind).indexOf(entry) + 1}`
   const taskNodes = graph.nodes.filter((node) => Object.values(task?.nodes ?? {}).includes(node.id))
+  const fixedImages = Array.isArray(source?.params?.images) ? (source.params.images as unknown[]) : []
+  const visibleFields = kind ? kind.fields.filter((field) => inspectionFieldVisible(field, values)) : []
+  const wizardSteps: WizardStep[] = kind && visibleFields.some((field) => wizardStepOf(field) === 1) ? [1, 2] : [2]
+  const renderField = (field: InspectField) => <div key={field.key} data-field={field.key} onBlur={() => { if (!newKind && edits.current) void action(flushEdits) }}>
+    {field.key === 'locator' ? <label className="label">{field.label}<select className="input" value={String(values.locator ?? '')} onChange={(event) => changeField('locator', event.target.value)}><option value="">{t('common.none')}</option>{list.tasks.filter((entry) => entry.kind === 'locate_part' && (newKind || entry.task_id !== selected) && !entry.custom).map((entry) => <option key={entry.task_id} value={entry.task_id}>{taskTitle(entry)}</option>)}</select></label> : field.source_type === 'geometry' ? <GeometrySourceField field={field} value={values[field.key]} graph={graph} nodeId={newKind ? undefined : task?.nodes.defect} defs={defs} onChange={(value) => changeField(field.key, value)} /> : <ParamField param={inspectionParam(field)} value={values[field.key]} onChange={(value) => changeField(field.key, value)} actions={actions} />}
+    {field.kind === 'output_key' && typeof values[field.key] === 'string' && values[field.key] !== '' && !OUTPUT_NAME.test(String(values[field.key])) ? <p className="mt-1 text-xs text-warning" role="alert">{t('inspect.badResultName')}</p> : null}
+    {kind?.kind === 'inspect_edge_defect' && field.key === 'model' ? <Button size="sm" disabled={!image?.ref || readOnly || busy} onClick={() => void action(async () => {
+      if (!image?.ref) return
+      const result = await teachContourFromImage(flowId, { ref: image.ref, roi: values.roi as Region | null })
+      changeField('model', result.model)
+    })}>{t('editor.teachContour.action')}</Button> : null}
+  </div>
 
   return <div className="flex h-full flex-col" data-testid="inspect-page">
     {dialog}{conflictDialog}
@@ -366,7 +408,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
       <Link className="btn-secondary" to={editorPath}>{t('inspect.advancedFlow')}</Link>
       <div className="flex w-full flex-wrap items-center gap-2 text-xs">
         <label>{t('inspect.source')} <select className="input !w-48" value={source?.type === 'fixed_image' ? 'fixed' : String(source?.params?.source_id ?? '')} disabled={readOnly || busy} onChange={(event) => void action(() => changeSource(event.target.value))} data-testid="inspect-source">
-          <option value="">{t('common.none')}</option><option value="fixed">{t('inspect.fixedImages')}</option>{(sources.data?.items ?? []).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          <option value="">{t('common.none')}</option><option value="fixed">{t('inspect.fixedImages')}</option>{(sources.data?.items ?? []).map((item) => <option key={item.id} value={item.id}>{localiseDataName(item.name, i18n.language as Language)}</option>)}
         </select></label>
         <Button size="sm" icon={<ImageUp size={14} />} loading={upload.isPending} onClick={() => uploadInput.current?.click()}>{t('inspect.upload')}</Button>
         <input ref={uploadInput} className="hidden" type="file" accept="image/*" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void action(() => uploadImage(file)) }} />
@@ -375,14 +417,19 @@ function InspectPageInner({ flowId }: { flowId: number }) {
         {locked ? <span className="text-warning">{t('inspect.locked')}</span> : null}
       </div>
     </header>
-    {source?.type === 'fixed_image' ? <div className="max-h-48 overflow-y-auto border-b border-line p-3" data-testid="inspect-fixed-images"><ImagesField label={t('inspect.fixedImages')} value={source.params?.images} readOnly={readOnly || busy} onChange={(value) => void action(() => changeNodeParam(source.id, 'images', value))} /></div> : null}
+    {source?.type === 'fixed_image' ? <details className="border-b border-line px-3 py-1" open={fixedOpen ?? fixedImages.length === 0} onToggle={(event) => setFixedOpen(event.currentTarget.open)} data-testid="inspect-fixed-images">
+      {/* 收成一列：整條版面被縮圖佔滿時，任務清單與表單都被擠到看不見 */}
+      <summary className="cursor-pointer text-xs text-muted">{t('inspect.fixedImages')} · {t('inspect.fixedImagesCount', { count: fixedImages.length })}</summary>
+      <div className="max-h-40 overflow-y-auto py-2"><ImagesField label={t('inspect.fixedImages')} value={source.params?.images} readOnly={readOnly || busy} onChange={(value) => void action(() => changeNodeParam(source.id, 'images', value))} /></div>
+    </details> : null}
     {(readError || operationError) ? <p role="alert" className="bg-critical-soft p-2 text-sm text-critical">{readError ?? operationError}</p> : null}
     <div className="flex min-h-0 flex-1 flex-col overflow-auto md:flex-row md:overflow-hidden">
       <aside className="w-full shrink-0 border-r border-line bg-surface p-3 md:w-56 md:overflow-y-auto" data-testid="inspect-tasks">
-        <label className="label" htmlFor="inspect-add">{t('inspect.add')}</label>
-        <select id="inspect-add" className="input mb-3" value={newKind ?? ''} disabled={readOnly || busy} onChange={(event) => { const item = kinds.data?.items.find((entry) => entry.kind === event.target.value); if (item) void action(() => beginTask(item)) }} data-testid="inspect-add">
-          <option value="">{t('inspect.chooseKind')}</option>{kinds.data?.items.map((item) => <option key={item.kind} value={item.kind}>{item.label}</option>)}
-        </select>
+        {/* 新增／移除放在清單上方：使用者回報下拉式的新增不好找、移除藏在表單最底下 */}
+        <div className="mb-3 flex gap-2">
+          <Button size="sm" variant="primary" icon={<Plus size={14} />} disabled={readOnly || busy || wizard !== null} onClick={() => void action(openWizard)} data-testid="inspect-add">{t('inspect.add')}</Button>
+          <Button size="sm" variant="danger" icon={<Trash2 size={14} />} disabled={readOnly || busy || !task || wizard !== null} onClick={() => void action(deleteTask)} data-testid="inspect-remove">{t('inspect.remove')}</Button>
+        </div>
         <ul className="space-y-1">{list.tasks.map((item) => {
           const state = inspectionStatus(readings.find((row) => row.task_id === item.task_id), stale, item.custom)
           return <li key={item.task_id}><button className={`flex w-full items-center gap-2 rounded p-2 text-left text-sm ${selected === item.task_id && !newKind ? 'bg-brand-soft' : 'hover:bg-surface-muted'}`} onClick={() => void action(() => selectTask(item.task_id))} data-testid="inspect-task">
@@ -392,28 +439,46 @@ function InspectPageInner({ flowId }: { flowId: number }) {
           </button>{item.custom ? <ul className="space-y-1 px-2 pb-2 text-xs text-warning" data-testid="inspect-custom-reasons">{item.reasons.map((reason, index) => <li key={index}><Link to={inspectionAdvancedPath(flowId, graph, { ...item, reasons: [reason] })}>{t(inspectionReasonKey(reason.code))}</Link></li>)}</ul> : null}</li>
         })}</ul>
         {!list.tasks.length ? <div className="my-3 text-xs text-muted"><p>{list.loose.length ? t('inspect.advancedOnly') : t('inspect.noTasks')}</p>{list.loose.length ? <Link className="mt-2 block text-brand" to={editorPath}>{t('inspect.openAdvanced')}</Link> : null}</div> : null}
-        <Link className="mt-4 block text-xs text-brand" to={editorPath}>{t('inspect.otherSteps', { count: list.loose.length })}</Link>
       </aside>
       <section className="w-full shrink-0 space-y-4 overflow-y-auto border-r border-line bg-surface p-4 md:w-[340px] xl:w-[380px]" data-testid="inspect-form">
         <FlowNotesLink flowId={flowId} />
-        {task?.custom && !newKind ? <div data-testid="inspect-custom"><p className="text-warning">{t('inspect.customHint')}</p>{task.reasons.map((reason, index) => <p key={index} className="mt-1 text-xs">{t(inspectionReasonKey(reason.code))}</p>)}<Link className="btn-secondary mt-3" to={inspectionAdvancedPath(flowId, graph, task)}>{t('inspect.openAdvanced')}</Link><Button className="mt-3" variant="danger" disabled={readOnly || busy} onClick={() => void action(deleteTask)}>{t('inspect.remove')}</Button></div> : kind ? <><h2 className="font-semibold">{kind.label}</h2><p className="text-xs text-muted">{kind.help_text}</p>
-            <fieldset disabled={readOnly || busy} className="space-y-4">
-              {kind.fields.filter((field) => inspectionFieldVisible(field, values)).map((field) => <div key={field.key} data-field={field.key}>
-                {field.key === 'locator' ? <label className="label">{field.label}<select className="input" value={String(values.locator ?? '')} onChange={(event) => changeField('locator', event.target.value)}><option value="">{t('common.none')}</option>{list.tasks.filter((entry) => entry.kind === 'locate_part' && (newKind || entry.task_id !== selected) && !entry.custom).map((entry) => <option key={entry.task_id} value={entry.task_id}>{taskTitle(entry)}</option>)}</select></label> : field.source_type === 'geometry' ? <GeometrySourceField field={field} value={values[field.key]} graph={graph} nodeId={newKind ? undefined : task?.nodes.defect} defs={defs} onChange={(value) => changeField(field.key, value)} /> : <ParamField param={inspectionParam(field)} value={values[field.key]} onChange={(value) => changeField(field.key, value)} actions={actions} />}
-                {kind.kind === 'inspect_edge_defect' && field.key === 'model' ? <Button size="sm" disabled={!image?.ref || readOnly || busy} onClick={() => void action(async () => {
-                  if (!image?.ref) return
-                  const result = await teachContourFromImage(flowId, { ref: image.ref, roi: values.roi as Region | null })
-                  changeField('model', result.model)
-                })}>{t('editor.teachContour.action')}</Button> : null}
-              </div>)}
-            </fieldset>
+        {wizard !== null ? <div className="space-y-4" data-testid="inspect-wizard">
+            {/* 引導精靈：種類 → 區域 → 規格，每一步只看該步的欄位；步驟標籤可以來回點 */}
+            <ol className="flex flex-wrap gap-1 text-xs" aria-label={t('inspect.add')}>
+              {([0, ...wizardSteps] as WizardStep[]).map((step, index, all) => <li key={step}>
+                <button type="button" className={`rounded-full px-2 py-0.5 ${wizard === step ? 'bg-brand text-white' : 'bg-surface-muted text-muted'}`} disabled={step !== 0 && !newKind} onClick={() => setWizard(step)} aria-current={wizard === step ? 'step' : undefined}>
+                  {index + 1}. {t(`inspect.wizard.${step === 0 ? 'kind' : step === 1 ? 'region' : 'spec'}`)}
+                </button>{index < all.length - 1 ? <span className="px-1 text-muted">›</span> : null}
+              </li>)}
+            </ol>
+            {wizard === 0 ? <>
+              <p className="text-xs text-muted">{t('inspect.wizard.kindHint')}</p>
+              <div className="grid gap-2">{kinds.data?.items.map((item) => <button key={item.kind} type="button" className="rounded-md border border-line p-2 text-left hover:border-brand hover:bg-brand-soft" disabled={readOnly || busy} onClick={() => void action(() => beginTask(item))} data-testid={`inspect-kind-${item.kind}`}>
+                <span className="block text-sm font-medium">{item.label}</span><span className="block text-xs text-muted">{item.help_text}</span>
+              </button>)}</div>
+              <Button onClick={cancelWizard}>{t('common.cancel')}</Button>
+            </> : kind ? <>
+              <h2 className="font-semibold">{kind.label}</h2>
+              <p className="text-xs text-muted">{t(wizard === 1 ? 'inspect.wizard.regionHint' : 'inspect.wizard.specHint')}</p>
+              <fieldset disabled={readOnly} className="space-y-4">{visibleFields.filter((field) => wizardStepOf(field) === wizard).map(renderField)}</fieldset>
+              {wizard === 2 && needsCalibration ? <p className="text-sm text-warning" role="alert">{t('inspect.needsCalibration')} <Link className="underline" to="/calibration">{t('inspect.openCalibration')}</Link></p> : null}
+              <div className="flex flex-wrap gap-2">
+                <Button icon={<ChevronLeft size={14} />} onClick={() => setWizard(wizard === 2 && wizardSteps.length > 1 ? 1 : 0)} data-testid="inspect-back">{t('inspect.wizard.back')}</Button>
+                {wizard === 1 ? <Button variant="primary" icon={<ChevronRight size={14} />} onClick={() => setWizard(2)} data-testid="inspect-next">{t('inspect.wizard.next')}</Button>
+                  : <Button variant="primary" icon={<Plus size={14} />} disabled={readOnly || formInvalid || busy} onClick={() => void action(createTask)} data-testid="inspect-create">{t('inspect.wizard.create')}</Button>}
+                <Button onClick={cancelWizard}>{t('common.cancel')}</Button>
+              </div>
+            </> : null}
+          </div>
+        : task?.custom ? <div data-testid="inspect-custom"><p className="text-warning">{t('inspect.customHint')}</p>{task.reasons.map((reason, index) => <p key={index} className="mt-1 text-xs">{t(inspectionReasonKey(reason.code))}</p>)}<Link className="btn-secondary mt-3" to={inspectionAdvancedPath(flowId, graph, task)}>{t('inspect.openAdvanced')}</Link></div>
+        : kind ? <><h2 className="font-semibold">{kind.label}</h2><p className="text-xs text-muted">{kind.help_text}</p>
+            {/* 只在唯讀時停用：以前背景送出時也停用，每打幾個字輸入框就失去焦點一次 */}
+            <fieldset disabled={readOnly} className="space-y-4">{visibleFields.map(renderField)}</fieldset>
             {needsCalibration ? <p className="text-sm text-warning" role="alert">{t('inspect.needsCalibration')} <Link className="underline" to="/calibration">{t('inspect.openCalibration')}</Link></p> : null}
-            {newKind ? <div className="flex gap-2"><Button icon={<Plus size={14} />} disabled={readOnly || formInvalid || busy} onClick={() => void action(createTask)} data-testid="inspect-create">{t('inspect.add')}</Button><Button onClick={() => { setNewKind(null); setValues(task?.fields ?? {}) }}>{t('common.cancel')}</Button></div> : null}
-          {!newKind && !task?.custom ? <details><summary className="cursor-pointer text-sm font-medium">{t('inspect.advanced')}</summary><fieldset disabled={readOnly || busy} className="space-y-4 pt-3">{taskNodes.map((node) => <section key={node.id}><h3 className="mb-2 text-sm font-semibold">{node.label || defs.get(node.type)?.label || node.type}</h3>{defs.get(node.type)?.params.filter((param) => !param.visible_when || param.visible_when.in.includes(node.params?.[param.visible_when.param])).map((param) => <div className="mb-3" key={param.key}><ParamField param={param} value={node.params?.[param.key] ?? param.default} actions={{ ...actions, addImageFromCurrent: undefined,
+          <details><summary className="cursor-pointer text-sm font-medium">{t('inspect.advanced')}</summary><fieldset disabled={readOnly || busy} className="space-y-4 pt-3">{taskNodes.map((node) => <section key={node.id}><h3 className="mb-2 text-sm font-semibold">{node.label || defs.get(node.type)?.label || node.type}</h3>{defs.get(node.type)?.params.filter((param) => !param.visible_when || param.visible_when.in.includes(node.params?.[param.visible_when.param])).map((param) => <div className="mb-3" key={param.key}><ParamField param={param} value={node.params?.[param.key] ?? param.default} actions={{ ...actions, addImageFromCurrent: undefined,
             roiEditingKey: advancedRoi?.nodeId === node.id ? advancedRoi.key : null,
             setRoiEditing: (key) => { setRoiKey(null); setAdvancedRoi(key ? { nodeId: node.id, key, shapes: param.shapes } : null) },
-          }} onChange={(value) => void action(() => changeNodeParam(node.id, param.key, value))} /></div>)}</section>)}</fieldset></details> : null}
-          {!newKind ? <Button variant="danger" icon={<Trash2 size={14} />} disabled={readOnly || busy} onClick={() => void action(deleteTask)}>{t('inspect.remove')}</Button> : null}
+          }} onChange={(value) => void action(() => changeNodeParam(node.id, param.key, value))} /></div>)}</section>)}</fieldset></details>
         </> : <p className="text-sm text-muted">{t('inspect.chooseTask')}</p>}
       </section>
       <section className="flex min-h-[420px] min-w-0 flex-1 flex-col" data-testid="inspect-viewer">

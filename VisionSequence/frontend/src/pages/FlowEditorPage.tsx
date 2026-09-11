@@ -51,7 +51,10 @@ import { createHistory, pushHistory as pushEditHistory, redoHistory, undoHistory
 import { getSession, setDraft, updateSession, useFlowSession } from '@/lib/flowDraft'
 import { flowGraphSignature, shouldSaveDraftVersion } from '@/lib/flowAutoVersion'
 import { searchNodes } from '@/lib/nodeSearch'
-import { readEditorCollapsedTasks, readEditorGridView, readFlowDescriptionPanelCollapsed, readFlowDraftAutoVersion, writeEditorCollapsedTasks, writeEditorGridView, writeFlowDescriptionPanelCollapsed } from '@/lib/localState'
+import { readEditorCollapsedTasks, readEditorEdgeValues, readEditorGridView, readFlowDescriptionPanelCollapsed, readFlowDraftAutoVersion, writeEditorCollapsedTasks, writeEditorEdgeValues, writeEditorGridView, writeFlowDescriptionPanelCollapsed } from '@/lib/localState'
+import { formatEdgeValue } from '@/components/editor/FlowEdge'
+import { localiseDataName } from '@/lib/catalogueLocale'
+import type { Language } from '@/i18n'
 import { collapseView, expandOnDrop, groupsOf, taskIdFromGroupNodeId, taskKindLabel, type NodeGroup } from '@/lib/nodeGroups'
 import { GRID_COUNTS, bindGridCell, gridCellImage, gridPlacement, normalizeGridLayout, setGridCount, type GridBinding, type GridCount, type GridLayout } from '@/lib/gridView'
 import { countFolderPreviewFiles, countPreviewSequenceResult, createPreviewSequenceState, findPreviewSequenceSource, graphForPreviewSequenceItem, isPreviewSequenceDone, nextPreviewSequenceIndex, previewSequenceStatusLabel, type PreviewSequenceSource, type PreviewSequenceState } from '@/lib/previewSequence'
@@ -233,7 +236,7 @@ export function topoOrder(graphNodes: GraphNode[], graphEdges: GraphEdge[]): str
 }
 
 function EditorInner({ flowId }: { flowId: number }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [searchParams] = useSearchParams()
   const focusedFromUrl = useRef('')
   const toast = useToast()
@@ -275,6 +278,7 @@ function EditorInner({ flowId }: { flowId: number }) {
   const [gridMode, setGridMode] = useState(false)
   const [gridLayout, setGridLayout] = useState<GridLayout>(() => normalizeGridLayout(readEditorGridView(flowId)))
   const [descriptionCollapsed, setDescriptionCollapsed] = useState(readFlowDescriptionPanelCollapsed)
+  const [edgeValues, setEdgeValues] = useState(readEditorEdgeValues)
   const [allOverlays, setAllOverlays] = useState(false)
   const [pinnedRunId, setPinnedRunId] = useState<string | null>(null)
   const [clearedRunId, setClearedRunId] = useState<string | null>(null)
@@ -538,10 +542,13 @@ function EditorInner({ flowId }: { flowId: number }) {
         const src = activeRun?.nodes[edge.source]
         const dst = activeRun?.nodes[edge.target]
         const flowing = Boolean(src && src.status === 'ok' && dst && dst.status !== 'skipped')
-        if (Boolean((edge.data as { flowing?: boolean } | undefined)?.flowing) === flowing) return edge
-        return { ...edge, data: { ...(edge.data ?? {}), flowing } }
+        // 試跑後把來源埠的值標在線上（純量與短字串；影像等物件不標），除錯不必逐個點開節點
+        const value = edgeValues && src && edge.sourceHandle ? formatEdgeValue(src.outputs?.[edge.sourceHandle]) : undefined
+        const data = edge.data as { flowing?: boolean; value?: string } | undefined
+        if (Boolean(data?.flowing) === flowing && data?.value === value) return edge
+        return { ...edge, data: { ...(edge.data ?? {}), flowing, value } }
       }),
-    [edges, activeRun],
+    [edges, activeRun, edgeValues],
   )
   const expandTask = useCallback(
     (taskId: string) => {
@@ -857,7 +864,8 @@ function EditorInner({ flowId }: { flowId: number }) {
 
   const autoLayout = useCallback(() => {
     pushHistory()
-    const positions = computeLayout(currentGraph())
+    // 用畫布量到的尺寸排，埠多的高方塊才不會疊到下一個
+    const positions = computeLayout(currentGraph(), new Map(nodes.map((n) => [n.id, { width: n.measured?.width ?? n.width, height: n.measured?.height ?? n.height }])))
     if (!positions.size) return
     for (const [id, position] of positions) {
       const p = payloads.current.get(id)
@@ -866,7 +874,7 @@ function EditorInner({ flowId }: { flowId: number }) {
     setNodes((list) => list.map((n) => (positions.get(n.id) ? { ...n, position: positions.get(n.id)! } : n)))
     setDirty(true)
     window.setTimeout(() => void fitView({ padding: 0.15, duration: 300 }), 50)
-  }, [pushHistory, currentGraph, setNodes, fitView])
+  }, [pushHistory, currentGraph, nodes, setNodes, fitView])
 
   /** 選取一個步驟並把畫布帶到它（步驟清單、錯誤區塊「前往該步驟」）。 */
   const focusNode = useCallback(
@@ -1537,7 +1545,7 @@ function EditorInner({ flowId }: { flowId: number }) {
         <div className="flex flex-wrap items-center gap-2 border-b border-warning/40 bg-warning-soft px-3 py-1.5 text-xs text-warning" role="status" data-testid="no-source-banner">
           <span className="font-medium">{t('editor.noSourceBanner')}</span>
           <Select className="!h-7 !w-56 !py-0 text-xs" value="" aria-label={t('editor.noSourcePick')} placeholder={t('editor.noSourcePick')}
-            options={(sourceList.data?.items ?? []).map((src) => ({ value: String(src.id), label: src.name }))}
+            options={(sourceList.data?.items ?? []).map((src) => ({ value: String(src.id), label: localiseDataName(src.name, i18n.language as Language) }))}
             onChange={(e) => {
               const id = Number(e.target.value)
               if (!id) return
@@ -1755,6 +1763,8 @@ function EditorInner({ flowId }: { flowId: number }) {
               interaction={interaction}
               onInteractionChange={(mode) => { setInteraction(mode); storeInteractionMode(mode) }}
               onAutoLayout={autoLayout}
+              edgeValues={edgeValues}
+              onEdgeValuesChange={(on) => { setEdgeValues(on); writeEditorEdgeValues(on) }}
               nodes={displayView.nodes}
               edges={displayView.edges}
               onNodesChange={onDisplayNodesChange}
@@ -1788,7 +1798,8 @@ function EditorInner({ flowId }: { flowId: number }) {
               onDrop={onDrop}
             />
             {meta.description.trim() ? (
-              <div className="absolute right-2 top-2 z-20 max-w-sm rounded-lg border border-line bg-surface/95 text-xs shadow-lg backdrop-blur" data-testid="flow-description-panel">
+              // top-12：右上角已有選取／平移切換鈕，疊在同一個位置會把它蓋到只剩一小角
+              <div className="absolute right-2 top-12 z-20 max-w-sm rounded-lg border border-line bg-surface/95 text-xs shadow-lg backdrop-blur" data-testid="flow-description-panel">
                 <button
                   type="button"
                   className="flex w-full items-center gap-2 px-2.5 py-2 text-left text-heading"

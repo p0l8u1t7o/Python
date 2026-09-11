@@ -69,6 +69,21 @@ describe('nodeGroups', () => {
     expect(cross?.sourceHandle).toBe(groupHandleId('find-a', 'image'))
   })
 
+  it('keeps edges between uncollapsed nodes exactly as the canvas built them', () => {
+    // 使用者回報：摺疊任務後工具間的資料線不見了——沒寫來源埠的邊被改成 sourceHandle null，畫布找不到把手
+    const extra: FlowGraph = {
+      nodes: [...graph.nodes, { id: 'gray', type: 'grayscale', position: { x: 150, y: 400 } }, { id: 'thr', type: 'threshold', position: { x: 400, y: 400 } }],
+      edges: [...graph.edges, { id: 'e7', source: 'gray', target: 'thr', source_handle: '', target_handle: 'image' }],
+    }
+    const nodes: Node[] = extra.nodes.map((node) => ({ id: node.id, type: 'tool', position: node.position ?? { x: 0, y: 0 }, data: {} }))
+    const edges: Edge[] = [...flowEdges, { id: 'e7', source: 'gray', target: 'thr', sourceHandle: 'image', targetHandle: 'image', data: { portType: 'image' } }]
+    const view = collapseView(nodes, edges, new Set(['diameter-a']), extra)
+    expect(view.edges.find((edge) => edge.id === 'e7')).toEqual(edges[edges.length - 1])
+    // 群組邊的非群組那一端也沿用畫布補好的把手
+    const boundary = view.edges.find((edge) => edge.source === 'src' && edge.target === 'group:diameter-a')
+    expect(boundary?.sourceHandle).toBe('image')
+  })
+
   it('expanding restores the original graph columns exactly', () => {
     const view = collapseView(flowNodes, flowEdges, new Set(['diameter-a']), graph)
     expect(view.nodes.some((node) => node.id === 'find-a')).toBe(false)

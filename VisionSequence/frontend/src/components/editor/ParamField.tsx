@@ -12,6 +12,8 @@ import { api, fixedImageUrl } from '@/lib/api'
 import type { FixedImageDesc, Region, ToolParam } from '@/lib/types'
 import { useToast } from '@/providers/ToastProvider'
 import { errorMessage } from '@/lib/errors'
+import { localiseDataName } from '@/lib/catalogueLocale'
+import type { Language } from '@/i18n'
 import { useAuth } from '@/providers/AuthProvider'
 import { CodeField } from './CodeField'
 
@@ -159,7 +161,7 @@ function FlowSelectField({ label, hint, required, value, onChange }: { label: st
 }
 
 export function ParamField({ param, value, onChange, actions }: { param: ToolParam; value: unknown; onChange: (value: unknown) => void; actions: InspectorActions }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const toast = useToast()
   const auth = useAuth()
   const sources = useSources()
@@ -259,7 +261,7 @@ export function ParamField({ param, value, onChange, actions }: { param: ToolPar
 
     case 'source':
       return (
-        <Select label={label} required={param.required} hint={help} value={text} placeholder={t('editor.params.pickSource')} onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))} options={(sources.data?.items ?? []).map((s) => ({ value: String(s.id), label: `${s.name} (${s.kind})`, disabled: !s.is_enabled }))} />
+        <Select label={label} required={param.required} hint={help} value={text} placeholder={t('editor.params.pickSource')} onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))} options={(sources.data?.items ?? []).map((s) => ({ value: String(s.id), label: `${localiseDataName(s.name, i18n.language as Language)} (${s.kind})`, disabled: !s.is_enabled }))} />
       )
 
     case 'images':

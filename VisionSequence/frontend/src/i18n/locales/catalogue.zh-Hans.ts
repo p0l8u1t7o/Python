@@ -645,6 +645,23 @@ export default {
     }
   }
 },
+  dataNames: {
+    'Demo: synthetic parts': '示范：合成零件',
+    'Demo: hole count': '示范：零件孔数检测',
+    'Demo: exposure check': '示范：曝光检查',
+    'Example: pixel scale (0.05 mm)': '示例：像素比例（0.05 mm）',
+    'Example: circle gauge': '示例：圆孔测量',
+    'Example: edge angle': '示例：边线夹角',
+    'Example: print compare': '示例：印刷良品比对',
+    'Example: fabric defect': '示例：织纹瑕疵',
+    'Example: preprocessing lab': '示例：预处理教学图',
+    'Example: circles and lines': '示例：多圆几何',
+    'Example: colour blocks': '示例：颜色检验',
+    'Example: barcode label': '示例：条码标签',
+    'Example: cup gauge': '示例：杯件测量',
+    'Example: locate and gauge': '示例：定位测量',
+    'Example: stop sign': '示例：停止标志',
+  },
   sourceKinds: {
     folder: { label: '文件夹（循环读取图像文件）' },
     file: { label: '单一图像文件' },

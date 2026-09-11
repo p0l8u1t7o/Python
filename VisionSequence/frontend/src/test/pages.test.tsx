@@ -62,16 +62,24 @@ describe('pages render (smoke)', () => {
     const { clearSession } = await import('@/lib/flowDraft')
     clearSession(6)
     renderDataPage(<InspectPage />, '/flows/6/inspect', '/flows/:flowId/inspect')
-    const picker = await screen.findByTestId('inspect-add')
-    await waitFor(() => expect(picker).toBeEnabled())
-    expect(within(picker).getByRole('option', { name: kind.label })).toBeInTheDocument()
-    fireEvent.change(picker, { target: { value: kind.kind } })
+    const add = await screen.findByTestId('inspect-add')
+    await waitFor(() => expect(add).toBeEnabled())
+    fireEvent.click(add)
+    expect(await screen.findByTestId(`inspect-kind-${kind.kind}`)).toHaveTextContent(kind.label)
+    fireEvent.click(screen.getByTestId(`inspect-kind-${kind.kind}`))
     const form = screen.getByTestId('inspect-form')
     expect(await within(form).findByRole('heading', { name: kind.label })).toBeInTheDocument()
-    for (const field of kind.fields.filter((field) => !field.visible_when)) expect(form.querySelector(`[data-field="${field.key}"]`)).not.toBeNull()
+    // 精靈分步顯示：區域那一步與規格那一步的欄位加起來要涵蓋所有不帶條件的欄位
+    const seen = new Set<string>()
+    const collect = () => form.querySelectorAll('[data-field]').forEach((el) => seen.add(el.getAttribute('data-field') ?? ''))
+    collect()
+    if (kind.kind === 'inspect_edge_defect') expect(screen.getByTestId('inspect-geometry-source')).toBeInTheDocument()
+    if (screen.queryByTestId('inspect-next')) { fireEvent.click(screen.getByTestId('inspect-next')); collect() }
+    expect(screen.getByTestId('inspect-create')).toBeInTheDocument()
+    for (const field of kind.fields.filter((field) => !field.visible_when)) expect(seen.has(field.key), field.key).toBe(true)
     if (kind.kind === 'inspect_edge_defect') {
-      expect(screen.getByTestId('inspect-geometry-source')).toBeInTheDocument()
       fireEvent.change(within(form).getByLabelText('Method'), { target: { value: 'freeform' } })
+      fireEvent.click(screen.getByTestId('inspect-back'))
       expect(await within(form).findByRole('button', { name: 'Teach contour from current image' })).toBeDisabled()
       expect(screen.queryByTestId('inspect-geometry-source')).not.toBeInTheDocument()
     }
@@ -145,15 +153,17 @@ describe('pages render (smoke)', () => {
     expect(getSession(6).draft!.graph).toEqual(before)
   })
 
-  it('InspectPage identifies advanced-only flows and counts unmarked notes as other steps', async () => {
+  it('InspectPage identifies advanced-only flows and links to the advanced editor', async () => {
     const { InspectPage } = await import('@/pages/InspectPage')
     const { clearSession, setDraft } = await import('@/lib/flowDraft')
     clearSession(6)
     setDraft(6, { baseVersion: 1, name: 'Advanced', description: '', dirty: true, graph: { nodes: [INSPECT_GRAPH.nodes[0], { id: 'note', type: 'note', params: {} }], edges: [] } })
     renderDataPage(<InspectPage />, '/flows/6/inspect', '/flows/:flowId/inspect')
     expect(await screen.findByText('This flow was created in the advanced editor.')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Other steps (1)' })).toHaveAttribute('href', '/flows/6')
+    // 「其他步驟 (N)」連結已依使用者要求拿掉；進階流程仍從頂列與空清單提示進入
+    expect(screen.queryByRole('link', { name: /Other steps/ })).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Open in advanced flow' })).toHaveAttribute('href', '/flows/6')
+    expect(screen.getByTestId('inspect-remove')).toBeDisabled()
   })
 
   it('FlowEditorPage focuses a node from the URL after the draft loads', async () => {
@@ -215,7 +225,9 @@ describe('pages render (smoke)', () => {
     expect(screen.getByTestId('inspect-save')).toBeDisabled()
     fireEvent.change(screen.getByLabelText('Unit'), { target: { value: 'px' } })
     await waitFor(() => expect(screen.getByTestId('inspect-add')).toBeEnabled())
-    fireEvent.change(screen.getByTestId('inspect-add'), { target: { value: 'measure_diameter' } })
+    fireEvent.click(screen.getByTestId('inspect-add'))
+    fireEvent.click(await screen.findByTestId('inspect-kind-measure_diameter'))
+    fireEvent.click(await screen.findByTestId('inspect-next'))
     expect(await screen.findByTestId('inspect-create')).toBeDisabled()
   })
   it('AuditPage lists changes for an administrator', async () => {

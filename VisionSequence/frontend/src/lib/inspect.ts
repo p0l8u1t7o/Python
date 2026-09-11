@@ -146,6 +146,9 @@ export function missingInspectionFields(kind: InspectKind, values: Record<string
     if (value !== null && value !== undefined && value !== '' && ['number', 'range'].includes(f.kind)) {
       return typeof value !== 'number' || !Number.isFinite(value) || (f.minimum != null && value < f.minimum) || (f.maximum != null && value > f.maximum)
     }
+    // 結果名稱是具名輸出的鍵，後端只收英數與底線；打中文時每個字都送去驗證只會回錯誤，先在頁面擋下
+    if (f.kind === 'output_key' && typeof value === 'string' && value !== '') return !OUTPUT_NAME.test(value)
     return false
   }).map((f) => f.key)
 }
+export const OUTPUT_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/
