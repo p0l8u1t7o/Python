@@ -228,6 +228,13 @@ def is_request(text: str, graph: dict) -> bool:
     return recognized and bool(re.search(r"新增|加入|量|檢查|检查|讀|读|定位|數量|数量|改成|修改第|刪|删|再跑|重跑|\b(add|measure|check|read|locate|count|change|update|remove|delete|rerun)\b|run again", text, re.I))
 
 
+def _rounded(region):
+    """候選區域的座標取到小數兩位：質心與半徑倍數算出來會是 638.5751593868889 這種值，提案卡照原樣顯示很難核對。"""
+    if not isinstance(region, dict):
+        return region
+    return {k: round(v, 2) if isinstance(v, float) else v for k, v in region.items()}
+
+
 def _regions(drafts: list[TaskDraft], cat: dict, image) -> None:
     features = analysis.analyze_region(image, None) if image is not None else None
     for draft in drafts:
@@ -258,6 +265,7 @@ def _regions(drafts: list[TaskDraft], cat: dict, image) -> None:
                         x, y = min(stats[i, 0] for i in ids), min(stats[i, 1] for i in ids)
                         rw, rh = max(stats[i, 0] + stats[i, 2] for i in ids) - x, max(stats[i, 1] + stats[i, 3] for i in ids) - y
                     region = {"shape": "rect", "x": float(x), "y": float(y), "w": float(rw), "h": float(rh)}
+            region = _rounded(region)
             item = cell(region, "assumed" if region else "missing", "rule", "Confirm the candidate region." if region else "Draw a search region on the image.")
             # LLM 區域仍需人工確認；只補沒有提供的區域。
             if draft["fields"].get(key, {}).get("value") is None:
@@ -291,7 +299,7 @@ def propose(text: str, lang: str, graph: dict, settings, *, image=None, history=
                 for region in row.get("regions", []):
                     if not isinstance(region, dict) or not isinstance(region.get("field"), str):
                         raise ValueError("invalid region proposal")
-                    draft["fields"][region["field"]] = cell(region.get("region"), "assumed", "llm", "Confirm the candidate region.")
+                    draft["fields"][region["field"]] = cell(_rounded(region.get("region")), "assumed", "llm", "Confirm the candidate region.")
                 if rule:
                     for key, value in rule["fields"].items():
                         if value["status"] == "confirmed" and draft["fields"].get(key, {}).get("value") != value["value"]:

@@ -148,6 +148,22 @@ class TaskListTests(SimpleTestCase):
         self.assertLessEqual(len(out["questions"]), 3)
         self.assertTrue(out["questions"])
 
+    def test_proposed_region_coordinates_are_rounded(self):
+        """階段 15 驗收：提案卡顯示「中心 X 638.5751593868889、內半徑 183.049999999999」，使用者無法核對。"""
+        settings = providers.AgentSettings(provider="openai", api_key="test")
+        reply = {"drafts": [{"op": "add", "kind": "measure_diameter", "fields": {"nominal": 35},
+                             "regions": [{"field": "roi", "region": {"shape": "annulus", "cx": 638.5751593868889, "cy": 480.0,
+                                                                     "r_inner": 183.04999999999998, "r_outer": 339.95}}]}]}
+        with mock.patch.object(providers, "complete", return_value=json.dumps(reply)):
+            out = tasklist.propose("outer diameter 35±0.2 px", "en", base_graph(), settings)
+        roi = out["drafts"][0]["fields"]["roi"]["value"]
+        self.assertEqual((roi["cx"], roi["cy"], roi["r_inner"], roi["r_outer"]), (638.58, 480.0, 183.05, 339.95))
+        self.assertEqual(roi["shape"], "annulus")
+        # 整數、布林、None 與非物件原樣保留
+        self.assertEqual(tasklist._rounded({"shape": "rect", "x": 3, "flag": True, "y": 1.23456}), {"shape": "rect", "x": 3, "flag": True, "y": 1.23})
+        self.assertIsNone(tasklist._rounded(None))
+        self.assertEqual(tasklist._rounded("rect"), "rect")
+
     def test_provider_failure_and_field_type_validation(self):
         settings = providers.AgentSettings(provider="openai", api_key="test")
         with mock.patch.object(providers, "complete", side_effect=TimeoutError):
