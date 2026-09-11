@@ -23,6 +23,15 @@ def _env(name: str, default: str = "") -> str:
     return os.environ.get(name, default)
 
 
+def _env_path(name: str, default: str) -> str:
+    """路徑類設定：沒設或留空一律用預設（.env.example 就是留空，新 clone 會直接複製成 .env）。
+
+    不能用 _env：空字串讓資料庫名稱變空白（migrate 失敗）、Path("") 變成目前資料夾（資產寫錯地方、外掛找不到）。
+    只給路徑用——DEBUG= 這種空白本身有意義的鍵維持 _env 的原意。"""
+    value = os.environ.get(name, "")
+    return value if value.strip() else default
+
+
 def _env_int(name: str, default: int) -> int:
     try:
         return int(_env(name, str(default)))
@@ -98,7 +107,7 @@ VISION_EXPORT_MAX_MB = _env_int(VISION_EXPORT_MAX_MB_KEY, 200)
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
-        "NAME": _env("DB_PATH", str(DATA_DIR / "vision.sqlite3")),
+        "NAME": _env_path("DB_PATH", str(DATA_DIR / "vision.sqlite3")),
         "OPTIONS": {
             # 執行記錄由背景執行緒寫入；WAL 讓讀寫不互鎖。
             "init_command": "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000;",
@@ -198,7 +207,7 @@ VISION = {
     #: 維護視窗：這個整點（當地時間）才做備份整理與 SQLite 空間回收
     "MAINTENANCE_HOUR": _env_int("VISION_MAINTENANCE_HOUR", 3),
     # 資料夾外掛：這個資料夾下的 .py 啟動時自動掛載（繼承 Tool／Grabber／Writer 即可，不用改 .env）。
-    "PLUGIN_DIR": Path(_env("VISION_PLUGIN_DIR", str(VS_HOME / "plugins"))),
+    "PLUGIN_DIR": Path(_env_path("VISION_PLUGIN_DIR", str(VS_HOME / "plugins"))),
     # 外掛工具模組（逗號分隔的 python 模組路徑），啟動時 import；模組內呼叫 register()。
     "TOOL_PLUGINS": [m.strip() for m in _env("VISION_TOOL_PLUGINS", "").split(",") if m.strip()],
     # 影像來源外掛（kind -> "module:Class"），例如 GigE SDK 的封裝。
@@ -215,7 +224,7 @@ VISION = {
     # 傳給前端的預覽影像最長邊預設值。
     "PREVIEW_MAX_SIDE": _env_int("VISION_PREVIEW_MAX_SIDE", 1600),
     # 範本影像 / 模型等資產存放處。
-    "ASSET_DIR": Path(_env("VISION_ASSET_DIR", str(DATA_DIR / "assets"))),
+    "ASSET_DIR": Path(_env_path("VISION_ASSET_DIR", str(DATA_DIR / "assets"))),
     # 選填 API 金鑰；設定後所有 /api 要帶 X-API-Key。
     "API_KEY": _env("VISION_API_KEY", ""),
     # 深度學習教導：智慧選取／全圖提案用的 SAM 權重（ultralytics 官方名稱或 .pt 路徑；sam2.1_t 約 150MB、mobile_sam 約 40MB）

@@ -17,3 +17,10 @@ build/
 dist/
 release/
 frontend/*.tsbuildinfo
+
+# 模型權重與虛擬環境（原本只寫在上層工作區的 .gitignore；搬成獨立庫後也要擋）
+venv/
+*.pt
+*.onnx
+# 本機登入 token（瀏覽器檢查腳本用），不得進版控
+frontend/ui-audit/token.txt

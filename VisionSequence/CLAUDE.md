@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：156 個內建工具（8 類）、304 個 API 端點（OpenAPI 路徑×方法）、39 個資料模型、26 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端約 1600 項＋前端約 380 項測試；Python 約 68k 行（`apps`＋`config`，不含 migrations；`tests` 另約 32k 行、vscapture 擷取端約 8.8k 行）、TS 約 56k 行（`frontend/src` 不含測試，其中三語系字典約 19k）。行數皆為 `wc -l` 實數（2026-09-11 重算；舊版的 28k／26k 不是同一種算法）。
+- **規模**：156 個內建工具（8 類）、304 個 API 端點（OpenAPI 路徑×方法）、39 個資料模型、26 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端約 1700 項＋前端約 380 項測試；Python 約 68k 行（`apps`＋`config`，不含 migrations；`tests` 另約 32k 行、vscapture 擷取端約 8.8k 行）、TS 約 56k 行（`frontend/src` 不含測試，其中三語系字典約 19k）。行數皆為 `wc -l` 實數（2026-09-11 重算；舊版的 28k／26k 不是同一種算法）。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出（**隱含埠的規格集中在 `tools/base.py` 的 `IMPLICIT_INPUTS`／`IMPLICIT_OUTPUTS`**，graph 驗證、engine 蒐集、工具目錄都讀它，加新的埠只要補一筆＋`toolLocale.ts` 的兩種中文）。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -26,6 +26,7 @@
 - **派工給 Codex**：`AGENTS.md` 是它的硬性守則（紅線＋之前犯過的錯＋必跑的驗證），Codex CLI 以本目錄為 cwd 會自動讀到，提示詞開頭仍要求「先讀 AGENTS.md」；一次只給一組與 Claude 手上不重疊的檔案清單，整合、獨立驗證與 commit 由 Claude 做。Codex 又犯新錯就補進 `AGENTS.md` §2。
 
 ### 啟動
+- **新電腦／新 clone**：`.\scripts\setup_prereqs.ps1`（winget 裝缺的 Python 3.12／Node.js LTS／Git，`-Release` Inno Setup、`-Browser` Chrome、`-Dl` 深度學習、`-DryRun` 只列出）→ 自動 `dev.ps1 -Setup -NoStart`（`-NoStart`＝只安裝不啟動；`dev.ps1` 會先建 `logs/`，乾淨 clone 沒有它）。軟體版本與依賴清單的分工在 README「建置環境」。**依賴清單規則**：平台一般依賴全部鎖版本寫在 `requirements.txt`（也是發行版 wheelhouse 的來源，新增 import 的第三方套件要補一行＋註明為什麼）；深度學習在 `requirements-dl.txt`（torch 要先走 pytorch index、onnxruntime-gpu 與 CPU 版同名互蓋，所以分檔）；前端工具腳本用到的套件（playwright、esbuild）也要列在 `package.json`，不能靠手動裝。**已裝 onnxruntime-gpu 的機器不要直接 `pip install -r requirements.txt`**（CPU 版會蓋進同一個資料夾，`import onnxruntime` 直接壞掉；2026-09-11 踩過，修法是 `pip install --force-reinstall --no-deps onnxruntime-gpu==1.22.0`）——`dev.ps1 -Setup` 已自動略過那一行。新 clone 的 `.env` 是 `.env.example` 原樣複製：**路徑類設定一律用 `settings._env_path`**（沒設或留空＝預設；以前 `DB_PATH=` 讓新 clone 的 migrate 直接失敗、`VISION_ASSET_DIR=`／`VISION_PLUGIN_DIR=` 變成 `Path("")`＝目前資料夾），`DEBUG=` 這種空白本身有意義的鍵維持 `_env`（全面改成「空白＝預設」會讓現場的 `DEBUG=` 變成開）；`tests/test_settings_env.py` 直接拿 `.env.example` 跑一次 settings 鎖住。`dev.ps1 -Setup` 每個外部指令都檢查離開碼（`Assert-Ok`；以前 migrate 失敗還照樣印「安裝完成」）。改了安裝流程就在暫存資料夾做一次全新 clone 演練：`git ls-files -co --exclude-standard` 複製過去再跑 `setup_prereqs.ps1`。
 - `.\scripts\dev.ps1 -Setup` 第一次；`.\scripts\dev.ps1` 之後；`.\scripts\stop.ps1` 停止。從 Bash 工具重啟要包成 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1`（外掛 INFO 日誌走 stderr，PowerShell 工具直跑會誤觸 `$ErrorActionPreference=Stop`）。
 - 深度學習依賴可選：`.\scripts\setup_dl.ps1`（先 torch cu128 index，再 requirements-dl.txt；`-Cpu` 無 GPU）→ `manage.py dl_check --predict` 驗證。順序錯會拉到 CPU 版 torch。
 - 手動：`manage.py migrate` → `manage.py seed_demo` → `manage.py serve`；前端 `npm run dev`。

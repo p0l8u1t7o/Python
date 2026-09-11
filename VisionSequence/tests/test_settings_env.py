@@ -91,9 +91,30 @@ class SettingsLayoutTests(SimpleTestCase):
         import re
 
         src = SETTINGS_SRC.read_text(encoding="utf-8")
-        keys = set(re.findall(r'_env(?:_int|_float|_bool)?\("(VISION_[A-Z_]+)"', src))
+        keys = set(re.findall(r'_env(?:_int|_float|_bool|_path)?\("(VISION_[A-Z_]+)"', src))
         example = (Path(settings.BASE_DIR) / ".env.example").read_text(encoding="utf-8")
         missing = sorted(k for k in keys if f"\n{k}=" not in example)
         self.assertEqual(missing, [], f".env.example 缺少：{missing}")
         for key in ("DB_PATH", "AUTH_TOKEN_TTL_HOURS", "BEHIND_HTTPS_PROXY", "DATA_DIR"):
             self.assertIn(f"\n{key}=", example)
+
+    def test_blank_path_keys_use_the_defaults(self):
+        # 路徑鍵留空＝用預設：以前 DB_PATH= 讓資料庫名稱變空白（migrate 失敗），VISION_ASSET_DIR=／VISION_PLUGIN_DIR=
+        # 變成 Path("")＝目前資料夾（資產寫錯地方、外掛找不到）
+        ns = _run(SETTINGS_SRC, {"VS_HOME": str(self.tmp), "DB_PATH": "", "VISION_ASSET_DIR": " ", "VISION_PLUGIN_DIR": ""})
+        home = self.tmp.resolve()
+        self.assertEqual(ns["DATABASES"]["default"]["NAME"], str(home / "data" / "vision.sqlite3"))
+        self.assertEqual(ns["VISION"]["ASSET_DIR"], home / "data" / "assets")
+        self.assertEqual(ns["VISION"]["PLUGIN_DIR"], home / "plugins")
+        # 空白本身有意義的鍵維持原意：DEBUG= 仍是關（不能被「空白＝預設」變成預設的開）
+        self.assertFalse(_run(SETTINGS_SRC, {"VS_HOME": str(self.tmp), "DEBUG": ""})["DEBUG"])
+
+    def test_a_fresh_clone_env_from_the_example_is_usable(self):
+        # 新 clone 的 dev.ps1 -Setup 把 .env.example 原樣複製成 .env：用它的每一個值跑 settings，路徑都要落在正確的地方
+        from dotenv import dotenv_values
+
+        values = {k: v for k, v in dotenv_values(Path(settings.BASE_DIR) / ".env.example").items() if v is not None}
+        ns = _run(SETTINGS_SRC, {**values, "VS_HOME": str(self.tmp)})
+        self.assertTrue(ns["DATABASES"]["default"]["NAME"].endswith("vision.sqlite3"), ns["DATABASES"]["default"]["NAME"])
+        self.assertEqual(ns["VISION"]["ASSET_DIR"].name, "assets")
+        self.assertEqual(ns["VISION"]["PLUGIN_DIR"], self.tmp.resolve() / "plugins")

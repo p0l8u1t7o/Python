@@ -10,25 +10,26 @@
 | 後端 | Django 5.1 + django-ninja + OpenCV／numpy／scipy（可選 onnxruntime、torch/ultralytics、anthropic） |
 | 前端 | React 19 + Vite + TypeScript + Tailwind v4 + @xyflow/react（React Flow）+ TanStack Query + i18next |
 | 執行 | 單一行程：uvicorn（HTTP + SSE）＋ TCP 介面同行程；資料流 DAG 引擎在執行緒池內跑，影像以 numpy 在記憶體傳遞 |
-| 規模 | 156 個內建工具、304 個 API 端點、39 個資料模型、26 個前端頁面（另 7 個整合子頁）、19 頁文件、後端約 1600 項＋前端約 380 項自動測試；擷取端桌面程式（vscapture，PySide6） |
+| 規模 | 156 個內建工具、304 個 API 端點、39 個資料模型、26 個前端頁面（另 7 個整合子頁）、19 頁文件、後端約 1700 項＋前端約 380 項自動測試；擷取端桌面程式（vscapture，PySide6） |
 
 ---
 
 ## 目錄
 
 1. [快速開始](#快速開始)
-2. [功能全貌](#功能全貌)
-3. [架構](#架構)
-4. [程式碼地圖](#程式碼地圖)
-5. [資料模型](#資料模型)
-6. [API 一覽](#api-一覽)
-7. [執行模型與效能](#執行模型與效能)
-8. [擴充點](#擴充點)
-9. [設定（.env）](#設定env)
-10. [驗證與測試](#驗證與測試)
-11. [部署](#部署)
-12. [文件地圖](#文件地圖)
-13. [尚未實作](#尚未實作)
+2. [建置環境](#建置環境)
+3. [功能全貌](#功能全貌)
+4. [架構](#架構)
+5. [程式碼地圖](#程式碼地圖)
+6. [資料模型](#資料模型)
+7. [API 一覽](#api-一覽)
+8. [執行模型與效能](#執行模型與效能)
+9. [擴充點](#擴充點)
+10. [設定（.env）](#設定env)
+11. [驗證與測試](#驗證與測試)
+12. [部署](#部署)
+13. [文件地圖](#文件地圖)
+14. [尚未實作](#尚未實作)
 
 ---
 
@@ -37,6 +38,7 @@
 Windows（PowerShell）：
 
 ```powershell
+.\scripts\setup_prereqs.ps1  # 新電腦：winget 裝缺的 Python 3.12／Node.js LTS／Git，接著做 dev.ps1 -Setup（見「建置環境」）
 .\scripts\dev.ps1 -Setup     # 第一次：建 .venv、安裝、migrate、seed_demo、npm install
 .\scripts\setup_dl.ps1          # 可選：GPU 深度學習依賴（torch cu128＋ultralytics＋onnxruntime-gpu，約 3GB），最後跑 manage.py dl_check 驗證
 .\scripts\dev.ps1            # 之後：後端 HTTP 8000 + TCP 9000、前端 5173
@@ -56,6 +58,36 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 - 交付客戶：`.\scripts\build_release.ps1` 產出自帶 Python 的發行樹／zip／安裝程式，客戶端 `vsctl.cmd` 管服務、升級、外掛與 DL 加購包，見 [部署](#部署)。
 - API 文件（OpenAPI）：http://127.0.0.1:8000/api/docs
 - 使用者指南：介面內「說明」頁（`/help`，三語系、含工具目錄與搜尋）；正本是 `docs/guide/<lang>/*.md`（九頁），工程文件留 `docs/*.html`。
+
+---
+
+## 建置環境
+
+新電腦或新 clone 一行搞定：`.\scripts\setup_prereqs.ps1`——用 winget 裝缺的軟體（已裝的只檢查版本），接著 `dev.ps1 -Setup -NoStart` 建 `.venv`、裝全部依賴、migrate、seed 示範資料、`npm install`。加 `-Release` 裝 Inno Setup、`-Browser` 裝 Chrome、`-Dl` 接著裝深度學習依賴（沒有 NVIDIA 顯示卡再加 `-Cpu`）、`-NoSetup` 只裝軟體、`-DryRun` 只列出會做的事。需要 Windows 10 1809 以上或 Windows 11（x64）與 winget（Microsoft Store 的「應用程式安裝程式」）。
+
+| 軟體 | 版本 | 用途 | 何時需要 | winget ID |
+|---|---|---|---|---|
+| Python | 3.12（含 `py` 啟動器） | 後端、擷取端、所有 Python 腳本 | 必要 | `Python.Python.3.12` |
+| Node.js＋npm | 20 以上（開發與測試用 24 LTS） | 前端 dev server、build、vitest、截圖腳本 | 必要 | `OpenJS.NodeJS.LTS` |
+| Git | 2.x | 版控；`build_release.ps1` 把 commit 記進 `release.json` | 必要 | `Git.Git` |
+| Inno Setup | 6 | 發行版安裝精靈（沒有也能產 zip） | `-Release` | `JRSoftware.InnoSetup` |
+| Google Chrome | 111 以上 | `scripts/docs_shots.mjs` 手冊截圖與瀏覽器檢查（Playwright 用系統 Chrome，不另下載瀏覽器） | `-Browser` | `Google.Chrome` |
+| NVIDIA 顯示卡驅動 | RTX 50 系列需 570 以上 | GPU 訓練與推論（不經 winget，從 nvidia.com 安裝；腳本只檢查 `nvidia-smi`） | `-Dl` | — |
+
+依賴清單（全部鎖版本）：
+
+| 檔案 | 內容 | 由誰安裝 |
+|---|---|---|
+| `requirements.txt` | 平台一般依賴：Django、django-ninja、OpenCV（headless）、numpy、scipy、zxing-cpp、pymodbus、pyserial、onnxruntime（CPU）、uvicorn、whitenoise、lz4、anthropic…；也是發行版打包的清單 | `dev.ps1 -Setup` |
+| `requirements-dev.txt` | ruff | `dev.ps1 -Setup` |
+| `requirements-dl.txt` | ultralytics、lap、onnx、onnxslim、onnxruntime-gpu、nvidia-ml-py；torch／torchvision 要**先**從 pytorch.org 的 cu128 index 裝 | `setup_dl.ps1`（順序錯會拉到 CPU 版 torch，別直接 pip install） |
+| `vscapture/requirements.txt` | 擷取端：PySide6、opencv-python、lz4、PyInstaller；獨立的 `.venv-capture`（opencv-python 與伺服端 headless 版同名互蓋） | `build_capture_client.ps1` |
+| `plugins/**/requirements.txt` | 資料夾外掛自己的依賴 | `dev.ps1 -Setup` |
+| `frontend/package.json`＋`package-lock.json` | 前端：React、Vite、Tailwind、TanStack Query、React Flow、i18next、vitest、playwright、esbuild… | `dev.ps1 -Setup`（`npm install`） |
+
+- `build_release.ps1` 另外在建置時下載並快取到 `build\cache`（第一次要上網，之後核對 SHA-256）：內嵌 CPython 3.12.10、get-pip、NSSM 2.24-101、Caddy 2.9.1、VC++ 執行期；DL 加購包由 `build_dl_pack.ps1` 另外產生。
+- 不進版控、clone 後由腳本產生：`.venv/`、`frontend/node_modules/`、`.env`（從 `.env.example` 複製）、`data/`（資料庫、資產、固定影像；`seed_demo` 建示範資料）、`logs/`。瀏覽器檢查腳本讀的 `frontend/ui-audit/token.txt` 是本機檔案，不進版控。
+- `onnxruntime`（requirements.txt 的 CPU 版）與 `onnxruntime-gpu`（requirements-dl.txt）同名互蓋：`setup_dl.ps1` 會先移除 CPU 版；已裝 GPU 版的機器重跑 `dev.ps1 -Setup` 會自動略過 CPU 版。
 
 ---
 
@@ -423,7 +455,7 @@ cd frontend && npm run -s typecheck && npm test && npm run build
 
 - 單一行程是設計前提：不要開多個 worker 或多副本共用同一資料庫的引擎狀態；反向代理只能掛在 `/`（用主機名或埠分站台）。
 - 其他客戶端電腦只要瀏覽器（Chrome/Edge 111+、Firefox 128+、Safari 16.4+）；語言與主題跟帳號、登出清掉使用者層的本機狀態、每站同時 64 條 SSE 串流、HTTPS 內建 CA 的 `certs\root.crt` 匯入一次。
-- 可選依賴：`onnxruntime`（DL 推論；CPU、GPU 或處理器加速 runtime 只能留一個）、`ultralytics`＋`torch`（YOLO 訓練、SAM）、`anthropic`（Claude 供應器；GPT／Gemini 走標準庫 REST 零依賴）。缺件時對應功能提示安裝指令，其餘正常；客戶站台用 DL 加購包離線安裝。
+- 依賴：`requirements.txt` 已含 `onnxruntime`（CPU 推論；CPU、GPU 或處理器加速 runtime 只能留一個）與 `anthropic`（Claude 供應器；GPT／Gemini 走標準庫 REST 零依賴）；`ultralytics`＋`torch`（YOLO 訓練、SAM）是可選的深度學習依賴，缺件時對應功能提示安裝指令，其餘正常；客戶站台用 DL 加購包離線安裝。清單分工見[建置環境](#建置環境)。
 
 ---
 
