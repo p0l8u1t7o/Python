@@ -21,7 +21,11 @@ export interface AgentStep {
 export interface AgentQuestion {
   id: string
   text: string
-  kind: 'choice' | 'number' | 'text' | 'roi'
+  kind: 'choice' | 'number' | 'text' | 'roi' | 'confirm'
+  action?: string
+  summary?: string
+  effects?: unknown
+  risk?: string
   optional?: boolean
   hint?: string
   options?: { value: string; label: string }[]
@@ -47,6 +51,7 @@ export interface AgentJob<T = unknown> {
   error: string
   fallback_reason: string
   duration_s: number
+  saved_flow?: { id: number; updated_at: string; version: number }
 }
 
 export const TERMINAL: ReadonlySet<AgentJobStatus> = new Set<AgentJobStatus>(['done', 'budget', 'cancelled', 'error'])
@@ -118,6 +123,17 @@ export function useAgentJob<T>() {
     setSteps([])
     setJob(null)
   }, [stop])
+
+  useEffect(() => {
+    const answered = (event: Event) => {
+      const next = (event as CustomEvent<AgentJob<T>>).detail
+      if (next.id !== job?.id) return
+      apply(next)
+      if (next.status === 'running') schedule(next.id)
+    }
+    window.addEventListener('vs:agent-action-answer', answered)
+    return () => window.removeEventListener('vs:agent-action-answer', answered)
+  }, [apply, job?.id, schedule])
 
   useEffect(() => stop, [stop])
 

@@ -562,7 +562,8 @@ export function AgentPage() {
       }
       setBusy(null)
     } else if (j.status === 'needs_input') {
-      setClarify({ ready: false, questions: j.questions, summary: '', intent: '', provider: j.provider, fromJob: true })
+      const questions = j.questions.filter((q) => q.kind !== 'confirm' && !q.action) as Question[]
+      setClarify(questions.length ? { ready: false, questions, summary: '', intent: '', provider: j.provider, fromJob: true } : null)
       setBusy(null)
     } else if (j.status === 'cancelled') {
       toast.success(t('agent.aborted'))

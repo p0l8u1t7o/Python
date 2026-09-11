@@ -1,7 +1,7 @@
 """代理迴圈的動作層：LLM 可呼叫的工具（看狀態、讀技能、分析區域、規則草稿、改 graph、試跑、檢視節點、裁範本、自動調參、提問、完成）。
 
 每個動作＝ActionSpec(name, description, input_schema, handler)；handler(state, args) -> dict（序列化後回給 LLM）。
-改 graph 一律「複本套用 → validate_graph → 才提交」，並拒絕 dl_*／write_modbus／save_image、多個 image_source。
+改 graph 一律「複本套用 → validate_graph → 才提交」，禁止自行加學習模型、輸出節點須核准，取像恰好一個。
 試跑走 service.trial_run(keep_images=False)：不佔影像快取；結果只回精簡文字（狀態、輸出、節點訊息），不塞影像。
 """
 
@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import base64
 import copy
+import hashlib
 import json
 import time
+import uuid
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -59,8 +61,19 @@ class AgentState:
     pictures: int = 0
     groups: list[str] = field(default_factory=list)
     lessons: dict[str, Any] = field(default_factory=dict)
+    principal: Any = None
     flow_id: int | None = None
     engineering_notes: str = ""
+    expected_updated_at: str = ""
+    saved_flow: dict = field(default_factory=dict)
+    job_id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    last_trial_graph: str = ""
+    action_results: dict[str, dict] = field(default_factory=dict)
+    action_requests: dict[str, str] = field(default_factory=dict)
+    pending_action: dict | None = None
+    approvals: dict[str, str] = field(default_factory=dict)
+    resume_action: bool = False
+    approved_nodes: dict[str, dict] = field(default_factory=dict)
 
     def step(self, kind: str, title: str, detail: str = "", **extra: Any) -> None:
         self.steps.append({"n": len(self.steps) + 1, "kind": kind, "title": title[:200], "detail": detail[:600], "at": time.time(), **extra})
@@ -82,16 +95,26 @@ def _obj(props: dict[str, Any], required: list[str] | None = None) -> dict[str, 
     return {"type": "object", "properties": props, "required": required or []}
 
 
-def check_graph(graph: Any) -> dict[str, Any]:
+def check_graph(graph: Any, approved_nodes: dict | None = None) -> dict[str, Any]:
     """validate_graph ＋ 代理專屬限制。"""
     g = validate_graph(graph)
     for n in g["nodes"]:
         t = str(n.get("type", ""))
-        if t.startswith(FORBIDDEN_PREFIX) or t in FORBIDDEN_TYPES:
-            raise ValueError(f"代理不得使用 {t} 工具（深度學習模型與外部輸出由使用者自行加入）")
-    if sum(1 for n in g["nodes"] if n.get("type") == "image_source") != 1:
-        raise ValueError("流程必須恰有一個 image_source")
+        if t.startswith(FORBIDDEN_PREFIX):
+            raise ValueError("Learning tools must be added by the user.")
+        if t in FORBIDDEN_TYPES and (approved_nodes or {}).get(n["id"]) != n:
+            raise ValueError("Output steps require explicit approval.")
+    if sum(is_acquisition(n) for n in g["nodes"]) != 1:
+        raise ValueError("The flow must contain exactly one acquisition step.")
     return g
+
+
+def is_acquisition(node: dict) -> bool:
+    return node.get("type") in ("image_source", "multi_light_grab", "stereo_grab") or node.get("type") == "fixed_image" and node.get("params", {}).get("role", "acquire") == "acquire"
+
+
+def fingerprint(value: Any) -> str:
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()).hexdigest()
 
 
 def _scalar_outputs(outputs: dict[str, Any]) -> dict[str, Any]:
@@ -240,6 +263,7 @@ def h_get_state(state: AgentState, args: dict[str, Any]) -> dict[str, Any]:
         "batch_summary": state.batch_summary, "answers": state.answers,
         "graph": state.graph, "last_trial": state.last_trial, "trials_used": state.trials, "tool_calls_used": state.tool_calls,
         "groups": state.groups or ["tune"] * len(state.images),
+        "flow_id": state.flow_id, "expected_updated_at": state.expected_updated_at,
     }
 
 
@@ -293,7 +317,7 @@ def h_replace_graph(state: AgentState, args: dict[str, Any]) -> dict[str, Any]:
     graph = args.get("graph")
     if isinstance(graph, str):
         graph = json.loads(graph)
-    state.graph = check_graph(graph)
+    state.graph = check_graph(graph, state.approved_nodes)
     if args.get("rationale"):
         state.rationale = str(args["rationale"])
     return {"ok": True, "nodes": len(state.graph["nodes"]), "edges": len(state.graph["edges"])}
@@ -308,7 +332,7 @@ def h_patch_graph(state: AgentState, args: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(ops, list) or not ops:
         return {"error": "ops 必須是非空陣列"}
     new_graph, done = apply_ops(state.graph, ops)
-    state.graph = check_graph(new_graph)
+    state.graph = check_graph(new_graph, state.approved_nodes)
     return {"ok": True, "applied": done}
 
 
@@ -325,17 +349,30 @@ def h_run_trial(state: AgentState, args: dict[str, Any]) -> dict[str, Any]:
     idxs = list(range(len(state.images)))
     if isinstance(wanted, list) and wanted:
         idxs = [int(i) - 1 for i in wanted if 0 < int(i) <= len(state.images)]
+    if not idxs:
+        return {"error": "Select at least one available image."}
     state.trials += 1
     results = []
     for i in idxs:
         rep = _trial(state, state.images[i])
         row = {"image": i + 1, "expected": state.expected[i] if i < len(state.expected) else "", "group": state.groups[i] if i < len(state.groups) else "tune", **compact_report(rep)}
+        from apps.vision import inspect
+
+        row["readings"] = inspect.evidence(state.graph, rep)
+        invalid = {r["task_id"] for r in row["readings"] if not r["valid"]}
+        for node in state.graph["nodes"]:
+            if node.get("meta", {}).get("inspect", {}).get("task_id") in invalid:
+                if node["id"] in row["nodes"]:
+                    row["nodes"][node["id"]].pop("outputs", None)
+                for published in node.get("params", {}).get("_publish", {}).values():
+                    row["outputs"].pop(published, None)
         results.append(row)
     labeled = [(r["status"], r["expected"]) for r in results if r["expected"]]
     summary = {"ok": sum(r["status"] == "ok" for r in results), "ng": sum(r["status"] == "ng" for r in results),
                "failed": sum(r["status"] not in ("ok", "ng") for r in results),
                "matches": sum(s == e for s, e in labeled), "labeled": len(labeled),
-               "error_nodes": sorted({nid for r in results for nid, n in r["nodes"].items() if n["status"] == "error"})}
+               "error_nodes": sorted({nid for r in results for nid, n in r["nodes"].items() if n["status"] in ("error", "failed")})}
+    state.last_trial_graph = fingerprint(state.graph)
     state.last_trial = [{"image": r["image"], "status": r["status"], "expected": r["expected"], "outputs": r["outputs"]} for r in results]
     accepted = autotune.acceptance_rows(results)
     tune = [r for r in results if r["group"] == "tune" and r["expected"]]
@@ -471,7 +508,7 @@ def h_crop_template(state: AgentState, args: dict[str, Any]) -> dict[str, Any]:
     graph["nodes"].append({"id": node_id, "type": "fixed_image", "label": str(args.get("name") or "範本圖"), "x": 0, "y": 320,
                            "params": {"images": [picture], "mode": "fixed", "index": 1, "role": "reference"}})
     graph["edges"].append({"source": node_id, "source_handle": "image", "target": target, "target_handle": port})
-    state.graph = check_graph(graph)  # 失敗會拋，dispatch 會翻成 {"error"} 回給模型
+    state.graph = check_graph(graph, state.approved_nodes)  # 失敗會拋，dispatch 會翻成 {"error"} 回給模型
     return {"picture_node": node_id, "target": target, "port": port, "image": idx + 1, "size": [picture["width"], picture["height"]]}
 
 
@@ -507,9 +544,12 @@ def h_ask_user(state: AgentState, args: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(q, dict) or not q.get("text"):
             continue
         kind = str(q.get("kind") or "text")
-        if kind not in ("choice", "number", "text", "roi"):
+        if kind not in ("choice", "number", "text", "roi", "confirm"):
             kind = "text"
         item: dict[str, Any] = {"id": str(q.get("id") or f"q{i + 1}"), "text": str(q["text"]), "kind": kind, "optional": bool(q.get("optional"))}
+        if kind == "confirm":
+            item.update({key: copy.deepcopy(q.get(key, "")) for key in ("action", "summary", "effects", "risk")})
+            item["optional"] = False
         if kind == "choice":
             item["options"] = [{"value": str(o.get("value")), "label": str(o.get("label") or o.get("value"))} for o in (q.get("options") or []) if isinstance(o, dict)]
         if q.get("hint"):
@@ -526,6 +566,8 @@ def h_finish(state: AgentState, args: dict[str, Any]) -> dict[str, Any]:
 
     if state.graph is None:
         return {"error": "還沒有流程，不能完成：先 draft_from_rules 或 replace_graph"}
+    if state.last_trial_graph != fingerprint(state.graph):
+        return {"error": "Run a trial on the current graph before finishing.", "code": "trial_required"}
     if args.get("lessons") is not None:
         state.lessons = memory.clean_lessons(args["lessons"])
     state.rationale = str(args.get("rationale") or state.rationale)
@@ -551,6 +593,244 @@ def h_propose_note(state: AgentState, args: dict[str, Any]) -> dict[str, Any]:
     return {"id": row.pk, "status": row.status, "title": row.title, "url": f"/notes?note={row.pk}"}
 
 
+def _request(state: AgentState, body: dict | None = None):
+    from django.http import HttpRequest
+
+    request = HttpRequest()
+    request.auth = state.principal
+    request.content_type = "application/json"
+    request._body = json.dumps(body or {}).encode()
+    return request
+
+
+def _asset(asset_id, accept=""):
+    from pathlib import Path
+    from apps.vision.models import Asset
+
+    if not asset_id:
+        raise ValueError("Select an available asset; millimetres require a calibration.")
+    asset = Asset.objects.filter(pk=asset_id).first()
+    if asset is None or not asset.path or not Path(asset.path).is_file():
+        raise ValueError("The selected asset is missing. Select an available asset.")
+    if accept and accept != "file" and asset.kind not in accept.split(","):
+        raise ValueError("The selected asset has an incompatible type.")
+    return asset
+
+
+def h_select_source(state: AgentState, args: dict) -> dict:
+    from apps.vision import fixed_images
+    from apps.vision.models import ImageSource
+
+    graph = copy.deepcopy(state.graph)
+    source = next(n for n in graph["nodes"] if is_acquisition(n))
+    kind = args.get("type", "image_source")
+    if kind == "fixed_image":
+        pictures = args.get("images")
+        if not isinstance(pictures, list) or not pictures:
+            raise ValueError("Select at least one fixed image.")
+        for picture in pictures:
+            if fixed_images.load(picture.get("id")) is None:
+                raise ValueError("A selected fixed image is missing.")
+        params = {"role": "acquire", "images": pictures}
+    elif kind == "image_source":
+        sid = args.get("source_id")
+        if not sid or not ImageSource.objects.filter(pk=sid, is_enabled=True).exists():
+            raise ValueError("Select an available image source.")
+        params = {"mode": "auto", "source_id": sid}
+    else:
+        raise ValueError("Select a configured source or fixed images.")
+    source.update(type=kind, params=params)
+    state.graph = check_graph(graph, state.approved_nodes)
+    return {"source": source["id"], "graph": state.graph}
+
+
+def h_select_asset(state: AgentState, args: dict) -> dict:
+    graph = copy.deepcopy(state.graph)
+    node = _node_or_raise(graph, args["node"])
+    param = next((p for p in tools.get(node["type"]).params if p.key == args["param"] and p.kind == "asset"), None)
+    if param is None:
+        raise ValueError("Select an asset parameter on this step.")
+    asset = _asset(args["asset_id"], param.accept)
+    node.setdefault("params", {})[param.key] = str(asset.id)
+    state.graph = check_graph(graph, state.approved_nodes)
+    return {"asset_id": str(asset.id), "node": node["id"]}
+
+
+def h_apply_calibration(state: AgentState, args: dict) -> dict:
+    _asset(args["asset_id"], "calibration")
+    if args.get("task_id"):
+        return h_update_task(state, {"task_id": args["task_id"], "fields": {"calibration": args["asset_id"], "unit": "mm"}})
+    return h_select_asset(state, {**args, "param": "calibration"})
+
+
+def _task_action(state: AgentState, args: dict, op: str) -> dict:
+    from apps.vision import inspect
+    from apps.vision.agent import tasklist
+
+    existing = next((t for t in inspect.read(state.graph)["tasks"] if t["task_id"] == args.get("task_id")), {})
+    fields = args.get("fields", {})
+    effective = {**existing.get("fields", {}), **fields}
+    if effective.get("unit") == "mm":
+        _asset(effective.get("calibration"), "calibration")
+    draft = {"draft_id": "action", "kind": args.get("kind") or existing.get("kind"), "op": op,
+             "task_id": args.get("task_id"), "fields": {key: tasklist.cell(value, "assumed", "action", "Review before saving.") for key, value in fields.items()}}
+    result = tasklist.apply(state.graph, [draft], {"action": {"confirmed": True, "fields": {key: True for key in fields}}})
+    if result["skipped"]:
+        raise ValueError(result["skipped"][0]["reason"])
+    state.graph = check_graph(result["graph"], state.approved_nodes)
+    return result
+
+
+def h_build_task(state: AgentState, args: dict) -> dict:
+    return _task_action(state, args, "add")
+
+
+def h_update_task(state: AgentState, args: dict) -> dict:
+    return _task_action(state, args, "update")
+
+
+def h_remove_task(state: AgentState, args: dict) -> dict:
+    return _task_action(state, args, "remove")
+
+
+def h_connect_source(state: AgentState, args: dict) -> dict:
+    from apps.vision.sources_pick import candidates
+
+    options = candidates(state.graph, args["target"], args["target_handle"])
+    if args.get("source"):
+        options = [e for e in options if e["source"] == args["source"] and e["source_handle"] == args.get("source_handle")]
+    if not options:
+        raise ValueError("No compatible source is available for this input.")
+    if len(options) != 1:
+        return {"choices": options}
+    edge = options[0]
+    graph = copy.deepcopy(state.graph)
+    target = _node_or_raise(graph, edge["target"])
+    definition = tools.get(target["type"])
+    port = next((p for p in definition.inputs if p.key == edge["target_handle"]), None) or tools.param_port(definition, edge["target_handle"])
+    if not port.multiple:
+        graph["edges"] = [e for e in graph["edges"] if (e["target"], e.get("target_handle", "")) != (edge["target"], edge["target_handle"])]
+    if edge not in graph["edges"]:
+        graph["edges"].append(edge)
+    state.graph = check_graph(graph, state.approved_nodes)
+    return {"edge": edge}
+
+
+def h_save_flow_version(state: AgentState, args: dict) -> dict:
+    from apps.vision import api, schemas
+
+    if not args.get("expected_updated_at"):
+        raise ValueError("Provide the version timestamp you reviewed before saving.")
+    if state.expected_updated_at and args["expected_updated_at"] != state.expected_updated_at:
+        raise ValueError("Use the job's reviewed version timestamp. Start a new review to change the baseline.")
+    graph = check_graph(state.graph, state.approved_nodes)
+    body = {"graph": graph, "expected_updated_at": args["expected_updated_at"]}
+    result = api.patch_flow(_request(state, body), state.flow_id, schemas.FlowPatch(graph=graph))
+    state.saved_flow = {k: result[k] for k in ("id", "updated_at", "version")}
+    state.expected_updated_at = result["updated_at"]
+    return {"evidence": copy.deepcopy(state.saved_flow)}
+
+
+def h_write_output(state: AgentState, args: dict) -> dict:
+    from apps.comm import writers
+
+    if args.get("node"):
+        return _add_output(state, args["node"], "write_modbus")
+    conn = writers.get_connection(int(args["connection_id"]))
+    writer = writers.open_connection(conn)
+    if "text" in args:
+        response = writer.send_text(str(args["text"]))
+    else:
+        if not args.get("values"):
+            raise ValueError("Provide output values.")
+        response = writer.write(args["values"], timeout=float(args.get("timeout_s", 3)))
+    return {"result": "uncertain" if response.get("queued") else "succeeded", "evidence": {"connection_id": conn.id, "response": response}}
+
+
+def _add_output(state: AgentState, node: dict, kind: str) -> dict:
+    graph = copy.deepcopy(state.graph)
+    existing = next((n for n in graph["nodes"] if n["id"] == node.get("id")), None)
+    if node.get("type") != kind or not node.get("id") or existing and existing["type"] != kind:
+        raise ValueError("Provide an output step with a compatible id and type.")
+    required = ("connection", "mapping") if kind == "write_modbus" else ("folder",)
+    if any(not node.get("params", {}).get(key) for key in required):
+        raise ValueError("Provide explicit output settings: " + ", ".join(required))
+    if existing:
+        existing.clear()
+        existing.update(copy.deepcopy(node))
+    else:
+        graph["nodes"].append(copy.deepcopy(node))
+    approved = {**state.approved_nodes, node["id"]: copy.deepcopy(node)}
+    graph = check_graph(graph, approved)
+    state.approved_nodes = {**state.approved_nodes, node["id"]: copy.deepcopy(next(n for n in graph["nodes"] if n["id"] == node["id"]))}
+    state.graph = graph
+    return {"evidence": {"added_node": node["id"]}}
+
+
+def h_save_to_share(state: AgentState, args: dict) -> dict:
+    from pathlib import Path
+
+    if args.get("node"):
+        return _add_output(state, args["node"], "save_image")
+    path = Path(args["path"])
+    if not path.is_absolute() or path.suffix.lower() not in (".png", ".jpg", ".jpeg"):
+        raise ValueError("Provide an absolute image file path.")
+    index = int(args.get("image", 1)) - 1
+    if not 0 <= index < len(state.images):
+        raise ValueError("Select an available image.")
+    ok, encoded = cv2.imencode(path.suffix, state.images[index])
+    if not ok:
+        raise ValueError("The image could not be encoded.")
+    # 不覆寫現有檔案；父目錄必須已存在，核准範圍只涵蓋這一張影像。
+    with path.open("xb") as handle:
+        handle.write(encoded.tobytes())
+    return {"evidence": {"path": str(path), "bytes": encoded.size, "sha256": hashlib.sha256(encoded.tobytes()).hexdigest()}}
+
+
+def h_enable_reporting(state: AgentState, args: dict) -> dict:
+    from apps.vision import api, reporting, schemas
+
+    if not args.get("expected_updated_at") or not isinstance(args.get("comm"), list) or not args["comm"]:
+        raise ValueError("Provide reporting rules and the reviewed version timestamp.")
+    if state.expected_updated_at and args["expected_updated_at"] != state.expected_updated_at:
+        raise ValueError("Use the job's reviewed version timestamp.")
+    if not any(r["enabled"] for r in reporting.sanitize(args["comm"])):
+        raise ValueError("Provide at least one enabled reporting rule with a connection.")
+    body = {"comm": args["comm"], "expected_updated_at": args["expected_updated_at"]}
+    out = api.patch_flow(_request(state, body), state.flow_id, schemas.FlowPatch(comm=args["comm"]))
+    state.expected_updated_at = out["updated_at"]
+    return {"evidence": {k: out[k] for k in ("id", "updated_at", "version", "comm")}}
+
+
+def h_unlock_engine(state: AgentState, args: dict) -> dict:
+    from apps.accounts.api import release_lock
+
+    return {"evidence": release_lock(_request(state))}
+
+
+def h_delete_flow(state: AgentState, args: dict) -> dict:
+    from apps.vision.api import delete_flow
+
+    delete_flow(_request(state), state.flow_id)
+    return {"evidence": {"deleted_flow": state.flow_id}}
+
+
+def h_delete_asset(state: AgentState, args: dict) -> dict:
+    from pathlib import Path
+    from apps.vision.runner import runner
+
+    asset = _asset(args["asset_id"])
+    ident = str(asset.id)
+    Path(asset.path).unlink()
+    runner.forget_asset(ident)
+    asset.delete()
+    return {"evidence": {"deleted_asset": ident}}
+
+
+def h_run_batch(state: AgentState, args: dict) -> dict:
+    return h_run_trial(state, {})
+
+
 ACTIONS: list[ActionSpec] = [
     ActionSpec("propose_note", "Propose an engineering note draft for human review. This never confirms a note or changes inspection specifications.",
                _obj({"title": {"type": "string"}, "body": {"type": "string"}, "kind": {"type": "string", "enum": ["decision", "lesson", "constraint", "lighting", "calibration", "tolerance_rationale", "known_issue"]},
@@ -561,7 +841,7 @@ ACTIONS: list[ActionSpec] = [
     ActionSpec("analyze_region", "分析某張影像某個區域的特徵（灰階統計、Otsu、暗亮粒子、圓形試探、主色）。", _obj({"image": {"type": "integer", "description": "影像編號，1 起算"}, "region": _REGION_SCHEMA}, ["image"]), h_analyze_region),
     ActionSpec("draft_from_rules", "用規則引擎依需求產生一份標準流程草稿（會成為目前流程，除非已有流程）。通常先呼叫它再微調。", _obj({"replace": {"type": "boolean", "description": "已有流程時是否覆蓋"}}), h_draft_from_rules),
     ActionSpec("use_candidate", "改用規則引擎的另一個候選方案（key 來自 draft_from_rules 的 alternatives）。", _obj({"key": {"type": "string"}}, ["key"]), h_use_candidate),
-    ActionSpec("replace_graph", "用你自己設計的完整 graph 取代目前流程（會做驗證；不得含 dl_*／write_modbus／save_image）。", _obj({"graph": {"type": "object", "description": "{nodes:[...], edges:[...]}"}, "rationale": {"type": "string"}}, ["graph"]), h_replace_graph),
+    ActionSpec("replace_graph", "用完整 graph 取代目前草稿並驗證；不得加入 dl_*，輸出節點只能保留已核准的原樣設定。", _obj({"graph": {"type": "object", "description": "{nodes:[...], edges:[...]}"}, "rationale": {"type": "string"}}, ["graph"]), h_replace_graph),
     ActionSpec("patch_graph", "對目前流程做局部修改：set_param／set_params／enable／disable／remove_node／add_node／add_edge／remove_edge／set_label。全部套用後驗證，失敗則整批不採用。",
                _obj({"ops": {"type": "array", "items": _obj({
                    "op": {"type": "string", "enum": ["set_param", "set_params", "enable", "disable", "remove_node", "add_node", "add_edge", "remove_edge", "set_label"]},
@@ -577,12 +857,124 @@ ACTIONS: list[ActionSpec] = [
                      "port": {"type": "string", "description": "圖片輸入埠，預設 template_image"}}, ["image", "region"]), h_crop_template),
     ActionSpec("auto_tune", "用影像標記做資料驅動自動調參（只動現場調機參數，嚴格變好才採納）。", _obj({"max_evals": {"type": "integer"}, "deadline_s": {"type": "number"}}), h_auto_tune),
     ActionSpec("ask_user", "資訊不足時向使用者提問（最多 3 題），迴圈會暫停等待回答。只在關鍵資訊缺失時使用。",
-               _obj({"questions": {"type": "array", "items": _obj({"id": {"type": "string"}, "text": {"type": "string"}, "kind": {"type": "string", "enum": ["choice", "number", "text", "roi"]},
+               _obj({"questions": {"type": "array", "items": _obj({"id": {"type": "string"}, "text": {"type": "string"}, "kind": {"type": "string", "enum": ["choice", "number", "text", "roi", "confirm"]},
+                                                                    "action": {"type": "string"}, "summary": {"type": "string"}, "effects": {"type": "object"}, "risk": {"type": "string"},
                                                                     "options": {"type": "array", "items": _obj({"value": {"type": "string"}, "label": {"type": "string"}})},
                                                                     "optional": {"type": "boolean"}, "hint": {"type": "string"}}, ["text"])}}, ["questions"]), h_ask_user, terminal=True),
     ActionSpec("finish", "完成：目前流程就是最終結果。說明調參與驗收結果，可附 lessons 記錄失敗原因與適用條件。", _obj({"rationale": {"type": "string"}, "lessons": {"type": "object"}}, ["rationale"]), h_finish, terminal=True),
 ]
+_STRING = {"type": "string"}
+_OBJECT = {"type": "object"}
+ACTIONS += [
+    ActionSpec("select_source", "Select acquisition from configured sources or existing fixed images.", _obj({"type": _STRING, "source_id": {"type": "integer"}, "images": {"type": "array", "items": _OBJECT}}), h_select_source),
+    ActionSpec("select_asset", "Select an existing compatible asset for a step.", _obj({"node": _STRING, "param": _STRING, "asset_id": _STRING}, ["node", "param", "asset_id"]), h_select_asset),
+    ActionSpec("apply_calibration", "Apply an existing calibration to a step or inspection task.", _obj({"node": _STRING, "task_id": _STRING, "asset_id": _STRING}, ["asset_id"]), h_apply_calibration),
+    ActionSpec("build_task", "Build a draft inspection task with explicit specification values. Review before saving.", _obj({"kind": _STRING, "fields": _OBJECT}, ["kind", "fields"]), h_build_task),
+    ActionSpec("update_task", "Update a draft task. Engineering specification changes require approval.", _obj({"task_id": _STRING, "fields": _OBJECT}, ["task_id", "fields"]), h_update_task),
+    ActionSpec("remove_task", "Remove a draft task only if no other steps depend on it.", _obj({"task_id": _STRING}, ["task_id"]), h_remove_task),
+    ActionSpec("connect_source", "Connect one compatible source. Ask when multiple sources are available.", _obj({k: _STRING for k in ("target", "target_handle", "source", "source_handle")}, ["target", "target_handle"]), h_connect_source),
+    ActionSpec("save_flow_version", "Save the reviewed draft with version protection. Never overwrite a conflict.", _obj({"expected_updated_at": _STRING}, ["expected_updated_at"]), h_save_flow_version),
+    ActionSpec("run_batch", "Trial all available samples and separately report tuning and acceptance groups.", _obj({}), h_run_batch),
+    ActionSpec("write_output", "Request approval to write connection values, send text, or add an output step.", _obj({"connection_id": {"type": "integer"}, "values": _OBJECT, "text": _STRING, "timeout_s": {"type": "number"}, "node": _OBJECT}), h_write_output),
+    ActionSpec("save_to_share", "Request approval to save an image to an explicit path or add an image output step.", _obj({"path": _STRING, "image": {"type": "integer"}, "node": _OBJECT}), h_save_to_share),
+    ActionSpec("enable_reporting", "Request approval to enable production reporting on the bound flow.", _obj({"comm": {"type": "array", "items": _OBJECT}, "expected_updated_at": _STRING}, ["comm", "expected_updated_at"]), h_enable_reporting),
+    ActionSpec("unlock_engine", "Request approval to release the engine lock within caller permissions.", _obj({}), h_unlock_engine),
+    ActionSpec("delete_flow", "Request approval to delete the bound flow.", _obj({}), h_delete_flow),
+    ActionSpec("delete_asset", "Request approval to delete one specified asset and its file.", _obj({"asset_id": _STRING}, ["asset_id"]), h_delete_asset),
+]
+for _spec in ACTIONS:
+    _spec.input_schema["properties"]["idempotency_key"] = _STRING
 ACTION_MAP: dict[str, ActionSpec] = {a.name: a for a in ACTIONS}
+
+FEATURES = {
+    "select_source": ("flows.edit", "sources"), "select_asset": ("flows.edit", "assets"),
+    "apply_calibration": ("flows.edit", "assets"), "build_task": ("flows.edit",), "update_task": ("flows.edit",),
+    "remove_task": ("flows.edit",), "connect_source": ("flows.edit",), "save_flow_version": ("flows.edit",),
+    "run_trial": ("flows.run",), "inspect_node": ("flows.run",), "auto_tune": ("flows.teach", "flows.run"),
+    "run_batch": ("batch", "flows.run"), "write_output": ("connections",), "save_to_share": ("assets",),
+    "enable_reporting": ("connections", "flows.edit"), "unlock_engine": ("integration",),
+    "delete_flow": ("flows.edit",), "delete_asset": ("assets",), "propose_note": ("flows.edit",),
+    **{key: ("flows.edit",) for key in ("draft_from_rules", "use_candidate", "replace_graph", "patch_graph", "crop_template")},
+}
+CONFIRM = {"write_output", "save_to_share", "enable_reporting", "unlock_engine", "delete_flow", "delete_asset", "save_flow_version"}
+EXECUTION = {"run_trial", "run_batch", "inspect_node", "auto_tune", "write_output", "save_to_share", "enable_reporting"}
+GRAPH_ACTIONS = {"select_source", "select_asset", "apply_calibration", "build_task", "update_task", "remove_task", "connect_source",
+                 "draft_from_rules", "use_candidate", "replace_graph", "patch_graph", "crop_template", "auto_tune"}
+
+
+def _authorize(state: AgentState, name: str, args: dict) -> None:
+    from apps.accounts.security import Principal
+    from apps.core.errors import PermissionDenied
+
+    principal = state.principal
+    if isinstance(principal, Principal) and principal.kind == "user":
+        from django.contrib.auth import get_user_model
+
+        user = get_user_model().objects.filter(pk=principal.user.pk, is_active=True).first() if principal.user else None
+        if user is None:
+            raise PermissionDenied("The caller is no longer active.", code="forbidden")
+        principal = state.principal = Principal("user", user=user, token=principal.token)
+    if principal is None or not principal.can("agent") or any(not principal.can(f) for f in FEATURES.get(name, ())):
+        raise PermissionDenied("This action is not allowed by your permissions.", code="forbidden")
+    if args.get("node") and name in ("write_output", "save_to_share") and not principal.can("flows.edit"):
+        raise PermissionDenied("Editing the flow is not allowed.", code="forbidden")
+    if name in EXECUTION:
+        principal.can_execute()
+
+
+def _ask_action(state: AgentState, name: str, args: dict, key: str, *, choices=None) -> dict:
+    ident = "action_" + uuid.uuid4().hex
+    state.pending_action = {"id": ident, "name": name, "args": copy.deepcopy(args), "key": key, "graph": fingerprint(state.graph), "choices": choices}
+    summary = f"{name}: " + json.dumps(args, ensure_ascii=False, sort_keys=True)
+    question = {"id": ident, "text": "Choose a source." if choices else "Approve this action?", "kind": "choice" if choices else "confirm",
+                "action": name, "summary": summary, "effects": {"flow_id": state.flow_id, "arguments": copy.deepcopy(args)},
+                "risk": "Changes production state or the reviewed engineering specification.", "optional": False}
+    if name == "save_flow_version":
+        from apps.vision.agent.service import describe_changes
+        from apps.vision.models import Flow
+
+        flow = Flow.objects.filter(pk=state.flow_id).first()
+        if flow is None:
+            state.pending_action = None
+            raise ValueError("Bind this job to an existing flow before saving.")
+        question["effects"]["changes"] = describe_changes(flow.graph, state.graph)
+    if choices:
+        question["options"] = [{"value": str(i), "label": f"{e['source']}.{e['source_handle']}"} for i, e in enumerate(choices)]
+    state.questions = [question]
+    return {"result": "not_executed", "evidence": {}, "waiting_for_user": True, "question_id": ident}
+
+
+def _check_calibrations(graph: dict) -> None:
+    from apps.vision import inspect
+
+    for task in inspect.read(graph)["tasks"]:
+        fields = task.get("fields", {})
+        if fields.get("unit") == "mm":
+            if not fields.get("calibration"):
+                raise ValueError("Select a calibration before using millimetres.")
+            _asset(fields["calibration"], "calibration")
+
+
+def _engineering_changed(before: dict | None, after: dict | None) -> bool:
+    from apps.vision import inspect
+
+    if not before or not after:
+        return False
+    # 任務規格採封閉集合；任何方向的規格變更都確認，避免只保護放寬的一端。
+    keys = {"unit", "calibration", "nominal", "lower_tol", "upper_tol", "min_count", "max_count", "expected", "expected_text", "max_defects", "min_length", "required", "tolerance"}
+    old = {t["task_id"]: t for t in inspect.read(before)["tasks"]}
+    for task in inspect.read(after)["tasks"]:
+        previous = old.get(task["task_id"])
+        if previous and any(previous.get("fields", {}).get(k) != task.get("fields", {}).get(k) for k in keys):
+            return True
+    old_nodes = {n["id"]: n for n in before["nodes"]}
+    for node in after["nodes"]:
+        previous = old_nodes.get(node["id"])
+        if previous and any(previous.get("params", {}).get(k) != node.get("params", {}).get(k) for k in keys):
+            return True
+        if previous and node["type"] in ("in_range", "if_number", "string_match", "tolerance_check", "gdt_measure") and previous.get("params") != node.get("params"):
+            return True
+    return False
 
 
 def specs_for(task: str) -> list[ActionSpec]:
@@ -591,25 +983,89 @@ def specs_for(task: str) -> list[ActionSpec]:
 
 def dispatch(state: AgentState, name: str, args: dict[str, Any] | None) -> dict[str, Any]:
     """執行一個動作；例外翻成 {"error": ...} 回給模型（不中斷迴圈）。"""
+    from apps.core.errors import APIError
+
     spec = ACTION_MAP.get(name)
+    args = copy.deepcopy(args or {})
     state.tool_calls += 1
     if spec is None:
         state.step("error", f"未知動作 {name}")
-        return {"error": f"沒有 '{name}' 這個動作", "available": list(ACTION_MAP)}
+        return {"error": "Unknown action.", "available": list(ACTION_MAP), "result": "not_executed", "evidence": {}}
     t0 = time.perf_counter()
+    key, before, attempted, cacheable = "", copy.deepcopy(state.graph), False, False
     try:
-        result = spec.handler(state, dict(args or {}))
+        _authorize(state, name, args)
+        supplied_key = args.pop("idempotency_key", None)
+        signature = fingerprint({"name": name, "args": args})
+        key = str(supplied_key or fingerprint([state.job_id, name, args]))
+        if key in state.action_requests and state.action_requests[key] != signature:
+            raise ValueError("This idempotency key was already used with different arguments.")
+        state.action_requests[key] = signature
+        cacheable = True
+        if key in state.action_results:
+            return copy.deepcopy(state.action_results[key])
+        pending = state.pending_action
+        approved = False
+        if pending:
+            if pending["key"] != key:
+                return {"error": "Answer the pending question first.", "result": "not_executed", "evidence": {}}
+            decision = state.approvals.pop(pending["id"], None)
+            if decision is None:
+                return {"result": "not_executed", "evidence": {}, "waiting_for_user": True}
+            state.pending_action = None
+            if fingerprint(state.graph) != pending["graph"]:
+                raise ValueError("The graph changed after this action was presented. Review a new action.")
+            if pending.get("choices"):
+                edge = pending["choices"][int(decision)]
+                args.update(source=edge["source"], source_handle=edge["source_handle"])
+            elif decision != "approve":
+                result = {"result": "not_executed", "evidence": {"decision": "reject"}}
+                state.action_results[key] = result
+                state.step("tool", name, "not_executed: rejected", **result)
+                return copy.deepcopy(result)
+            approved = True
+        if name in CONFIRM and not approved:
+            return _ask_action(state, name, args, key)
+        attempted = True
+        result = spec.handler(state, args)
+        if result.get("choices"):
+            return _ask_action(state, name, args, key, choices=result["choices"])
+        if state.graph != before and name in GRAPH_ACTIONS:
+            state.graph = check_graph(state.graph, state.approved_nodes)
+            _check_calibrations(state.graph)
+            if _engineering_changed(before, state.graph) and not approved:
+                state.graph = before
+                return _ask_action(state, name, args, key)
+        result.setdefault("result", "not_executed" if "error" in result else "succeeded")
+        result.setdefault("evidence", {} if "error" in result else {"action": name, "graph": fingerprint(state.graph)})
+        if name in CONFIRM and result["result"] != "not_executed":
+            from apps.core import audit
+
+            audit.record(_request(state), "agent." + name, target_type="flow" if state.flow_id else "agent", target_id=str(state.flow_id or state.job_id), summary=json.dumps(result["evidence"], default=str)[:1000])
+    except APIError as exc:
+        state.graph = before
+        result = {"error": exc.message, "code": "forbidden" if exc.status_code == 403 else exc.code, "status_code": exc.status_code,
+                  "result": "not_executed", "evidence": exc.details or {}}
+        if exc.status_code == 409:
+            result["guidance"] = "The flow changed. Review the conflict with the user; do not overwrite or retry automatically."
+            state.questions = [{"id": "conflict_" + uuid.uuid4().hex, "kind": "text", "text": result["guidance"], "optional": False}]
     except Exception as exc:  # noqa: BLE001 - 錯誤回給模型自己修
-        result = {"error": f"{exc.__class__.__name__}: {str(exc)[:400]}"}
+        state.graph = before
+        uncertain = attempted and name in CONFIRM and not isinstance(exc, (ValueError, KeyError, FileExistsError))
+        result = {"error": f"{exc.__class__.__name__}: {str(exc)[:400]}", "result": "uncertain" if uncertain else "not_executed", "evidence": {"action": name}}
+    if cacheable and key:
+        state.action_results[key] = copy.deepcopy(result)
     ms = round((time.perf_counter() - t0) * 1000)
     detail = _step_detail(name, args or {}, result)
-    state.step("error" if "error" in result else "tool", name, detail, ms=ms)
+    state.step("error" if "error" in result else "tool", name, detail, ms=ms, result=result["result"], evidence=result["evidence"])
     return result
 
 
 def _step_detail(name: str, args: dict[str, Any], result: dict[str, Any]) -> str:
     if "error" in result:
         return str(result["error"])
+    if name in CONFIRM:
+        return result["result"] + ": " + json.dumps(result.get("evidence", {}), ensure_ascii=False, default=str)[:450]
     if name == "run_trial":
         s = result.get("summary") or {}
         return f"OK {s.get('ok', 0)}／NG {s.get('ng', 0)}／失敗 {s.get('failed', 0)}" + (f"，命中 {s.get('matches')}/{s.get('labeled')}" if s.get("labeled") else "")

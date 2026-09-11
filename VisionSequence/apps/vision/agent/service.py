@@ -767,6 +767,10 @@ def build_state(task: str, images: list[np.ndarray], regions: list[dict[str, Any
         batch_summary=((extra_summary.strip() + "\n") if extra_summary.strip() else "") + (_batch_summary(runs) if runs else ""),
         owner=owner, priors=priors, examples=examples, groups=autotune.label_groups(labels or [], len(images), groups),
     )
+    from apps.accounts.security import Principal
+
+    # 內部離線入口沿用首次啟動身分；HTTP 入口必須以已驗證的呼叫者覆寫。
+    state.principal = Principal("user", user=owner) if owner is not None else Principal("bootstrap")
     return state
 
 

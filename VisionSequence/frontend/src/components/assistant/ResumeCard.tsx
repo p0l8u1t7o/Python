@@ -28,7 +28,7 @@ export function ResumeCard({ resume, onContinue }: { resume: AssistantResume; on
 export function ResumeQuestions({ questions, onAnswer, disabled = false }: { questions: NonNullable<AssistantWorkState['pending_questions']>; onAnswer: (text: string, id: string) => void; disabled?: boolean }) {
   const { t } = useTranslation()
   const [answers, setAnswers] = useState<Record<string, string>>({})
-  return <div className="space-y-2" data-testid="assistant-resume-questions">{questions.map((q) => <form key={q.id} className="rounded border border-line p-2" onSubmit={(e) => { e.preventDefault(); if (!disabled && answers[q.id]?.trim()) onAnswer(`${q.text}: ${answers[q.id]}`, q.id) }}>
+  return <div className="space-y-2" data-testid="assistant-resume-questions">{questions.map((q) => q.kind === 'confirm' ? <p key={q.id}>{t('assistant.approval.expired')}</p> : <form key={q.id} className="rounded border border-line p-2" onSubmit={(e) => { e.preventDefault(); if (!disabled && answers[q.id]?.trim()) onAnswer(`${q.text}: ${answers[q.id]}`, q.id) }}>
     <label className="block text-xs">{q.text}
       {q.kind === 'choice' && q.options?.length ? <select className="input mt-1 w-full" value={answers[q.id] ?? ''} onChange={(e) => setAnswers({ ...answers, [q.id]: e.target.value })}><option value="">{t('assistant.resume.choose')}</option>{q.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
         : <input className="input mt-1 w-full" type={q.kind === 'number' ? 'number' : 'text'} value={answers[q.id] ?? ''} onChange={(e) => setAnswers({ ...answers, [q.id]: e.target.value })} />}

@@ -437,6 +437,7 @@ class BatchAgentTests(TransactionTestCase):
         s, run = self._gate_run()
         llm_settings = providers.AgentSettings(provider="openai", model="gpt-4o", api_key="sk-test", source="user", mode="agentic")
         replies = [providers.ToolReply("", [providers.ToolCall("c1", "patch_graph", {"ops": [{"op": "set_param", "node": "rng", "key": "low", "value": "170"}]})]),
+                   providers.ToolReply("", [providers.ToolCall("trial", "run_trial", {})]),
                    providers.ToolReply("", [providers.ToolCall("c2", "finish", {"rationale": "門檻拉到兩群中間"})])]
 
         def fake(settings, system, history, tools, *, timeout=None):
@@ -449,6 +450,11 @@ class BatchAgentTests(TransactionTestCase):
             deadline = time.time() + 60
             while time.time() < deadline:
                 body = self._json("get", f"/api/vision/agent/jobs/{job_id}").json()
+                if body["status"] == "needs_input":
+                    self.assertEqual(body["questions"][0]["kind"], "confirm")
+                    answer = self._json("post", f"/api/vision/agent/jobs/{job_id}/answer", {"answers": [{"id": body["questions"][0]["id"], "value": "approve"}]})
+                    self.assertEqual(answer.status_code, 200, answer.content)
+                    continue
                 if body["status"] != "running":
                     break
                 time.sleep(0.05)

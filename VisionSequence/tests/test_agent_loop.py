@@ -94,6 +94,7 @@ class ActionTests(TestCase):
         self.assertTrue(out["improved"])
         out = actions.dispatch(state, "get_tool_skill", {"key": "blob"})
         self.assertIn("blob", out["markdown"])
+        actions.dispatch(state, "run_trial", {"idempotency_key": "after-tuning"})
         out = actions.dispatch(state, "finish", {"rationale": "完成"})
         self.assertTrue(state.finished)
         self.assertEqual([s["kind"] for s in state.steps][:3], ["tool", "tool", "tool"])
@@ -145,6 +146,18 @@ class LoopTests(TestCase):
         self.assertIn("assistant", [s["kind"] for s in self.state.steps])
         self.assertEqual(self.state.steps[-1]["kind"], "done")
 
+    def test_fixed_source_action_runs_through_provider_loop(self):
+        from apps.vision import fixed_images
+
+        picture = fixed_images.store(self.state.images[0], "sample")
+        script = scripted(reply(call("draft_from_rules")), reply(call("select_source", {"type": "fixed_image", "images": [picture]})),
+                          reply(call("run_trial")), reply(call("finish", {"rationale": "Fixed source verified"})))
+        with mock.patch.object(providers, "complete_tools", side_effect=script):
+            result = loop.run_loop(LLM, self.state, [])
+        self.assertEqual(result.status, "done")
+        self.assertEqual(result.graph["nodes"][0]["type"], "fixed_image")
+        self.assertTrue(self.state.last_trial)
+
     def test_needs_input_then_resume(self):
         script = scripted(reply(call("ask_user", {"questions": [{"id": "count", "text": "期望幾個？", "kind": "number"}]})))
         history: list[dict] = []
@@ -155,17 +168,17 @@ class LoopTests(TestCase):
         self.assertEqual(history[-1]["role"], "tool")  # 提問也有 tool 回覆，供應商才不會抱怨
         history.append(loop.answer_turn([{"id": "count", "answer": "5"}]))
         self.state.questions = None
-        script = scripted(reply(call("draft_from_rules")), reply(call("finish", {"rationale": "ok"})))
+        script = scripted(reply(call("draft_from_rules")), reply(call("run_trial")), reply(call("finish", {"rationale": "ok"})))
         with mock.patch.object(providers, "complete_tools", side_effect=script):
             res = loop.run_loop(LLM, self.state, history, loop.Budget(), turns_used=res.turns)
         self.assertEqual(res.status, "done")
-        self.assertEqual(res.turns, 3)
+        self.assertEqual(res.turns, 4)
 
     def test_budget_stops_with_current_graph(self):
         def endless(settings, system, history, tools, *, timeout=None):
             if len(history) == 1:
                 return reply(call("draft_from_rules"))
-            return reply(call("run_trial"))
+            return reply(call("run_trial", {"idempotency_key": str(len(history))}))
 
         with mock.patch.object(providers, "complete_tools", side_effect=endless):
             res = loop.run_loop(LLM, self.state, [], loop.Budget(max_turns=6, max_trials=2))
@@ -174,8 +187,8 @@ class LoopTests(TestCase):
         self.assertEqual(self.state.trials, 2)
         self.assertEqual(self.state.steps[-1]["kind"], "budget")
 
-    def test_text_only_reply_finishes_when_graph_exists(self):
-        script = scripted(reply(call("draft_from_rules")), reply(text="流程已可用，說明如上"))
+    def test_text_only_reply_finishes_when_graph_is_verified(self):
+        script = scripted(reply(call("draft_from_rules")), reply(call("run_trial")), reply(text="流程已可用，說明如上"))
         with mock.patch.object(providers, "complete_tools", side_effect=script):
             res = loop.run_loop(LLM, self.state, [], loop.Budget())
         self.assertEqual((res.status, res.rationale), ("done", "流程已可用，說明如上"))
@@ -263,7 +276,7 @@ class JobApiTests(TransactionTestCase):
 
     def test_job_needs_input_answer_and_cancel(self):
         ref = _upload(self.client, part_image(5))
-        script = scripted(reply(call("ask_user", {"questions": [{"id": "count", "text": "期望幾個？", "kind": "number"}]})), reply(call("draft_from_rules")), reply(call("finish", {"rationale": "ok"})))
+        script = scripted(reply(call("ask_user", {"questions": [{"id": "count", "text": "期望幾個？", "kind": "number"}]})), reply(call("draft_from_rules")), reply(call("run_trial")), reply(call("finish", {"rationale": "ok"})))
         with mock.patch.object(providers, "complete_tools", side_effect=script), mock.patch.object(providers, "resolve", return_value=LLM):
             res = self.client.post("/api/vision/agent/jobs", data=json.dumps({"task": "generate", "images": [ref], "prompt": "看一下"}), content_type="application/json")
             job_id = res.json()["id"]
@@ -289,7 +302,7 @@ class JobApiTests(TransactionTestCase):
     def test_edit_and_tune_jobs(self):
         ref = _upload(self.client, part_image(5))
         base = service.generate([part_image(5)], [], "應該有 5 個孔", use_llm=False)["graph"]
-        script = scripted(reply(call("patch_graph", {"ops": [{"op": "set_param", "node": "blob", "key": "min_area", "value": "40"}]})), reply(call("finish", {"rationale": "已改"})))
+        script = scripted(reply(call("patch_graph", {"ops": [{"op": "set_param", "node": "blob", "key": "min_area", "value": "40"}]})), reply(call("run_trial")), reply(call("finish", {"rationale": "已改"})))
         with mock.patch.object(providers, "complete_tools", side_effect=script), mock.patch.object(providers, "resolve", return_value=LLM):
             res = self.client.post("/api/vision/agent/jobs", data=json.dumps({"task": "edit", "graph": base, "instruction": "把 blob 最小面積改成 40", "images": [ref]}), content_type="application/json")
             self.assertEqual(res.status_code, 202, res.content)

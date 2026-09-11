@@ -332,12 +332,15 @@ class ChatAgenticJobTests(TransactionTestCase):
         return fake
 
     def test_edit_and_tune_through_jobs(self):
+        from tests.test_agent_loop import _upload
+
         flow, bset, run = make_run()
+        image_ref = _upload(self.client, np.full((48, 64, 3), 200, np.uint8))
         with mock.patch.object(providers, "resolve", return_value=AGENTIC):
             r = self._chat({"message": "把 rng 的 low 改成 170", "context": {"kind": "flow_editor", "flow_id": flow.id, "graph": flow.graph}})
             self.assertEqual((r.json()["kind"], r.json()["agentic"]), ("edit", True))
-            with mock.patch.object(providers, "complete_tools", side_effect=self._script("get_state")):
-                res = self.client.post("/api/vision/agent/jobs", data=json.dumps({"task": "edit", "graph": flow.graph, "instruction": "把 rng 的 low 改成 170"}), content_type="application/json")
+            with mock.patch.object(providers, "complete_tools", side_effect=self._script("get_state", "run_trial")):
+                res = self.client.post("/api/vision/agent/jobs", data=json.dumps({"task": "edit", "graph": flow.graph, "instruction": "把 rng 的 low 改成 170", "images": [image_ref]}), content_type="application/json")
                 self.assertEqual(res.status_code, 202, res.content)
                 body = self._wait(res.json()["id"])
             self.assertEqual(body["status"], "done", body.get("error"))

@@ -118,7 +118,7 @@ class EvidenceTests(TestCase):
     def test_loop_keeps_picture_outside_truncated_text_and_counts_initial(self):
         state = self.state()
         history = []
-        with mock.patch.object(providers, "complete_tools", side_effect=[reply(call("inspect_node", {"node": "blob"})), reply(call("finish", {"rationale": "Done"}))]):
+        with mock.patch.object(providers, "complete_tools", side_effect=[reply(call("inspect_node", {"node": "blob"})), reply(call("run_trial")), reply(call("finish", {"rationale": "Done"}))]):
             out = loop.run_loop(LLM, state, history)
         self.assertEqual(out.status, "done")
         turn = next(t for t in history if t["role"] == "tool" and t["name"] == "inspect_node")

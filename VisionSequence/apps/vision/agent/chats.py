@@ -74,7 +74,7 @@ def clean_state(value: Any) -> dict[str, Any]:
         if not _text(r.get("text")):
             continue
         out["pending_questions"].append({"id": _text(r.get("id"), 80), "text": _text(r.get("text")),
-                                         "kind": r.get("kind") if r.get("kind") in ("text", "number", "choice", "roi") else "text",
+                                         "kind": r.get("kind") if r.get("kind") in ("text", "number", "choice", "roi", "confirm") else "text",
                                          "options": _value(r.get("options", [])), "optional": r.get("optional") is True})
     out["assumptions"] = [{"task_id": _text(r.get("task_id"), 40), "field": _text(r.get("field"), 80),
                            "value": _value(r.get("value")), "note": _text(r.get("note"))}

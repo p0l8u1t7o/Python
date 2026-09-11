@@ -26,7 +26,8 @@ import { dismissHint, hintFor, shouldShow, type Hint } from '@/lib/hints'
 import { pageSnapshot, screenSummary, setIntegrationTab } from '@/lib/screen'
 import { base64Of, captureScreenshot } from '@/lib/screenshot'
 import { sectionOf } from '@/pages/integration/sections'
-import type { AssistantResume, AssistantWorkState, FlowGraph, InspectKind, RunReport, TaskDraft } from '@/lib/types'
+import type { AssistantResume, AssistantWorkState, Flow, FlowGraph, InspectKind, RunReport, TaskDraft } from '@/lib/types'
+import { getSession } from '@/lib/flowDraft'
 import { useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
 
@@ -325,6 +326,11 @@ export function AssistantDock() {
     const j = jobs.job
     if (!j || j.status === 'running') return
     if (jobContextRef.current && jobContextRef.current.epoch !== sessionEpoch.current) return
+    if (j.saved_flow?.updated_at) {
+      setWorkState((old) => ({ ...old, flow_updated_at: j.saved_flow!.updated_at, flow_version: j.saved_flow!.version }))
+      void queryClient.invalidateQueries({ queryKey: ['flow', j.saved_flow.id] })
+      void queryClient.invalidateQueries({ queryKey: ['flows'] })
+    }
     if ((j.status === 'done' || j.status === 'budget') && j.result) {
       const r = j.result
       setWorkState((old) => ({ ...old, pending_questions: old.pending_questions?.filter((q) => !jobQuestionIds.current.includes(q.id)), decisions: [...(old.decisions ?? []), { at: new Date().toISOString(), text: r.rationale, by: 'assistant' }],
@@ -342,7 +348,7 @@ export function AssistantDock() {
       const oldQuestionIds = jobQuestionIds.current
       jobQuestionIds.current = j.questions.map((q) => q.id)
       setWorkState((old) => ({ ...old, pending_questions: [...(old.pending_questions ?? []).filter((q) => !oldQuestionIds.includes(q.id)), ...j.questions] }))
-      push({ role: 'assistant', text: t('agent.jobAnswerHint', { text: j.questions.map((q) => q.text).join('; ') }) })
+      push({ role: 'assistant', text: j.questions.some((q) => q.kind === 'confirm' || q.action) ? t('assistant.approval.useCard') : t('agent.jobAnswerHint', { text: j.questions.map((q) => q.text).join('; ') }) })
     } else if (j.status === 'cancelled') push({ role: 'assistant', text: t('agent.aborted') })
     else if (j.status === 'error') push({ role: 'assistant', text: j.error || t('agent.jobStatus.error') })
     setBusy(false)
@@ -356,6 +362,11 @@ export function AssistantDock() {
     setBusy(true)
     if (boundFlow === null && ctx.flowId) { boundRef.current = ctx.flowId; setBoundFlow(ctx.flowId); setBoundName(ctx.flowName ?? '') }
     if (jobs.waiting && jobs.job) {
+      if (jobs.job.questions.some((q) => q.kind === 'confirm' || q.action)) {
+        toast.error(t('assistant.approval.useCard'))
+        setBusy(false)
+        return
+      }
       try { await jobs.answer(jobs.job.questions.map((q, i) => ({ id: q.id, answer: i === 0 ? text : '' }))) } catch (error) { toast.error(errorMessage(error)); setBusy(false) }
       return
     }
@@ -374,9 +385,12 @@ export function AssistantDock() {
       if (r.agentic && (r.kind === 'edit' || r.kind === 'tune')) {
         jobContextRef.current = { epoch, flowId: ctx.flowId ?? null }
         jobQuestionIds.current = []
+        const cachedFlow = payload.flow_id ? queryClient.getQueryData<Flow>(['flow', payload.flow_id]) : undefined
+        const draft = payload.flow_id ? getSession(payload.flow_id).draft : null
+        const expected = cachedFlow && (!draft || draft.baseVersion === cachedFlow.version) ? cachedFlow.updated_at : workState.flow_updated_at || ''
         await jobs.start(r.kind === 'edit'
-          ? { task: 'edit', chat_id: chatId, flow_id: payload.flow_id, graph: payload.graph, instruction: text, images: payload.image_ref ? [payload.image_ref] : [] }
-          : { task: 'tune', chat_id: chatId, flow_id: payload.flow_id, batch_run_id: payload.batch_run_id, instruction: text, graph: payload.graph })
+          ? { task: 'edit', chat_id: chatId, flow_id: payload.flow_id, expected_updated_at: expected, graph: payload.graph, instruction: text, images: payload.image_ref ? [payload.image_ref] : [] }
+          : { task: 'tune', chat_id: chatId, flow_id: payload.flow_id, expected_updated_at: expected, batch_run_id: payload.batch_run_id, instruction: text, graph: payload.graph })
         return
       }
       if (r.kind === 'tasklist') {

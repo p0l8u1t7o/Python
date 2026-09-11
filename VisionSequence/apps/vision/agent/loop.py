@@ -116,7 +116,7 @@ def run_loop(settings: providers.AgentSettings, state: actions.AgentState, histo
         if reply.text.strip():
             state.step("assistant", reply.text.strip()[:200], reply.text.strip()[:600], turn=turns)
         if not reply.calls:
-            if state.graph is not None:
+            if state.graph is not None and state.last_trial_graph == actions.fingerprint(state.graph):
                 state.rationale = reply.text.strip() or state.rationale
                 state.finished = True
                 return LoopResult("done", state.graph, state.rationale, turns)
@@ -127,11 +127,11 @@ def run_loop(settings: providers.AgentSettings, state: actions.AgentState, histo
             continue
         for call in reply.calls:
             if cancelled():
-                result = {"error": "使用者已取消"}
+                result = {"error": "Cancelled by the user.", "result": "not_executed", "evidence": {}}
             elif state.tool_calls >= budget.max_tool_calls:
-                result = {"error": "動作次數預算已用完，請立即呼叫 finish"}
-            elif state.trials >= budget.max_trials and call.name in ("run_trial", "inspect_node", "auto_tune"):
-                result = {"error": "試跑預算已用完，請依既有結果決定並呼叫 finish"}
+                result = {"error": "The action budget is exhausted.", "result": "not_executed", "evidence": {}}
+            elif state.trials >= budget.max_trials and call.name in ("run_trial", "run_batch", "inspect_node", "auto_tune"):
+                result = {"error": "The trial budget is exhausted.", "result": "not_executed", "evidence": {}}
             else:
                 result = actions.dispatch(state, call.name, call.args)
             picture = result.get("picture")
@@ -140,6 +140,10 @@ def run_loop(settings: providers.AgentSettings, state: actions.AgentState, histo
             history.append({"role": "tool", "tool_call_id": call.id, "name": call.name, "content": actions.serialize_result(text_result),
                             **({"picture": picture} if has_image else {})})
             if state.questions:
+                # 同回合尚未執行的呼叫也補齊工具回覆，不能在核准前偷跑。
+                for skipped in reply.calls[reply.calls.index(call) + 1:]:
+                    history.append({"role": "tool", "tool_call_id": skipped.id, "name": skipped.name,
+                                    "content": actions.serialize_result({"result": "not_executed", "evidence": {}, "error": "Answer the pending question first."})})
                 state.step("question", "向使用者提問", "；".join(q["text"] for q in state.questions))
                 return LoopResult("needs_input", state.graph, state.rationale, turns, questions=list(state.questions))
             if state.finished:

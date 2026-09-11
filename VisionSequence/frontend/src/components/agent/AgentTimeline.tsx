@@ -6,6 +6,7 @@ import { Bot, Check, HelpCircle, Info, Loader2, MessageSquare, Play, Square, Tri
 
 import { Badge, Button } from '@/components/ui'
 import type { AgentJob, AgentStep } from '@/lib/agentJob'
+import { ActionApproval } from '@/components/assistant/ActionApproval'
 
 function StepIcon({ step }: { step: AgentStep }) {
   if (step.kind === 'error') return <TriangleAlert size={12} className="text-critical" />
@@ -36,6 +37,7 @@ export function AgentTimeline({ job, steps, onCancel }: { job: AgentJob | null; 
       </div>
       {job.fallback_reason ? <p className="text-[11px] text-warning">{job.fallback_reason}</p> : null}
       {job.error ? <p className="text-[11px] text-critical">{job.error}</p> : null}
+      {job.status === 'needs_input' && job.questions.filter((q) => q.kind === 'confirm' || q.action).map((q) => <ActionApproval key={q.id} jobId={job.id} question={q} />)}
       <ol className="max-h-56 space-y-1 overflow-y-auto pr-1 text-[11px]">
         {steps.map((s) => (
           <li key={s.n} className="flex items-start gap-1.5">
@@ -47,7 +49,7 @@ export function AgentTimeline({ job, steps, onCancel }: { job: AgentJob | null; 
             {typeof s.ms === 'number' ? <span className="tnum shrink-0 text-subtle">{s.ms} ms</span> : null}
           </li>
         ))}
-        {steps.length === 0 ? <li className="text-subtle">{t('agent.jobWaiting')}</li> : null}
+        {steps.length === 0 && job.status === 'running' ? <li className="text-subtle">{t('agent.jobWaiting')}</li> : null}
       </ol>
     </div>
   )

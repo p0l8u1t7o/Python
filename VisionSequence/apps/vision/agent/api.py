@@ -265,6 +265,7 @@ class SettingsIn(Schema):
 class JobIn(GenerateIn):
     chat_id: int | None = None
     flow_id: int | None = None
+    expected_updated_at: str = ""
     task: str = "generate"
     graph: dict[str, Any] | None = None
     instruction: str = ""
@@ -573,7 +574,7 @@ def agent_edit(request: HttpRequest, payload: EditIn):
 def start_agent_job(request: HttpRequest, payload: JobIn):
     """代理模式背景工作：generate（影像＋ROI＋需求）、edit（graph＋指令＋影像 ref）、tune（graph＋指令＋批次列）。
     沒有 LLM 時工作仍會建立並立即以規則引擎完成。"""
-    require_feature(request, "agent").can_execute()
+    require_feature(request, "agent")
     chat = _chat_for(request, payload.chat_id, payload.flow_id)
     settings = _settings_for(request)
     images = _images(payload) if (payload.images or payload.ref) else []
@@ -601,8 +602,15 @@ def start_agent_job(request: HttpRequest, payload: JobIn):
                                 groups=None if from_runs else payload.groups)
     # 在呼叫者執行緒擷取工程知識，代理提示不用從文字猜流程身分。
     from apps.vision import notes as engineering_notes
+    state.principal = principal(request)
     state.flow_id = payload.flow_id or (chat.flow_id if chat else None) or (_bset.flow_id if batch_run_id else None)
     state.engineering_notes = engineering_notes.prompt(state.flow_id) if state.owner else ""
+    # 版本基準只在圖與綁定流程一致時才帶，否則儲存會以衝突回報而不是覆蓋。
+    state.expected_updated_at = payload.expected_updated_at or (chat.work_state.get("flow_updated_at", "") if chat else "")
+    if state.flow_id and not state.expected_updated_at:
+        bound = Flow.objects.filter(pk=state.flow_id).first()
+        if bound and bound.graph == graph:
+            state.expected_updated_at = bound.updated_at.isoformat()
     budget = loop.Budget(max_turns=max(1, min(40, payload.max_turns)), max_trials=max(1, min(30, payload.max_trials)), deadline_s=max(10.0, min(900.0, payload.deadline_s)))
     job_question_ids = set()
     def record_progress(out):
@@ -613,6 +621,8 @@ def start_agent_job(request: HttpRequest, payload: JobIn):
         questions = [q for q in chat.work_state.get("pending_questions", []) if q.get("id") not in job_question_ids]
         incoming = out.get("questions", []) if out["status"] == "needs_input" else []
         update = {"pending_questions": [*questions, *incoming]}
+        if state.saved_flow:
+            update.update(flow_updated_at=state.saved_flow["updated_at"], flow_version=state.saved_flow["version"])
         job_question_ids = {q.get("id") for q in incoming}
         if runs:
             update["sample_groups"] = {group: [r["image_ref"] for r in runs if r.get("group", "tune") == group] for group in ("tune", "accept")}
@@ -626,23 +636,29 @@ def start_agent_job(request: HttpRequest, payload: JobIn):
 
 @router.get("/agent/jobs")
 def list_agent_jobs(request: HttpRequest):
-    return {"items": jobs.list_jobs()}
+    return {"items": jobs.list_jobs(require_feature(request, "agent"))}
 
 
 @router.get("/agent/jobs/{job_id}")
 def get_agent_job(request: HttpRequest, job_id: str, step_from: int = 0):
+    jobs.require_owner(job_id, require_feature(request, "agent"))
     return jobs.get(job_id, step_from)
 
 
 @router.post("/agent/jobs/{job_id}/cancel")
 def cancel_agent_job(request: HttpRequest, job_id: str):
+    jobs.require_owner(job_id, require_feature(request, "agent"))
     return {"cancelled": jobs.cancel(job_id)}
 
 
 @router.post("/agent/jobs/{job_id}/answer")
 def answer_agent_job(request: HttpRequest, job_id: str, payload: AnswerIn):
-    require_feature(request, "agent").can_execute()
-    return jobs.answer(job_id, payload.answers)
+    jobs.require_owner(job_id, require_feature(request, "agent"))
+    result = jobs.answer(job_id, payload.answers)
+    from apps.core import audit
+
+    audit.record(request, "agent.answer", target_type="agent", target_id=str(job_id), detail={"answers": payload.answers})
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -765,6 +781,7 @@ _EDIT_MARKERS = ("改成", "改為", "改为", "設為", "设为", "設成", "�
 _DATA_MARKERS = ("張", "张", "命中", "門檻", "门槛", "阈值", "為什麼", "为什么", "哪個參數", "哪个参数", "這次執行", "这次执行", "此次執行", "此次执行", "本次", "影像", "圖像", "图像", "數值", "数值",
                  "誤判", "误判", "漏檢", "漏检", "出錯", "出错", "耗時", "耗时", "慢", "分佈", "分布", "上一次", "改善", "image", "threshold", "mismatch", "this run")
 _DATA_WORDS = re.compile(r"\b(ok|ng|failed)\b")
+_ACTION_REQUEST = re.compile(r"\b(?:select_source|select_asset|apply_calibration|connect_source|run_trial|auto_tune|save_flow_version|run_batch|write_output|save_to_share|enable_reporting|unlock_engine|delete_flow|delete_asset)\b|\bunlock (?:the )?engine\b|解除引擎鎖定|解鎖引擎", re.I)
 
 
 def chat_intent(message: str, context: ChatContext, mode: str) -> str:
@@ -774,6 +791,8 @@ def chat_intent(message: str, context: ChatContext, mode: str) -> str:
     low = message.lower()
     is_question = any(m in low for m in _QUESTION_MARKERS)
     wants_edit = any(m in low for m in _EDIT_MARKERS) and not is_question
+    if context.graph is not None and not is_question and _ACTION_REQUEST.search(message):
+        return "edit"
     if context.kind in ("flow_editor", "inspect") and context.graph is not None and not is_question and tasklist.is_request(message, context.graph):
         return "tasklist"
     if context.kind in ("flow_editor", "tool") and context.graph and wants_edit:
@@ -818,6 +837,11 @@ def agent_chat(request: HttpRequest, payload: ChatIn):
         deleted = notes.forget_facts(p.user, text)
         return {"kind": "help", "answer": notes.confirmation("forget", text, deleted, ctx.lang), "provider": "memory", "sources": [], "warnings": [], "actions": [], "lookups": []}
     intent = chat_intent(message, ctx, payload.mode)
+    if intent == "edit" and _ACTION_REQUEST.search(message):
+        require_feature(request, "agent")
+        if not service.agentic(settings):
+            raise ValidationError("Use an assistant configuration with action support for this request.", code="actions_unavailable")
+        return {"kind": "edit", "agentic": True, "answer": "", "provider": settings.provider}
     if intent == "tasklist":
         require_feature(request, "agent")
         result = tasklist.propose(message, ctx.lang, ctx.graph, settings,

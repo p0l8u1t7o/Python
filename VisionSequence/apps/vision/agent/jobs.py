@@ -58,6 +58,7 @@ class AgentJob:
             "mode": self.settings.mode, "turns": self.turns, "trials": self.state.trials, "tool_calls": self.state.tool_calls,
             "budget": self.budget.to_dict(), "steps": steps[max(0, step_from):], "step_next": len(steps),
             "questions": self.questions, "result": self.result, "error": self.error, "fallback_reason": self.fallback_reason, "batch_run_id": self.batch_run_id,
+            "saved_flow": self.state.saved_flow,
             "created_at": self.created_at, "finished_at": self.finished_at, "duration_s": round((self.finished_at or time.time()) - self.created_at, 1),
         }
 
@@ -72,10 +73,24 @@ def _prune_locked() -> None:
         _jobs.pop(j.id, None)
 
 
-def list_jobs() -> list[dict[str, Any]]:
+def list_jobs(principal=None) -> list[dict[str, Any]]:
     with _lock:
-        rows = sorted(_jobs.values(), key=lambda j: j.created_at, reverse=True)
+        rows = sorted((j for j in _jobs.values() if principal is None or _owns(j, principal)), key=lambda j: j.created_at, reverse=True)
         return [{k: v for k, v in j.to_dict().items() if k not in ("steps", "result")} for j in rows]
+
+
+def _owns(job, principal) -> bool:
+    owner = job.state.principal
+    if owner is None or owner.kind != principal.kind:
+        return False
+    return getattr(owner.user, "pk", None) == getattr(principal.user, "pk", None) if owner.kind == "user" else owner.token == principal.token
+
+
+def require_owner(job_id: str, principal) -> None:
+    with _lock:
+        job = _jobs.get(job_id)
+        if job is None or not _owns(job, principal):
+            raise NotFound("Assistant job not found", code="job_not_found")
 
 
 def get(job_id: str, step_from: int = 0) -> dict[str, Any]:
@@ -106,6 +121,7 @@ def start(task: str, settings: providers.AgentSettings, state: actions.AgentStat
         raise ValidationError(f"Unknown job type '{task}'", code="bad_task")
     job = AgentJob(id=uuid.uuid4().hex[:12], task=task, settings=settings, state=state, budget=budget or loop.Budget(),
                    runs=list(runs or []), run_images=dict(run_images or {}), batch_run_id=batch_run_id, on_progress=on_progress)
+    state.job_id = job.id
     with _lock:
         _prune_locked()
         if sum(1 for j in _jobs.values() if j.status == "running") >= MAX_RUNNING:
@@ -122,12 +138,24 @@ def answer(job_id: str, answers: list[dict[str, Any]]) -> dict[str, Any]:
             raise NotFound(f"No job {job_id}", code="job_not_found")
         if job.status != "needs_input":
             raise Conflict("This job is not waiting for an answer", code="not_waiting")
+        pending = job.state.pending_action
+        if pending:
+            matches = [a for a in answers if a.get("id") == pending["id"]]
+            allowed = {str(i) for i in range(len(pending["choices"]))} if pending.get("choices") else {"approve", "reject"}
+            if len(answers) != 1 or len(matches) != 1 or matches[0].get("value") not in allowed:
+                raise ValidationError("Answer the action card explicitly before continuing.", code="approval_required")
+            job.state.approvals[pending["id"]] = matches[0]["value"]
+            job.state.resume_action = True
+        elif any(q.get("kind") == "confirm" for q in job.questions):
+            required = {q["id"] for q in job.questions if q.get("kind") == "confirm"}
+            if any(len([a for a in answers if a.get("id") == ident and a.get("value") in ("approve", "reject")]) != 1 for ident in required):
+                raise ValidationError("Answer each confirmation explicitly.", code="approval_required")
         job.status = "running"
         job.questions = []
         job.state.questions = None
         job.state.answers = list(job.state.answers) + list(answers)
         job.history.append(loop.answer_turn(answers))
-        job.state.step("answer", "使用者回答", "；".join(f"{a.get('id')}={a.get('answer')}" for a in answers))
+        job.state.step("answer", "使用者回答", "；".join(f"{a.get('id')}={a.get('value', a.get('answer'))}" for a in answers))
     _spawn(job)
     return job.to_dict()
 
@@ -140,6 +168,17 @@ def _run(job: AgentJob) -> None:
     from django.db import close_old_connections
 
     try:
+        if job.state.resume_action and job.state.pending_action:
+            pending = job.state.pending_action
+            job.state.resume_action = False
+            result = actions.dispatch(job.state, pending["name"], {**pending["args"], "idempotency_key": pending["key"]})
+            if not result.get("waiting_for_user"):
+                job.state.pending_action = None
+            job.history.append({"role": "user", "content": [{"type": "text", "text": "Confirmed action result: " + actions.serialize_result(result)}]})
+            if job.state.questions:
+                job.questions = list(job.state.questions)
+                job.status = "needs_input"
+                return
         if not providers.available(job.settings):
             job.fallback_reason = "沒有可用的 LLM 供應商，改用規則引擎"
             job.state.step("info", "離線模式", job.fallback_reason)
@@ -207,6 +246,8 @@ def _run_single(job: AgentJob) -> None:
     from apps.vision.agent import service
 
     st = job.state
+    actions._authorize(st, "auto_tune" if job.task == "tune" else "patch_graph", {})
+    actions._authorize(st, "run_trial", {})
     if job.task == "generate":
         job.result = service.generate(st.images, st.regions, st.prompt, job.settings, answers=st.answers, labels=st.expected, groups=st.groups, owner=st.owner)
     elif job.task == "edit":
@@ -243,6 +284,7 @@ def _finalize(job: AgentJob, status: str) -> None:
     from apps.vision.agent import service
 
     st = job.state
+    actions._authorize(st, "run_batch" if job.task == "tune" else "run_trial", {})
     graph = st.graph
     if graph is None:
         job.status, job.error, job.finished_at = "error", "代理沒有產出流程", time.time()
