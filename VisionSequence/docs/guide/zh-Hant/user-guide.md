@@ -604,7 +604,7 @@ GET /api/vision/flows/{id}/stream?since=<seq>
 
 ```
 一行一個指令（\n 結尾、大小寫不拘），一行 JSON 回應：
-RUN <flow id 或名稱> [key=value ...] → {"ok": true, "status": "ok|ng|failed", "judge": "OK", "outputs": {...}, "duration_ms": 12.3, "run_id": "..."}
+RUN <flow id 或名稱> [key=value ...] → {"ok": true, "status": "ok|ng|failed", "judge": "OK|NG|FAILED|NONE", "outputs": {...}, "duration_ms": 12.3, "run_id": "..."}
 TRIGGER <flow>   → 只觸發不等結果 {"ok": true, "queued": true}
 STATUS [flow]    → 統計；不帶流程回容量與引擎鎖定
 START <flow> / STOP <flow> → 連續模式

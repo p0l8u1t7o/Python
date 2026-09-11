@@ -51,6 +51,23 @@ class EngineEndToEndTests(SimpleTestCase):
         compiled = compile_graph(validate_graph(graph))
         return engine.execute(compiled, flow_id=1, flow_version=1, trigger="test", grab=lambda s: None, asset_path=lambda a: None, preview=True, input_image=image)
 
+    def test_source_only_flow_is_not_judged(self):
+        # PM-REVIEW-R2 B-1：只有取像步驟的流程不能回 OK（整合端會當成放行）
+        graph = {"nodes": [{"id": "src", "type": "image_source", "params": {"mode": "input"}}], "edges": []}
+        report = self._run(graph, _image(1))
+        self.assertEqual(report.status, "ok")
+        self.assertEqual(report.outputs["judge"], engine.JUDGE_NONE)
+        self.assertIn(engine.NO_CHECK_WARNING, report.warnings)
+        # 取像 → 具名輸出（輸出類）仍然沒有檢測參與
+        graph = {"nodes": [{"id": "src", "type": "image_source", "params": {"mode": "input"}}, {"id": "out", "type": "output", "params": {"name": "w"}}],
+                 "edges": [{"id": "e", "source": "src", "source_handle": "width", "target": "out", "target_handle": "value"}]}
+        report = self._run(graph, _image(1))
+        self.assertEqual(report.outputs["judge"], engine.JUDGE_NONE)
+        # 有檢測步驟就照舊：blob 判定後 OK
+        report = self._run(_graph(3), _image(3))
+        self.assertEqual(report.outputs["judge"], "OK")
+        self.assertNotIn(engine.NO_CHECK_WARNING, report.warnings)
+
     def test_ok_path(self):
         report = self._run(_graph(3), _image(3))
         self.assertEqual(report.status, "ok", report.to_dict())

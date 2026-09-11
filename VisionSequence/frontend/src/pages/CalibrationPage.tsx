@@ -6,6 +6,9 @@
  */
 import { useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+
+import i18next, { type Language } from '@/i18n'
+import { localiseDataName } from '@/lib/catalogueLocale'
 import { ArrowRightLeft, Camera, Crosshair, Download, Layers3, Move, PanelsTopLeft, Ruler, Save, Trash2, Upload, Wand2 } from 'lucide-react'
 import { Page } from '@/components/layout/AppShell'
 import { ImageViewer } from '@/components/viewer/ImageViewer'
@@ -535,7 +538,7 @@ export function CalibrationPage() {
                   <TBody>
                     {shots.length ? shots.map((s, i) => (
                       <Tr key={s.ref} selected={i === current} onClick={() => setCurrent(i)} testId={`calib-shot-${i}`}>
-                        <Td>{s.name}</Td>
+                        <Td>{localiseDataName(s.name, i18next.language as Language)}</Td>
                         <Td>{s.corners?.length ? <Badge tone="ok">{s.corners.length}</Badge> : <Badge tone="critical">{t('calibration.notFound')}</Badge>}</Td>
                         <Td align="right">{s.error == null ? '—' : `${s.error.toFixed(3)} px`}</Td>
                         <Td align="right">
@@ -726,7 +729,7 @@ export function CalibrationPage() {
                 <ul className="space-y-1 text-xs">
                   {calibrations.data.items.map((a) => (
                     <li key={a.id} className="flex items-center justify-between gap-2">
-                      <span className="truncate font-medium">{a.name}</span>
+                      <span className="truncate font-medium">{localiseDataName(a.name, i18next.language as Language)}</span>
                       <span className="shrink-0 text-subtle">{String((a.meta as { summary?: string } | undefined)?.summary ?? '')}</span>
                     </li>
                   ))}

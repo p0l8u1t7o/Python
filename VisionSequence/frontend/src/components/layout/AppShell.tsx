@@ -98,7 +98,7 @@ export function CapacityPill({ compact = false }: { compact?: boolean }) {
   if (!data) return null
   const ratio = data.max_workers ? data.active / data.max_workers : 0
   const tone = ratio >= 1 ? 'text-critical' : ratio >= 0.7 ? 'text-warning' : 'text-ok'
-  const title = data.flows.length ? data.flows.map((f) => `${f.flow_name || f.flow_id}${f.continuous ? ' (連續)' : ''}`).join('\n') : t('capacity.idle')
+  const title = data.flows.length ? data.flows.map((f) => `${f.flow_name || f.flow_id}${f.continuous ? ` (${t('dashboard.continuous')})` : ''}`).join('\n') : t('capacity.idle')
   return (
     <div className={`tnum ${compact ? 'text-[10px]' : 'text-xs'} ${tone}`} title={title}>
       {t('capacity.label', { active: data.active, max: data.max_workers })}
@@ -292,7 +292,7 @@ export function AppShell() {
         {/* 摺疊時 tooltip 要伸出側欄：overflow-y-auto 會把 overflow-x 也變成 auto 而裁掉 tooltip，所以摺疊時改 overflow-visible（10 項一定塞得下） */}
         <div className={`flex-1 ${narrow ? 'overflow-visible' : 'overflow-y-auto'}`}>
           {/* 摺疊成窄側欄時分組標題沒有意義（點不到頁面），直接把所有可點項目攤平 */}
-          {(narrow ? NAV_LEAVES.map((leaf) => ({ ...leaf, children: undefined, sections: false })) as NavNode[] : NAV)
+          {(narrow ? NAV.flatMap((group, gi) => (group.children ?? [group as NavLeaf]).map((leaf, li) => ({ ...leaf, children: undefined, sections: false, groupStart: gi > 0 && li === 0 }))) as (NavNode & { groupStart?: boolean })[] : NAV)
             .filter((item) => visibleNav(item, auth))
             .map((item) => {
               const { to, key, icon: Icon, end, sections, children } = item
@@ -301,6 +301,7 @@ export function AppShell() {
               const groupActive = kids.some((c) => pathname.startsWith(c.to))
               return (
                 <div key={key}>
+                  {narrow && (item as { groupStart?: boolean }).groupStart ? <div className="mx-3 my-1.5 h-px" style={{ background: 'var(--sidebar-line)' }} aria-hidden /> : null}
                   <div className="relative flex items-center">
                     {to ? (
                       <NavLink to={to} end={end} aria-expanded={sections && !narrow ? open : undefined}

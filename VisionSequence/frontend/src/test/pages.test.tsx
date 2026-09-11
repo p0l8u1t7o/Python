@@ -279,8 +279,13 @@ describe('pages render (smoke)', () => {
     await waitFor(() => expect(screen.getByTestId('inspect-add')).toBeEnabled())
     fireEvent.click(screen.getByTestId('inspect-add'))
     fireEvent.click(await screen.findByTestId('inspect-kind-measure_diameter'))
+    // PM-REVIEW-R2 B-2／D1：精靈進行中試執行不被鎖住；停用的按鈕一律帶原因
+    await waitFor(() => expect(screen.getByTestId('inspect-save')).toBeDisabled())
+    expect(screen.getByTestId('inspect-run')).toBeEnabled()
+    expect(screen.getByTestId('inspect-save')).toHaveAttribute('title', 'Finish or cancel the new task first')
     fireEvent.click(await screen.findByTestId('inspect-next'))
     expect(await screen.findByTestId('inspect-create')).toBeDisabled()
+    expect(screen.getByTestId('inspect-create')).toHaveAttribute('title', 'Fill in the highlighted fields first')
   })
   it('AuditPage lists changes for an administrator', async () => {
     const { AuditPage } = await import('@/pages/AuditPage')
@@ -394,6 +399,9 @@ describe('pages render (smoke)', () => {
     renderPage(<FlowsPage />, { route: '/flows' })
     await screen.findByText('示範流程')
     expect(screen.getByTestId('btn-create-inspection')).toBeInTheDocument()
+    // PM-REVIEW-R2 B-1：沒有檢測步驟卻已啟用的流程要有警示（judge 會是 NONE）
+    expect(screen.getAllByTestId('row-no-checks')).toHaveLength(1)
+    expect(screen.getByTestId('row-no-checks').closest('tr')).toHaveTextContent('只有取像')
     fireEvent.click(screen.getByTestId('btn-create-advanced'))
     expect(await screen.findByRole('dialog')).toHaveAccessibleName('New advanced flow')
     fireEvent.keyDown(document, { key: 'Escape' })

@@ -377,6 +377,8 @@ export interface Flow {
   owner_name: string
   /** 已完成現場教導（參數卡頁「標記為已教導」）；false 時執行會帶 warnings 但不阻擋 */
   commissioned?: boolean
+  /** 會做判定的步驟數（取像／輸出／註解不算）；0 且已啟用＝流程什麼都沒檢，judge 會是 NONE */
+  check_count?: number
   recipe_count?: number
 }
 

@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { BarChart3, GitCompare, Images, ListChecks, SlidersHorizontal } from 'lucide-react'
+import { BarChart3, GitCompare, Images, ListChecks, Plus, SlidersHorizontal } from 'lucide-react'
 
 import { BatchComparePanel } from '@/components/batch/BatchCompare'
 import { runTitle } from '@/components/batch/BatchRunList'
@@ -20,7 +20,7 @@ import { BatchTunePanel } from '@/components/batch/BatchTunePanel'
 import { NewSetModal } from '@/components/batch/NewSetModal'
 import { Page } from '@/components/layout/AppShell'
 import { compactOverrides } from '@/components/recipes/RecipeDrawer'
-import { Card, Checkbox, ConfirmDialog, EmptyState, PageHeader, Select, Tabs } from '@/components/ui'
+import { Button, Card, Checkbox, ConfirmDialog, EmptyState, PageHeader, Select, Tabs } from '@/components/ui'
 import { RUNNING, applySuggestions, fetchCompare, paramDiff, useBatchInsights, useBatchMutations, useBatchRun, useBatchRuns, useBatchSet, useBatchSets, type BatchCompare, type BatchRun, type BatchSet, type Expected, type Suggestion } from '@/lib/batch'
 import { useRegisterAssistantContext } from '@/lib/assistantContext'
 import { errorMessage } from '@/lib/errors'
@@ -281,7 +281,7 @@ export function BatchPage() {
             <Tabs tabs={tabs} value={tab} onChange={setTab} size="sm" />
             <div className="mt-3">
               {tab === 'result' ? (currentRun && currentSet ? <BatchRunDetail run={currentRun} set={currentSet} onLabel={(i, e) => void label(i, e)} onPreview={setPreviewIndex} onToGolden={(idx) => void toGolden(idx)} canManage={canManage} />
-                : <EmptyState title={currentSet ? t('batchPage.noRuns') : t('batchPage.noSets')} compact />) : null}
+                : <EmptyState title={currentSet ? t('batchPage.noRuns') : t('batchPage.noSets')} description={currentSet ? undefined : t('batchPage.noSetsHint')} action={currentSet || !canManage ? undefined : <Button size="sm" variant="primary" icon={<Plus size={14} />} onClick={() => setNewOpen(true)} data-testid="batch-empty-new-set">{t('batchPage.newSet')}</Button>} compact />) : null}
               {tab === 'images' ? (currentSet ? <BatchImagesGrid set={currentSet} run={currentRun} onGroup={(i, g) => void group(i, g)} onLabel={(i, e) => void label(i, e)} onBulk={(e) => void bulkLabel(e)} onPreview={setPreviewIndex} canManage={canManage} /> : <EmptyState title={t('batchPage.noSets')} compact />) : null}
               {tab === 'insights' ? (currentRun && currentSet ? <BatchInsightsPanel insights={insights.data} runs={runItems} set={currentSet} run={currentRun} onApply={apply} onPreview={setPreviewIndex} /> : <EmptyState title={t('batchPage.noRuns')} compact />) : null}
               {tab === 'compare' ? (

@@ -282,7 +282,7 @@ export default {
     }
   },
   "count_objects": {
-    "label": "數數量",
+    "label": "計數",
     "help": "使用目前影像設定並執行此檢測。",
     "fields": {
       "roi": {
@@ -646,6 +646,11 @@ export default {
   }
 },
   dataNames: {
+    'Example: camera mapping (A→B)': '範例：相機間映射（A→B）',
+    'Example: stereo calibration (conveyor)': '範例：立體標定（輸送帶）',
+    'Example: statistical template (print)': '範例：統計範本（印刷）',
+    'Example: classifier (good / missing hole)': '範例：分類器（良品／缺孔）',
+    'Example: segmenter (scratch)': '範例：分割器（刮痕）',
     'Demo: synthetic parts': '示範：合成零件',
     'Demo: hole count': '示範：零件孔數檢測',
     'Demo: exposure check': '示範：曝光檢查',

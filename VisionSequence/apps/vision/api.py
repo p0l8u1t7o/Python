@@ -62,6 +62,22 @@ router = Router(tags=["vision"])
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
+def _check_count(graph: dict[str, Any] | None) -> int:
+    """會做判定的步驟數：取像／輸出類與註解不算（與 engine 的 judge=NONE 規則同一套）。"""
+    count = 0
+    for node in (graph or {}).get("nodes") or []:
+        node_type = str(node.get("type") or "")
+        if node_type == "note":
+            continue
+        try:
+            category = tools.get(node_type).category
+        except Exception:
+            category = ""
+        if category not in ("source", "output"):
+            count += 1
+    return count
+
+
 def _flow_out(flow: Flow) -> dict[str, Any]:
     rt = runner.runtime(flow.id)
     return {
@@ -83,6 +99,7 @@ def _flow_out(flow: Flow) -> dict[str, Any]:
         "comm": reporting.sanitize(flow.comm),
         "recipe_count": flow.recipes.count(),
         "node_count": len((flow.graph or {}).get("nodes") or []),
+        "check_count": _check_count(flow.graph),
         "created_at": flow.created_at.isoformat(),
         "updated_at": flow.updated_at.isoformat(),
         "stats": rt.stats.to_dict(),

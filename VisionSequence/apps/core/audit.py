@@ -15,6 +15,8 @@ Rules that keep the trail useful rather than merely large:
 
 from __future__ import annotations
 
+import json
+
 import logging
 from typing import Any
 
@@ -44,7 +46,10 @@ def _clip(value: Any) -> Any:
         return {str(k)[:60]: _clip(v) for k, v in list(value.items())[:MAX_ITEMS]}
     if isinstance(value, (list, tuple)):
         return [_clip(v) for v in list(value)[:MAX_ITEMS]]
-    text = repr(value)
+    try:
+        text = json.dumps(value, ensure_ascii=False, default=str)
+    except (TypeError, ValueError):
+        text = str(value)
     return text if len(text) <= 200 else text[:200] + "…"
 
 

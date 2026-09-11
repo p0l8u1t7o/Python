@@ -15,7 +15,7 @@ export function NodeList({ nodes, defs, selectedId, statuses, onSelect }: { node
         const status = statuses.get(node.id)
         const dot = status === 'ok' ? 'bg-ok' : status === 'ng' ? 'bg-warning' : status === 'error' ? 'bg-critical' : 'bg-line-strong'
         return (
-          <button key={node.id} type="button" data-node-id={node.id} onClick={() => onSelect(node.id)} className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs ${selectedId === node.id ? 'bg-brand-soft text-brand' : 'hover:bg-surface-muted'} ${node.enabled === false ? 'opacity-50' : ''}`}>
+          <button key={node.id} type="button" data-node-id={node.id} title={`${node.label || def?.label || node.type} · ${node.id}`} onClick={() => onSelect(node.id)} className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs ${selectedId === node.id ? 'bg-brand-soft text-brand' : 'hover:bg-surface-muted'} ${node.enabled === false ? 'opacity-50' : ''}`}>
             <span className={`size-1.5 shrink-0 rounded-full ${dot}`} />
             <Icon size={13} className="shrink-0" aria-hidden />
             <span className="truncate">{node.label || def?.label || node.type}</span>

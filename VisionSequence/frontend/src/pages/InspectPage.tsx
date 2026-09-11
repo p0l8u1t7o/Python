@@ -377,7 +377,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
     addImageFromCurrent: (key) => { setCropKey(key); setCropRegion(null) },
   }
 
-  if (flow.isError || kinds.isError || tools.isError) return <ErrorState error={flow.error ?? kinds.error ?? tools.error} />
+  if (flow.isError || kinds.isError || tools.isError) return <div><ErrorState error={flow.error ?? kinds.error ?? tools.error} /><p className="text-center"><Link className="btn-secondary" to="/flows">{t('flows.backToList')}</Link></p></div>
   if (!graph || !session.draft || kinds.isPending || tools.isPending) return <LoadingState />
   const activeRoi = kind?.fields.find((field) => field.key === roiKey && field.kind === 'roi')
   const source = graph.nodes.find((node) => ['image_source', 'fixed_image'].includes(node.type) && node.params?.role !== 'reference')
@@ -386,7 +386,13 @@ function InspectPageInner({ flowId }: { flowId: number }) {
   const taskNodes = graph.nodes.filter((node) => Object.values(task?.nodes ?? {}).includes(node.id))
   const fixedImages = Array.isArray(source?.params?.images) ? (source.params.images as unknown[]) : []
   const visibleFields = kind ? kind.fields.filter((field) => inspectionFieldVisible(field, values)) : []
-  const wizardSteps: WizardStep[] = kind && visibleFields.some((field) => wizardStepOf(field) === 1) ? [1, 2] : [2]
+  // 還沒選種類時先顯示完整三步（大多數種類都有區域步驟），選了才依欄位收斂；步驟數不會中途從 2 變 3
+  const wizardSteps: WizardStep[] = !kind || visibleFields.some((field) => wizardStepOf(field) === 1) ? [1, 2] : [2]
+  const overall = inspectionOverall(run, stale)
+  // 停用一律帶原因（PM-REVIEW-R2 D1）：使用者才分得出「按鈕壞了」與「我少填了東西」
+  const runBlocked = locked ? t('inspect.blocked.locked') : !auth.can('flows.run') ? t('inspect.blocked.permission') : busy ? t('inspect.blocked.busy') : pending && formInvalid ? t('inspect.blocked.invalid') : null
+  const saveBlocked = readOnly ? t('inspect.blocked.readOnly') : busy ? t('inspect.blocked.busy') : newKind ? t('inspect.blocked.wizard') : formInvalid ? (needsCalibration ? t('inspect.blocked.calibration') : t('inspect.blocked.invalid')) : null
+  const createBlocked = readOnly ? t('inspect.blocked.readOnly') : busy ? t('inspect.blocked.busy') : needsCalibration ? t('inspect.blocked.calibration') : formInvalid ? t('inspect.blocked.invalid') : null
   const renderField = (field: InspectField) => <div key={field.key} data-field={field.key} onBlur={() => { if (!newKind && edits.current) void action(flushEdits) }}>
     {field.key === 'locator' ? <label className="label">{field.label}<select className="input" value={String(values.locator ?? '')} onChange={(event) => changeField('locator', event.target.value)}><option value="">{t('common.none')}</option>{list.tasks.filter((entry) => entry.kind === 'locate_part' && (newKind || entry.task_id !== selected) && !entry.custom).map((entry) => <option key={entry.task_id} value={entry.task_id}>{taskTitle(entry)}</option>)}</select></label> : field.source_type === 'geometry' ? <GeometrySourceField field={field} value={values[field.key]} graph={graph} nodeId={newKind ? undefined : task?.nodes.defect} defs={defs} onChange={(value) => changeField(field.key, value)} /> : <ParamField param={inspectionParam(field)} value={values[field.key]} onChange={(value) => changeField(field.key, value)} actions={actions} />}
     {field.kind === 'output_key' && typeof values[field.key] === 'string' && values[field.key] !== '' && !OUTPUT_NAME.test(String(values[field.key])) ? <p className="mt-1 text-xs text-warning" role="alert">{t('inspect.badResultName')}</p> : null}
@@ -402,14 +408,16 @@ function InspectPageInner({ flowId }: { flowId: number }) {
     <header className="flex flex-wrap items-center gap-2 border-b border-line bg-surface px-3 py-2">
       <h1 className="mr-auto text-sm font-semibold">{t('inspect.title')} <span className="text-muted">· {session.draft.name}</span></h1>
       {readOnly ? <span className="text-xs text-warning">{t('inspect.readOnly')}</span> : null}
-      <Button icon={<Play size={14} />} loading={preview.isPending} disabled={locked || !auth.can('flows.run') || busy || Boolean(newKind) || pending && formInvalid} onClick={() => void action(() => runPreview())} data-testid="inspect-run">{t('inspect.run')}</Button>
-      <Button icon={<Save size={14} />} loading={patch.isPending} disabled={readOnly || busy || Boolean(newKind) || formInvalid} onClick={() => void action(save)} data-testid="inspect-save">{t('inspect.save')}</Button>
+      <Button icon={<Play size={14} />} loading={preview.isPending} disabled={Boolean(runBlocked)} title={runBlocked ?? t('inspect.runHint')} onClick={() => void action(() => runPreview())} data-testid="inspect-run">{t('inspect.run')}</Button>
+      <Button icon={<Save size={14} />} loading={patch.isPending} disabled={Boolean(saveBlocked)} title={saveBlocked ?? undefined} onClick={() => void action(save)} data-testid="inspect-save">{t('inspect.save')}</Button>
       {dirty ? <span className="text-xs text-warning">{t('inspect.unsaved')}</span> : null}
-      <span className={`rounded px-2 py-1 text-xs ${stale ? 'text-muted' : run?.status === 'ok' ? 'text-ok' : 'text-warning'}`} data-testid="inspect-overall">{stale ? t('inspect.status.stale') : inspectionOverall(run, stale)}</span>
+      <span className={`rounded px-2 py-1 text-xs ${stale || overall === 'NONE' ? 'text-muted' : run?.status === 'ok' ? 'text-ok' : 'text-warning'}`} title={overall === 'NONE' ? t('inspect.noJudgeHint') : undefined} data-testid="inspect-overall">{stale ? t('inspect.status.stale') : overall === 'NONE' ? t('inspect.noJudge') : overall}</span>
       <FlowSubNav flowId={flowId} />
       <div className="flex w-full flex-wrap items-center gap-2 text-xs">
         <label>{t('inspect.source')} <select className="input !w-48" value={source?.type === 'fixed_image' ? 'fixed' : String(source?.params?.source_id ?? '')} disabled={readOnly || busy} onChange={(event) => void action(() => changeSource(event.target.value))} data-testid="inspect-source">
-          <option value="">{t('common.none')}</option><option value="fixed">{t('inspect.fixedImages')}</option>{(sources.data?.items ?? []).map((item) => <option key={item.id} value={item.id}>{localiseDataName(item.name, i18n.language as Language)}</option>)}
+          <option value="">{t('common.none')}</option>
+          <optgroup label={t('inspect.sourceGroups.builtin')}><option value="fixed">{t('inspect.fixedImages')}</option></optgroup>
+          <optgroup label={t('inspect.sourceGroups.library')}>{(sources.data?.items ?? []).map((item) => <option key={item.id} value={item.id}>{localiseDataName(item.name, i18n.language as Language)}</option>)}</optgroup>
         </select></label>
         <Button size="sm" icon={<ImageUp size={14} />} loading={upload.isPending} onClick={() => uploadInput.current?.click()}>{t('inspect.upload')}</Button>
         <input ref={uploadInput} className="hidden" type="file" accept="image/*" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void action(() => uploadImage(file)) }} />
@@ -461,12 +469,16 @@ function InspectPageInner({ flowId }: { flowId: number }) {
             </> : kind ? <>
               <h2 className="font-semibold">{kind.label}</h2>
               <p className="text-xs text-muted">{t(wizard === 1 ? 'inspect.wizard.regionHint' : 'inspect.wizard.specHint')}</p>
+              {wizard === 1 && !image ? <div className="rounded-md border border-warning/40 bg-warning-soft p-2 text-xs" role="status" data-testid="inspect-wizard-no-image">
+                <p className="text-warning">{t('inspect.wizard.noImage')}</p>
+                <Button size="sm" className="mt-2" icon={<Play size={14} />} loading={preview.isPending} disabled={Boolean(runBlocked)} title={runBlocked ?? undefined} onClick={() => void action(() => runPreview())} data-testid="inspect-wizard-grab">{t('inspect.wizard.grabImage')}</Button>
+              </div> : null}
               <fieldset disabled={readOnly} className="space-y-4">{visibleFields.filter((field) => wizardStepOf(field) === wizard).map(renderField)}</fieldset>
               {wizard === 2 && needsCalibration ? <p className="text-sm text-warning" role="alert">{t('inspect.needsCalibration')} <Link className="underline" to="/calibration">{t('inspect.openCalibration')}</Link></p> : null}
               <div className="flex flex-wrap gap-2">
                 <Button icon={<ChevronLeft size={14} />} onClick={() => setWizard(wizard === 2 && wizardSteps.length > 1 ? 1 : 0)} data-testid="inspect-back">{t('inspect.wizard.back')}</Button>
                 {wizard === 1 ? <Button variant="primary" icon={<ChevronRight size={14} />} onClick={() => setWizard(2)} data-testid="inspect-next">{t('inspect.wizard.next')}</Button>
-                  : <Button variant="primary" icon={<Plus size={14} />} disabled={readOnly || formInvalid || busy} onClick={() => void action(createTask)} data-testid="inspect-create">{t('inspect.wizard.create')}</Button>}
+                  : <Button variant="primary" icon={<Plus size={14} />} disabled={Boolean(createBlocked)} title={createBlocked ?? undefined} onClick={() => void action(createTask)} data-testid="inspect-create">{t('inspect.wizard.create')}</Button>}
                 <Button onClick={cancelWizard}>{t('common.cancel')}</Button>
               </div>
             </> : null}
@@ -484,8 +496,8 @@ function InspectPageInner({ flowId }: { flowId: number }) {
       </section>
       <section className="flex min-h-[420px] min-w-0 flex-1 flex-col" data-testid="inspect-viewer">
         <div className="min-h-[300px] flex-1"><ImageViewer proposals={proposals} src={image?.ref ? imageUrl(image.ref, 1600) : null} imageWidth={image?.width ?? 0} imageHeight={image?.height ?? 0} overlays={reading?.overlays ?? []}
-          roi={cropKey ? cropRegion : advancedRoi ? graph.nodes.find((node) => node.id === advancedRoi.nodeId)?.params?.[advancedRoi.key] as Region | null : activeRoi ? values[activeRoi.key] as Region | null : null} roiShapes={cropKey ? ['rect'] : advancedRoi?.shapes ?? activeRoi?.shapes}
-          onRoiChange={!readOnly && !busy && (!task?.custom || Boolean(newKind)) ? cropKey ? setCropRegion : advancedRoi ? (region) => void action(() => changeNodeParam(advancedRoi.nodeId, advancedRoi.key, region)) : activeRoi ? (region) => changeField(activeRoi.key, region) : undefined : undefined}
+          roi={!image ? null : cropKey ? cropRegion : advancedRoi ? graph.nodes.find((node) => node.id === advancedRoi.nodeId)?.params?.[advancedRoi.key] as Region | null : activeRoi ? values[activeRoi.key] as Region | null : null} roiShapes={cropKey ? ['rect'] : advancedRoi?.shapes ?? activeRoi?.shapes}
+          onRoiChange={image && !readOnly && !busy && (!task?.custom || Boolean(newKind)) ? cropKey ? setCropRegion : advancedRoi ? (region) => void action(() => changeNodeParam(advancedRoi.nodeId, advancedRoi.key, region)) : activeRoi ? (region) => changeField(activeRoi.key, region) : undefined : undefined}
           className="h-full w-full" stateKey={`inspect:${flowId}`} toolbar /></div>
         <div className="space-y-2 border-t border-line bg-surface p-4" data-testid="inspect-reading">
           <p className="text-sm font-semibold">{t(`inspect.status.${status}`)}</p>
@@ -494,7 +506,14 @@ function InspectPageInner({ flowId }: { flowId: number }) {
           {reading?.reason ? <p className="text-xs text-muted">{reading.reason}</p> : null}
           {task?.kind === 'locate_part' && !newKind ? <p className="text-xs text-muted" data-testid="inspect-teach-hint">{t('inspect.teachHint')}</p> : null}
           {task?.kind === 'locate_part' && reading?.verdict === 'pass' && !stale && !newKind ? <Button disabled={!run?.id || readOnly || preview.isPending} onClick={() => void action(teachPose)} data-testid="inspect-teach-pose">{t('inspect.teachPose')}</Button> : null}
-          {cropKey ? <div className="flex gap-2"><Button disabled={!cropRegion} onClick={() => void action(saveCrop)}>{t('inspect.saveCrop')}</Button><Button onClick={() => setCropKey(null)}>{t('common.cancel')}</Button></div> : null}
+          {cropKey ? <div className="space-y-2" data-testid="inspect-crop-mode">
+            <p className="text-xs text-brand">{t('inspect.cropHint')}</p>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="primary" disabled={!cropRegion} title={cropRegion ? undefined : t('inspect.cropNeedRegion')} onClick={() => void action(saveCrop)} data-testid="inspect-save-crop">{t('inspect.saveCrop')}</Button>
+              {activeRoi && values[activeRoi.key] && (values[activeRoi.key] as Region).shape === 'rect' ? <Button onClick={() => setCropRegion(values[activeRoi.key] as Region)} data-testid="inspect-crop-use-region">{t('inspect.cropUseRegion')}</Button> : null}
+              <Button onClick={() => setCropKey(null)}>{t('common.cancel')}</Button>
+            </div>
+          </div> : null}
         </div>
       </section>
     </div>

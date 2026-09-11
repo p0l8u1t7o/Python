@@ -174,6 +174,27 @@ def _judge_for_status(status: str) -> str:
     return {"ng": "NG", "failed": "FAILED"}.get(status, "OK")
 
 
+#: 沒有任何檢測步驟參與判定時的 judge 值（PM-REVIEW-R2 B-1）：只有取像／輸出類步驟執行過、
+#: 也沒有判定工具寫 _judge 或具名輸出 judge——回 OK 會讓整合端把「還沒設定檢測」的流程當成合格放行。
+JUDGE_NONE = "NONE"
+NO_CHECK_WARNING = "No inspection step ran; judge is NONE"
+#: 這些分類的工具本身不做判定
+_NON_CHECK_CATEGORIES = frozenset({"source", "output"})
+
+
+def _nothing_checked(compiled: CompiledGraph, report: "RunReport", context: dict) -> bool:
+    """狀態 ok、沒有判定工具寫過 _judge，且執行過的步驟全是取像／輸出類 → 這次 run 什麼都沒檢。"""
+    if report.status != "ok" or context.get("_judge") is not None:
+        return False
+    for node_id, node_report in report.nodes.items():
+        if node_report.status not in ("ok", "ng"):
+            continue
+        cn = compiled.nodes.get(node_id)
+        if cn is None or getattr(cn.tool, "category", "") not in _NON_CHECK_CATEGORIES:
+            return False
+    return True
+
+
 def execute(
     compiled: CompiledGraph,
     *,
@@ -440,7 +461,13 @@ def execute(
     else:
         report.status = "ok"
     named_outputs = dict(context.get("_outputs") or {})
-    named_outputs.setdefault("judge", _judge_for_status(report.status))
+    if "judge" not in named_outputs:
+        if _nothing_checked(compiled, report, context):
+            named_outputs["judge"] = JUDGE_NONE
+            if NO_CHECK_WARNING not in report.warnings:
+                report.warnings.append(NO_CHECK_WARNING)
+        else:
+            named_outputs["judge"] = _judge_for_status(report.status)
     report.context = {k: _jsonable(v) for k, v in context.items() if not k.startswith("_")}
     report.outputs = _jsonable(named_outputs)
     report.finished_at = time.time()

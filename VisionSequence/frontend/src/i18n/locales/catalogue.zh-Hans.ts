@@ -646,6 +646,11 @@ export default {
   }
 },
   dataNames: {
+    'Example: camera mapping (A→B)': '示例：相机间映射（A→B）',
+    'Example: stereo calibration (conveyor)': '示例：立体标定（输送带）',
+    'Example: statistical template (print)': '示例：统计模板（印刷）',
+    'Example: classifier (good / missing hole)': '示例：分类器（良品／缺孔）',
+    'Example: segmenter (scratch)': '示例：分割器（划痕）',
     'Demo: synthetic parts': '示范：合成零件',
     'Demo: hole count': '示范：零件孔数检测',
     'Demo: exposure check': '示范：曝光检查',

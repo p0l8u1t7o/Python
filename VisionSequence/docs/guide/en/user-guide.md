@@ -604,7 +604,7 @@ Headless: VisionSequenceCapture-console.exe --headless --connect  (for Task Sche
 
 ```
 One command per line (terminated with \n, case-insensitive), one JSON reply per line:
-RUN <flow id or name> [key=value ...] -> {"ok": true, "status": "ok|ng|failed", "judge": "OK", "outputs": {...}, "duration_ms": 12.3, "run_id": "..."}
+RUN <flow id or name> [key=value ...] -> {"ok": true, "status": "ok|ng|failed", "judge": "OK|NG|FAILED|NONE", "outputs": {...}, "duration_ms": 12.3, "run_id": "..."}
 TRIGGER <flow>   -> trigger without waiting, {"ok": true, "queued": true}
 STATUS [flow]    -> statistics; without a flow, the capacity and the engine lock
 START <flow> / STOP <flow> -> continuous mode

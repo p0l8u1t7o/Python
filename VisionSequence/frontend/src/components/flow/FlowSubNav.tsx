@@ -10,11 +10,11 @@ import { useAuth } from '@/providers/AuthProvider'
 export function FlowSubNav({ flowId, className = '' }: { flowId: number; className?: string }) {
   const { t } = useTranslation()
   const auth = useAuth()
-  const items: { key: string; to: string; label: string; end?: boolean }[] = [
-    { key: 'inspect', to: `/flows/${flowId}/inspect`, label: t('flowNav.inspect') },
-    { key: 'canvas', to: `/flows/${flowId}`, label: t('flowNav.canvas'), end: true },
-    ...(auth.can('flows.teach') ? [{ key: 'teach', to: `/flows/${flowId}/teach`, label: t('flowNav.teach') }] : []),
-    { key: 'stats', to: `/flows/${flowId}/stats`, label: t('flowNav.stats') },
+  const items: { key: string; to: string; label: string; hint: string; end?: boolean }[] = [
+    { key: 'inspect', to: `/flows/${flowId}/inspect`, label: t('flowNav.inspect'), hint: t('flowNav.inspectHint') },
+    { key: 'canvas', to: `/flows/${flowId}`, label: t('flowNav.canvas'), hint: t('flowNav.canvasHint'), end: true },
+    ...(auth.can('flows.teach') ? [{ key: 'teach', to: `/flows/${flowId}/teach`, label: t('flowNav.teach'), hint: t('flowNav.teachHint') }] : []),
+    { key: 'stats', to: `/flows/${flowId}/stats`, label: t('flowNav.stats'), hint: t('flowNav.statsHint') },
   ]
   return (
     <nav aria-label={t('flowNav.label')} className={`inline-flex shrink-0 items-center gap-0.5 rounded-md border border-line bg-surface-muted p-0.5 ${className}`} data-testid="flow-subnav">
@@ -24,6 +24,7 @@ export function FlowSubNav({ flowId, className = '' }: { flowId: number; classNa
           to={item.to}
           end={item.end}
           className={({ isActive }) => `whitespace-nowrap rounded px-2 py-1 text-xs transition-colors ${isActive ? 'bg-surface font-medium text-content shadow-xs' : 'text-muted hover:text-content'}`}
+          title={item.hint}
           data-testid={`flow-nav-${item.key}`}
         >
           {item.label}

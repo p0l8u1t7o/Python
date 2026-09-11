@@ -79,6 +79,13 @@ class ApiTests(TestCase):
         self.assertEqual(r.status_code, 204)
         self.assertFalse(Flow.objects.filter(pk=flow["id"]).exists())
 
+    def test_flow_list_check_count(self):
+        flow = self.create_flow()
+        self.assertGreater(flow["check_count"], 0)
+        r = self.client.post("/api/vision/flows", data=json.dumps({"name": "bare", "graph": {"nodes": [{"id": "src", "type": "image_source", "params": {}}], "edges": []}}), content_type="application/json")
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(r.json()["check_count"], 0)
+
     def test_run_json_sync(self):
         flow = self.create_flow()
         r = self.client.post(f"/api/vision/flows/{flow['id']}/run", data=json.dumps({"context": {"lot": "A1"}}), content_type="application/json")

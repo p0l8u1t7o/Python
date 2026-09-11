@@ -189,6 +189,7 @@ export function FlowsPage() {
                       <p className="flex flex-wrap items-center gap-1.5 font-medium">
                         {readOnly(flow) ? <Lock size={13} className="shrink-0 text-muted" aria-label={t('flows.readOnly')} /> : null}
                         <span className="min-w-0 break-words">{flow.name}</span>
+                        {flow.check_count === 0 && flow.is_enabled ? <span title={t('flows.noChecksHint')} data-testid="row-no-checks"><Badge tone="critical" className="font-normal">{t('flows.noChecks')}</Badge></span> : null}
                         {flow.commissioned === false ? <span title={t('flows.notCommissionedHint')}><Badge tone="warning" className="font-normal">{t('flows.notCommissioned')}</Badge></span> : null}
                         <RowBound flow={flow} />
                       </p>
@@ -211,7 +212,7 @@ export function FlowsPage() {
                     <Td className="max-sm:hidden">
                       <div className="flex items-center gap-2">
                         <StatusBadge status={flow.stats.last_status || null} />
-                        <span className="tnum whitespace-nowrap text-xs text-muted">{flow.stats.runs} 次 · {Math.round(flow.stats.avg_ms)} ms</span>
+                        <span className="tnum whitespace-nowrap text-xs text-muted">{t('flows.runCount', { count: flow.stats.runs })} · {Math.round(flow.stats.avg_ms)} ms</span>
                         {flow.continuous ? <Badge tone="brand">{t('dashboard.continuous')}</Badge> : null}
                       </div>
                     </Td>

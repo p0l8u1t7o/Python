@@ -173,6 +173,7 @@
 <ul>
 <li><code>outputs</code> comes from the <strong>named output</strong> and <strong>OK/NG judge</strong> tools in the flow; you choose the key names.</li>
 <li><code>status</code>: <code>ok</code>, <code>ng</code> (judged a reject) or <code>failed</code> (a tool error, a timeout, or no image from the source).</li>
+<li><code>outputs.judge</code>: <code>OK</code>, <code>NG</code> or <code>FAILED</code> — and <code>NONE</code> when no inspection step took part in the run (only acquire or output steps ran, for example a flow whose tasks were removed or a flow that is still being set up). Treat <code>NONE</code> as "not judged", never as a pass; the run also carries the warning <code>No inspection step ran; judge is NONE</code>.</li>
 <li>429 <code>flow_queue_full</code> means this flow already has <code>VISION_MAX_QUEUE_PER_FLOW</code> triggers waiting (16 by default). A flow runs <code>concurrency</code> runs at a time; the default is <code>1</code>, preserving the old one-run-at-a-time behavior for camera and state consistency. Raise it when several stations safely share the same flow. The limit, current running count and queue depth are visible from <code>GET /api/vision/capacity</code> or the TCP command <code>STATUS &lt;flow&gt;</code>. 409 means the flow is disabled.</li>
 </ul>
 <p>With curl:</p>

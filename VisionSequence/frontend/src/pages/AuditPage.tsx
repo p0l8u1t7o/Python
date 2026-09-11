@@ -73,7 +73,7 @@ export function AuditPage() {
         <CardBody className="!pb-2">
           <div className="flex flex-wrap items-end gap-2">
             <Select label={t('audit.action')} value={action} className="!w-52" onChange={(e) => { setAction(e.target.value); setOffset(0) }}
-              options={[{ value: '', label: t('common.all') }, ...(list.data?.actions ?? []).map((a) => ({ value: a, label: a }))]} data-testid="audit-action" />
+              options={[{ value: '', label: t('common.all') }, ...(list.data?.actions ?? []).map((a) => ({ value: a, label: t(`audit.actions.${a}`, { defaultValue: a }) }))]} data-testid="audit-action" />
             <Select label={t('audit.actor')} value={actor} className="!w-44" onChange={(e) => { setActor(e.target.value); setOffset(0) }}
               options={[{ value: '', label: t('common.all') }, ...(list.data?.actors ?? []).map((a) => ({ value: a, label: a }))]} />
             <TextInput label={t('common.search')} value={q} className="!w-56"
@@ -109,7 +109,7 @@ export function AuditPage() {
                       <Tr key={row.id} className="cursor-pointer" onClick={() => setOpenRow(openRow === row.id ? null : row.id)} data-testid={`audit-row-${row.id}`}>
                         <Td className="tnum whitespace-nowrap text-xs text-muted"><span title={formatDateTimeFull(row.at)}>{formatDateTime(row.at)}</span></Td>
                         <Td className="whitespace-nowrap text-xs">{row.actor}{row.actor_kind !== 'user' ? <span className="text-muted"> ({row.actor_kind})</span> : null}</Td>
-                        <Td><Badge tone={tone(row.action)}>{row.action}</Badge></Td>
+                        <Td><span title={row.action}><Badge tone={tone(row.action)}>{t(`audit.actions.${row.action}`, { defaultValue: row.action })}</Badge></span></Td>
                         <Td className="max-w-[220px] truncate text-xs"><span title={`${row.target_type} #${row.target_id}`}>{row.target_name || row.target_type || '—'}</span></Td>
                         <Td className="text-xs">
                           <div className="max-w-[420px] truncate">{row.summary || '—'}</div>

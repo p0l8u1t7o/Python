@@ -24,7 +24,7 @@ export function BatchSetList({ sets, selectedId, flowId, onSelect, onNew, onDele
         <p className="flex items-center gap-1.5 text-xs font-semibold"><Images size={13} className="text-brand" /> {t('batchPage.sets')} <span className="tnum font-normal text-muted">({sets.length})</span></p>
         <Button size="xs" variant="primary" icon={<Plus size={12} />} onClick={onNew} data-testid="batch-new-set">{t('batchPage.newSet')}</Button>
       </div>
-      {sets.length === 0 ? <p className="rounded-lg border border-dashed border-line p-3 text-xs text-muted" data-testid="batch-no-sets">{t('batchPage.noSets')}</p> : null}
+      {sets.length === 0 ? <p className="sr-only" data-testid="batch-no-sets">{t('batchPage.noSets')}</p> : null}
       <ul className="space-y-1.5">
         {ordered.map((s) => {
           const latest = s.latest_run

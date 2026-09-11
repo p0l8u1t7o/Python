@@ -305,7 +305,7 @@ function TrainPanel({ project, trainer }: { project: DlProject; trainer: DlTrain
               <div key={k} className="rounded-md border border-line px-2.5 py-1.5">
                 <p className="truncate text-[11px] text-muted">{t(`dl.metrics.${k}`, { defaultValue: k })}</p>
                 <p className="tnum text-lg font-semibold leading-tight text-heading">
-                  {typeof metrics[k] === 'number' && k !== 'samples' && (metrics[k] as number) <= 1 ? `${Math.round((metrics[k] as number) * 100)}%` : String(metrics[k])}
+                  {formatMetric(k, metrics[k])}
                 </p>
               </div>
             ))}
@@ -759,6 +759,18 @@ function SampleGrid({ project, samples, activeClass, filter, suggestions, onPick
 // ---------------------------------------------------------------------------
 // 頁面
 // ---------------------------------------------------------------------------
+/** 指標磚的顯示：比率類 → 百分比、loss → 四位小數、類別（名稱→數量的物件）→ 類別數，不再印出 [object Object] */
+function formatMetric(key: string, value: unknown): string {
+  if (value && typeof value === 'object') {
+    const entries = Array.isArray(value) ? value : Object.keys(value as Record<string, unknown>)
+    return String(entries.length)
+  }
+  if (typeof value !== 'number') return String(value)
+  if (key === 'loss') return value.toFixed(4)
+  if (key !== 'samples' && key !== 'library_size' && value <= 1) return `${Math.round(value * 100)}%`
+  return String(value)
+}
+
 export function DlPage() {
   const { t } = useTranslation()
   const toast = useToast()

@@ -12,6 +12,7 @@ import { BoxSelect, Hand } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { SegmentedControl } from '@/components/ui'
+import { useTheme } from '@/providers/ThemeProvider'
 import { FlowEdge } from './FlowEdge'
 import { GroupNode } from './GroupNode'
 import { NoteNode, ToolNode } from './ToolNode'
@@ -59,6 +60,8 @@ export function CanvasModePanel({ interaction, onChange }: { interaction: Intera
 }
 
 export function FlowCanvas({ interaction, onInteractionChange, onAutoLayout, edgeValues, onEdgeValuesChange, children, ...rest }: ReactFlowProps & { interaction: InteractionMode; onInteractionChange: (mode: InteractionMode) => void; onAutoLayout: () => void; edgeValues?: boolean; onEdgeValuesChange?: (on: boolean) => void }) {
+  // 小地圖／控制列跟著主題（深色主題下原本掛 light class，小地圖是白色方塊）
+  const theme = useTheme()
   return (
     <ReactFlow
       nodeTypes={NODE_TYPES}
@@ -74,6 +77,7 @@ export function FlowCanvas({ interaction, onInteractionChange, onAutoLayout, edg
       selectNodesOnDrag={false}
       // 拉線時放開在把手 80px 內就自動接上（VM 的 ModuleConnectSpan）；預設 20px 要對得很準
       connectionRadius={80}
+      colorMode={theme.resolved}
       {...rest}
     >
       <Background />

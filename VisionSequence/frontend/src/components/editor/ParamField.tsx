@@ -42,7 +42,7 @@ function describeRegion(region: Region): string {
     case 'annulus':
       return `annulus c=(${region.cx}, ${region.cy}) r=${region.r_inner}–${region.r_outer}`
     case 'polygon':
-      return `polygon ${region.points.length} 點`
+      return `polygon ${region.points.length} points`
     case 'line':
       return `line (${region.x1}, ${region.y1}) → (${region.x2}, ${region.y2})`
     default:

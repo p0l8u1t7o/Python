@@ -3,6 +3,7 @@
 指令（以 \\n 結尾，大小寫不拘）：
     RUN <flow_id 或 名稱> [key=value ...]   執行一次並等結果；回 JSON：
         {"ok": true, "status": "ok|ng|failed", "judge": "OK", "outputs": {...}, "duration_ms": 12.3, "run_id": "..."}
+        judge 是 OK／NG／FAILED；流程裡沒有任何檢測步驟參與（只有取像／輸出）時是 NONE，設備端不得當成放行。
         帶 fmt=<具名輸出> 時**改回那個輸出的純文字**（給讀不了 JSON 的舊設備）：
         `RUN 1 fmt=text` → `OK,12.35\r\n`。那一行由流程裡的「格式化回覆」工具產生；
         沒有那個輸出時仍回 JSON 錯誤 {"ok": false, "code": "no_such_output"}，設備才知道是自己設錯。
