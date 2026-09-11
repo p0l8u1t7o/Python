@@ -127,7 +127,7 @@ class RetrievalTrainer(Trainer):
 
     def _backbone(self, params: dict[str, Any]) -> tuple[Path, bytes]:
         custom = str(params.get("backbone_path") or "").strip()
-        path = Path(custom) if custom else anomaly.backbone_path("resnet18")
+        path = Path(custom) if custom else Path(anomaly.backbone_path("resnet18"))
         if not path.exists():
             raise TrainError(f"Reference matcher is not available: {path}")
         return path, path.read_bytes()

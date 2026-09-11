@@ -205,37 +205,80 @@ class FlattenTests(CompositeBase):
 
 
 class NestingTests(CompositeBase):
-    def test_nested_composite_flattens_recursively(self):
-        outer_graph = {"nodes": [n("inner", "composite:count_blobs")], "edges": []}
-        outer_iface = {"inputs": [{"key": "inner:gray:image", "exposed": True}], "outputs": [{"key": "inner:blob:count", "exposed": True}],
-                       "params": [{"key": "inner:thr:threshold", "alias": "Level"}]}
-        composites.create(self.admin, {"key": "outer", "label": "Outer", "graph": outer_graph, "interface": outer_iface})
-        ct = tools.get("composite:outer")
-        self.assertEqual([p.key for p in ct.inputs], ["inner:gray:image"])
-        self.assertEqual(ct.params[0].label, "Level")
-        graph = {"nodes": [n("src", "image_source", mode="source", source_id=1), n("o", "composite:outer", **{"inner:thr:threshold": 255})],
-                 "edges": [e("src", "o", "image", "inner:gray:image")]}
-        report = run_graph(graph)
-        self.assertEqual(report.nodes["o"].outputs["inner:blob:count"], 0)
-        self.assertIn("o.inner.blob", report.nodes)
-        # 門檻 255 → 內層找不到東西：內層實例摺成 ng、外層跟著 ng
-        self.assertEqual(report.nodes["o.inner"].status, "ng")
-        self.assertEqual(report.nodes["o"].status, "ng")
-
-    def test_cycle_and_depth_are_rejected_on_save(self):
-        composites.create(self.admin, {"key": "level1", "label": "L1", "graph": {"nodes": [n("a", "composite:count_blobs")], "edges": []}, "interface": {}})
-        composites.create(self.admin, {"key": "level2", "label": "L2", "graph": {"nodes": [n("a", "composite:level1")], "edges": []}, "interface": {}})
-        composites.create(self.admin, {"key": "level3", "label": "L3", "graph": {"nodes": [n("a", "composite:level2")], "edges": []}, "interface": {}})
+    def test_a_tool_cannot_contain_another_tool(self):
+        # 巢狀只有兩層：流程 → 工具（2026-09-11 拍板）
         with self.assertRaises(ValidationError) as ctx:
-            composites.create(self.admin, {"key": "level4", "label": "L4", "graph": {"nodes": [n("a", "composite:level3")], "edges": []}, "interface": {}})
-        self.assertEqual(ctx.exception.code, "composite_too_deep")
+            composites.create(self.admin, {"key": "outer", "label": "Outer", "graph": {"nodes": [n("inner", "composite:count_blobs")], "edges": []}, "interface": {}})
+        self.assertEqual(ctx.exception.code, "composite_nested")
+        self.assertEqual(ctx.exception.details["keys"], ["count_blobs"])
         row = CompositeTool.objects.get(key="count_blobs")
         with self.assertRaises(ValidationError) as ctx:
-            composites.update(row, {"graph": {"nodes": [n("loop", "composite:level1")], "edges": []}})
-        self.assertEqual(ctx.exception.code, "composite_cycle")
-        self.assertIn("count_blobs > level1 > count_blobs", ctx.exception.details["path"])
-        with self.assertRaises(ValidationError):
-            composites.create(self.admin, {"key": "selfref", "label": "S", "graph": {"nodes": [n("a", "composite:selfref")], "edges": []}, "interface": {}})
+            composites.update(row, {"graph": {"nodes": [n("loop", "composite:count_blobs")], "edges": []}})
+        self.assertEqual(ctx.exception.code, "composite_nested")
+        self.assertFalse(CompositeTool.objects.filter(key="outer").exists())
+
+    def test_flows_may_use_many_tools_side_by_side(self):
+        composites.create(self.admin, {"key": "second", "label": "Second", "graph": TOOL_GRAPH, "interface": TOOL_INTERFACE})
+        graph = {"nodes": [n("src", "image_source", mode="source", source_id=1), n("a", "composite:count_blobs"), n("b", "composite:second", **{"thr:threshold": 255})],
+                 "edges": [e("src", "a", "image", "gray:image"), e("src", "b", "image", "gray:image")]}
+        self.assertEqual(composites.check_references(None, validate_graph(graph)), 1)
+        report = run_graph(graph)
+        self.assertEqual(report.nodes["a"].outputs["blob:count"], 2)
+        self.assertEqual(report.nodes["b"].outputs["blob:count"], 0)
+
+
+class BuiltinToolsTests(CompositeBase):
+    def test_builtin_tools_are_created_idempotently_and_read_only(self):
+        from apps.vision.composites_builtin import SPECS, ensure_builtin_tools
+
+        first = ensure_builtin_tools()
+        self.assertEqual(first["failed"], 0, first)
+        self.assertEqual(first["created"], len(SPECS))
+        again = ensure_builtin_tools()
+        self.assertEqual((again["created"], again["updated"], again["failed"]), (0, 0, 0), again)
+        rows = {row.key: row for row in CompositeTool.objects.filter(builtin=True)}
+        self.assertEqual(set(rows), {spec.key for spec in SPECS})
+        for spec in SPECS:
+            ct = tools.get(f"composite:{spec.key}")
+            self.assertEqual(ct.category, "inspection", spec.key)
+            self.assertTrue(ct.inputs, spec.key)
+            self.assertTrue(ct.outputs, spec.key)
+            self.assertTrue(ct.params, spec.key)
+            self.assertTrue(rows[spec.key].flow.graph["nodes"], spec.key)
+            self.assertTrue(all("meta" not in node for node in rows[spec.key].flow.graph["nodes"]), spec.key)
+        with self.assertRaises(Conflict):
+            composites.update(rows["count_objects"], {"label": "X"})
+        copy_row = composites.duplicate(rows["count_objects"], self.admin, {"key": "my_count", "label": "My count"})
+        self.assertFalse(copy_row.builtin)
+        entry = next(item for item in tools.catalogue() if item["key"] == "composite:measure_diameter")
+        self.assertEqual(entry["composite"]["builtin"], True)
+        labels = {p["key"]: p["label"] for p in entry["params"]}
+        self.assertEqual(labels["find:roi"], "Region")
+        self.assertEqual(labels["tol:nominal"], "Nominal")
+        self.assertIsNone(next(p for p in entry["params"] if p["key"] == "find:roi")["default"])
+        self.assertIn("inspection", [c["key"] for c in [{"key": k} for k in tools.CATEGORY_LABELS]])
+
+    def test_builtin_measure_diameter_runs_from_instance_params(self):
+        from apps.vision.composites_builtin import ensure_builtin_tools
+
+        ensure_builtin_tools()
+        img = np.zeros((200, 200, 3), np.uint8)
+        import cv2
+
+        cv2.circle(img, (100, 100), 40, (255, 255, 255), -1)
+        graph = {
+            "nodes": [n("src", "image_source", mode="auto", source_id=""),
+                      {**n("dia", "composite:measure_diameter", **{"find:roi": {"shape": "annulus", "cx": 100, "cy": 100, "r_inner": 20, "r_outer": 70}, "tol:nominal": 80, "tol:upper_tol": 4, "tol:lower_tol": -4}),
+                       "interface": {"outputs": [{"key": "find:diameter", "alias": "d"}]}}],
+            "edges": [e("src", "dia", "image", "find:image")],
+        }
+        compiled = compile_graph(validate_graph(graph))
+        report = engine.execute(compiled, flow_id=1, flow_version=1, trigger="test", grab=lambda _sid: img, asset_path=lambda _aid: None, input_image=img)
+        self.assertEqual(report.nodes["dia"].status, "ok", report.nodes["dia"].message)
+        self.assertAlmostEqual(report.outputs["d"], 80, delta=2)
+        self.assertEqual(report.nodes["dia"].branch, "tol:pass")
+        self.assertTrue(report.nodes["dia"].outputs["tol:in_spec"])
+        self.assertEqual(report.outputs["judge"], "OK")
 
 
 class ApiTests(CompositeBase):
@@ -341,8 +384,8 @@ class ApiTests(CompositeBase):
 
 
 class DeleteGuardTests(CompositeBase):
-    def test_delete_blocked_when_another_tool_uses_it(self):
-        composites.create(self.admin, {"key": "wrapper", "label": "W", "graph": {"nodes": [n("a", "composite:count_blobs")], "edges": []}, "interface": {}})
+    def test_delete_blocked_while_a_flow_uses_it(self):
+        Flow.objects.create(name="Wrapper flow", graph={"nodes": [n("a", "composite:count_blobs")], "edges": []})
         with self.assertRaises(Conflict) as ctx:
             composites.delete(CompositeTool.objects.get(key="count_blobs"))
-        self.assertEqual(ctx.exception.details["tools"][0]["key"], "wrapper")
+        self.assertEqual(ctx.exception.details["flows"][0]["name"], "Wrapper flow")

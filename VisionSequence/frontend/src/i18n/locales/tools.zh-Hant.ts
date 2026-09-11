@@ -8,6 +8,22 @@
  * Generated from the catalogue; keep it in step when tool wording changes.
  */
 export default {
+  // 內建的檢測任務複合工具（apps/vision/composites_builtin.py；埠與參數名稱沿用內部工具與任務欄位）
+  'composite:measure_diameter': { label: '量直徑', description: '找圓形邊緣並以規格檢查直徑。' },
+  'composite:measure_roundness': { label: '量真圓度', description: '找圓形邊緣並以公差檢查真圓度。' },
+  'composite:locate_part_template': { label: '定位工件（範本）', description: '以範本比對找到教導的標記，輸出下游用的位置修正。' },
+  'composite:locate_part_shape': { label: '定位工件（形狀模型）', description: '以形狀模型找到工件，輸出下游用的位置修正。' },
+  'composite:locate_part_register': { label: '定位工件（註冊圖）', description: '以註冊的裁切圖找到工件，輸出下游用的位置修正。' },
+  'composite:measure_distance_edges': { label: '量距離（邊對）', description: '用卡尺量一對邊的寬度並以規格檢查。' },
+  'composite:measure_distance_holes': { label: '量距離（孔心）', description: '找兩個圓的中心並以規格檢查中心距。' },
+  'composite:count_objects': { label: '計數', description: '找連通物件並檢查數量是否在範圍內。' },
+  'composite:check_presence_template': { label: '檢查有無（範本）', description: '以範本比對檢查預期的物件是否出現。' },
+  'composite:check_presence_blob': { label: '檢查有無（blob）', description: '以連通物件檢查預期的物件是否出現。' },
+  'composite:check_presence_print': { label: '檢查有無（印刷）', description: '以像素比例檢查印刷是否存在。' },
+  'composite:inspect_edge_defect': { label: '邊緣缺陷（直線／圓弧）', description: '沿參考邊佈卡尺找缺口、位移與寬度缺陷。' },
+  'composite:inspect_edge_defect_freeform': { label: '邊緣缺陷（自由輪廓）', description: '以教導的輪廓模型找任意形狀邊緣的缺陷。' },
+  'composite:read_code': { label: '讀碼', description: '解碼條碼或二維碼並核對預期內容。' },
+  'composite:read_text_verify': { label: '讀文字並核對', description: '辨識文字並與預期內容核對。' },
   char_detect: {
     label: '單字元偵測',
     description: '尋找散亂或曲線排列的單字元，合併鄰近筆畫，並可使用字元樣本分類。',

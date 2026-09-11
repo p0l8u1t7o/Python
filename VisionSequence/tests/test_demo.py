@@ -144,7 +144,8 @@ class DemoSeedTests(TransactionTestCase):
 
             backbone_ok = _anomaly.backbone_available()
             # 範例樣板不佔流程清單：seed 只建 2 個示範流程
-            self.assertEqual(Flow.objects.count(), 2)
+            # 內建複合工具的內部圖也是 Flow（kind=tool），示範流程只算 kind=flow
+            self.assertEqual(Flow.objects.filter(kind="flow").count(), 2)
 
             from apps.vision.runner import runner
 

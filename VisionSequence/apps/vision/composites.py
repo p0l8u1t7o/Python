@@ -8,7 +8,7 @@
   內部節點、對外參數值綁回內部參數、實例上的具名輸出名稱搬到內部節點；引擎與 run report 都是平的，
   結束時 `fold_report()` 依實例把內部報告摺成一筆（最差狀態、耗時加總、對外輸出）。
 - 對外介面的 key：埠 `<inner>:<port>`、參數 `<inner>:<param>`；只有 `exposed: true` 的埠、有列出的參數才成為介面。
-- 巢狀深度上限 `MAX_DEPTH`、存檔時擋循環引用（§3-7）。直接引用、不鎖版本（改工具本體，所有流程立刻跟著變；版本鎖定是 P5）。
+- 巢狀只有兩層（流程 → 工具）：複合工具的內部圖不能再放複合工具（`check_references` 存檔時擋，`MAX_DEPTH`＝1）。直接引用、不鎖版本（改工具本體，所有流程立刻跟著變；版本鎖定是 P5）。
 """
 
 from __future__ import annotations
@@ -27,7 +27,8 @@ from apps.vision.tools import base as tools
 log = logging.getLogger(__name__)
 
 PREFIX = "composite:"
-MAX_DEPTH = 3
+#: 巢狀只有兩層：流程裡放複合工具，複合工具裡不能再放複合工具（2026-09-11 拍板）
+MAX_DEPTH = 1
 KEY_RE = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
 #: 展平後的節點 id：<instance>.<inner>
 INSTANCE_SEP = "."
@@ -487,10 +488,14 @@ def referenced_keys(graph: dict[str, Any]) -> list[str]:
 
 
 def check_references(tool_key: str | None, graph: dict[str, Any], *, chain: tuple[str, ...] = ()) -> int:
-    """回這張圖的巢狀深度（不含自己）；A 用 B、B 用 A 或超過 MAX_DEPTH 就 ValidationError（訊息帶路徑）。"""
+    """回這張圖的巢狀深度（不含自己）。複合工具的內部圖裡不能再放複合工具（流程與工具是僅有的兩層）；
+    流程裡的實例仍檢查循環與深度（訊息帶路徑）。"""
     reg = registry()
     depth = 0
-    for key in referenced_keys(graph):
+    refs = referenced_keys(graph)
+    if tool_key is not None and refs:
+        raise ValidationError(f"A composite tool cannot contain another composite tool ({', '.join(refs)}); flows and tools are the only two levels", code="composite_nested", details={"keys": refs})
+    for key in refs:
         path = " > ".join((*chain, tool_key or "(flow)", key))
         if key == tool_key or key in chain:
             raise ValidationError(f"Composite tool '{key}' would reference itself: {path}", code="composite_cycle", details={"path": path})

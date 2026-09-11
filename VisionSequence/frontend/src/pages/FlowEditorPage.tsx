@@ -745,6 +745,11 @@ function EditorInner({ flowId }: { flowId: number }) {
 
   const insertNode = useCallback(
     (def: ToolTypeDef, position: { x: number; y: number }) => {
+      // 巢狀只有兩層：複合工具的畫布裡不能再放複合工具
+      if (toolModeRef.current && def.source === 'composite') {
+        toast.warning(t('editor.composite.noNesting'))
+        return
+      }
       pushHistory()
       const id = nextNodeId(new Set(payloads.current.keys()), def.key)
       const payload: GraphNode = {
@@ -771,8 +776,20 @@ function EditorInner({ flowId }: { flowId: number }) {
       setRightTab('inspector')
       setDirty(true)
     },
-    [defs, pushHistory, selectedId, setEdges, setNodes],
+    [defs, pushHistory, selectedId, setEdges, setNodes, toast, t],
   )
+
+  //: 工具畫布的工具箱不列複合工具（巢狀只有兩層）
+  const paletteCatalogue = useMemo(() => (toolMode && catalogue.data ? { ...catalogue.data, items: catalogue.data.items.filter((def) => def.source !== 'composite') } : catalogue.data), [toolMode, catalogue.data])
+  //: 封裝：選取裡有複合工具就擋下（工具裡不能再放工具）
+  const startEncapsulate = useCallback(() => {
+    const chosen = nodesRef.current.filter((node) => node.selected).map((node) => payloads.current.get(node.id))
+    if (chosen.some((node) => node && defs.get(node.type)?.source === 'composite')) {
+      toast.warning(t('editor.composite.noNesting'))
+      return
+    }
+    setEncapsulateOpen(true)
+  }, [defs, toast, t])
 
   const onDragOver = useCallback((e: React.DragEvent) => {
     if (e.dataTransfer.types.includes(DRAG_MIME)) {
@@ -1655,7 +1672,7 @@ function EditorInner({ flowId }: { flowId: number }) {
         <aside className={leftDrawer ? 'fixed inset-y-0 left-0 z-40 flex w-[min(92vw,340px)] shrink-0 flex-col border-r border-line bg-surface shadow-2xl' : 'hidden shrink-0 flex-col border-r border-line bg-surface md:flex'} style={leftDrawer ? undefined : { width: layout.left }} data-testid="tools-pane" data-drawer={leftDrawer ? 'open' : undefined}>
           {leftDrawer ? <DrawerHead title={t('editor.drawerTools')} closeLabel={t('common.close')} onClose={() => setDrawer(null)} /> : null}
           <div className="min-h-0 flex-[2]">
-            <FavoriteTools catalogue={catalogue.data} favorites={favorites} onOpenPicker={() => setPickerOpen(true)} onInsert={insertAtCenter} onAddNote={insertNoteAtCenter} onToggleFavorite={toggleFavorite} />
+            <FavoriteTools catalogue={paletteCatalogue} favorites={favorites} onOpenPicker={() => setPickerOpen(true)} onInsert={insertAtCenter} onAddNote={insertNoteAtCenter} onToggleFavorite={toggleFavorite} />
           </div>
           <p className="border-y border-line px-3 py-1.5 text-xs font-semibold text-muted">{t('editor.nodeList')} <span className="tnum font-normal">({graphNodes.length})</span></p>
           <div className="min-h-0 flex-[3] overflow-hidden">
@@ -1948,8 +1965,8 @@ function EditorInner({ flowId }: { flowId: number }) {
                 <div className="space-y-3 p-3" data-testid="multi-select">
                   <p className="text-sm font-medium">{t('editor.multiSelected', { count: selectedCount })}</p>
                   <p className="text-xs text-muted">{t('editor.multiSelectedHint')}</p>
-                  {!readOnly ? (
-                    <Button size="sm" variant="primary" icon={<Boxes size={14} />} onClick={() => setEncapsulateOpen(true)} data-testid="editor-encapsulate">
+                  {!readOnly && !toolMode ? (
+                    <Button size="sm" variant="primary" icon={<Boxes size={14} />} onClick={startEncapsulate} data-testid="editor-encapsulate">
                       {t('editor.composite.encapsulate')}
                     </Button>
                   ) : null}
@@ -2102,7 +2119,7 @@ function EditorInner({ flowId }: { flowId: number }) {
           </div>
         }
       />
-      <ToolPicker open={pickerOpen} onClose={() => setPickerOpen(false)} catalogue={catalogue.data}
+      <ToolPicker open={pickerOpen} onClose={() => setPickerOpen(false)} catalogue={paletteCatalogue}
         favorites={favorites} onToggleFavorite={toggleFavorite} onPick={insertAtCenter} />
       <TemplateGallery open={galleryOpen} onClose={() => setGalleryOpen(false)} mode="load" prefix={templatePrefix} onPick={loadTemplate} />
       <RecipeDrawer open={recipesOpen} onClose={() => setRecipesOpen(false)} flowId={flowId} readOnly={readOnly} />
@@ -2120,7 +2137,7 @@ function EditorInner({ flowId }: { flowId: number }) {
         menu={nodeMenu}
         onClose={() => setNodeMenu(null)}
         onOpenTool={(node) => navigate(`/flows/${flowId}/tools/${encodeURIComponent(node.id)}`)}
-        onEncapsulate={readOnly ? undefined : () => setEncapsulateOpen(true)}
+        onEncapsulate={readOnly || toolMode ? undefined : startEncapsulate}
         onEditComposite={(node) => { const composite = defs.get(node.type)?.composite; if (composite) navigate(`/flows/${composite.flow_id}`) }}
         onRunTo={execLocked ? undefined : (node) => void doPreview(node.id)}
         onDuplicate={duplicateNode}

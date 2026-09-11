@@ -25,8 +25,8 @@ const DICTS: Partial<Record<Language, Record<string, ToolText>>> = {
 
 /** Category labels are short enough to keep beside the dictionary. */
 const CATEGORIES: Partial<Record<Language, Record<string, string>>> = {
-  'zh-Hant': { source: '影像來源', preprocess: '影像前處理', locate: '定位', measure: '量測', detect: '檢測 / 識別', dl: '深度學習', logic: '邏輯', output: '輸出', decoration: '註解' },
-  'zh-Hans': { source: '图像来源', preprocess: '图像前处理', locate: '定位', measure: '测量', detect: '检测 / 识别', dl: '深度学习', logic: '逻辑', output: '输出', decoration: '注释' },
+  'zh-Hant': { source: '影像來源', preprocess: '影像前處理', locate: '定位', measure: '量測', detect: '檢測 / 識別', inspection: '檢測任務', dl: '深度學習', logic: '邏輯', output: '輸出', decoration: '註解' },
+  'zh-Hans': { source: '图像来源', preprocess: '图像前处理', locate: '定位', measure: '测量', detect: '检测 / 识别', inspection: '检测任务', dl: '深度学习', logic: '逻辑', output: '输出', decoration: '注释' },
 }
 
 /** 隱含埠每個工具都有一份，翻譯放在這裡而不是每個工具的字典裡（見 tools/base.py 的 IMPLICIT_*）。 */

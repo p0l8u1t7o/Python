@@ -982,6 +982,7 @@ const zhHans = {
       impactConfirm: '有 {{count}} 条流程或工具使用它：{{names}}。保存后它们立即改变。',
       builtinReadOnly: '内置工具只读。请在工具库使用「另存副本」创建可编辑的版本。',
       previewHint: '试执行会把暂存图像送进每一个对外图像输入',
+      noNesting: '复合工具里不能再放复合工具；只有流程与工具两层',
     },
     ports: {
       title: '端口',

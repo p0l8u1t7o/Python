@@ -2325,6 +2325,7 @@ const enExtra3 = {
       impactConfirm: 'It is used by {{count}} flow(s) or tool(s): {{names}}. Saving changes them immediately.',
       builtinReadOnly: 'Built-in tools are read-only. Use "Save a copy" in the tool library to make an editable one.',
       previewHint: 'Try-run feeds the scratch image to every exposed image input',
+      noNesting: 'A composite tool cannot contain another composite tool; flows and tools are the only two levels',
     },
     ports: {
       title: 'Ports',

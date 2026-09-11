@@ -982,6 +982,7 @@ const zhHant = {
       impactConfirm: '有 {{count}} 條流程或工具使用它：{{names}}。儲存後它們立即改變。',
       builtinReadOnly: '內建工具唯讀。請在工具庫使用「另存複本」建立可編輯的版本。',
       previewHint: '試執行會把暫存影像送進每一個對外影像輸入',
+      noNesting: '複合工具裡不能再放複合工具；只有流程與工具兩層',
     },
     ports: {
       title: '埠',

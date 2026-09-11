@@ -2793,6 +2793,12 @@ def seed_demo() -> list[str]:
 
     created: list[str] = []
     _rename_legacy(created)
+    # 內建的檢測任務複合工具（工具箱「檢測任務」分類）
+    from apps.vision.composites_builtin import ensure_builtin_tools
+
+    made = ensure_builtin_tools()
+    if made["created"]:
+        created.append(f"composite tools ({made['created']})")
     for kind in ("source", "asset"):
         ResourceGroup.objects.get_or_create(kind=kind, name="Examples")
     from apps.vision import scripts as _scripts

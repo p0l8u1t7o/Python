@@ -558,10 +558,12 @@ CATEGORY_ORDER = {
     "locate": 2,
     "measure": 3,
     "detect": 4,
-    "dl": 5,
-    "logic": 6,
-    "output": 7,
-    "decoration": 8,
+    # 內建的檢測任務複合工具（composites_builtin.py）；內建工具本身不用這個分類
+    "inspection": 5,
+    "dl": 6,
+    "logic": 7,
+    "output": 8,
+    "decoration": 9,
 }
 
 CATEGORY_LABELS = {
@@ -570,6 +572,7 @@ CATEGORY_LABELS = {
     "locate": "Locate",
     "measure": "Measure",
     "detect": "Detect / identify",
+    "inspection": "Inspection tasks",
     "dl": "Deep learning",
     "logic": "Logic",
     "output": "Output",

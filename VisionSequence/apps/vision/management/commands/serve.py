@@ -74,6 +74,7 @@ class Command(BaseCommand):
 
         retention.enable_background()
         persister.ensure()
+        _ensure_builtin_tools()
         # 站台就緒：TCP、擷取端埠與連線都起來了，HTTP 接著開。設備端要「平台重開了」這個訊號
         # （PLC 常在斷電重開後要重送料號與配方），所以發成事件讓連線層的事件回報看得到。
         bus.publish({"type": "server_ready", "station_id": str(settings.VISION.get("STATION_ID", "")), "version": __version__})
@@ -93,6 +94,18 @@ class Command(BaseCommand):
         finally:
             if pid_file is not None:
                 pid_file.unlink(missing_ok=True)
+
+
+def _ensure_builtin_tools() -> None:
+    """內建的檢測任務複合工具：沒有就建、任務定義變了就更新；失敗只記 log，不擋啟動。"""
+    try:
+        from apps.vision.composites_builtin import ensure_builtin_tools
+
+        counts = ensure_builtin_tools()
+        if counts["created"] or counts["updated"] or counts["failed"]:
+            log.info("內建複合工具：%s", counts)
+    except Exception:  # noqa: BLE001
+        log.warning("內建複合工具建立失敗", exc_info=True)
 
 
 def _start_warmup_if_enabled(port: int) -> None:
