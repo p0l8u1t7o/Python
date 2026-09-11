@@ -12,6 +12,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Page } from '@/components/layout/AppShell'
 import { Badge, Button, Card, CardBody, EmptyRow, ErrorState, LoadingState, PageHeader, Select, TBody, THead, Table, Td, TextInput, Th, Tr } from '@/components/ui'
 import { api, downloadFile } from '@/lib/api'
+import { auditChanges, formatAuditValue } from '@/lib/auditDetail'
 import { formatDateTime, formatDateTimeFull } from '@/lib/format'
 import { useAuth } from '@/providers/AuthProvider'
 
@@ -37,6 +38,40 @@ function tone(action: string): 'ok' | 'warning' | 'critical' | 'info' {
   if (action.startsWith('flow.') || action.startsWith('recipe.')) return 'warning'
   if (action.startsWith('lock.')) return 'info'
   return 'ok'
+}
+
+/** 展開的一列：變更畫成表格（欄位／變更前／變更後），其餘鍵才用 JSON。 */
+function AuditDetail({ detail }: { detail: Record<string, unknown> | null | undefined }) {
+  const { t } = useTranslation()
+  const view = auditChanges(detail)
+  if (!view.rows.length && !view.rest) return null
+  return (
+    <div className="mt-1 space-y-1" data-testid="audit-detail">
+      {view.rows.length ? (
+        <table className="w-full max-w-[640px] text-[11px]" data-testid="audit-detail-table">
+          <thead>
+            <tr className="text-left text-muted">
+              <th className="py-0.5 pr-2 font-medium">{t('audit.detail.field')}</th>
+              <th className="py-0.5 pr-2 font-medium">{t('audit.detail.before')}</th>
+              <th className="py-0.5 font-medium">{t('audit.detail.after')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {view.rows.map((row, index) => (
+              <tr key={`${row.label}-${index}`} className="border-t border-line align-top">
+                <td className="py-0.5 pr-2 font-mono">{row.label}</td>
+                <td className="py-0.5 pr-2 whitespace-pre-wrap break-all text-muted">{formatAuditValue(row.before)}</td>
+                <td className="py-0.5 whitespace-pre-wrap break-all">{formatAuditValue(row.after)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null}
+      {view.rest ? (
+        <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all rounded bg-surface-muted p-2 font-mono text-[11px]">{JSON.stringify(view.rest, null, 2)}</pre>
+      ) : null}
+    </div>
+  )
 }
 
 export function AuditPage() {
@@ -106,16 +141,14 @@ export function AuditPage() {
                     <EmptyRow colSpan={6} message={t('audit.empty')} />
                   ) : (
                     list.data.items.map((row) => (
-                      <Tr key={row.id} className="cursor-pointer" onClick={() => setOpenRow(openRow === row.id ? null : row.id)} data-testid={`audit-row-${row.id}`}>
+                      <Tr key={row.id} className="cursor-pointer" onClick={() => setOpenRow(openRow === row.id ? null : row.id)} testId={`audit-row-${row.id}`}>
                         <Td className="tnum whitespace-nowrap text-xs text-muted"><span title={formatDateTimeFull(row.at)}>{formatDateTime(row.at)}</span></Td>
                         <Td className="whitespace-nowrap text-xs">{row.actor}{row.actor_kind !== 'user' ? <span className="text-muted"> ({row.actor_kind})</span> : null}</Td>
                         <Td><span title={row.action}><Badge tone={tone(row.action)}>{t(`audit.actions.${row.action}`, { defaultValue: row.action })}</Badge></span></Td>
                         <Td className="max-w-[220px] truncate text-xs"><span title={`${row.target_type} #${row.target_id}`}>{row.target_name || row.target_type || '—'}</span></Td>
                         <Td className="text-xs">
                           <div className="max-w-[420px] truncate">{row.summary || '—'}</div>
-                          {openRow === row.id && Object.keys(row.detail ?? {}).length ? (
-                            <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded bg-surface-muted p-2 font-mono text-[11px]">{JSON.stringify(row.detail, null, 2)}</pre>
-                          ) : null}
+                          {openRow === row.id ? <AuditDetail detail={row.detail} /> : null}
                         </Td>
                         <Td className="max-lg:hidden font-mono text-[11px] text-muted">{row.ip || '—'}</Td>
                       </Tr>

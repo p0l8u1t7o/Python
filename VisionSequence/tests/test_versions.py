@@ -36,6 +36,7 @@ class GraphDiffTests(TestCase):
         self.assertFalse(d["structural"])
         self.assertEqual(d["count"], 1)
         self.assertEqual(graphdiff.summarize(d), "threshold 60 → 46")
+        self.assertEqual(graphdiff.summarize(graphdiff.diff(graph(60), graph(None))), "threshold 60 → null")
 
     def test_structure_is_summarised_not_dumped(self):
         d = graphdiff.diff(graph(60), graph(60, extra=True))

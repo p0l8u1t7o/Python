@@ -8,6 +8,7 @@ import { useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import i18next, { type Language } from '@/i18n'
+import { calibrationSummary } from '@/lib/calibrationSummary'
 import { localiseDataName } from '@/lib/catalogueLocale'
 import { ArrowRightLeft, Camera, Crosshair, Download, Layers3, Move, PanelsTopLeft, Ruler, Save, Trash2, Upload, Wand2 } from 'lucide-react'
 import { Page } from '@/components/layout/AppShell'
@@ -730,7 +731,7 @@ export function CalibrationPage() {
                   {calibrations.data.items.map((a) => (
                     <li key={a.id} className="flex items-center justify-between gap-2">
                       <span className="truncate font-medium">{localiseDataName(a.name, i18next.language as Language)}</span>
-                      <span className="shrink-0 text-subtle">{String((a.meta as { summary?: string } | undefined)?.summary ?? '')}</span>
+                      <span className="shrink-0 text-subtle" data-testid="calib-asset-summary">{calibrationSummary(a.meta as Parameters<typeof calibrationSummary>[0], t)}</span>
                     </li>
                   ))}
                 </ul>
@@ -746,7 +747,7 @@ export function CalibrationPage() {
         <div className="space-y-3">
           <TextInput label={t('common.name')} value={saveName} onChange={(e) => setSaveName(e.target.value)} data-testid="calib-save-name" />
           <TextInput label={t('common.group')} value={saveGroup} onChange={(e) => setSaveGroup(e.target.value)} />
-          <p className="text-xs text-subtle">{result?.summary}</p>
+          <p className="text-xs text-subtle">{result ? calibrationSummary(result, t) : null}</p>
           <div className="flex justify-end gap-2">
             <Button onClick={() => setSaveOpen(false)}>{t('common.cancel')}</Button>
             <Button variant="primary" loading={busy} disabled={!saveName.trim()} onClick={() => void save()} data-testid="calib-save-confirm">

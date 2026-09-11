@@ -360,6 +360,8 @@ export type Region =
 export interface CalibrationSolveResult {
   payload: Record<string, unknown>
   summary: string
+  /** 結構化摘要（每一塊一筆），前端依語言組句子；舊回應沒有時退回 summary */
+  summary_parts?: { kind: string; [key: string]: unknown }[]
   quality: Record<string, string>
   warnings?: string[]
   coverage?: { covered: number; cells: number; edge_missing: number } | null

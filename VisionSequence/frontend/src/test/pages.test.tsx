@@ -356,6 +356,12 @@ describe('pages render (smoke)', () => {
     renderPage(<AuditPage />, { route: '/audit' })
     expect(await screen.findByTestId('audit-export')).toBeInTheDocument()
     expect(screen.getByTestId('audit-action')).toBeInTheDocument()
+    // 展開一列：變更畫成「欄位／變更前／變更後」表格，不是整包 JSON（PM-REVIEW-R2 L-4）
+    fireEvent.click(await screen.findByTestId('audit-row-1'))
+    const table = await screen.findByTestId('audit-detail-table')
+    expect(table).toHaveTextContent('Before')
+    expect(table).toHaveTextContent('thr · threshold')
+    expect(table).toHaveTextContent('46')
   })
 
   it('UsersPage shows the role permission matrix for an administrator', async () => {

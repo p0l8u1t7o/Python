@@ -24,6 +24,7 @@ from django.conf import settings
 from django.utils import timezone
 
 from apps.core.models import AuditLog
+from apps.core.values import fmt_value
 
 log = logging.getLogger(__name__)
 
@@ -72,7 +73,8 @@ def fields_diff(before: dict[str, Any] | None, after: dict[str, Any] | None, key
 
 
 def summarize_fields(changes: dict[str, Any], limit: int = 4) -> str:
-    bits = [f"{k}: {v['before']} → {v['after']}" for k, v in list(changes.items())[:limit]]
+    """一行摘要；值用 JSON 記法（`fmt_value`），不讓 `None`／`True`／清單的 repr 進畫面。"""
+    bits = [f"{k}: {fmt_value(v['before'])} → {fmt_value(v['after'])}" for k, v in list(changes.items())[:limit]]
     if len(changes) > limit:
         bits.append(f"+{len(changes) - limit} more")
     return ", ".join(bits)

@@ -20,6 +20,7 @@ from ninja import Router
 
 from apps.accounts.security import require_feature
 from apps.core import audit
+from apps.core.values import fmt_value
 from apps.core.errors import NotFound, ValidationError
 from apps.vision import variables
 from apps.vision.api import _visible_flows, get_flow
@@ -76,7 +77,7 @@ def put_flow_variables(request: HttpRequest, flow_id: int):
     require_feature(request, "flows.teach")
     variables.store.ensure_loaded(flow.id)
     changed = _apply(flow.id, _values_body(request))
-    audit.record(request, "flow.variables", flow, summary=", ".join(f"{k}={v!r}"[:60] for k, v in list(changed.items())[:6]), detail=changed)
+    audit.record(request, "flow.variables", flow, summary=", ".join(f"{k}={fmt_value(v, 48)}" for k, v in list(changed.items())[:6]), detail=changed)
     return {"flow_id": flow.id, "items": variables.store.snapshot(flow.id)}
 
 
@@ -107,7 +108,7 @@ def put_station_variables(request: HttpRequest):
     require_feature(request, "flows.teach")
     variables.store.ensure_loaded(None)
     changed = _apply(None, _values_body(request))
-    audit.record(request, "station.variables", "station", summary=", ".join(f"{k}={v!r}"[:60] for k, v in list(changed.items())[:6]), detail=changed)
+    audit.record(request, "station.variables", "station", summary=", ".join(f"{k}={fmt_value(v, 48)}" for k, v in list(changed.items())[:6]), detail=changed)
     return {"items": variables.store.snapshot(None)}
 
 

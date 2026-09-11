@@ -404,8 +404,47 @@ def from_asset(asset_id: Any, resolve: Any) -> dict[str, Any]:
     return load(path)
 
 
+def summary_parts(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """`summary()` 的結構化版本：每一塊一筆 `{kind, …數字}`，前端依介面語言組句子（L-4）。
+
+    與 `summary()` 的順序、數字、精度一一對應；`summary()` 仍是英文正本（工具訊息、稽核、CLI）。
+    """
+    parts: list[dict[str, Any]] = []
+    lens = payload.get("lens")
+    if lens:
+        parts.append({"kind": "lens", "views": int(lens.get("views", 0)), "rms": float(lens.get("rms", 0))})
+    world = payload.get("world")
+    if world:
+        unit = payload.get("unit", "mm")
+        part: dict[str, Any] = {"kind": "world", "mode": world["kind"], "scale": float(world.get("mm_per_px", 0)), "unit": unit}
+        if world.get("points"):
+            part["rms"] = float(world.get("rms", 0))
+        parts.append(part)
+    robot = payload.get("robot")
+    if robot:
+        unit = payload.get("unit", "mm")
+        part = {"kind": "robot", "mode": robot["kind"], "points": len(robot["points"]), "rms": float(robot["rms"]),
+                "max": float(max(p["error"] for p in robot["points"])), "unit": unit, "handedness": robot["handedness"],
+                "rotation_center": "rotation_center_px" in robot and "rotation_center_world" in robot}
+        if robot.get("rotation_points"):
+            part["rotation_points"] = len(robot["rotation_points"])
+            part["rotation_rms"] = float(robot["rotation_rms_px"])
+            part["rotation_max"] = float(robot["rotation_max_error_px"])
+        parts.append(part)
+    mapping = payload.get("mapping")
+    if mapping:
+        parts.append({"kind": "mapping", "from": mapping.get("from_source") or "", "to": mapping.get("to_source") or "",
+                      "mode": mapping["kind"], "points": len(mapping.get("points") or []), "rms": float(mapping["rms"]),
+                      "max": float(mapping["max_error"])})
+    stereo = payload.get("stereo")
+    if stereo:
+        parts.append({"kind": "stereo", "baseline": float(stereo.get("baseline_mm") or 0), "rms": float(stereo.get("rms") or 0),
+                      "z_ref": bool(stereo.get("z_ref"))})
+    return parts
+
+
 def summary(payload: dict[str, Any]) -> str:
-    """一行白話摘要（資產清單與工具訊息用）。"""
+    """一行白話摘要（資產清單與工具訊息用）。結構化版本見 `summary_parts()`。"""
     bits = []
     lens = payload.get("lens")
     if lens:

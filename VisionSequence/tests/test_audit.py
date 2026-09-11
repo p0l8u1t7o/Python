@@ -42,6 +42,22 @@ class AuditHelperTests(TestCase):
         self.assertEqual(changes, {"a": {"before": 1, "after": 2}})
         self.assertEqual(audit.summarize_fields(changes), "a: 1 → 2")
 
+    def test_summary_values_are_json_not_python_repr(self):
+        """PM-REVIEW-R2 L-4：`None → [{'id': …}]` 這種 repr 曾直接出現在操作紀錄。"""
+        from apps.core.values import field_changes, fmt_value
+
+        changes = audit.fields_diff({"commissioned": False, "images": None, "note": "x" * 100},
+                                    {"commissioned": True, "images": [{"id": "abc", "name": "a"}], "note": "y"},
+                                    ("commissioned", "images", "note"))
+        text = audit.summarize_fields(changes)
+        self.assertIn("commissioned: false → true", text)
+        self.assertIn('images: null → [{"id":"abc","name":"a"}]', text)
+        self.assertNotIn("None", text)
+        self.assertNotIn("False", text)
+        self.assertTrue(fmt_value("x" * 100).endswith("…"))
+        self.assertEqual(fmt_value(1.5), "1.5")
+        self.assertEqual(field_changes(changes)[0], {"field": "commissioned", "before": False, "after": True})
+
     def test_record_never_raises(self):
         self.assertIsNone(audit.record(None, "x" * 100, target=object(), detail=object()) and None)
 

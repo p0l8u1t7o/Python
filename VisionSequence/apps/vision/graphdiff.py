@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from apps.core.values import fmt_value
+
 #: Node keys that carry no meaning for an inspection result (canvas placement, cosmetics).
 COSMETIC = ("position", "width", "height", "selected", "dragging")
 #: Longest value rendered in a diff entry; graphs can hold base64-ish strings and whole scripts.
@@ -85,7 +87,7 @@ def summarize(changes: dict[str, Any], limit: int = 3) -> str:
     """One line for a list row: "threshold 60 → 46, +1 step"."""
     bits: list[str] = []
     for entry in changes.get("params", [])[:limit]:
-        bits.append(f"{entry['param']} {entry['before']} → {entry['after']}")
+        bits.append(f"{entry['param']} {fmt_value(entry['before'])} → {fmt_value(entry['after'])}")
     extra = len(changes.get("params", [])) - limit
     if extra > 0:
         bits.append(f"+{extra} more")

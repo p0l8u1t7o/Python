@@ -486,7 +486,7 @@ An integrator or an administrator locks the engine from the outside — HTTP `PO
 
 Next to the search box, **From** and **To** restrict the list to a date range (the To day included) and **Rows per page** chooses 25 to 500 rows; the same `since`/`until`/`limit` parameters work on the API and the CSV export.
 
-The trail records changes, not runs: who changed which flow, parameter, recipe, source, connection, account or lock, when and from where, with a parameter-level diff for flows. Runs are in the statistics and the image archive instead.
+The trail records changes, not runs: who changed which flow, parameter, recipe, source, connection, account or lock, when and from where, with a parameter-level diff for flows. Click a row to expand it: every changed field is listed with its value before and after (the parameter and step for a flow edit). Runs are in the statistics and the image archive instead.
 
 <figure class="shot"><img src="/docs/img/settings.jpg" alt="The Settings page"><figcaption><b>Settings</b> (sidebar › Settings)
 <ol class="callouts">

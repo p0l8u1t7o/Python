@@ -363,7 +363,7 @@ def solve(request: HttpRequest):
     except (TypeError, ValueError, IndexError, AttributeError) as exc:
         raise ValidationError(f"Those numbers do not make a calibration: {exc}", code="bad_calibration") from None
     cov = calib.coverage(data.get("views") or [], (width, height)) if mode == "board" else None
-    return {"payload": checked, "summary": calib.summary(checked), "quality": calib.quality(checked), "coverage": cov, "warnings": calib.warnings(checked, cov)}
+    return {"payload": checked, "summary": calib.summary(checked), "summary_parts": calib.summary_parts(checked), "quality": calib.quality(checked), "coverage": cov, "warnings": calib.warnings(checked, cov)}
 
 
 @router.post("/calibration/stereo/import")
@@ -384,7 +384,7 @@ def import_stereo(request: HttpRequest, file: UploadedFile = File(None)):
         raise ValidationError(f"Could not read the stereo config: {exc}", code="bad_json") from None
     except calib.CalibError as exc:
         raise _fail(exc) from None
-    return {"payload": payload, "summary": calib.summary(payload), "quality": calib.quality(payload), "warnings": calib.warnings(payload)}
+    return {"payload": payload, "summary": calib.summary(payload), "summary_parts": calib.summary_parts(payload), "quality": calib.quality(payload), "warnings": calib.warnings(payload)}
 
 
 @router.post("/calibration/stereo/reference")
@@ -435,12 +435,12 @@ def stereo_reference(request: HttpRequest):
         raise ValidationError(f"Those numbers do not make a height reference: {exc}", code="bad_reference") from None
     except calib.CalibError as exc:
         raise _fail(exc) from None
-    asset.meta = {**(asset.meta or {}), "summary": calib.summary(checked), "quality": calib.quality(checked),
+    asset.meta = {**(asset.meta or {}), "summary": calib.summary(checked), "summary_parts": calib.summary_parts(checked), "quality": calib.quality(checked),
                   "has_stereo": "stereo" in checked, "has_z_ref": bool((checked.get("stereo") or {}).get("z_ref"))}
     asset.size = os.path.getsize(asset.path)
     asset.save(update_fields=["meta", "size", "updated_at"])
     audit.record(request, "asset.calibration", f"asset:{asset.id}", summary=f"{asset.name}: stereo height reference")
-    return {"payload": checked, "summary": calib.summary(checked), "quality": calib.quality(checked), "warnings": calib.warnings(checked)}
+    return {"payload": checked, "summary": calib.summary(checked), "summary_parts": calib.summary_parts(checked), "quality": calib.quality(checked), "warnings": calib.warnings(checked)}
 
 
 def _roi_match(roi: dict[str, Any]) -> dict[str, Any]:
@@ -494,7 +494,7 @@ def create_asset(request: HttpRequest):
     asset = Asset.objects.create(
         id=asset_id, name=name[:200], kind="calibration", path=path, size=os.path.getsize(path),
         group=str(data.get("group") or "").strip()[:60],
-        meta={"summary": calib.summary(payload), "quality": calib.quality(payload), "unit": payload["unit"],
+        meta={"summary": calib.summary(payload), "summary_parts": calib.summary_parts(payload), "quality": calib.quality(payload), "unit": payload["unit"],
               "image_size": payload["image_size"], "has_lens": "lens" in payload, "has_world": "world" in payload,
               "has_robot": "robot" in payload, "has_mapping": "mapping" in payload},
     )
@@ -515,4 +515,4 @@ def read_asset(request: HttpRequest, asset_id: uuid.UUID):
     except calib.CalibError as exc:
         raise _fail(exc) from None
     return {"id": str(asset.id), "name": asset.name, "group": asset.group, "payload": payload,
-            "summary": calib.summary(payload), "quality": calib.quality(payload)}
+            "summary": calib.summary(payload), "summary_parts": calib.summary_parts(payload), "quality": calib.quality(payload)}

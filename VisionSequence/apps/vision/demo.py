@@ -2841,7 +2841,7 @@ def seed_demo() -> list[str]:
         calib.save(calib_path, payload)
         Asset.objects.create(
             id=calib_id, name=STEREO_CALIB_NAME, kind="calibration", group="Examples", path=calib_path, size=os.path.getsize(calib_path),
-            meta={"summary": calib.summary(payload), "quality": calib.quality(payload), "unit": payload["unit"], "image_size": payload["image_size"],
+            meta={"summary": calib.summary(payload), "summary_parts": calib.summary_parts(payload), "quality": calib.quality(payload), "unit": payload["unit"], "image_size": payload["image_size"],
                   "has_lens": False, "has_world": False, "has_robot": False, "has_mapping": False},
         )
         created.append(f"資產 {STEREO_CALIB_NAME}（新建）")
@@ -2886,7 +2886,7 @@ def seed_demo() -> list[str]:
         calib.save(calib_path, payload)
         Asset.objects.create(
             id=calib_id, name=calib_name, kind="calibration", group="Examples", path=calib_path, size=os.path.getsize(calib_path),
-            meta={"summary": calib.summary(payload), "quality": calib.quality(payload), "unit": payload["unit"], "image_size": payload["image_size"],
+            meta={"summary": calib.summary(payload), "summary_parts": calib.summary_parts(payload), "quality": calib.quality(payload), "unit": payload["unit"], "image_size": payload["image_size"],
                   "has_lens": False, "has_world": bool(payload.get("world")), "has_robot": False, "has_mapping": bool(payload.get("mapping"))},
         )
         created.append(f"資產 {calib_name}（新建）")
