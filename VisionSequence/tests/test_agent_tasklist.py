@@ -9,7 +9,7 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import SimpleTestCase, TestCase, override_settings
 
-from apps.vision import graphdiff, inspect
+from apps.vision import composites, graphdiff, inspect
 from apps.vision.agent import providers, tasklist
 from tests.test_inspect import base_graph
 from apps.accounts.models import AuthToken, UserPref
@@ -64,6 +64,10 @@ CORPUS = [
 
 
 class TaskListTests(SimpleTestCase):
+    def setUp(self):
+        # 登錄表快取是行程層的：全套一起跑時前面的資料庫測試已載入內建複合工具，這裡沒有資料庫要固定走舊的節點組
+        composites.invalidate()
+
     def test_bilingual_corpus(self):
         for text, kind, key, value, status in CORPUS:
             with self.subTest(text=text):
@@ -189,6 +193,9 @@ def cup_image():
 
 
 class Stage15ParsingTests(SimpleTestCase):
+    def setUp(self):
+        composites.invalidate()
+
     """階段 15 對話驗收抓到的解析問題（P1／P3／P4／P5／P7）。"""
 
     def test_one_sentence_cup_specification(self):
@@ -329,7 +336,8 @@ class Stage15CalibrationTests(TestCase):
         draft = tasklist.parse("count 5", graph=graph)[0]
         out = tasklist.apply(graph, [draft], {draft["draft_id"]: {"confirmed": True}})
         self.assertEqual(len(out["applied"]), 1, out["skipped"])
-        self.assertTrue(any(e["source"] == "src" and e["target_handle"] == "image" for e in out["graph"]["edges"]))
+        # 舊的節點組接 image、內建工具實例接 blob:image；兩種形式都要從取像節點來、不能從參考圖來
+        self.assertTrue(any(e["source"] == "src" and e["target_handle"].endswith("image") for e in out["graph"]["edges"]))
         self.assertFalse(any(e["source"] == "ref" for e in out["graph"]["edges"]))
 
 

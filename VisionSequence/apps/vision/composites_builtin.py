@@ -92,6 +92,76 @@ def _visible(spec: tasks.FieldSpec, fields: dict[str, Any], definition: tasks.Ta
     return True
 
 
+#: 結構性欄位：換方式／換工具、控制線或名稱，不是步驟參數，探測時跳過
+_STRUCTURAL_FIELDS = {"required", "locator", "result_name", "reference", "mode", "method"}
+
+
+def _probe_value(spec: tasks.FieldSpec, current: Any) -> Any:
+    """給欄位一個「一定不同」的值，看版面把它寫進哪個步驟的哪個參數。"""
+    if spec.kind == "boolean":
+        return not bool(current)
+    if spec.kind == "number":
+        return (float(current) if isinstance(current, (int, float)) and not isinstance(current, bool) else 0.0) + 1
+    if spec.kind == "select":
+        return next((o.get("value") for o in spec.options if o.get("value") != current), current)
+    if spec.kind == "images":
+        return [{"id": "probe", "name": "probe", "width": 1, "height": 1, "size": 1}]
+    if spec.kind == "roi":
+        return {"shape": "rect", "x": 1, "y": 2, "w": 3, "h": 4}
+    if spec.kind == "json":
+        return {"probe": True}
+    return "probe"
+
+
+def _built_roles(definition: tasks.TaskDefinition, fields: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    nodes, _ = definition.build({"task_id": _TASK_ID, "fields": fields, "required": True}, {})
+    prefix = f"{_TASK_ID}_"
+    return {str(n["id"])[len(prefix):]: n for n in nodes}
+
+
+def field_targets(definition: tasks.TaskDefinition, fields: dict[str, Any]) -> dict[str, list[tuple[str, str]]]:
+    """每個欄位對到的 (角色, 參數)：欄位宣告的 role＋param 在建出的步驟上真的存在就直接對；
+    其餘（預期內容、標定、允許旋轉、真圓度公差）用探測法——換一個值重建一次，看哪個步驟的哪個參數變了。"""
+    targets: dict[str, list[tuple[str, str]]] = {}
+    base = _built_roles(definition, fields)
+    for key, spec in definition.fields.items():
+        if key in _STRUCTURAL_FIELDS or not _visible(spec, fields, definition):
+            continue
+        if spec.role and spec.param and spec.role in base and spec.param in (base[spec.role].get("params") or {}):
+            targets[key] = [(spec.role, spec.param)]
+            continue
+        found = _probe(definition, base, fields, key, spec)
+        if not found:
+            # 只在某個開關打開時才有作用的欄位（旋轉範圍）：把布林欄位都打開再探一次
+            flipped = {k: (not v) for k, v in fields.items() if k in definition.fields and definition.fields[k].kind == "boolean" and k not in _STRUCTURAL_FIELDS}
+            if flipped:
+                try:
+                    found = _probe(definition, _built_roles(definition, {**fields, **flipped}), {**fields, **flipped}, key, spec)
+                except Exception:  # noqa: BLE001
+                    found = []
+        if found:
+            targets[key] = found
+    return targets
+
+
+def _probe(definition: tasks.TaskDefinition, base: dict[str, dict[str, Any]], fields: dict[str, Any], key: str, spec: tasks.FieldSpec) -> list[tuple[str, str]]:
+    try:
+        probed = _built_roles(definition, {**fields, key: _probe_value(spec, fields.get(key))})
+    except Exception:  # noqa: BLE001 - 探測值不合法就當這個欄位不是參數
+        return []
+    if set(probed) != set(base):
+        return []
+    found = []
+    for role, node in probed.items():
+        if node["type"] != base[role]["type"]:
+            continue
+        base_params = base[role].get("params") or {}
+        for param_key, value in (node.get("params") or {}).items():
+            if base_params.get(param_key) != value:
+                found.append((role, param_key))
+    return found
+
+
 def build_tool(spec: BuiltinSpec) -> tuple[dict[str, Any], dict[str, Any], str]:
     """回 (內部圖, 對外介面, 說明)。"""
     definition = tasks.get(spec.kind)
@@ -103,6 +173,7 @@ def build_tool(spec: BuiltinSpec) -> tuple[dict[str, Any], dict[str, Any], str]:
         if field.required and _visible(field, fields, definition) and fields.get(key) in (None, "", []):
             fields[key] = _placeholder(field)
             placeholders.add(key)
+    targets = field_targets(definition, fields)
     nodes, edges = definition.build({"task_id": _TASK_ID, "fields": fields, "required": True}, {})
     prefix = f"{_TASK_ID}_"
     rename = {str(n["id"]): str(n["id"])[len(prefix):] for n in nodes if str(n["id"]).startswith(prefix)}
@@ -117,9 +188,9 @@ def build_tool(spec: BuiltinSpec) -> tuple[dict[str, Any], dict[str, Any], str]:
     # 佔位值清掉：對外參數的預設值變成「未填」，使用者在流程上填
     for key in placeholders:
         field = definition.fields[key]
-        if field.role and field.param and field.role in by_role:
-            params = by_role[field.role].setdefault("params", {})
-            params[field.param] = [] if field.kind == "images" else None
+        for role, param_key in targets.get(key, ()):
+            if role in by_role:
+                by_role[role].setdefault("params", {})[param_key] = [] if field.kind == "images" else None
     # 版面：由左而右
     for index, node in enumerate(nodes):
         node["position"] = {"x": 40 + index * 260, "y": 40}
@@ -128,7 +199,7 @@ def build_tool(spec: BuiltinSpec) -> tuple[dict[str, Any], dict[str, Any], str]:
     layout = definition.layout_hook(fields) if definition.layout_hook else None
     in_refs = list(definition.inputs_for(fields))
     out_refs = list(layout.outputs if layout else definition.public_outputs)
-    for extra in ((layout.pass_port, layout.value_port) if layout else (definition.pass_port,)):
+    for extra in ((layout.pass_port, layout.value_port, *layout.summary_inputs) if layout else (definition.pass_port,)):
         if extra is not None and extra not in out_refs:
             out_refs.append(extra)
     # 判定角色的分支埠也對外（流程要靠它走控制線）
@@ -141,15 +212,26 @@ def build_tool(spec: BuiltinSpec) -> tuple[dict[str, Any], dict[str, Any], str]:
     inputs = [{"key": f"{ref.role}:{ref.port}", "exposed": True, "order": i} for i, ref in enumerate(r for r in in_refs if r.port != tools.FLOW_IN and r.role in by_role)]
     outputs = [{"key": f"{ref.role}:{ref.port}", "exposed": True, "order": i} for i, ref in enumerate(r for r in out_refs if r.role in by_role)]
     params: list[dict[str, Any]] = []
+    seen_params: set[str] = set()
     for key, field in definition.fields.items():
-        if key in _SKIP_FIELDS or not field.role or not field.param or field.role not in by_role or not _visible(field, fields, definition):
+        if key in _SKIP_FIELDS:
             continue
-        entry: dict[str, Any] = {"key": f"{field.role}:{field.param}", "alias": field.label, "order": len(params)}
-        if field.help_text:
-            entry["help_text"] = field.help_text
-        if key in placeholders:
-            entry["default"] = [] if field.kind == "images" else None
-        params.append(entry)
+        for index, (role, param_key) in enumerate(targets.get(key, ())):
+            ext_key = f"{role}:{param_key}"
+            if role not in by_role or ext_key in seen_params:
+                continue
+            seen_params.add(ext_key)
+            # 一個欄位寫進好幾個步驟參數時（允許旋轉＝use_angle＋refine_rotation），第二個起用內部工具自己的參數名稱
+            alias = field.label
+            if index:
+                inner_param = next((p for p in tools.get(str(by_role[role]["type"])).params if p.key == param_key), None)
+                alias = inner_param.label if inner_param is not None else f"{field.label} ({param_key})"
+            entry: dict[str, Any] = {"key": ext_key, "alias": alias, "order": len(params)}
+            if field.help_text:
+                entry["help_text"] = field.help_text
+            if key in placeholders:
+                entry["default"] = [] if field.kind == "images" else None
+            params.append(entry)
     method_label = ""
     if spec.method_field:
         options = definition.fields[spec.method_field].options

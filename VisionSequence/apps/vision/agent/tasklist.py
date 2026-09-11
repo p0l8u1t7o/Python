@@ -12,7 +12,7 @@ import cv2
 import numpy as np
 
 from apps.core.errors import APIError
-from apps.vision import inspect
+from apps.vision import inspect, inspect_composite
 from apps.vision.agent import analysis, clarify, llm, providers
 from apps.vision.tasks import all as all_definitions
 
@@ -551,7 +551,7 @@ def apply(graph: dict, drafts: list[TaskDraft], confirmations: dict) -> dict:
             if effective.get("unit") == "mm" and not effective.get("calibration"):
                 raise ValueError("Select a calibration before using millimetres.")
             if op == "add":
-                out = inspect.build(out, {"kind": kind, "fields": values}, {"image_node": sources[0]["id"]})
+                out = inspect.build(out, {"kind": kind, "fields": values}, {"image_node": sources[0]["id"], "composite": inspect_composite.default_enabled()})
             elif op == "update":
                 out = inspect.update(out, {"task_id": existing["task_id"], "fields": values})
             else:

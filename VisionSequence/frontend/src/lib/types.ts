@@ -240,6 +240,9 @@ export interface InspectTask {
   custom: boolean
   disabled?: boolean
   reasons: { code: string; role: string; node_id?: string; detail: string }[]
+  /** 內建複合工具的實例（P4 起新任務的形式）：nodes 只有 instance，tool 是內建工具 key */
+  source?: 'composite'
+  tool?: string
 }
 
 export interface InspectList {

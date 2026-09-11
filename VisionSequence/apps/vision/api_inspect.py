@@ -16,7 +16,7 @@ from pydantic import ConfigDict, Field, StrictBool, StrictFloat, StrictInt, Stri
 from apps.accounts.security import principal, require_feature
 from apps.core import audit
 from apps.core.errors import APIError, NotFound, ValidationError
-from apps.vision import inspect
+from apps.vision import inspect, inspect_composite
 from apps.vision.models import InspectionTrial
 from apps.vision.tasks import all as all_definitions
 
@@ -178,7 +178,7 @@ def read(request: HttpRequest, payload: GraphIn):
 def build(request: HttpRequest, payload: TaskGraphIn):
     require_feature(request, "flows.edit")
     try:
-        return {"graph": inspect.build(payload.graph, payload.task, payload.ctx)}
+        return {"graph": inspect.build(payload.graph, payload.task, {"composite": inspect_composite.default_enabled(), **payload.ctx})}
     except APIError as exc:
         raise _as_422(exc) from exc
 

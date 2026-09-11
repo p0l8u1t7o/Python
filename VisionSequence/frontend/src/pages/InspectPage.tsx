@@ -2,11 +2,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useBlocker, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ChevronLeft, ChevronRight, Plus, Play, Save, Trash2, ImageUp } from 'lucide-react'
+import { Boxes, ChevronLeft, ChevronRight, Plus, Play, Save, Trash2, ImageUp } from 'lucide-react'
 import { ImagesField, ParamField, type InspectorActions } from '@/components/editor/ParamField'
 import { FlowSubNav } from '@/components/flow/FlowSubNav'
 import { useSaveConflictDialog } from '@/components/flow/SaveConflictDialog'
-import { Button, ErrorState, LoadingState, Modal } from '@/components/ui'
+import { Badge, Button, ErrorState, LoadingState, Modal } from '@/components/ui'
 import { ImageViewer } from '@/components/viewer/ImageViewer'
 import { fixedImageFromRef, imageUrl, teachContourFromImage } from '@/lib/api'
 import { GeometrySourceField } from '@/components/inspect/GeometrySourceField'
@@ -398,7 +398,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
   const saveBlocked = readOnly ? t('inspect.blocked.readOnly') : busy ? t('inspect.blocked.busy') : newKind ? t('inspect.blocked.wizard') : formInvalid ? (needsCalibration ? t('inspect.blocked.calibration') : t('inspect.blocked.invalid')) : null
   const createBlocked = readOnly ? t('inspect.blocked.readOnly') : busy ? t('inspect.blocked.busy') : needsCalibration ? t('inspect.blocked.calibration') : formInvalid ? t('inspect.blocked.invalid') : null
   const renderField = (field: InspectField) => <div key={field.key} data-field={field.key} onBlur={() => { if (!newKind && edits.current) void action(flushEdits) }}>
-    {field.key === 'locator' ? <label className="label">{field.label}<select className="input" value={String(values.locator ?? '')} onChange={(event) => changeField('locator', event.target.value)}><option value="">{t('common.none')}</option>{list.tasks.filter((entry) => entry.kind === 'locate_part' && (newKind || entry.task_id !== selected) && !entry.custom).map((entry) => <option key={entry.task_id} value={entry.task_id}>{taskTitle(entry)}</option>)}</select></label> : field.source_type === 'geometry' ? <GeometrySourceField field={field} value={values[field.key]} graph={graph} nodeId={newKind ? undefined : task?.nodes.defect} defs={defs} onChange={(value) => changeField(field.key, value)} /> : <ParamField param={inspectionParam(field)} value={values[field.key]} onChange={(value) => changeField(field.key, value)} actions={actions} />}
+    {field.key === 'locator' ? <label className="label">{field.label}<select className="input" value={String(values.locator ?? '')} onChange={(event) => changeField('locator', event.target.value)}><option value="">{t('common.none')}</option>{list.tasks.filter((entry) => entry.kind === 'locate_part' && (newKind || entry.task_id !== selected) && !entry.custom).map((entry) => <option key={entry.task_id} value={entry.task_id}>{taskTitle(entry)}</option>)}</select></label> : field.source_type === 'geometry' ? <GeometrySourceField field={field} value={values[field.key]} graph={graph} nodeId={newKind || task?.source === 'composite' ? undefined : task?.nodes.defect} defs={defs} onChange={(value) => changeField(field.key, value)} /> : <ParamField param={inspectionParam(field)} value={values[field.key]} onChange={(value) => changeField(field.key, value)} actions={actions} />}
     {field.kind === 'output_key' && typeof values[field.key] === 'string' && values[field.key] !== '' && !OUTPUT_NAME.test(String(values[field.key])) ? <p className="mt-1 text-xs text-warning" role="alert">{t('inspect.badResultName')}</p> : null}
     {kind?.kind === 'inspect_edge_defect' && field.key === 'model' ? <Button size="sm" disabled={!image?.ref || readOnly || busy} onClick={() => void action(async () => {
       if (!image?.ref) return
@@ -448,6 +448,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
           return <li key={item.task_id}><button className={`flex w-full items-center gap-2 rounded p-2 text-left text-sm ${selected === item.task_id && !newKind ? 'bg-brand-soft' : 'hover:bg-surface-muted'}`} onClick={() => void action(() => selectTask(item.task_id))} data-testid="inspect-task">
             <span className={`size-2.5 shrink-0 rounded-full ${INSPECT_DOTS[state]}`} title={t(`inspect.status.${state}`)} />
             {proposalTasks.includes(item.task_id) && <span className="size-2 shrink-0 rounded-full bg-warning" title={t('assistant.tasklist.status.assumed')} />}
+            {item.source === 'composite' ? <span className="shrink-0" data-testid="inspect-task-composite"><Badge tone="info" title={t('inspect.compositeTask')}><Boxes size={12} /></Badge></span> : null}
             <span className="min-w-0"><span className="block truncate">{String(item.fields.result_name || kinds.data?.items.find((entry) => entry.kind === item.kind)?.label || item.kind)}</span><span className="block text-xs text-muted">{t(`inspect.status.${state}`)}{item.disabled ? ` · ${t('inspect.disabled')}` : ''}</span></span>
           </button>{item.custom ? <ul className="space-y-1 px-2 pb-2 text-xs text-warning" data-testid="inspect-custom-reasons">{item.reasons.map((reason, index) => <li key={index}><Link to={inspectionAdvancedPath(flowId, graph, { ...item, reasons: [reason] })}>{t(inspectionReasonKey(reason.code))}</Link></li>)}</ul> : null}</li>
         })}</ul>

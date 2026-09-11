@@ -8,6 +8,7 @@ import re
 from typing import Any
 
 from apps.core.errors import ValidationError
+from apps.vision import inspect_composite as composite
 from apps.vision.graph import FLOW_IN, validate_graph
 from apps.vision.tasks import base as task_base
 from apps.vision.tasks import get as get_definition
@@ -23,9 +24,14 @@ CUSTOM_REASON_CODES = frozenset({
 
 
 def build(graph: dict[str, Any], task: dict[str, Any], ctx: dict[str, Any] | None = None) -> dict[str, Any]:
-    """把一項檢測任務加入流程圖，並重算必要檢測彙總。"""
-    out = _clone_graph(graph)
+    """把一項檢測任務加入流程圖，並重算必要檢測彙總。`ctx["composite"]` 為真時放成內建複合工具的實例（P4 起 API 與助手的預設）。"""
     ctx = dict(ctx or {})
+    if ctx.get("composite"):
+        definition = get_definition(str(task.get("kind") or ""), task.get("version"))
+        supplied = {**(task.get("fields") if isinstance(task.get("fields"), dict) else {}), **{k: task[k] for k in definition.fields if k in task}}
+        if composite.available(definition.kind, supplied):
+            return composite.build_instance(graph, task, ctx)
+    out = _clone_graph(graph)
     definition = get_definition(str(task.get("kind") or ""), task.get("version"))
     task = {**task, "task_id": _unique_task_id(out, str(task.get("task_id") or task.get("id") or definition.kind))}
     nodes, edges = definition.build(task, ctx)
@@ -49,6 +55,7 @@ def read(graph: dict[str, Any]) -> dict[str, Any]:
     piles: dict[str, list[dict[str, Any]]] = {}
     shared: list[dict[str, Any]] = []
     loose: list[dict[str, Any]] = []
+    instances: list[dict[str, Any]] = []
     for node in nodes:
         marker = inspect_marker(node)
         if marker:
@@ -56,20 +63,25 @@ def read(graph: dict[str, Any]) -> dict[str, Any]:
                 shared.append({"id": node["id"], "type": node["type"], "kind": "summary"})
             else:
                 piles.setdefault(marker["task_id"], []).append(node)
+        elif composite.spec_of(node) is not None:
+            instances.append(node)
         elif node.get("type") in ("image_source", "fixed_image", "stereo_grab", "multi_light_grab"):
             shared.append({"id": node["id"], "type": node.get("type")})
         else:
             loose.append({"id": node.get("id"), "type": node.get("type")})
     tasks = [_read_task(task_id, pile, edges, nodes) for task_id, pile in piles.items()]
+    tasks.extend(composite.read_instance(node, edges, nodes) for node in instances)
     return {"tasks": tasks, "shared": shared, "loose": loose}
 
 
 def update(graph: dict[str, Any], task: dict[str, Any]) -> dict[str, Any]:
     """共用 build 重算欄位差異，只替換任務內受管理的參數與接線。"""
-    out = _clone_graph(graph)
     task_id = str(task.get("task_id") or task.get("id") or "")
     if not task_id:
         raise ValidationError("task_id is required", code="missing_task_id")
+    if _instance(graph, task_id) is not None:
+        return composite.update_instance(graph, task_id, task)
+    out = _clone_graph(graph)
     nodes = _task_nodes(out, task_id)
     if not nodes:
         raise ValidationError(f"Inspection task '{task_id}' was not found", code="task_not_found")
@@ -168,6 +180,8 @@ def update(graph: dict[str, Any], task: dict[str, Any]) -> dict[str, Any]:
 
 def remove(graph: dict[str, Any], task_id: str) -> dict[str, Any]:
     """刪除任務；若輸出仍被外部使用，回依賴清單且不改圖。"""
+    if _instance(graph, task_id) is not None:
+        return composite.remove_instance(graph, task_id)
     out = _clone_graph(graph)
     nodes = _task_nodes(out, task_id)
     if not nodes:
@@ -194,15 +208,16 @@ def evidence(graph: dict[str, Any], report: Any) -> list[dict[str, Any]]:
         if task.get("kind") == "summary":
             continue
         task_id = task["task_id"]
+        instance = _instance(graph, task_id)
         if task["disabled"]:
-            nid = next(n["id"] for n in _task_nodes(graph, task_id) if n.get("enabled") is False)
+            nid = task_id if instance is not None else next(n["id"] for n in _task_nodes(graph, task_id) if n.get("enabled") is False)
             readings.append(_reading(task_id, "skipped", False, None, None, task.get("unit", ""), "A task step is disabled", [], nid))
             continue
         if task["custom"]:
             reason = task["reasons"][0]
             readings.append(_reading(task_id, "skipped", False, None, None, task.get("unit", ""), "Review this custom task in the advanced flow", [], reason["node_id"]))
             continue
-        roles = task.get("nodes") or {}
+        roles = composite.report_roles(instance) if instance is not None else (task.get("nodes") or {})
         find_id = roles.get("find")
         tol_id = roles.get("tol")
         align_id = roles.get("align")
@@ -275,11 +290,16 @@ def evidence(graph: dict[str, Any], report: Any) -> list[dict[str, Any]]:
         value = _task_value(task, find_row, tol_row)
         verdict = "pass" if tol_row.get("status") == "ok" else "fail"
         readings.append(_reading(task_id, verdict, True, True, value, task.get("unit", ""), tol_row.get("message", ""), overlays, tol_id or find_id or ""))
+    for reading in readings:
+        if _instance(graph, reading["task_id"]) is not None:
+            reading["node_id"] = reading["task_id"]
     return readings
 
 
 def teach_pose(graph: dict[str, Any], task_id: str, report: Any) -> dict[str, Any]:
     """把定位試跑結果寫回 ref_x/ref_y/ref_angle。"""
+    if _instance(graph, task_id) is not None:
+        return composite.teach_pose_instance(graph, task_id, report)
     out = _clone_graph(graph)
     nodes = _task_nodes(out, task_id)
     by_role = {inspect_marker(n)["role"]: n for n in nodes if inspect_marker(n)}
@@ -319,7 +339,7 @@ def _clone_graph(graph: dict[str, Any] | None) -> dict[str, Any]:
 
 def _unique_task_id(graph: dict[str, Any], base: str) -> str:
     base = re.sub(r"[^A-Za-z0-9_-]+", "_", base or "task")[:40] or "task"
-    used = {m["task_id"] for n in graph.get("nodes", []) if (m := inspect_marker(n))}
+    used = {m["task_id"] for n in graph.get("nodes", []) if (m := inspect_marker(n))} | {str(n.get("id")) for n in graph.get("nodes", [])}
     if base not in used:
         return base
     for i in range(2, 1000):
@@ -332,6 +352,28 @@ def _unique_task_id(graph: dict[str, Any], base: str) -> str:
 
 def _task_nodes(graph: dict[str, Any], task_id: str) -> list[dict[str, Any]]:
     return [n for n in graph.get("nodes", []) if (m := inspect_marker(n)) and m.get("task_id") == task_id]
+
+
+def _instance(graph: dict[str, Any], task_id: str) -> dict[str, Any] | None:
+    """task_id 是內建複合工具實例的節點 id 時回那個節點。"""
+    return next((n for n in graph.get("nodes", []) if str(n.get("id")) == task_id and composite.spec_of(n) is not None), None)
+
+
+def _task_node_ids(graph: dict[str, Any], task_id: str) -> set[str]:
+    ids = {str(n["id"]) for n in _task_nodes(graph, task_id)}
+    if not ids and _instance(graph, task_id) is not None:
+        ids = {task_id}
+    return ids
+
+
+def _locator_ports(graph: dict[str, Any], locator_id: str) -> tuple[tuple[str, str], tuple[str, str]] | None:
+    """定位來源的 (位置修正埠, 找到分支)：定位工具實例或舊的定位任務。"""
+    if composite.is_locator(_instance(graph, locator_id)):
+        return (locator_id, "align:transform"), (locator_id, "find:found")
+    roles = {inspect_marker(n).get("role"): str(n["id"]) for n in _task_nodes(graph, locator_id) if inspect_marker(n)}
+    if roles.get("find") and roles.get("align"):
+        return (roles["align"], "transform"), (roles["find"], "found")
+    return None
 
 
 def _image_source_node(graph: dict[str, Any], *, exclude: set[str]) -> str | None:
@@ -357,30 +399,34 @@ def _connect_image_inputs(graph: dict[str, Any], definition: task_base.TaskDefin
 
 
 def _connect_locator(graph: dict[str, Any], task_id: str, locator_id: str) -> None:
-    target_ids = {str(n["id"]) for n in _task_nodes(graph, task_id)}
+    """定位依賴一律兩條線（transform → _transform、found → _flow）；目標與定位來源都可以是舊任務或複合工具實例。"""
+    target_ids = _task_node_ids(graph, task_id)
     previous = _locator_for(task_id, graph.get("edges", []), graph.get("nodes", []))
-    previous_roles = {inspect_marker(n)["role"]: n["id"] for n in _task_nodes(graph, previous)} if previous else {}
-    managed = {(previous_roles.get("align"), "transform", tools.TRANSFORM_IN), (previous_roles.get("find"), "found", FLOW_IN)} if previous else set()
+    managed: set[tuple[str, str, str]] = set()
+    if previous and (ports := _locator_ports(graph, previous)):
+        (align_id, align_port), (find_id, find_port) = ports
+        managed = {(align_id, align_port, tools.TRANSFORM_IN), (find_id, find_port, FLOW_IN)}
     graph["edges"] = [
         e for e in graph.get("edges", [])
         if not (str(e.get("target")) in target_ids and (str(e.get("source")), str(e.get("source_handle") or ""), str(e.get("target_handle") or "")) in managed)
     ]
     if not locator_id:
         return
-    loc_nodes = {inspect_marker(n).get("role"): str(n["id"]) for n in _task_nodes(graph, locator_id) if inspect_marker(n)}
-    find = loc_nodes.get("find")
-    align = loc_nodes.get("align")
-    if not find or not align:
+    ports = _locator_ports(graph, locator_id)
+    if ports is None:
         raise ValidationError(f"Locator task '{locator_id}' was not found", code="locator_not_found")
-    task = next(t for t in read(graph)["tasks"] if t["task_id"] == task_id)
-    definition = get_definition(task["kind"], task["version"])
-    locator_roles = definition.layout_hook(task["fields"]).locator_roles if definition.layout_hook else ("find",)
-    for target in sorted(target_ids):
-        node = next((n for n in graph.get("nodes", []) if str(n.get("id")) == target), None)
-        if node is None or (inspect_marker(node) or {}).get("role") not in locator_roles:
-            continue
-        graph.setdefault("edges", []).append(task_base.edge(align, "transform", target, tools.TRANSFORM_IN))
-        graph.setdefault("edges", []).append(task_base.edge(find, "found", target, FLOW_IN))
+    (align_id, align_port), (find_id, find_port) = ports
+    if _instance(graph, task_id) is not None:
+        targets = [task_id]
+    else:
+        task = next(t for t in read(graph)["tasks"] if t["task_id"] == task_id)
+        definition = get_definition(task["kind"], task["version"])
+        locator_roles = definition.layout_hook(task["fields"]).locator_roles if definition.layout_hook else ("find",)
+        by_id = {str(n.get("id")): n for n in graph.get("nodes", [])}
+        targets = [t for t in sorted(target_ids) if (inspect_marker(by_id.get(t) or {}) or {}).get("role") in locator_roles]
+    for target in targets:
+        graph.setdefault("edges", []).append(task_base.edge(align_id, align_port, target, tools.TRANSFORM_IN))
+        graph.setdefault("edges", []).append(task_base.edge(find_id, find_port, target, FLOW_IN))
 
 
 def _replace_single_edge(graph: dict[str, Any], target: str, target_port: str, new_edge: dict[str, str]) -> None:
@@ -396,9 +442,23 @@ def _place_nodes(graph: dict[str, Any], nodes: list[dict[str, Any]]) -> None:
         node.setdefault("position", {"x": base_x + i * 220, "y": base_y})
 
 
+def _task_port(task: dict[str, Any], ref: task_base.PortRef) -> tuple[str, str]:
+    """任務的一個角色埠在圖上的 (節點 id, 把手)：實例＝(實例 id, `<role>:<port>`)。"""
+    if task.get("source") == composite.SOURCE:
+        return task["task_id"], composite.port_key(ref)
+    return task["nodes"][ref.role], ref.port
+
+
+def _task_flow_ports(graph: dict[str, Any], task: dict[str, Any], role: str) -> list[tuple[str, str]]:
+    node_id, _ = _task_port(task, task_base.PortRef(role, ""))
+    node = next(n for n in graph["nodes"] if n["id"] == node_id)
+    prefix = f"{role}:" if task.get("source") == composite.SOURCE else ""
+    return [(node_id, port.key) for port in tools.get(node["type"]).outputs if port.type == "flow" and port.key.startswith(prefix)]
+
+
 def _maintain_summary(graph: dict[str, Any]) -> None:
     tasks = read({k: v for k, v in graph.items() if k in ("nodes", "edges")})["tasks"]
-    required: list[tuple[str, task_base.PortRef]] = []
+    required: list[tuple[str, str]] = []
     adapter_ids: set[str] = set()
     for task in tasks:
         if not task.get("required") or task.get("custom"):
@@ -424,19 +484,16 @@ def _maintain_summary(graph: dict[str, Any]) -> None:
             adapter["params"] = {"expression": layout.summary_expression}
             adapter_edges = []
             for key, source in zip(("a", "b", "c", "d"), layout.summary_inputs):
-                adapter_edges.append(task_base.edge(task["nodes"][source.role], source.port, adapter_id, key))
-            source_id = task["nodes"][layout.summary_inputs[0].role]
-            source_node = next(n for n in graph["nodes"] if n["id"] == source_id)
-            for port in tools.get(source_node["type"]).outputs:
-                if port.type == "flow":
-                    adapter_edges.append(task_base.edge(source_id, port.key, adapter_id, FLOW_IN))
+                adapter_edges.append(task_base.edge(*_task_port(task, source), adapter_id, key))
+            for source_id, port_key in _task_flow_ports(graph, task, layout.summary_inputs[0].role):
+                adapter_edges.append(task_base.edge(source_id, port_key, adapter_id, FLOW_IN))
             expected_edges = {(e["source"], e["source_handle"], e["target_handle"]) for e in adapter_edges}
             graph["edges"] = [e for e in graph.get("edges", []) if e.get("target") != adapter_id or (e.get("source"), e.get("source_handle"), e.get("target_handle")) in expected_edges]
             existing_edges = {(e.get("source"), e.get("source_handle"), e.get("target_handle")) for e in graph["edges"] if e.get("target") == adapter_id}
             graph["edges"].extend(e for e in adapter_edges if (e["source"], e["source_handle"], e["target_handle"]) not in existing_edges)
-            required.append((adapter_id, task_base.PortRef("result", "result")))
+            required.append((adapter_id, "result"))
         elif ref is not None:
-            required.append((task["nodes"][ref.role], ref))
+            required.append(_task_port(task, ref))
     obsolete = {n["id"] for n in graph["nodes"] if (inspect_marker(n) or {}).get("kind") == "summary" and n["type"] == "formula" and n["id"] not in adapter_ids}
     graph["nodes"] = [n for n in graph["nodes"] if n["id"] not in obsolete]
     graph["edges"] = [e for e in graph.get("edges", []) if e.get("source") not in obsolete and e.get("target") not in obsolete]
@@ -456,15 +513,15 @@ def _maintain_summary(graph: dict[str, Any]) -> None:
         graph.setdefault("nodes", []).append(summary)
     else:
         summary.setdefault("params", {})["expected_count"] = len(required)
-    expected = {(node_id, ref.port) for node_id, ref in required}
+    expected = set(required)
     task_ids = {nid for task in tasks for nid in task["nodes"].values()} | adapter_ids
     graph["edges"] = [e for e in graph.get("edges", []) if not (
         e.get("target") == SUMMARY_ID and e.get("target_handle") == "results"
         and e.get("source") in task_ids and (e.get("source"), e.get("source_handle")) not in expected
     )]
-    for node_id, ref in required:
-        if not any(e.get("source") == node_id and e.get("source_handle") == ref.port and e.get("target") == SUMMARY_ID and e.get("target_handle") == "results" for e in graph["edges"]):
-            graph["edges"].append(task_base.edge(node_id, ref.port, SUMMARY_ID, "results"))
+    for node_id, port_key in required:
+        if not any(e.get("source") == node_id and e.get("source_handle") == port_key and e.get("target") == SUMMARY_ID and e.get("target_handle") == "results" for e in graph["edges"]):
+            graph["edges"].append(task_base.edge(node_id, port_key, SUMMARY_ID, "results"))
 
 
 def _read_task(task_id: str, nodes: list[dict[str, Any]], edges: list[dict[str, Any]], all_nodes: list[dict[str, Any]]) -> dict[str, Any]:
@@ -536,12 +593,17 @@ def _read_fields(item: dict[str, Any], definition: task_base.TaskDefinition, nod
 
 
 def _locator_for(task_id: str, edges: list[dict[str, Any]], nodes: list[dict[str, Any]]) -> str:
-    by_id = {str(n["id"]): inspect_marker(n) or {} for n in nodes}
+    target_ids = _task_node_ids({"nodes": nodes}, task_id)
+    by_id = {str(n.get("id")): n for n in nodes}
     for e in edges:
-        if by_id.get(str(e.get("target")), {}).get("task_id") == task_id and e.get("target_handle") == tools.TRANSFORM_IN:
-            source = by_id.get(str(e.get("source")), {})
-            if source.get("kind") == "locate_part" and source.get("role") == "align":
-                return str(source["task_id"])
+        if str(e.get("target")) not in target_ids or e.get("target_handle") != tools.TRANSFORM_IN:
+            continue
+        source = by_id.get(str(e.get("source")))
+        marker = inspect_marker(source) if source else None
+        if marker and marker.get("kind") == "locate_part" and marker.get("role") == "align":
+            return str(marker["task_id"])
+        if composite.is_locator(source):
+            return str(source["id"])
     return ""
 
 
@@ -661,16 +723,17 @@ def _report_nodes(report: Any) -> dict[str, dict[str, Any]]:
 
 
 def _skipped_by_locator(graph: dict[str, Any], task_id: str, nodes: dict[str, dict[str, Any]]) -> bool:
-    target_ids = {str(n["id"]) for n in _task_nodes(graph, task_id)}
-    markers = {str(n["id"]): inspect_marker(n) or {} for n in graph.get("nodes", [])}
+    target_ids = _task_node_ids(graph, task_id)
+    by_id = {str(n.get("id")): n for n in graph.get("nodes", [])}
     for e in graph.get("edges", []):
         if str(e.get("target")) in target_ids and str(e.get("target_handle") or "") == FLOW_IN:
             src = str(e.get("source"))
-            marker = markers.get(src, {})
-            if marker.get("kind") != "locate_part" or marker.get("role") != "find":
+            marker = inspect_marker(by_id.get(src) or {}) or {}
+            legacy_find = marker.get("kind") == "locate_part" and marker.get("role") == "find"
+            if not legacy_find and not composite.is_locator(by_id.get(src)):
                 continue
             row = nodes.get(src, {})
-            if row.get("branch") == "not_found" or row.get("status") == "ng":
+            if str(row.get("branch") or "").endswith("not_found") or row.get("status") == "ng":
                 return True
     return False
 

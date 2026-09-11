@@ -314,7 +314,7 @@ graph JSON 格式與埠合約見 `docs/contract.html`；**不改 graph 格式、
 | 工具庫 | `/vision/composite-tools`（CRUD、`/{id}/usage`、`/{id}/export`、`/{id}/duplicate`、`/import`） |
 | 深度學習 | `/vision/dl/projects`、`/samples`、`/split`、`/dataset-export|import`、`/versions`、`/train`、`/train/status`、`/devices`、`/settings`、`/trainers`、`/sam` |
 | AI 助手 | `/vision/agent/info`、`/settings`（＋`/test`、`/models`）、`/image`、`/clarify`、`/generate`、`/run`、`/refine`、`/edit`、`/tune`、`/autotune`、`/chat`、`/help/search`、`/jobs`（＋`/{id}`、`/cancel`、`/answer`）、`/sessions`（＋`/{id}`、`/restore`）、`/skills`、`/skills/custom/{key}`；`/flows/{id}/golden/autotune` |
-| 檢測任務 | `/vision/inspect/kinds`、`/inspect/read`、`/build`、`/update`、`/remove`、`/evidence`、`/teach-pose`、`/inspect/{flow_id}/last-trial`（GET／PUT 上次試執行讀值） |
+| 檢測任務 | `/vision/inspect/kinds`、`/inspect/read`、`/build`（預設放內建複合工具實例，`ctx.composite=false` 退回多步驟形式）、`/update`、`/remove`、`/evidence`、`/teach-pose`、`/inspect/{flow_id}/last-trial`（GET／PUT 上次試執行讀值） |
 | 工程筆記 | `/vision/notes`（CRUD）、`/notes/{id}/confirm`、`/notes/{id}/retract` |
 | 運行介面與佇列 | `/vision/dashboards`（CRUD、`/default`、`/{id}/data`）、`/vision/queues`（檢視、清空） |
 | 整合 | `/vision/integration/info`、`/integration/tcp`、`/vision/connections` |

@@ -2882,6 +2882,7 @@ const inspectStage6 = { inspect: {
   "openCalibration": "Open calibration",
   "templateOnly": "Only template location is available in this version.",
   "teachPose": "Teach pose from this run",
+  "compositeTask": "Built-in inspection tool on the canvas; its parameters are in the tool page",
   "teachHint": "After the first try run, select Teach pose from this run so the other tasks follow the part's position.",
   "badResultName": "Use letters, digits and underscores only, starting with a letter (this is the output name devices read).",
   "fixedImagesCount": "{{count}} pictures", "fixedImagesCount_one": "{{count}} picture", "fixedImagesCount_other": "{{count}} pictures",

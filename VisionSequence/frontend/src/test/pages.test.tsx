@@ -111,6 +111,21 @@ describe('pages render (smoke)', () => {
     })
   })
 
+  it('InspectPage lists a built-in composite tool instance as a task', async () => {
+    const { InspectPage } = await import('@/pages/InspectPage')
+    const { clearSession, setDraft } = await import('@/lib/flowDraft')
+    clearSession(6)
+    const graph = structuredClone(INSPECT_GRAPH)
+    graph.nodes.push({ id: 'dia', type: 'composite:measure_diameter', params: { 'find:roi': { shape: 'annulus', cx: 200, cy: 200, r_inner: 40, r_outer: 60 }, 'tol:nominal': 100, 'tol:upper_tol': 2 }, position: { x: 600, y: 200 } })
+    setDraft(6, { baseVersion: 1, graph, name: 'Composite flow', description: '', dirty: true })
+    renderDataPage(<InspectPage />, '/flows/6/inspect', '/flows/:flowId/inspect')
+    const rows = await screen.findAllByTestId('inspect-task')
+    expect(rows).toHaveLength(2)
+    expect(screen.getAllByTestId('inspect-task-composite')).toHaveLength(1)
+    fireEvent.click(rows[1])
+    await waitFor(() => expect(screen.getByLabelText('Nominal')).toHaveValue(100))
+  })
+
   it('InspectPage rereads a returned advanced draft and retains stale readings until rerun', async () => {
     const { InspectPage } = await import('@/pages/InspectPage')
     const { api } = await import('@/lib/api')

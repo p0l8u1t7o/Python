@@ -2997,6 +2997,7 @@ export default { queues: {"title": "資料佇列", "hint": "流程之間的暫�
   "openCalibration": "開啟標定",
   "templateOnly": "此版本僅支援範本定位。",
   "teachPose": "從此次結果教導姿態",
+  "compositeTask": "畫布上的內建檢測工具；參數在工具頁",
   "teachHint": "第一次試執行後，請點選「從此次結果教導姿態」，其他任務才會跟著工件位置。",
   "badResultName": "只能用英文字母、數字與底線，且以字母開頭（這是設備讀取的輸出名稱）。",
   "fixedImagesCount": "{{count}} 張",

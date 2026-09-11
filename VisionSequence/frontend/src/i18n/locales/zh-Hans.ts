@@ -2891,6 +2891,7 @@ export default { queues: {"title": "数据队列", "hint": "流程之间的暂�
   "openCalibration": "打开标定",
   "templateOnly": "此版本仅支持模板定位。",
   "teachPose": "从本次结果示教姿态",
+  "compositeTask": "画布上的内置检测工具；参数在工具页",
   "teachHint": "第一次试运行后，请点击“从本次结果示教姿态”，其他任务才会跟随工件位置。",
   "badResultName": "只能用英文字母、数字与下划线，且以字母开头（这是设备读取的输出名称）。",
   "fixedImagesCount": "{{count}} 张",
