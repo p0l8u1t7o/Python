@@ -20,6 +20,8 @@ The mode chip defaults to Auto: a question (with "how", "why", "what" or a quest
 
 On the **Inspection tasks** page the assistant turns what you say into a proposed task list instead of a graph. One message can carry several requests — "locate the part with the cross mark and allow rotation; outer diameter 35 ±0.2 mm, inner 26 ±0.2 mm; gaps over 2 mm fail" — as well as changes ("tighten the outer diameter to ±0.1") and removals. The proposal appears as a card with one block per task: values you said are **Confirmed**, values the assistant guessed are marked **Assumption**, and required values nobody gave are **Missing**. Regions it estimated from the image are drawn as dashed outlines when you select **Show on image**; they stay proposals until you apply them.
 
+When the flow has more than one image source, every new task card asks which one to use; naming the source in your request picks it for you. A picture field such as the locator mark has **Crop from the image**: draw a box on the picture and the platform straightens the crop and stores it in that field. On the Inspection tasks page or the canvas, saying "save it as a new version" hands the request to agent mode, which runs a trial and asks you to approve the save; without an AI provider that supports actions, press Save instead.
+
 Nothing changes until you select **Confirm all**; **Discard** drops the proposal. The card will not apply while a value is missing, when millimetres are asked for without a calibration, or when the image source is ambiguous — it asks instead. Applying goes through the same task builder as the form on the page, so the result is identical to building it by hand; save it from the page as usual.
 
 ### Picking up where you left off {#resume}

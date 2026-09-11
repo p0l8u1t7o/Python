@@ -369,3 +369,47 @@ class TaskListApiTests(TestCase):
         denied = self.client.post(path, data=json.dumps(payload), content_type="application/json", **worker_auth)
         self.assertEqual(denied.status_code, 403)
         self.assertEqual(self.client.delete("/api/vision/lock", HTTP_X_API_KEY="stage11-key").status_code, 200)
+
+
+class SourceChoiceTests(TestCase):
+    """多個影像來源：卡片給選項、句子點名預先選好、套用用選定的那個；「存成正式版本」交給代理。"""
+
+    def two_sources(self):
+        g = base_graph()
+        src = next(n for n in g["nodes"] if n["type"] in tasklist.ACQUIRE_TYPES)
+        src["label"] = "Camera A"
+        g["nodes"].append({**copy.deepcopy(src), "id": "cam_b", "label": "Camera B"})
+        return g, src["id"]
+
+    def test_cards_offer_the_sources_and_apply_uses_the_chosen_one(self):
+        g, first = self.two_sources()
+        out = tasklist.propose("數量 6 用 Camera B", "zh-Hant", g, providers.AgentSettings())
+        draft = next(d for d in out["drafts"] if d["op"] == "add")
+        self.assertEqual([c["node"] for c in draft["source_choices"]], [first, "cam_b"])
+        self.assertEqual(draft["image_node"], "cam_b")
+        draft["fields"]["roi"] = {"value": {"shape": "rect", "x": 10, "y": 10, "w": 60, "h": 60}, "status": "confirmed", "source": "user", "note": ""}
+        confirm = {draft["draft_id"]: {"confirmed": True, "fields": {key: True for key in draft["fields"]}}}
+        unchosen = {**draft, "image_node": ""}
+        blocked = tasklist.apply(g, [unchosen], confirm)
+        self.assertEqual([s["reason"] for s in blocked["skipped"]], ["Choose one image source before adding tasks."])
+        chosen = tasklist.apply(g, [draft], confirm)
+        self.assertFalse(any("image source" in s["reason"] for s in chosen["skipped"]), chosen["skipped"])
+        self.assertEqual(tasklist.mentioned_source("use camera", [{"node": "a", "label": "Camera A"}, {"node": "b", "label": "Camera B"}]), "")
+        single = tasklist.propose("數量 6", "zh-Hant", base_graph(), providers.AgentSettings())
+        self.assertFalse(any("source_choices" in d for d in single["drafts"]))
+
+    def test_save_as_a_new_version_goes_to_agent_mode(self):
+        from types import SimpleNamespace
+
+        from apps.vision.agent import api as agent_api
+
+        ctx = SimpleNamespace(kind="inspect", graph=base_graph(), flow_id=3, lang="zh-Hant")
+        online = providers.AgentSettings(provider="gemini", api_key="test")
+        self.assertEqual(agent_api.save_version_reply("存成正式版本", ctx, online)["agentic"], True)
+        self.assertEqual(agent_api.save_version_reply("Please save it as a new version", ctx, online)["agentic"], True)
+        offline = agent_api.save_version_reply("存成正式版本", ctx, providers.AgentSettings())
+        self.assertEqual(offline["kind"], "help")
+        self.assertIn("儲存", offline["answer"])
+        self.assertIsNone(agent_api.save_version_reply("可以存成正式版本嗎？", ctx, online))
+        self.assertIsNone(agent_api.save_version_reply("存成正式版本", SimpleNamespace(kind="batch", graph=None, flow_id=None, lang="en"), online))
+        self.assertIsNone(agent_api.save_version_reply("量外徑 70±0.5 px", ctx, online))

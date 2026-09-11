@@ -513,9 +513,9 @@ function InspectPageInner({ flowId }: { flowId: number }) {
           className="h-full w-full" stateKey={`inspect:${flowId}`} toolbar /></div>
         {regionRequest ? (
           <div className="flex flex-wrap items-center gap-2 border-t border-brand bg-brand-soft/40 px-4 py-2 text-xs" data-testid="viewer-region-request">
-            <span>{t('assistant.viewer.drawHere')}</span>
             <Button size="xs" variant="primary" disabled={!requestedRegion} onClick={() => finishRegionRequest(requestedRegion)} data-testid="viewer-region-use">{t('assistant.viewer.use')}</Button>
             <Button size="xs" onClick={() => finishRegionRequest(null)} data-testid="viewer-region-cancel">{t('common.cancel')}</Button>
+            <span>{t('assistant.viewer.drawHere')}</span>
           </div>
         ) : null}
         <div className="space-y-2 border-t border-line bg-surface p-4" data-testid="inspect-reading">

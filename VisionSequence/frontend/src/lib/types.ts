@@ -199,6 +199,9 @@ export interface TaskDraft {
   fields: Record<string, TaskDraftValue>
   regions: { field: string; region: Region | null; status: TaskDraftValue['status']; source: TaskDraftValue['source'] }[]
   note?: string
+  /** 流程裡有多個影像來源時的選項（句子裡點名的預先放進 image_node）；確認時隨 confirmations 送回 */
+  source_choices?: { node: string; label: string }[]
+  image_node?: string
 }
 
 export interface AssistantWorkState {

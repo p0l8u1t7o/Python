@@ -1065,9 +1065,9 @@ export function AgentPage() {
             )}
             {regionRequest ? (
               <div className="absolute left-2 top-2 z-30 flex flex-wrap items-center gap-2 rounded-lg border border-brand bg-surface/95 px-2 py-1 text-xs shadow backdrop-blur" data-testid="viewer-region-request">
-                <span>{t('assistant.viewer.drawHere')}</span>
                 <Button size="xs" variant="primary" disabled={!drawing} onClick={() => finishRegionRequest(drawing)} data-testid="viewer-region-use">{t('assistant.viewer.use')}</Button>
                 <Button size="xs" onClick={() => finishRegionRequest(null)} data-testid="viewer-region-cancel">{t('common.cancel')}</Button>
+                <span>{t('assistant.viewer.drawHere')}</span>
               </div>
             ) : null}
             {image ? (

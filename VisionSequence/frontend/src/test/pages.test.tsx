@@ -57,6 +57,23 @@ describe('pages render (smoke)', () => {
     expect(call?.[1]).toMatchObject({ context: { kind: 'inspect', graph: INSPECT_GRAPH } })
     view.unmount(); setAssistantContext(null); localStorage.clear()
   })
+  it('lets the user pick the image source for a proposed task', async () => {
+    const { AssistantDock } = await import('@/components/assistant/AssistantDock')
+    const { api } = await import('@/lib/api')
+    const { setAssistantContext } = await import('@/lib/assistantContext')
+    localStorage.clear()
+    setAssistantContext({ kind: 'inspect', flowId: 1, getGraph: () => INSPECT_GRAPH })
+    const draft = { draft_id: 'pick', kind: 'count_objects', op: 'add', fields: { min_count: { value: 6, status: 'confirmed', source: 'user', note: '' } }, regions: [],
+      source_choices: [{ node: 'cam_a', label: 'Camera A' }, { node: 'cam_b', label: 'Camera B' }], image_node: 'cam_b' }
+    vi.mocked(api.post).mockResolvedValueOnce({ kind: 'tasklist', answer: '', drafts: [draft], warnings: [], questions: [], kinds: [] })
+    const view = renderPage(<AssistantDock />, { route: '/flows/1/inspect' })
+    fireEvent.click(screen.getByTestId('assistant-toggle'))
+    fireEvent.change(screen.getByTestId('assistant-input'), { target: { value: 'count 6 with camera B' } })
+    fireEvent.keyDown(screen.getByTestId('assistant-input'), { key: 'Enter' })
+    expect(await screen.findByTestId('tasklist-image-source')).toBeInTheDocument()
+    expect(screen.getByLabelText('Image source')).toHaveValue('cam_b')
+    view.unmount(); setAssistantContext(null); localStorage.clear()
+  })
   it.each(INSPECT_KINDS.filter((item) => item.kind !== 'measure_diameter'))('offers $kind and renders its active form', async (kind) => {
     const { InspectPage } = await import('@/pages/InspectPage')
     const { clearSession } = await import('@/lib/flowDraft')

@@ -110,7 +110,7 @@ export function TaskListCard({ drafts, flowId, context, onChange, kinds: supplie
       const out = await api.post<{ graph: FlowGraph; tasks: InspectTask[]; applied: string[]; skipped: { draft_id: string; reason: string }[] }>('/vision/agent/tasklist/apply', {
         chat_id: chatId,
         flow_id: flowId,
-        graph, drafts: [confirmed], confirmations: { [draft.draft_id]: { confirmed: true, fields: Object.fromEntries(Object.entries(confirmed.fields).filter(([, v]) => v.status === 'confirmed').map(([k]) => [k, true])) } },
+        graph, drafts: [confirmed], confirmations: { [draft.draft_id]: { confirmed: true, image_node: confirmed.image_node || undefined, fields: Object.fromEntries(Object.entries(confirmed.fields).filter(([, v]) => v.status === 'confirmed').map(([k]) => [k, true])) } },
       }, undefined, control.signal)
       const current = getAssistantContext()
       if (current?.flowId !== flowId || JSON.stringify(current.getGraph?.()) !== signature) throw new Error(t('assistant.tasklist.changed'))
@@ -121,12 +121,29 @@ export function TaskListCard({ drafts, flowId, context, onChange, kinds: supplie
       onChange(drafts.filter((d) => d.draft_id !== draft.draft_id))
     } catch (e) { if (!control.signal.aborted) setError(tasklistMessage(t, errorMessage(e))) } finally { setBusy(false) }
   }
+  /** 定位標記等固定影像欄位：請使用者在影像上框選，平台擺正裁切存成固定影像後放進欄位 */
+  async function cropInto(draft: TaskDraft, key: string, current: unknown) {
+    const ctx = getAssistantContext()
+    if (!ctx?.requestRegion || !ctx.imageRef) return
+    setError('')
+    const region = await ctx.requestRegion(['rect', 'rotated_rect'])
+    if (!region) return
+    try {
+      const saved = await api.post<Record<string, unknown>>('/vision/fixed-images/from-ref', { ref: ctx.imageRef, region, name: `${draft.kind}-${key}` })
+      const list = Array.isArray(current) ? current : []
+      onChange(drafts.map((d) => d.draft_id === draft.draft_id ? mergeDraft(d, key, [...list, saved]) : d))
+    } catch (e) { setError(tasklistMessage(t, errorMessage(e))) }
+  }
   return <div className="space-y-2" data-testid="assistant-tasklist">
     <p className="text-xs text-muted">{t('assistant.tasklist.review')}</p>
     {drafts.map((draft) => {
       const kind = kinds.find((k) => k.kind === draft.kind)
       return <section className="rounded border border-border p-2" key={draft.draft_id}>
         <h4 className="text-sm font-medium">{t(`assistant.tasklist.ops.${draft.op}`)} {kind?.label ?? draft.kind}</h4>
+        {draft.op === 'add' && (draft.source_choices?.length ?? 0) > 1 ? <label className="my-2 block text-xs" data-testid="tasklist-image-source">{t('assistant.tasklist.imageSource')}
+          <select className="input mt-1 w-full" aria-label={t('assistant.tasklist.imageSource')} value={draft.image_node ?? ''} onChange={(e) => onChange(drafts.map((d) => d.draft_id === draft.draft_id ? { ...d, image_node: e.target.value } : d))}>
+            <option value="">{t('assistant.tasklist.chooseSource')}</option>{draft.source_choices?.map((c) => <option key={c.node} value={c.node}>{c.label}</option>)}
+          </select></label> : null}
         {Object.entries(draft.fields).map(([key, value]) => {
           const spec = kind?.fields.find((f) => f.key === key)
           if (spec?.visible_when && Object.entries(spec.visible_when).some(([k, v]) => !(Array.isArray(v) ? v : [v]).includes(draft.fields[k]?.value ?? kind?.fields.find((f) => f.key === k)?.default))) return null
@@ -135,6 +152,7 @@ export function TaskListCard({ drafts, flowId, context, onChange, kinds: supplie
             {spec?.kind === 'roi' ? <RegionValue value={value.value} shapes={spec.shapes ?? []} onChange={(v) => onChange(drafts.map((d) => d.draft_id === draft.draft_id ? mergeDraft(d, key, v) : d))} />
               : spec && ['asset', 'images'].includes(spec.kind) ? <ParamField param={inspectionParam(spec)} value={value.value} onChange={(v) => onChange(drafts.map((d) => d.draft_id === draft.draft_id ? mergeDraft(d, key, v) : d))} actions={{roiEditingKey:null,setRoiEditing:()=>{},templateFromImage:()=>{},templateKey:null,hasImage:false}} />
               : <FieldValue label={spec?.label ?? key} kind={spec?.kind} value={value.value} options={spec?.options} onChange={(v) => onChange(drafts.map((d) => d.draft_id === draft.draft_id ? mergeDraft(d, key, v) : d))} />}
+            {spec?.kind === 'images' && context.requestRegion && context.imageRef ? <Button size="xs" className="mt-1" disabled={busy || !sameFlow} onClick={() => void cropInto(draft, key, value.value)} data-testid={`tasklist-crop-${key}`}>{t('assistant.tasklist.cropFromImage')}</Button> : null}
             {value.note && <p className="text-[11px] text-muted">{t(`assistant.tasklist.notes.${key === 'unit' ? value.status === 'missing' ? 'calibration' : 'unit' : spec?.kind === 'roi' ? 'region' : value.status === 'missing' ? 'missing' : 'assumed'}`)}</p>}
           </div>
         })}

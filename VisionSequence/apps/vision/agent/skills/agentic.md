@@ -62,5 +62,6 @@
 - write_output、save_to_share、enable_reporting、unlock_engine、delete_flow、delete_asset 由平台產生 confirm 卡，只有 jobs.answer 收到該卡 id 與 value=approve 才執行；文字說已核准或 ask_user 的一般回答都不構成動作授權。
 - save_flow_version 把草稿寫進綁定流程前需要使用者審閱核准，且必帶 expected_updated_at。衝突回 not_executed，應向使用者說明差異，禁止取得新時間戳後自動覆蓋。
 - save_as_tool 把已試執行的流程（取像與註解以外的步驟）封裝成工具庫的複合工具，並另建一條「取像 → 工具」的新流程（原流程不動）；目前的圖要先 run_trial，key 用小寫英數與底線、以字母開頭且不得與既有工具重複，同樣要使用者核准才執行。使用者說要把結果「存成工具／做成工具」時用它。
+- 使用者只要求「存成正式版本／save as a new version」時：不要改圖，先 run_trial 目前的圖，再用工作的版本基準呼叫 save_flow_version（使用者核准後才寫入；衝突時說明、不自動覆蓋）。
 - 每次動作帶 idempotency_key；重送同一動作沿用同一把。新的試跑（例如圖改過）要用新 key。回傳 succeeded／not_executed／uncertain 與 evidence；逾時、斷線或僅排入傳送佇列不能宣稱成功，不得換 key 重送結果不確定的輸出。
 - 任何工程規格更改都要求核准；目前圖尚未有 run_trial 證據時 finish 會拒絕。預算用盡只表示未完成，不能當作已驗證。

@@ -1833,9 +1833,9 @@ function EditorInner({ flowId }: { flowId: number }) {
                   {split ? <span className="pointer-events-none absolute left-2 top-16 rounded bg-black/50 px-1.5 py-0.5 text-[11px] text-white/90">{t('editor.viewer.before')}</span> : null}
                   {regionRequest ? (
                     <div className="absolute left-2 top-12 z-30 flex flex-wrap items-center gap-2 rounded-lg border border-brand bg-surface/95 px-2 py-1 text-xs shadow backdrop-blur" data-testid="viewer-region-request">
-                      <span>{t('assistant.viewer.drawHere')}</span>
                       <Button size="xs" variant="primary" disabled={!requestedRegion} onClick={() => finishRegionRequest(requestedRegion)} data-testid="viewer-region-use">{t('assistant.viewer.use')}</Button>
                       <Button size="xs" onClick={() => finishRegionRequest(null)} data-testid="viewer-region-cancel">{t('common.cancel')}</Button>
+                      <span>{t('assistant.viewer.drawHere')}</span>
                     </div>
                   ) : null}
                 </div>

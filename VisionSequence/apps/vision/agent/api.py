@@ -817,6 +817,31 @@ _DATA_WORDS = re.compile(r"\b(ok|ng|failed)\b")
 _ACTION_REQUEST = re.compile(r"\b(?:select_source|select_asset|apply_calibration|connect_source|run_trial|auto_tune|save_flow_version|run_batch|write_output|save_to_share|enable_reporting|unlock_engine|delete_flow|delete_asset)\b|\bunlock (?:the )?engine\b|解除引擎鎖定|解鎖引擎", re.I)
 
 
+_SAVE_VERSION = re.compile(
+    r"存成正式版本|儲存成正式版本|存為正式版本|存成新版本|儲存成新版本|正式存檔|保存为正式版本|存为正式版本|保存成正式版本|保存为新版本|存成正式版"
+    r"|\bsave (?:it |this |the flow |the draft )?as (?:a |the )?(?:new |formal |official |released )?version\b"
+    r"|\bsave (?:a |the )?(?:new |formal |official )version\b", re.I)
+_SAVE_MANUAL = {
+    "en": "Saving a version from the conversation needs an AI provider with action support. Press Save on this page to store the draft as a new version.",
+    "zh-Hant": "從對話存成正式版本需要支援動作的 AI 供應商。請按此頁的「儲存」把草稿存成新版本。",
+    "zh-Hans": "从对话存成正式版本需要支持动作的 AI 供应商。请按此页的“保存”把草稿存成新版本。",
+}
+
+
+def save_version_reply(message: str, context: ChatContext, settings) -> dict | None:
+    """檢測任務頁／畫布上說「存成正式版本」：不論使用者選哪種模式都交給代理（save_flow_version 一定要核准、帶版本保護）；
+    供應商不支援動作時回一句說明，請使用者按儲存。其他頁面、問句或沒有綁定流程時回 None（照一般分流）。"""
+    if context.kind not in ("inspect", "flow_editor") or context.graph is None or not context.flow_id:
+        return None
+    if any(m in message.lower() for m in _QUESTION_MARKERS) or not _SAVE_VERSION.search(message):
+        return None
+    if providers.available(settings) and settings.provider in providers._TOOL_IMPL:
+        return {"kind": "edit", "agentic": True, "answer": "", "provider": settings.provider}
+    lang = situation.norm_lang(context.lang)
+    return {"kind": "help", "answer": _SAVE_MANUAL.get(lang, _SAVE_MANUAL["en"]), "provider": settings.provider,
+            "sources": [], "warnings": [], "actions": [], "lookups": []}
+
+
 def chat_intent(message: str, context: ChatContext, mode: str) -> str:
     """auto 模式下判斷意圖：問句一律問答；有修改語氣且在編輯器／工具頁→edit、批次頁→tune；批次頁的資料問題→consult。"""
     if mode in ("help", "edit", "consult", "tune"):
@@ -869,6 +894,11 @@ def agent_chat(request: HttpRequest, payload: ChatIn):
             raise ValidationError("Say what to forget", code="memory_empty")
         deleted = notes.forget_facts(p.user, text)
         return {"kind": "help", "answer": notes.confirmation("forget", text, deleted, ctx.lang), "provider": "memory", "sources": [], "warnings": [], "actions": [], "lookups": []}
+    saving = save_version_reply(message, ctx, settings)
+    if saving is not None:
+        require_feature(request, "agent")
+        require_feature(request, "flows.edit")
+        return saving
     intent = chat_intent(message, ctx, payload.mode)
     if intent == "edit" and _ACTION_REQUEST.search(message):
         require_feature(request, "agent")

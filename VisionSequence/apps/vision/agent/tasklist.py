@@ -455,6 +455,44 @@ def _matching_rule(unused: list[TaskDraft], row: dict) -> TaskDraft | None:
     return candidates[0]
 
 
+ACQUIRE_TYPES = ("image_source", "fixed_image", "stereo_grab", "multi_light_grab")
+
+
+def source_nodes(graph: dict) -> list[dict]:
+    """可以當任務影像來源的取像節點（參考圖不算）。"""
+    return [n for n in (graph or {}).get("nodes", []) if n.get("type") in ACQUIRE_TYPES and (n.get("params") or {}).get("role") != "reference"]
+
+
+def source_choices(graph: dict) -> list[dict[str, str]]:
+    """流程裡有多個取像節點時給卡片的選項；名稱依序取節點標題、影像來源名稱、節點 id。只有一個時回空（不必問）。"""
+    nodes = source_nodes(graph)
+    if len(nodes) < 2:
+        return []
+    names: dict[int, str] = {}
+    ids = [(n.get("params") or {}).get("source_id") for n in nodes]
+    try:
+        from apps.vision.models import ImageSource
+
+        names = {s.id: s.name for s in ImageSource.objects.filter(pk__in=[i for i in ids if isinstance(i, int)])}
+    except Exception:  # noqa: BLE001 — 只影響顯示名稱
+        names = {}
+    return [{"node": str(n["id"]), "label": str(n.get("label") or names.get(sid) or n["id"])} for n, sid in zip(nodes, ids)]
+
+
+def mentioned_source(text: str, choices: list[dict[str, str]]) -> str:
+    """句子裡點名的來源（名稱或節點 id）；多個都對得上時取名稱最長的，仍然平手就不猜。"""
+    low = text.lower()
+
+    def named(choice: dict[str, str]) -> bool:
+        # 名稱照子字串比；節點 id 常常很短（a、src），要是完整的一個詞才算，否則 "use camera" 會對到 id "a"
+        return choice["label"].lower() in low or re.search(rf"(?<![a-z0-9_]){re.escape(choice['node'].lower())}(?![a-z0-9_])", low) is not None
+
+    hits = sorted((c for c in choices if named(c)), key=lambda c: -len(c["label"]))
+    if not hits or len(hits) > 1 and len(hits[0]["label"]) == len(hits[1]["label"]):
+        return ""
+    return hits[0]["node"]
+
+
 def propose(text: str, lang: str, graph: dict, settings, *, image=None, history=None) -> dict:
     cat = catalogue()
     rules = parse(text, lang, list(cat.values()), graph)
@@ -497,6 +535,14 @@ def propose(text: str, lang: str, graph: dict, settings, *, image=None, history=
             warnings.append(f"The assistant could not be reached ({reason}). The offline parser was used instead; review every value." if reason
                             else "The assistant response could not be used. The offline parser was used instead; review every value.")
     _regions(drafts, cat, image)
+    # 多個影像來源：每張新增卡都帶選項，句子裡點名的預先選好（套用時用 image_node）
+    choices = source_choices(graph) if any(d.get("op") == "add" for d in drafts) else []
+    if choices:
+        chosen = mentioned_source(text, choices)
+        for draft in drafts:
+            if draft.get("op") == "add":
+                draft["source_choices"] = choices
+                draft["image_node"] = chosen
     return {"drafts": drafts, "warnings": list(dict.fromkeys(warnings)), "provider": provider,
             "questions": clarify.tasklist_questions(drafts, cat), "kinds": list(cat.values())}
 
@@ -545,7 +591,10 @@ def apply(graph: dict, drafts: list[TaskDraft], confirmations: dict) -> dict:
                 missing += [k for k in ("unit", "nominal", "upper_tol", "lower_tol") if k in specs and k not in values]
                 if missing:
                     raise ValueError("Confirm required fields: " + ", ".join(sorted(set(missing))))
-                sources = [n for n in out.get("nodes", []) if n.get("type") in ("image_source", "fixed_image", "stereo_grab", "multi_light_grab") and n.get("params", {}).get("role") != "reference"]
+                sources = source_nodes(out)
+                picked = str(confirmation.get("image_node") or draft.get("image_node") or "")
+                if picked:
+                    sources = [n for n in sources if str(n.get("id")) == picked]
                 if len(sources) != 1:
                     raise ValueError("Choose one image source before adding tasks.")
             if effective.get("unit") == "mm" and not effective.get("calibration"):
