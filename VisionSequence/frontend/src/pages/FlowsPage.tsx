@@ -52,6 +52,7 @@ export function FlowsPage() {
   const [creating, setCreating] = useState(false)
   const [gallery, setGallery] = useState(false)
   const [form, setForm] = useState({ name: '', description: '' })
+  const [nameError, setNameError] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<Flow | null>(null)
   const importFlow = useImportFlow()
   const sources = useSources()
@@ -84,7 +85,12 @@ export function FlowsPage() {
   }
 
   async function onCreate() {
-    if (!form.name.trim()) return toast.error(t('flows.nameRequired'))
+    if (!form.name.trim()) {
+      // 欄位問題留在欄位旁並聚焦第一個錯誤欄位；toast 只給整體操作結果（Suggest5 第 7 點）
+      setNameError(t('flows.nameRequired'))
+      setTimeout(() => document.querySelector<HTMLElement>('[role="dialog"] [aria-invalid="true"]')?.focus(), 0)
+      return
+    }
     try {
       const flow = await create.mutateAsync({ name: form.name.trim(), description: form.description })
       setCreating(false)
@@ -229,18 +235,18 @@ export function FlowsPage() {
 
       <Modal
         open={creating}
-        onClose={() => setCreating(false)}
+        onClose={() => { setCreating(false); setNameError(null) }}
         title={t('flows.createTitle')}
         dirty={Boolean(form.name || form.description)}
-        footer={
+        footer={(close) => (
           <>
-            <Button onClick={() => setCreating(false)}>{t('common.cancel')}</Button>
+            <Button onClick={close}>{t('common.cancel')}</Button>
             <Button variant="primary" loading={create.isPending} onClick={() => void onCreate()}>{t('common.create')}</Button>
           </>
-        }
+        )}
       >
         <div className="space-y-3">
-          <TextInput label={t('common.name')} required autoFocus value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && void onCreate()} />
+          <TextInput label={t('common.name')} required autoFocus value={form.name} error={nameError ?? undefined} onChange={(e) => { setForm({ ...form, name: e.target.value }); if (nameError) setNameError(null) }} onKeyDown={(e) => e.key === 'Enter' && void onCreate()} data-testid="flow-create-name" />
           <TextArea label={t('common.description')} rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
         </div>
       </Modal>

@@ -47,12 +47,12 @@ export function ChangePasswordModal({ open, onClose }: { open: boolean; onClose:
       title={t('auth.changePassword')}
       size="sm"
       dirty={Boolean(oldPassword || newPassword)}
-      footer={
+      footer={(close) => (
         <>
-          <Button onClick={() => { reset(); onClose() }}>{t('common.cancel')}</Button>
+          <Button onClick={close}>{t('common.cancel')}</Button>
           <Button variant="primary" loading={change.isPending} onClick={() => void submit()}>{t('common.save')}</Button>
         </>
-      }
+      )}
     >
       <div className="space-y-3">
         <TextInput label={t('auth.oldPassword')} type="password" autoFocus autoComplete="current-password" value={oldPassword} onChange={(e) => setOldPassword(e.target.value)} />

@@ -386,6 +386,26 @@ describe('pages render (smoke)', () => {
     expect(await screen.findByText('示範流程')).toBeInTheDocument()
   })
 
+  it('FlowsPage keeps the missing-name error next to the field and focuses it', async () => {
+    // Suggest5 第 7 點：欄位問題留在欄位旁，不用 toast；取消鈕走同一套草稿檢查
+    const { FlowsPage } = await import('@/pages/FlowsPage')
+    renderPage(<FlowsPage />, { route: '/flows' })
+    await screen.findByText('示範流程')
+    fireEvent.click(screen.getByRole('button', { name: 'New flow' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toHaveAttribute('aria-labelledby')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create' }))
+    const name = within(dialog).getByTestId('flow-create-name')
+    expect(name).toHaveAttribute('aria-invalid', 'true')
+    expect(name).toBeRequired()
+    expect(within(dialog).getByText('A name is required')).toBeInTheDocument()
+    await waitFor(() => expect(name).toHaveFocus())
+    fireEvent.change(name, { target: { value: 'x' } })
+    expect(name).not.toHaveAttribute('aria-invalid')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(within(dialog).getByRole('alertdialog')).toBeInTheDocument()
+  })
+
   it('CalibrationPage opens the camera mapping wizard', async () => {
     const { CalibrationPage } = await import('@/pages/CalibrationPage')
     renderPage(<CalibrationPage />, { route: '/calibration' })

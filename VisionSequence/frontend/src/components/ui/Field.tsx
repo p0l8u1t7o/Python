@@ -1,7 +1,7 @@
 import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react'
 import { useId } from 'react'
 
-export function Field({ label, hint, error, required, children, className = '' }: { label?: ReactNode; hint?: ReactNode; error?: string; required?: boolean; children: ReactNode; className?: string }) {
+export function Field({ label, hint, error, errorId, required, children, className = '' }: { label?: ReactNode; hint?: ReactNode; error?: string; errorId?: string; required?: boolean; children: ReactNode; className?: string }) {
   return (
     <div className={className}>
       {label ? (
@@ -11,7 +11,7 @@ export function Field({ label, hint, error, required, children, className = '' }
         </span>
       ) : null}
       {children}
-      {error ? <p className="mt-1 text-xs text-critical">{error}</p> : hint ? <p className="hint">{hint}</p> : null}
+      {error ? <p id={errorId} className="mt-1 text-xs text-critical">{error}</p> : hint ? <p id={errorId} className="hint">{hint}</p> : null}
     </div>
   )
 }
@@ -25,10 +25,11 @@ interface TextInputProps extends InputHTMLAttributes<HTMLInputElement> {
 
 export function TextInput({ label, hint, error, required, suffix, className = '', ...rest }: TextInputProps) {
   const id = useId()
+  const noteId = useId()
   return (
-    <Field label={label ? <label htmlFor={id}>{label}</label> : undefined} hint={hint} error={error} required={required}>
+    <Field label={label ? <label htmlFor={id}>{label}</label> : undefined} hint={hint} error={error} errorId={noteId} required={required}>
       <div className="relative">
-        <input id={id} aria-invalid={error ? true : undefined} className={`input ${error ? 'border-critical' : ''} ${suffix ? 'pr-12' : ''} ${className}`} {...rest} />
+        <input id={id} required={required} aria-required={required || undefined} aria-invalid={error ? true : undefined} aria-describedby={error || hint ? noteId : undefined} className={`input ${error ? 'border-critical' : ''} ${suffix ? 'pr-12' : ''} ${className}`} {...rest} />
         {suffix ? <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-subtle">{suffix}</span> : null}
       </div>
     </Field>
@@ -45,9 +46,10 @@ interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
 
 export function Select({ label, hint, error, required, options, placeholder, className = '', ...rest }: SelectProps) {
   const id = useId()
+  const noteId = useId()
   return (
-    <Field label={label ? <label htmlFor={id}>{label}</label> : undefined} hint={hint} error={error} required={required}>
-      <select id={id} aria-invalid={error ? true : undefined} className={`input appearance-none pr-8 ${error ? 'border-critical' : ''} ${className}`} {...rest}>
+    <Field label={label ? <label htmlFor={id}>{label}</label> : undefined} hint={hint} error={error} errorId={noteId} required={required}>
+      <select id={id} required={required} aria-required={required || undefined} aria-invalid={error ? true : undefined} aria-describedby={error || hint ? noteId : undefined} className={`input appearance-none pr-8 ${error ? 'border-critical' : ''} ${className}`} {...rest}>
         {placeholder !== undefined ? <option value="">{placeholder}</option> : null}
         {options.map((option) => (
           <option key={option.value} value={option.value} disabled={option.disabled}>
@@ -65,11 +67,12 @@ interface TextAreaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   error?: string
 }
 
-export function TextArea({ label, hint, error, className = '', ...rest }: TextAreaProps) {
+export function TextArea({ label, hint, error, required, className = '', ...rest }: TextAreaProps) {
   const id = useId()
+  const noteId = useId()
   return (
-    <Field label={label ? <label htmlFor={id}>{label}</label> : undefined} hint={hint} error={error}>
-      <textarea id={id} rows={3} className={`input resize-y ${error ? 'border-critical' : ''} ${className}`} {...rest} />
+    <Field label={label ? <label htmlFor={id}>{label}</label> : undefined} hint={hint} error={error} errorId={noteId} required={required}>
+      <textarea id={id} rows={3} required={required} aria-required={required || undefined} aria-invalid={error ? true : undefined} aria-describedby={error || hint ? noteId : undefined} className={`input resize-y ${error ? 'border-critical' : ''} ${className}`} {...rest} />
     </Field>
   )
 }

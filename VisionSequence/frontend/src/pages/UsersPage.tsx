@@ -145,12 +145,12 @@ export function UsersPage() {
         title={t('users.createTitle')}
         size="sm"
         dirty={Boolean(form.username || form.password)}
-        footer={
+        footer={(close) => (
           <>
-            <Button onClick={() => setCreating(false)}>{t('common.cancel')}</Button>
+            <Button onClick={close}>{t('common.cancel')}</Button>
             <Button variant="primary" loading={create.isPending} onClick={() => void onCreate()}>{t('common.create')}</Button>
           </>
-        }
+        )}
       >
         <div className="space-y-3">
           <TextInput label={t('auth.username')} required autoFocus autoComplete="off" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />

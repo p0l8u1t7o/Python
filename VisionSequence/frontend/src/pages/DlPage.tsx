@@ -55,7 +55,7 @@ function CreateProjectModal({ open, onClose, trainers, onCreated }: { open: bool
 
   return (
     <Modal open={open} onClose={onClose} title={t('dl.newProject')} dirty={Boolean(name)}
-      footer={<><Button onClick={onClose}>{t('common.cancel')}</Button><Button variant="primary" loading={createProject.isPending} disabled={!name.trim()} onClick={() => void submit()}>{t('common.create')}</Button></>}>
+      footer={(close) => <><Button onClick={close}>{t('common.cancel')}</Button><Button variant="primary" loading={createProject.isPending} disabled={!name.trim()} onClick={() => void submit()}>{t('common.create')}</Button></>}>
       <div className="space-y-3">
         <TextInput label={t('dl.projectName')} value={name} onChange={(e) => setName(e.target.value)} autoFocus data-testid="dl-name" />
         <Select label={t('dl.trainerKind')} value={kind || trainers[0]?.kind || ''} onChange={(e) => setKind(e.target.value)}
@@ -93,7 +93,7 @@ function ClassesModal({ open, onClose, classes, onSave, saving }: { open: boolea
 
   return (
     <Modal open={open} onClose={onClose} title={t('dl.classesTitle')} description={t('dl.classesRemoveHint')} dirty={listDirty}
-      footer={<><Button onClick={onClose}>{t('common.cancel')}</Button><Button variant="primary" loading={saving} onClick={() => void onSave(list).then(onClose).catch(() => {})} data-testid="dl-classes-save">{t('common.save')}</Button></>}>
+      footer={(close) => <><Button onClick={close}>{t('common.cancel')}</Button><Button variant="primary" loading={saving} onClick={() => void onSave(list).then(onClose).catch(() => {})} data-testid="dl-classes-save">{t('common.save')}</Button></>}>
       <div className="space-y-3">
         <div className="flex min-h-9 flex-wrap items-center gap-1.5">
           {list.map((c, i) => (
