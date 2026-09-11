@@ -293,8 +293,8 @@
    "actions": [
     {
      "en": "New dashboard",
-     "zh-Hant": "新增介面",
-     "zh-Hans": "新增界面"
+     "zh-Hant": "新增運行介面",
+     "zh-Hans": "新增运行界面"
     },
     {
      "en": "Save layout",
@@ -308,8 +308,8 @@
    "id": "dashboard_design",
    "names": {
     "en": "Dashboard designer",
-    "zh-Hant": "Dashboard 設計器",
-    "zh-Hans": "Dashboard 设计器"
+    "zh-Hant": "運行介面設計器",
+    "zh-Hans": "运行界面设计器"
    },
    "summary": {
     "en": "Mouse-based dashboard layout designer with a grid canvas, widget library, properties, preview and JSON editor",

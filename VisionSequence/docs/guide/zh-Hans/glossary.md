@@ -22,7 +22,10 @@
 | Deep-learning teaching | 深度学习教导 | `/dl` | DlPage | 教导项目、样本、标注、训练与导出 |
 | AI assistant | AI 助手 | `/agent` | AgentPage | 图像、ROI 与 prompt 進來，可执行流程出去 |
 | Golden Set | Golden Set | `/flows/:id/golden` | GoldenPage | cases、expectations、回歸与 baseline |
-| Teach page | 教导页 | `/flows/:id/teach` | TeachPage | 依步骤分組显示流程中所有教导参数 |
+| Teach page | 参数卡 | `/flows/:id/teach` | TeachPage | 依步骤分组显示流程中所有教导参数 |
+| Station teach page | 站台参数卡 | `/teach` | StationTeachPage | 站台所有流程的教导参数集中一页，可建个人分组 |
+| Operator dashboards | 运行界面 | `/dashboards` | DashboardsPage | 由组件组成的站台操作员画面；`/dashboard/:id` 为全屏查看。不是单一流程的看板 |
+| Audit trail | 操作记录 | `/audit` | AuditPage | 谁在何时变更了什么（管理员） |
 | Integration | 外部集成 | `/integration/*` | IntegrationLayout | 每種整合方式一页，侧栏展開為樹狀 |
 
 ## 流程编辑器部件 {#editor}
@@ -88,7 +91,7 @@
 | Port interface | 端口界面 | 每个步骤的哪些输入与输出端口要画在画布上、顺序为何、发布成什么名称；在工具页编辑，随流程保存（`node.interface`）。 |
 | Published output | 已发布输出 | 在端口界面上取了名称的输出端口；其值以该名称并进该次运行的命名输出。 |
 | Parameter | 参数 | 步骤设置，種类為封閉集合。 |
-| Teaching parameter / teach page | 教导参数 / 教导页 | 需在產线上調整的参数，標為 `teach=True`。 |
+| Teaching parameter / teach page | 教导参数 / 参数卡 | 需在產线上調整的参数，標為 `teach=True`。 |
 | Tolerance judge | 公差判定 | 以名目值与上下偏差判斷 pass/fail，並寫入 tolerances。 |
 | Concentricity | 同心度 | 兩圆中心偏移；GD&T 同心度為偏移兩倍。 |
 | OCR / OCV / taught font | OCR / OCV / 教导字型 | OCR 讀文字，OCV 驗證文字，教导字型針對点陣与雷刻字。 |
@@ -136,7 +139,7 @@
 | Encapsulate as tool | 封装成工具 | 把画布上选中的步骤变成一个复合工具；选择范围换成一个步骤，跨越它的连线变成端口。 |
 | Interface (composite tool) | 对外接口 | 哪些内部端口是工具的输入与输出、顺序与显示名称，以及哪些内部参数出现在它的参数表（可标为教导参数）。 |
 | Variable | 變數 | 流程在执行間保留的值。 |
-| Board | 运行界面 | 流程的操作員畫面，显示输出、图像、今日計數与變數。 |
+| Board | 看板 | 单一流程的操作员画面，显示输出、图像、今日计数与变量。 |
 | Calibration | 标定 | 保存鏡頭校正与像素到实体映射的资产。 |
 | Engine lock | 引擎鎖定 | 整合端持有硬體時，其他人可编辑但不可执行。 |
 | Integrator | 整合方 | 以 API key 呼叫的自動化系统。 |
@@ -169,7 +172,7 @@
 | Hourly roll-up | 每小時彙總 | `FlowRunHourly` 每流程每小時一列，永久保存。 |
 | Image archive | 图像封存 | 可選擇把 run images 寫到磁碟。 |
 | Flow version | 流程版本 | 每次保存 graph 的 snapshot。 |
-| Audit log | 稽核记录 | 誰在何時變更了什麼。 |
+| Audit trail | 操作记录 | 谁在何时变更了什么。 |
 | Station | 站台 | 每次执行攜帶的 `VISION_STATION_ID`。 |
 | Integration page | 整合页 | 給 integrator 的介面參考与测试工具。 |
 | Trace | 追蹤 | 整合页底部即時 log。 |
@@ -249,7 +252,10 @@
 | 口语采集说法 | 擷取 / 检测 | 图像取得与检测用語分開 |
 | 你 | 您 | 對用户稱呼 |
 | 口语检测结果 | 誤判過多 / 漏檢 | 描述检测結果 |
-| 口语连接与应用 | 连接 / 校正 / 套用 | 工業文件用語 |
+| 口语连接与应用 | 连接 / 校正 / 套用 | 工业文件用语 |
+| 界面列表、Dashboard、Widget | 运行界面、组件 | 一个东西一个名字：看板是单一流程的画面，运行界面是站台的操作员画面，组件是其中的组成单位 |
+| 稽核记录、稽核轨迹 | 操作记录 | `/audit` 页 |
+| 按“新增 X”后显示“已创建 X” | 已新增 X | 新增＝在列表加一条，完成消息用同一个动词；建立（创建）＝向导、模板或生成程序做出来的东西，以及操作记录的事件名称 |
 
 AI 助手的範例 prompt 可保留口語；其他介面、说明页与文件都遵循此表。
 ## 工程笔记 {#engineering-note}

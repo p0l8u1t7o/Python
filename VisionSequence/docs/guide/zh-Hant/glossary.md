@@ -22,7 +22,10 @@
 | Deep-learning teaching | 深度學習教導 | `/dl` | DlPage | 教導專案、樣本、標註、訓練與匯出 |
 | AI assistant | AI 助手 | `/agent` | AgentPage | 影像、ROI 與 prompt 進來，可執行流程出去 |
 | Golden Set | Golden Set | `/flows/:id/golden` | GoldenPage | cases、expectations、回歸與 baseline |
-| Teach page | 教導頁 | `/flows/:id/teach` | TeachPage | 依步驟分組顯示流程中所有教導參數 |
+| Teach page | 參數卡 | `/flows/:id/teach` | TeachPage | 依步驟分組顯示流程中所有教導參數 |
+| Station teach page | 站台參數卡 | `/teach` | StationTeachPage | 站台所有流程的教導參數集中一頁，可建個人群組 |
+| Operator dashboards | 運行介面 | `/dashboards` | DashboardsPage | 由元件組成的站台操作員畫面；`/dashboard/:id` 為全螢幕檢視。不是單一流程的看板 |
+| Audit trail | 操作紀錄 | `/audit` | AuditPage | 誰在何時變更了什麼（管理員） |
 | Integration | 外部整合 | `/integration/*` | IntegrationLayout | 每種整合方式一頁，側欄展開為樹狀 |
 
 ## 流程編輯器部件 {#editor}
@@ -88,7 +91,7 @@
 | Port interface | 埠介面 | 每個步驟的哪些輸入與輸出埠要畫在畫布上、順序為何、發布成什麼名稱；在工具頁編輯，隨流程儲存（`node.interface`）。 |
 | Published output | 已發布輸出 | 在埠介面上取了名稱的輸出埠；其值以該名稱併進該次執行的具名輸出。 |
 | Parameter | 參數 | 步驟設定，種類為封閉集合。 |
-| Teaching parameter / teach page | 教導參數 / 教導頁 | 需在產線上調整的參數，標為 `teach=True`。 |
+| Teaching parameter / teach page | 教導參數 / 參數卡 | 需在產線上調整的參數，標為 `teach=True`。 |
 | Tolerance judge | 公差判定 | 以名目值與上下偏差判斷 pass/fail，並寫入 tolerances。 |
 | Concentricity | 同心度 | 兩圓中心偏移；GD&T 同心度為偏移兩倍。 |
 | OCR / OCV / taught font | OCR / OCV / 教導字型 | OCR 讀文字，OCV 驗證文字，教導字型針對點陣與雷刻字。 |
@@ -136,7 +139,7 @@
 | Encapsulate as tool | 封裝成工具 | 把畫布上選取的步驟變成一個複合工具；選取範圍換成一個步驟，跨越它的連線變成埠。 |
 | Interface (composite tool) | 對外介面 | 哪些內部埠是工具的輸入與輸出、順序與顯示名稱，以及哪些內部參數出現在它的參數表（可標為教導參數）。 |
 | Variable | 變數 | 流程在執行間保留的值。 |
-| Board | 運行介面 | 流程的操作員畫面，顯示輸出、影像、今日計數與變數。 |
+| Board | 看板 | 單一流程的操作員畫面，顯示輸出、影像、今日計數與變數。 |
 | Calibration | 標定 | 保存鏡頭校正與像素到實體映射的資產。 |
 | Engine lock | 引擎鎖定 | 整合端持有硬體時，其他人可編輯但不可執行。 |
 | Integrator | 整合方 | 以 API key 呼叫的自動化系統。 |
@@ -169,7 +172,7 @@
 | Hourly roll-up | 每小時彙總 | `FlowRunHourly` 每流程每小時一列，永久保存。 |
 | Image archive | 影像封存 | 可選擇把 run images 寫到磁碟。 |
 | Flow version | 流程版本 | 每次儲存 graph 的 snapshot。 |
-| Audit log | 稽核記錄 | 誰在何時變更了什麼。 |
+| Audit trail | 操作紀錄 | 誰在何時變更了什麼。 |
 | Station | 站台 | 每次執行攜帶的 `VISION_STATION_ID`。 |
 | Integration page | 整合頁 | 給 integrator 的介面參考與測試工具。 |
 | Trace | 追蹤 | 整合頁底部即時 log。 |
@@ -250,6 +253,9 @@
 | 你 | 您 | 對使用者稱呼 |
 | 口語檢測結果 | 誤判過多 / 漏檢 | 描述檢測結果 |
 | 口語連接與套用 | 連接 / 校正 / 套用 | 工業文件用語 |
+| 介面清單、Dashboard、Widget | 運行介面、元件 | 一個東西一個名字：看板是單一流程的畫面，運行介面是站台的操作員畫面，元件是其中的組成單位 |
+| 稽核記錄、稽核軌跡 | 操作紀錄 | `/audit` 頁 |
+| 按「新增 X」後顯示「已建立 X」 | 已新增 X | 新增＝在清單加一筆，完成訊息用同一個動詞；建立＝精靈、範本或產生程序做出來的東西，以及操作紀錄的事件名稱 |
 
 AI 助手的範例 prompt 可保留口語；其他介面、說明頁與文件都遵循此表。
 ## 工程筆記 {#engineering-note}

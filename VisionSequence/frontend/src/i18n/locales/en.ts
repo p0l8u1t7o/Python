@@ -525,7 +525,7 @@ const en = {
         ["Golden Set", "/flows/:id/golden", "GoldenPage", "Image cases with expectations, and regression testing (regressed cases first)"],
         ["Batch test", "/batch", "BatchPage", "Run an image set through a flow; every run is stored, with expected labels, insights, tuning, comparison and AI consultation"],
         ["Integration", "/integration", "IntegrationLayout", "The API explorer with the result format, TCP commands with their failure codes, event monitoring, Modbus server and client connections, the capture client, and the plugin folder"],
-        ["Audit log", "/audit", "AuditPage", "Who changed what and when (administrators)"],
+        ["Audit trail", "/audit", "AuditPage", "Who changed what and when (administrators)"],
         ["Sign in", "/login", "LoginPage", "Sign in, or create the first administrator"],
         ["Deep learning", "/dl", "DlPage", "Teaching projects: samples, labelling, datasets, training and model export"],
         ["AI assistant", "/agent", "AgentPage", "Image plus ROIs plus a sentence, into a generated flow; provider settings and AI skills"],

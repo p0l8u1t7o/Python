@@ -206,7 +206,7 @@ BILINGUAL = {
     "矩形": "rect rectangle", "環形": "annulus", "橢圓": "ellipse", "折線": "polyline",
     "使用者": "user account", "帳號": "account user", "登入": "sign in login", "密碼": "password",
     "文案": "wording tone copy", "用詞": "wording terminology", "規範": "convention rule glossary",
-    "良率": "yield", "不良": "reject ng", "看板": "board dashboard",
+    "良率": "yield", "不良": "reject ng", "看板": "board dashboard", "運行介面": "operator dashboards dashboard", "站台參數卡": "station teach page",
     "設定": "settings configuration", "語言": "language", "說明": "help",
 }
 

@@ -23,6 +23,9 @@ One thing, one name — identical in the interface, in the code and in these doc
 | AI assistant | AI 助手 | `/agent` | AgentPage | Image plus ROIs plus a prompt, in and a runnable flow out |
 | Golden Set | Golden Set | `/flows/:id/golden` | GoldenPage | Cases, expectations, regression and baselines |
 | Teach page | 參數卡 | `/flows/:id/teach` | TeachPage | Every teaching parameter in the flow, grouped by step |
+| Station teach page | 站台參數卡 | `/teach` | StationTeachPage | The teaching parameters of every flow on the station in one list, with personal groups |
+| Operator dashboards | 運行介面 | `/dashboards` | DashboardsPage | Station-level operator screens laid out from widgets (元件); `/dashboard/:id` is the full-screen view. Not a flow's board |
+| Audit trail | 操作紀錄 | `/audit` | AuditPage | Who changed what and when (administrators) |
 | Integration | 外部整合 | `/integration/*` | IntegrationLayout | One page per integration method, expanding into a tree in the sidebar |
 
 ## Parts of the flow editor {#editor}
@@ -171,7 +174,7 @@ The words the industry uses, and what each one means here. Coordinates, angles a
 | Hourly roll-up | 每小時彙總 | `FlowRunHourly`: one row per flow per hour, kept forever, so the yield trend survives detail purging and restarts |
 | Image archive | 影像封存 | Optionally writing run images to disk (off by default, enabled per flow), so a defect from last week can still be looked at. Purged by age and then by total size. |
 | Flow version | 流程版本 | `FlowVersion`: a snapshot of the graph on every save, with who saved it and a parameter-level diff, restorable |
-| Audit log | 操作紀錄 | `AuditLog`: who changed what and when — flows, recipes, connections, accounts, the lock |
+| Audit trail | 操作紀錄 | `AuditLog`: who changed what and when — flows, recipes, connections, accounts, the lock |
 | Station | 站台 | The station identifier carried by every run (`VISION_STATION_ID`), shown on the dashboard cards and the statistics page |
 | Integration page | 整合頁 | The interface reference and test tools for integrators; one page per method, expanding into a tree in the sidebar |
 | Trace | 命令與結果 | The live log at the bottom of an integration page: the commands and replies this interface handled (time, direction, duration, success, full detail). An in-process ring buffer; with the page closed, only errors are kept. |
@@ -254,6 +257,9 @@ The zh-Hant locale follows this table, and the zh-Hans translation is derived fr
 | 你 | 您 | Addressing the user |
 | 太敏感、漏抓 | 誤判過多、漏檢 | Describing inspection results (the assistant still understands the colloquial forms as input) |
 | 接上、拉正、掛 | 連接、校正、套用 |  |
+| 介面清單、Dashboard、Widget | 運行介面、元件 | One name per thing: 看板 is one flow's board, 運行介面 the station's operator dashboards, 元件 their widgets |
+| 稽核記錄、稽核軌跡 | 操作紀錄 | The `/audit` page |
+| 已建立 X after a 新增 X button | 已新增 X | 新增 adds an item to a list, and its confirmation uses the same verb; 建立 is for things a wizard, template or generator produces, and for audit event names |
 
 Example prompts written for the AI assistant may stay colloquial; everything else in the interface, the help page and these documents follows the table.
 ## Engineering note {#engineering-note}

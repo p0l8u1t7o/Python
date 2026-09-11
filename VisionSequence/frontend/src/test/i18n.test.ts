@@ -84,6 +84,35 @@ describe('i18n locales', () => {
     expect(hits).toEqual([])
   })
 
+  it('one name per thing (PM-REVIEW-R2 P2)', () => {
+    // 看板＝單一流程的現場畫面、運行介面＝站台畫面（元件組成）、操作紀錄＝/audit；元件名（FooPage）不算
+    const rules: [string, Map<string, string>, RegExp[]][] = [
+      ['zh-Hant', hant, [/(?<!運行)介面清單/, /稽核/, /Dashboard/, /[Ww]idget/]],
+      ['zh-Hans', hans, [/(?<!运行)界面列表/, /稽核/, /Dashboard/, /[Ww]idget/]],
+    ]
+    const hits: string[] = []
+    for (const [lang, dict, banned] of rules) {
+      for (const [k, v] of dict) {
+        const text = v.replace(/\b[A-Z][A-Za-z]*Page\b/g, '')
+        for (const re of banned) if (re.test(text)) hits.push(`${lang} ${k} ⟶ ${re}`)
+      }
+    }
+    expect(hits).toEqual([])
+  })
+
+  it('a list that adds with 新增 confirms with 已新增 (PM-REVIEW-R2 P2)', () => {
+    // 新增＝在清單加一筆（按鈕與完成訊息同一個動詞）；建立＝精靈、範本、產生程序做出來的東西與操作紀錄的事件名
+    const bad: string[] = []
+    const walk = (obj: Record<string, unknown>, path: string) => {
+      const { create, created } = obj as { create?: unknown; created?: unknown }
+      if (typeof create === 'string' && typeof created === 'string' && create.startsWith('新增') && /^已(建立|创建)/.test(created)) bad.push(`${path}: ${create} / ${created}`)
+      for (const [k, v] of Object.entries(obj)) if (v && typeof v === 'object' && !Array.isArray(v)) walk(v as Record<string, unknown>, `${path}.${k}`)
+    }
+    walk(zhHant as unknown as Record<string, unknown>, 'zh-Hant')
+    walk(zhHans as unknown as Record<string, unknown>, 'zh-Hans')
+    expect(bad).toEqual([])
+  })
+
   it('no empty strings', () => {
     const empty = [...hant].filter(([, v]) => v.trim() === '').map(([k]) => k)
     expect(empty).toEqual([])
