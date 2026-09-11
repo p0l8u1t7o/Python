@@ -9,12 +9,12 @@ import { Button, ErrorState, LoadingState, Modal } from '@/components/ui'
 import { ImageViewer } from '@/components/viewer/ImageViewer'
 import { fixedImageFromRef, imageUrl, teachContourFromImage } from '@/lib/api'
 import { GeometrySourceField } from '@/components/inspect/GeometrySourceField'
-import { inspectionFieldVisible, inspectionHasImage, inspectionReuseRef, normalizeInspectionSources } from '@/lib/inspect'
+import { inspectionFieldVisible, inspectionHasImage, inspectionReuseRef, normalizeInspectionSources, inspectionRunFromTrial, inspectionTrialPayload } from '@/lib/inspect'
 import { errorMessage } from '@/lib/errors'
 import { publishAssistantProgress, useRegisterAssistantContext } from '@/lib/assistantContext'
 import { getSession, setDraft, updateSession, useFlowSession } from '@/lib/flowDraft'
 import { INSPECT_DOTS, forgetInspectionRun, inspectGraphHash, inspectionAdvancedPath, inspectionDefaults, inspectionEditableKind, inspectionOverall, inspectionParam, inspectionReasonKey, inspectionRemovalGraph, inspectionRunFor, inspectionStale, inspectionStatus, inspectionValue, missingInspectionFields, rememberInspectionRun } from '@/lib/inspect'
-import { inspectionEvidence, readInspection, removeInspection, teachInspectionPose, useFlow, useFlowMutations, useInspectKinds, usePreviewFlow, useScratchImage, useSources, useToolTypes, writeInspection } from '@/lib/queries'
+import { inspectionEvidence, readInspection, readLastInspectionTrial, saveLastInspectionTrial, removeInspection, teachInspectionPose, useFlow, useFlowMutations, useInspectKinds, usePreviewFlow, useScratchImage, useSources, useToolTypes, writeInspection } from '@/lib/queries'
 import type { FlowGraph, ImageRef, InspectDependency, InspectKind, InspectList, InspectReading, Region, RoiShape, RunReport } from '@/lib/types'
 import { useConfirm } from '@/lib/useConfirm'
 import { isLockHolder, useAuth } from '@/providers/AuthProvider'
@@ -63,6 +63,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
   const queue = useRef<Promise<void>>(Promise.resolve())
   const alive = useRef(true)
   const readSequence = useRef(0)
+  const trialSequence = useRef(0)
   const readOnly = !auth.can('flows.edit')
   const locked = auth.lock.locked && !isLockHolder(auth.me, auth.lock) && auth.me?.kind !== 'integrator'
   const graph = session.draft?.graph
@@ -73,6 +74,22 @@ function InspectPageInner({ flowId }: { flowId: number }) {
   const reading = newKind ? undefined : readings.find((item) => item.task_id === selected)
   const status = inspectionStatus(reading, !newKind && stale, !newKind && task?.custom)
   const defs = useMemo(() => new Map((tools.data?.items ?? []).map((item) => [item.key, item])), [tools.data])
+
+  useEffect(() => {
+    if (!auth.can('flows.run')) return
+    let cancelled = false
+    const sequence = trialSequence.current
+    void readLastInspectionTrial(flowId).then(({ trial }) => {
+      if (!trial || cancelled || sequence !== trialSequence.current) return
+      const cached = cachedRun.current
+      // 同一次試執行仍有完整報告時保留影像與教導能力。
+      if (cached?.hash === trial.hash && cached.report.id && cached.report.finished_at &&
+          Math.abs(cached.report.finished_at * 1000 - Date.parse(trial.executed_at)) < 1) return
+      const restored = inspectionRunFromTrial(flowId, trial)
+      setRun(restored.report); setReadings(restored.readings); setRunHash(restored.hash)
+    }).catch(() => { /* 離線或尚未部署 migration 時沿用裝置摘要。 */ })
+    return () => { cancelled = true }
+  }, [flowId, auth.me])
 
   useEffect(() => {
     if (!flow.data || baseline.current !== null) return
@@ -204,6 +221,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
 
   async function runPreview(nextGraph?: FlowGraph) {
     if (locked || !auth.can('flows.run') || formInvalid && pending) return
+    ++trialSequence.current
     await flushEdits()
     const snapshot = nextGraph ?? currentGraph()
     const reuseRef = inspectionReuseRef(snapshot, session.scratch?.ref, reuse, image?.ref)
@@ -211,6 +229,10 @@ function InspectPageInner({ flowId }: { flowId: number }) {
     setOperationError(null)
     const report = await preview.mutateAsync({ flowId, graph: snapshot, reuse_image_ref: reuseRef, analysis: false })
     const result = await inspectionEvidence(snapshot, report)
+    // 獨立 PUT 不等待落地；頁面卸載也不取消已送出的摘要。
+    void saveLastInspectionTrial(flowId, inspectionTrialPayload(snapshot, report, result.items)).catch(() => {
+      /* 裝置摘要保留作伺服器失敗時的退路。 */
+    })
     publishAssistantProgress(flowId, { last_trial: { at: new Date().toISOString(), status: report.status,
       summary: report.error || `${Math.round(report.duration_ms)} ms`, per_task: result.items.map((item) => ({ task_id: item.task_id, status: item.verdict, value: item.value })) } })
     if (!alive.current) return
@@ -249,7 +271,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
           baseline.current = details.updated_at
           const current = getSession(flowId).draft
           if (current) setDraft(flowId, { ...current, graph: details.graph, baseVersion: details.version, dirty: false })
-          forgetInspectionRun(flowId); setRunHash(null); setReadings([]); setRun(null)
+          ++trialSequence.current; forgetInspectionRun(flowId); setRunHash(null); setReadings([]); setRun(null)
         }, overwrite: saveWithBaseline,
       })) throw error
     }
@@ -296,7 +318,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
     source.type = sourceId === 'fixed' ? 'fixed_image' : 'image_source'
     source.params = sourceId === 'fixed' ? { images: [], mode: 'cycle', role: 'acquire' } : { source_id: sourceId ? Number(sourceId) : null, mode: 'auto' }
     updateSession(flowId, { scratch: null, previewRun: null })
-    forgetInspectionRun(flowId); setRunHash(null); setReadings([]); setRun(null)
+    ++trialSequence.current; forgetInspectionRun(flowId); setRunHash(null); setReadings([]); setRun(null)
     putGraph(next)
   }
   async function changeNodeParam(nodeId: string, key: string, value: unknown) {
@@ -312,7 +334,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
   async function uploadImage(file: File) {
     if (!readOnly && !currentGraph().nodes.some((node) => ['image_source', 'fixed_image', 'stereo_grab', 'multi_light_grab'].includes(node.type) && node.params?.role !== 'reference')) await changeSource('')
     updateSession(flowId, { scratch: await upload.mutateAsync({ flowId, file }) })
-    forgetInspectionRun(flowId); setRunHash(null); setReadings([]); setRun(null)
+    ++trialSequence.current; forgetInspectionRun(flowId); setRunHash(null); setReadings([]); setRun(null)
   }
   async function saveCrop() {
     if (!image?.ref || !cropKey || !cropRegion) return
@@ -348,7 +370,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
         </select></label>
         <Button size="sm" icon={<ImageUp size={14} />} loading={upload.isPending} onClick={() => uploadInput.current?.click()}>{t('inspect.upload')}</Button>
         <input ref={uploadInput} className="hidden" type="file" accept="image/*" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void action(() => uploadImage(file)) }} />
-        {session.scratch ? <Button size="xs" onClick={() => { updateSession(flowId, { scratch: null }); forgetInspectionRun(flowId); setRunHash(null); setReadings([]); setRun(null) }}>{session.scratch.name} · {t('inspect.clearImage')}</Button> : null}
+        {session.scratch ? <Button size="xs" onClick={() => { updateSession(flowId, { scratch: null }); ++trialSequence.current; forgetInspectionRun(flowId); setRunHash(null); setReadings([]); setRun(null) }}>{session.scratch.name} · {t('inspect.clearImage')}</Button> : null}
         {source?.type === 'fixed_image' ? <span className="text-muted">{t('inspect.fixedImageSelection')}</span> : <label><input type="checkbox" checked={reuse} onChange={(event) => setReuse(event.target.checked)} /> {t('inspect.reuseImage')}</label>}
         {locked ? <span className="text-warning">{t('inspect.locked')}</span> : null}
       </div>

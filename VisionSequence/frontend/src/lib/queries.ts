@@ -62,6 +62,7 @@ import type {
   InspectKind,
   InspectList,
   InspectReading,
+  InspectionTrial,
   InspectDependency,
   IntegrationInfo,
   LogLevel,
@@ -571,6 +572,10 @@ export function removeInspection(graph: FlowGraph, task_id: string) {
   return api.post<{ graph: FlowGraph; dependencies: InspectDependency[]; removed: boolean }>('/vision/inspect/remove', { graph, task_id })
 }
 export function inspectionEvidence(graph: FlowGraph, report: RunReport) { return api.post<{ items: InspectReading[] }>('/vision/inspect/evidence', { graph, report }) }
+export function readLastInspectionTrial(flowId: number) { return api.get<{ trial: InspectionTrial | null }>(`/vision/inspect/${flowId}/last-trial`) }
+export function saveLastInspectionTrial(flowId: number, trial: Omit<InspectionTrial, 'hash' | 'executed_by'> & { graph: FlowGraph }) {
+  return api.put<{ saved: boolean }>(`/vision/inspect/${flowId}/last-trial`, trial)
+}
 export function teachInspectionPose(graph: FlowGraph, task_id: string, report: RunReport) { return api.post<{ graph: FlowGraph }>('/vision/inspect/teach-pose', { graph, task_id, report }) }
 
 /** 暫存影像：只進快取不進影像來源庫；之後試跑帶 reuse_image_ref。 */

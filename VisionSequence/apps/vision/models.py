@@ -51,6 +51,18 @@ class Flow(models.Model):
         return self.name
 
 
+class InspectionTrial(models.Model):
+    """每條流程最新的任務試執行摘要；不保留影像或節點報告。"""
+
+    flow = models.OneToOneField(Flow, on_delete=models.CASCADE, related_name="inspection_trial")
+    graph_hash = models.TextField()
+    readings = models.JSONField(default=list)
+    status = models.CharField(max_length=8)
+    judge = models.CharField(max_length=200, blank=True)
+    executed_at = models.DateTimeField()
+    executed_by = models.CharField(max_length=150)
+
+
 class EngineeringNote(models.Model):
     """站台共用的工程知識；正式檢測規格仍以流程圖為準。"""
 

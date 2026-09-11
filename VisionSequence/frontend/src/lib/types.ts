@@ -187,6 +187,15 @@ export interface InspectReading {
   node_id: string
 }
 
+export interface InspectionTrial {
+  hash: string
+  readings: { task_id: string; status: InspectReading['verdict']; value: number | string | null; unit: string; message: string; valid: boolean; detected: boolean | null; node_id: string }[]
+  status: RunReport['status']
+  judge: string
+  executed_at: string
+  executed_by: string
+}
+
 export interface InspectDependency {
   task_id?: string
   target: string

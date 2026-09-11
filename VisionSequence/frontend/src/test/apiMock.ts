@@ -1004,6 +1004,7 @@ export const DASHBOARD_DATA = {
 }
 
 export function routes(path: string, body?: unknown): unknown {
+  if (/\/vision\/inspect\/\d+\/last-trial$/.test(path)) return { trial: null, saved: true }
   if (path === '/vision/notes') return body ? { ...ENGINEERING_NOTE, ...(body as object), status: 'draft' } : { items: [ENGINEERING_NOTE], total: 1 }
   if (/^\/vision\/notes\/\d+/.test(path)) return { ...ENGINEERING_NOTE, ...(body as object ?? {}), status: path.endsWith('/confirm') ? 'confirmed' : path.endsWith('/retract') ? 'retracted' : 'draft' }
   if (path.startsWith('/vision/inspect/')) return inspectMock(path, body)

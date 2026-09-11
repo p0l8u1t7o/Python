@@ -108,6 +108,7 @@ class GetEndpointsSmokeTests(TransactionTestCase):
             f"/api/vision/flows/{fid}/export", f"/api/vision/runs/{self.run_id}", f"/api/vision/flows/{fid}/board", f"/api/vision/flows/{fid}/variables", "/api/vision/variables", "/api/vision/queues",
             "/api/vision/tool-types", "/api/vision/sources", "/api/vision/sources/kinds", f"/api/vision/sources/{sid}",
             "/api/vision/inspect/kinds",
+            f"/api/vision/inspect/{self.flow.id}/last-trial",
             "/api/vision/teach/params", "/api/vision/teach/groups",
             "/api/vision/assets", f"/api/vision/assets/{aid}/file", "/api/vision/ocr/models", "/api/vision/ocr/fonts", "/api/vision/assets?kind=calibration",
             "/api/vision/dashboards", "/api/vision/dashboards/default",

@@ -1,5 +1,5 @@
 /** 檢測任務頁的純函式；規格與接線仍由核心定義表決定。 */
-import type { FlowGraph, InspectDependency, InspectField, InspectKind, InspectReading, InspectTask, RunReport, ToolParam } from './types'
+import type { FlowGraph, InspectDependency, InspectField, InspectKind, InspectReading, InspectTask, InspectionTrial, RunReport, ToolParam } from './types'
 
 export const INSPECT_REASON_CODES = ['role_missing', 'unexpected_node', 'tool_changed', 'managed_edge_changed', 'managed_edge_missing', 'public_input_changed', 'schema_version_unknown'] as const
 export function inspectionReasonKey(code: string): string {
@@ -23,6 +23,22 @@ export function inspectionOverall(run: RunReport | null, stale: boolean): string
 
 interface InspectionRun { report: RunReport; readings: InspectReading[]; hash: string }
 const runs = new Map<number, InspectionRun>()
+/** 明列可持久化欄位，任何影像描述子或幾何物件都不放進讀值。 */
+export function inspectionTrialPayload(graph: FlowGraph, report: RunReport, readings: InspectReading[]) {
+  return {
+    graph, status: report.status, judge: String(report.outputs.judge ?? ''),
+    executed_at: new Date(report.finished_at ? report.finished_at * 1000 : Date.now()).toISOString(),
+    readings: readings.map((row) => ({ task_id: row.task_id, status: row.verdict,
+      value: typeof row.value === 'string' || typeof row.value === 'number' && Number.isFinite(row.value) ? row.value : null,
+      unit: row.unit, message: row.reason, valid: row.valid, detected: row.detected, node_id: row.node_id })),
+  }
+}
+export function inspectionRunFromTrial(flowId: number, trial: InspectionTrial): InspectionRun {
+  return { hash: trial.hash, readings: trial.readings.map((row) => ({ task_id: row.task_id, verdict: row.status,
+    value: row.value, unit: row.unit, reason: row.message, valid: row.valid, detected: row.detected, node_id: row.node_id, overlays: [] })),
+  report: { id: '', flow_id: flowId, flow_version: 0, trigger: 'preview', status: trial.status,
+    started_at: Date.parse(trial.executed_at) / 1000, finished_at: null, duration_ms: 0, error: '', outputs: { judge: trial.judge }, nodes: {} } }
+}
 /** 保留任務頁的試跑圖簽章；其他入口的新報告不可沿用舊的任務讀值。 */
 export function rememberInspectionRun(flowId: number, graph: FlowGraph, report: RunReport, readings: InspectReading[]) {
   const snapshot = { report, readings, hash: inspectGraphHash(graph) }
@@ -31,7 +47,9 @@ export function rememberInspectionRun(flowId: number, graph: FlowGraph, report: 
   try {
     localStorage.setItem(`vs.inspectionRun.v1:${flowId}`, JSON.stringify({
       hash: snapshot.hash, status: report.status, judge: report.outputs.judge,
-      readings: readings.map(({ overlays: _overlays, ...row }) => ({ ...row, overlays: [] })),
+      readings: inspectionTrialPayload(graph, report, readings).readings.map((row) => ({ task_id: row.task_id,
+        verdict: row.status, value: row.value, unit: row.unit, reason: row.message,
+        valid: row.valid, detected: row.detected, node_id: row.node_id, overlays: [] })),
     }))
   } catch { /* 儲存空間不足時仍保留本次記憶體讀值。 */ }
   return snapshot
@@ -43,7 +61,8 @@ export function inspectionRunFor(flowId: number, report: RunReport | null): Insp
     const raw = JSON.parse(localStorage.getItem(`vs.inspectionRun.v1:${flowId}`) ?? 'null')
     if (!raw || typeof raw.hash !== 'string' || !['ok', 'ng', 'failed'].includes(raw.status) || !Array.isArray(raw.readings)) return undefined
     if (!raw.readings.every((r: InspectReading) => r && typeof r.task_id === 'string' && typeof r.valid === 'boolean' && ['pass', 'fail', 'not_found', 'locate_failed', 'error', 'skipped'].includes(r.verdict))) return undefined
-    return { hash: raw.hash, readings: raw.readings.map((r: InspectReading) => ({ ...r, overlays: [] })), report: {
+    const hash = raw.hash.startsWith('v2:') ? raw.hash : inspectGraphHash(JSON.parse(raw.hash))
+    return { hash, readings: raw.readings.map((r: InspectReading) => ({ ...r, overlays: [] })), report: {
       id: '', flow_id: flowId, flow_version: 0, trigger: 'preview', status: raw.status, started_at: 0,
       finished_at: null, duration_ms: 0, error: '', outputs: { judge: raw.judge }, nodes: {},
     } }
@@ -55,13 +74,18 @@ export function forgetInspectionRun(flowId: number) {
 }
 
 function canonical(value: unknown): string {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const bytes = new Uint8Array(8)
+    new DataView(bytes.buffer).setFloat64(0, value === 0 ? 0 : value)
+    return `n:${Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')}`
+  }
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`
-  if (value && typeof value === 'object') return `{${Object.entries(value).filter(([, v]) => v !== undefined).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(',')}}`
-  return JSON.stringify(value) ?? 'null'
+  if (value && typeof value === 'object') return `{${Object.keys(value).sort().filter((k) => (value as Record<string, unknown>)[k] !== undefined).map((k) => `${canonical(k)}:${canonical((value as Record<string, unknown>)[k])}`).join(',')}}`
+  return (JSON.stringify(value) ?? 'null').replace(/[\u007f-\uffff]/g, (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`)
 }
 
-/** 保留完整正規化內容，避免短雜湊碰撞把舊結果當成有效。 */
-export function inspectGraphHash(graph: FlowGraph): string { return canonical(graph) }
+/** v2 與後端一致：UTF-16 鍵序、ASCII 字串及 binary64；保留全文避免碰撞。 */
+export function inspectGraphHash(graph: FlowGraph): string { return `v2:${canonical(graph)}` }
 export function inspectionStale(graph: FlowGraph, lastHash: string | null): boolean {
   return lastHash !== null && inspectGraphHash(graph) !== lastHash
 }
