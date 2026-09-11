@@ -557,7 +557,7 @@
 - **響應式**（`lib/useMediaQuery.ts`）：< 768px 側欄改抽屜（☰ 開、點項目／換頁自動關、`data-mobile`）、麵包屑只留最後兩層；表格次要欄位用 `max-lg:hidden`／`max-xl:hidden` 隱藏（Th／Td 都要標）；編輯器 < md 只留畫布與可橫向捲動的工具列、< lg 沒有右側面板（參數請走工具頁）；工具頁／參數卡／AI 助手頁的側欄 < md 全寬堆疊；`@media (pointer: coarse)` 把 `.btn-icon`／`.nav-item`／checkbox 放大到 40px。`PageHeader` 標題 `flex-1 basis-60`、`CardHeader` 標題 `truncate`，動作列 `flex-wrap`，避免標題被擠成一字一行。影像來源清單的設定／狀態用 `lib/sources.ts` 摘要，不再印 JSON。UI 稽核腳本（每頁 × 4 視角截圖＋自動檢查）在 scratchpad `shots/ui_audit.mjs`。
 
 ## 4. 踩過的坑
-- **測試的資產目錄在系統暫存區**（`config/testrunner.py` 的 `VisionTestRunner` 把 `VISION["ASSET_DIR"]` 換掉，路徑固定所以 DL 底模還有快取）：以前測試會把固定影像、模型資產寫進站台的 `data/assets`，跑完留一堆孤兒。
+- **測試的資產目錄在系統暫存區**（`config/testrunner.py` 的 `VisionTestRunner` 把 `VISION["ASSET_DIR"]` 換掉，路徑固定所以 DL 底模還有快取）：以前測試會把固定影像、模型資產寫進站台的 `data/assets`，跑完留一堆孤兒。**它也在每個測試結束時清掉背景寫回的殘留**（`get_resultclass` 疊一層 `stopTest` → `reset_background_state()`：`variables.store.clear()`＋丟掉 `persister.q` 排隊的報告）：變數存放區與持久化佇列是整個行程共用的，前一個測試的髒鍵會在下一個測試才寫回，碰到 SimpleTestCase 就是 `DatabaseOperationForbidden`、流程已刪就是外鍵失敗——結果照樣 OK，但每次全套日誌有二、三十筆假錯誤（2026-09-11 修掉，35 筆降到 4 筆；剩下的是測試自己觸發執行時與背景寫入同時搶 SQLite 的 `database is locked`，不是殘留）。
 - Django `TestCase` 的交易會鎖住 SQLite，跨執行緒（執行緒池、背景持久化）會 `database table is locked`：測試 DB 是**檔案 + WAL**，跨執行緒寫入的測試用 `TransactionTestCase`；會啟動背景持久化的測試用 `override_settings(VISION={**VISION, "PERSIST_RUNS": False})`，否則 teardown 刪 DB 檔會 WinError 32。
 - `threading.Thread` 子類別**不要用 `_started`／`_stop` 當屬性名**（會蓋掉 Thread 內部欄位）。
 - `IntegrityError` 要包在 `transaction.atomic()` 內再 catch，否則在測試交易裡會變 `TransactionManagementError`。`close_old_connections()` 只在「自己執行緒」結束時呼叫。
