@@ -12,6 +12,7 @@ from django.test import SimpleTestCase, TransactionTestCase
 
 from apps.vision import engine, fixed_images, graphdiff, inspect
 from apps.vision.graph import compile_graph, validate_graph
+from apps.vision.tools import base as tools
 
 
 def edge(source: str, target: str, sh: str = "", th: str = "") -> dict[str, str]:
@@ -227,12 +228,12 @@ class InspectTranslatorTests(SimpleTestCase):
     def test_calibration_rewire_preserves_published_alias_and_advanced_parameters(self):
         graph = inspect.build(base_graph(), diameter_task("d"))
         find = next(n for n in graph["nodes"] if n["id"] == "d_find")
-        find["params"]["_publish"] = {"diameter": "measured_size", "cx": "centre_x"}
+        find["interface"] = {"outputs": [{"key": "diameter", "alias": "measured_size"}, {"key": "cx", "alias": "centre_x"}]}
         find["params"]["smoothing"] = 7
         find["label"] = "Outer edge"
         updated = inspect.update(graph, {"task_id": "d", "fields": {"calibration": "scale"}})
         actual = next(n for n in updated["nodes"] if n["id"] == "d_find")
-        self.assertEqual(actual["params"]["_publish"], {"diameter_world": "measured_size", "cx": "centre_x"})
+        self.assertEqual(tools.output_aliases(actual), {"cx": "centre_x", "diameter_world": "measured_size"})
         self.assertEqual(actual["params"]["smoothing"], 7)
         self.assertEqual(actual["label"], "Outer edge")
 

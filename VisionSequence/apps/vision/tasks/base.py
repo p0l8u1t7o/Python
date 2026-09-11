@@ -237,13 +237,23 @@ def task_fields(task: dict[str, Any], definition: TaskDefinition) -> dict[str, A
     return values
 
 
+#: 任務定義在角色參數裡用這個保留鍵指定「輸出埠 → 具名輸出名稱」，task_node() 搬到 node.interface（params 不留平台鍵）
+ALIAS_KEY = "_alias"
+
+
 def task_node(task_id: str, role: str, tool_key: str, params: dict[str, Any], kind: str, version: int, required: bool) -> dict[str, Any]:
-    return {
+    params = dict(params)
+    aliases = params.pop(ALIAS_KEY, None)
+    node: dict[str, Any] = {
         "id": f"{task_id}_{role}",
         "type": tool_key,
         "params": params,
         "meta": {"inspect": {"task_id": task_id, "role": role, "kind": kind, "schema_version": version, "required": bool(required)}},
     }
+    if isinstance(aliases, dict):
+        for port, name in aliases.items():
+            tools.set_output_alias(node, str(port), name)
+    return node
 
 
 def edge(source: str, source_port: str, target: str, target_port: str) -> dict[str, str]:

@@ -1,5 +1,6 @@
 /** 步驟的完整參數表單：依 def.params 產生（基本／進階分組、visible_when、前端驗證訊息）。工具頁左欄用。 */
 import { useMemo, useState } from 'react'
+import { exposedParamKeys, withParamExposed } from '@/lib/nodeInterface'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronRight, Link2 } from 'lucide-react'
 import { PARAM_PREFIX } from '@/lib/types'
@@ -17,19 +18,14 @@ export function ParamForm({ node, definition, edges, onChange, actions }: { node
   const problemByKey = new Map(problems.map((p) => [p.key, p]))
 
   // 參數訂閱：外露成埠的參數在畫布上多一個把手，接上上游就改吃那個值（後端 apps/vision/tools/base.py）
-  const exposed = new Set(node.exposed_params ?? [])
+  const exposed = new Set(exposedParamKeys(node))
   const boundFrom = new Map(
     edges
       .filter((e) => e.target === node.id && (e.target_handle ?? '').startsWith(PARAM_PREFIX))
       .map((e) => [(e.target_handle ?? '').slice(PARAM_PREFIX.length), e.source] as const),
   )
   const bindable = new Set(bindableParams(definition).map((p) => p.key))
-  const toggleExpose = (key: string) => {
-    const next = new Set(exposed)
-    if (next.has(key)) next.delete(key)
-    else next.add(key)
-    onChange({ exposed_params: [...next] })
-  }
+  const toggleExpose = (key: string) => onChange(withParamExposed(node, key, !exposed.has(key)))
 
   const visibleParams = (definition?.params ?? []).filter((p) => paramVisible(p, params))
   const basic = visibleParams.filter((p) => !p.group)

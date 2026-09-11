@@ -2670,6 +2670,8 @@ export default {
       width: "寬",
       height: "高",
       applied: "已套用相機設定",
+      images: "影像清單",
+      timeout: "逾時",
     },
   },
   stereo_grab: {

@@ -364,7 +364,7 @@ def h_run_trial(state: AgentState, args: dict[str, Any]) -> dict[str, Any]:
             if node.get("meta", {}).get("inspect", {}).get("task_id") in invalid:
                 if node["id"] in row["nodes"]:
                     row["nodes"][node["id"]].pop("outputs", None)
-                for published in node.get("params", {}).get("_publish", {}).values():
+                for published in tools.output_aliases(node).values():
                     row["outputs"].pop(published, None)
         results.append(row)
     labeled = [(r["status"], r["expected"]) for r in results if r["expected"]]

@@ -12,7 +12,8 @@ import { Button, Checkbox, Select, TextArea, TextInput } from '@/components/ui'
 import { sourcePreviewUrl } from '@/lib/api'
 import { useAuth } from '@/providers/AuthProvider'
 import { ImagesField } from '@/components/editor/ParamField'
-import { dataOutputPorts, nodeProblems, publishMap, validatePublishName } from '@/lib/graphValidation'
+import { dataOutputPorts, nodeProblems, validatePublishName } from '@/lib/graphValidation'
+import { outputAliases, withOutputAlias } from '@/lib/nodeInterface'
 import { useSources } from '@/lib/queries'
 import { localiseDataName } from '@/lib/catalogueLocale'
 import type { Language } from '@/i18n'
@@ -107,7 +108,7 @@ export function Inspector({ flowId, node, definition, edges, graph, defs, onChan
 function PublishedOutputsSection({ node, definition, onChange }: { node: GraphNode; definition: ToolTypeDef | undefined; onChange: (patch: Partial<GraphNode>) => void }) {
   const { t } = useTranslation()
   const ports = useMemo(() => dataOutputPorts(definition), [definition])
-  const published = useMemo(() => publishMap(node.params), [node.params])
+  const published = useMemo(() => outputAliases(node), [node])
   const [draft, setDraft] = useState<Record<string, string>>({})
 
   useEffect(() => {
@@ -120,15 +121,7 @@ function PublishedOutputsSection({ node, definition, onChange }: { node: GraphNo
     setDraft((current) => ({ ...current, [key]: value }))
     if (!validatePublishName(value)) return
 
-    const next = { ...publishMap(node.params) }
-    const clean = value.trim()
-    if (clean) next[key] = clean
-    else delete next[key]
-
-    const params = { ...(node.params ?? {}) }
-    if (Object.keys(next).length) params._publish = next
-    else delete params._publish
-    onChange({ params })
+    onChange(withOutputAlias(node, key, value))
   }
 
   return (

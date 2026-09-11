@@ -56,23 +56,58 @@ def _compatible(source_type: str, target_type: str) -> bool:
     }
 
 
-def _validate_publish(node_id: str, tool: tools.ToolType, params: Any) -> None:
-    if not isinstance(params, dict) or "_publish" not in params:
+def _validate_interface(node_id: str, tool: tools.ToolType, node: dict) -> None:
+    """node.interface（PRODUCT-DIRECTION v2 §5）：埠要存在、alias 只能給資料輸出埠且是合法名稱；舊欄位直接拒絕。"""
+    params = node.get("params")
+    if isinstance(params, dict) and "_publish" in params:
+        raise GraphError(f"Node '{node_id}' uses params._publish, which was replaced by interface.outputs[].alias", node_id=node_id, port="_publish")
+    if "exposed_params" in node:
+        raise GraphError(f"Node '{node_id}' uses exposed_params, which was replaced by interface.inputs (param:<key>)", node_id=node_id)
+    iface = node.get(tools.INTERFACE_KEY)
+    if iface is None:
         return
-    publish = params.get("_publish")
-    if not isinstance(publish, dict):
-        raise GraphError(f"Node '{node_id}' has an invalid _publish setting; it must be an object", node_id=node_id, port="_publish")
-    declared = {p.key: p for p in tool.outputs}
-    for raw_key, raw_name in publish.items():
-        key = str(raw_key)
-        port = declared.get(key)
-        if port is None:
-            raise GraphError(f"Node '{node_id}' cannot publish unknown output port '{key}'", node_id=node_id, port=key)
-        if port.type == "flow":
-            raise GraphError(f"Node '{node_id}' cannot publish branch output port '{key}'", node_id=node_id, port=key)
-        name = str(raw_name)
-        if not OUTPUT_NAME_RE.fullmatch(name):
-            raise GraphError(f"Node '{node_id}' publishes '{key}' with an invalid output name '{name}'", node_id=node_id, port=key, name=name)
+    if not isinstance(iface, dict):
+        raise GraphError(f"Node '{node_id}' has an invalid interface; it must be an object", node_id=node_id, port="interface")
+    declared_out = {p.key: p for p in tool.outputs}
+    declared_in = {p.key for p in tool.inputs}
+    for section in ("inputs", "outputs", "params"):
+        items = iface.get(section)
+        if items is None:
+            continue
+        if not isinstance(items, list):
+            raise GraphError(f"Node '{node_id}' interface.{section} must be a list", node_id=node_id, port=section)
+        seen_alias: set[str] = set()
+        for item in items:
+            if not isinstance(item, dict) or not str(item.get("key") or ""):
+                raise GraphError(f"Node '{node_id}' interface.{section} entries need a key", node_id=node_id, port=section)
+            key = str(item["key"])
+            if "exposed" in item and not isinstance(item["exposed"], bool):
+                raise GraphError(f"Node '{node_id}' interface.{section} '{key}' exposed must be true or false", node_id=node_id, port=key)
+            if "order" in item and (isinstance(item["order"], bool) or not isinstance(item["order"], (int, float))):
+                raise GraphError(f"Node '{node_id}' interface.{section} '{key}' order must be a number", node_id=node_id, port=key)
+            if section == "outputs":
+                port = declared_out.get(key)
+                if port is None and tools.implicit_output(key) is None:
+                    raise GraphError(f"Node '{node_id}' interface refers to unknown output port '{key}'", node_id=node_id, port=key)
+                alias = item.get("alias")
+                if alias is None or alias == "":
+                    continue
+                if port is None:
+                    raise GraphError(f"Node '{node_id}' cannot publish implicit output port '{key}'", node_id=node_id, port=key)
+                if port.type == "flow":
+                    raise GraphError(f"Node '{node_id}' cannot publish branch output port '{key}'", node_id=node_id, port=key)
+                name = str(alias)
+                if not isinstance(alias, str) or not OUTPUT_NAME_RE.fullmatch(name):
+                    raise GraphError(f"Node '{node_id}' publishes '{key}' with an invalid output name '{name}'", node_id=node_id, port=key, name=name)
+                if name in seen_alias:
+                    raise GraphError(f"Node '{node_id}' publishes two ports under the same output name '{name}'", node_id=node_id, port=key, name=name)
+                seen_alias.add(name)
+            elif section == "inputs":
+                if key in declared_in or tools.implicit_input(key) is not None:
+                    continue
+                if key.startswith(tools.PARAM_PREFIX) and tools.param_port(tool, key) is not None:
+                    continue
+                raise GraphError(f"Node '{node_id}' interface refers to unknown input port '{key}'", node_id=node_id, port=key)
 
 
 def _inspect_meta(node: dict[str, Any]) -> dict[str, Any] | None:
@@ -127,7 +162,7 @@ def validate_graph(graph: Any) -> dict:
             node_type = node["type"] = LEGACY_TOOL_TYPES[node_type]
         if node_type not in DECORATION_TYPES:
             tool = tools.get(node_type)  # 查無 → UnknownToolType（附可用 key）
-            _validate_publish(node_id, tool, node.get("params") or {})
+            _validate_interface(node_id, tool, node)
         inspect = _inspect_meta(node)
         if inspect is not None:
             task_id = inspect["task_id"]

@@ -3,11 +3,12 @@
  * payload（GraphNode）是編輯器自己那份真相；React Flow node.data 只是投影。
  */
 import { MarkerType, type Edge, type Node } from '@xyflow/react'
+import { exposedParamKeys } from '@/lib/nodeInterface'
 
 import { DECORATION_TYPES } from '@/lib/graphValidation'
 import { FLOW_HANDLE, compatible } from '@/lib/ports'
 import { PARAM_PREFIX } from '@/lib/types'
-import type { FlowGraph, GraphEdge, GraphNode, NodeReport, PortType, ToolParam, ToolPort, ToolTypeDef } from '@/lib/types'
+import type { FlowGraph, GraphEdge, GraphNode, NodeReport, PortType, ToolParam, ToolPort, ToolTypeDef, NodeInterface } from '@/lib/types'
 
 export const DRAG_MIME = 'application/x-vs-tool'
 export const HISTORY_LIMIT = 50
@@ -22,6 +23,8 @@ export interface ToolNodeData extends Record<string, unknown> {
   enabled: boolean
   color: string
   params: Record<string, unknown>
+  /** 埠介面（顯示／順序／具名輸出名稱）；卡片依它畫埠 */
+  interface?: NodeInterface
   /** 上一次 run 的節點報告（狀態、耗時） */
   report?: NodeReport
   /** 耗時佔該次 run 最慢節點的比例（0~1）；最慢的著紅，一眼看出瓶頸 */
@@ -134,12 +137,13 @@ export function autoConnectOnInsert(
 
 export function nodeDataFrom(payload: GraphNode, definition: ToolTypeDef | undefined): ToolNodeData {
   return {
-    definition: withCasePorts(withParamPorts(definition, payload.exposed_params), payload),
+    definition: withCasePorts(withParamPorts(definition, exposedParamKeys(payload)), payload),
     label: payload.label ?? '',
     description: payload.description ?? '',
     enabled: payload.enabled !== false,
     color: payload.color ?? '',
     params: payload.params ?? {},
+    interface: payload.interface,
   }
 }
 

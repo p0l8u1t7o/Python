@@ -33,8 +33,8 @@ const CATEGORIES: Partial<Record<Language, Record<string, string>>> = {
 //: 隱含埠的中文（每個工具都有，外掛也吃得到）。後端那張表在 apps/vision/tools/base.py 的
 //: IMPLICIT_INPUTS／IMPLICIT_OUTPUTS：那邊加一個埠，這裡兩種中文要跟著補。
 const IMPLICIT_PORTS: Partial<Record<Language, Record<string, string>>> = {
-  'zh-Hant': { _image: '影像（直通）', _overlays: '標記', _flow: '流程控制', _transform: '位置修正' },
-  'zh-Hans': { _image: '图像（直通）', _overlays: '标记', _flow: '流程控制', _transform: '位置修正' },
+  'zh-Hant': { _image: '原始影像', _overlays: '標記', _flow: '流程控制', _transform: '位置修正' },
+  'zh-Hans': { _image: '原始图像', _overlays: '标记', _flow: '流程控制', _transform: '位置修正' },
 }
 
 export function localiseCatalogue(catalogue: ToolCatalogue, language: Language): ToolCatalogue {

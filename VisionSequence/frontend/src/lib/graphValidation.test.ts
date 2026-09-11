@@ -44,13 +44,13 @@ describe('checkConnection', () => {
 
 describe('published outputs validation', () => {
   function publishProblems(publish: Record<string, string>) {
-    return nodeProblems({ id: 'm', type: 'measure', params: { _publish: publish } }, defs.get('measure'), [])
+    return nodeProblems({ id: 'm', type: 'measure', params: {}, interface: { outputs: Object.entries(publish).map(([key, alias]) => ({ key, alias })) } }, defs.get('measure'), [])
       .filter((problem) => problem.key.startsWith('publish:'))
   }
 
   it('accepts data output ports with valid names', () => {
     expect(publishProblems({ value: 'diameter_1', image: 'result_image' })).toEqual([])
-    expect(graphProblems([{ id: 'm', type: 'measure', params: { _publish: { value: 'diameter_1' } } }], [], defs).has('m')).toBe(false)
+    expect(graphProblems([{ id: 'm', type: 'measure', params: {}, interface: { outputs: [{ key: 'value', alias: 'diameter_1' }] } }], [], defs).has('m')).toBe(false)
   })
 
   it('rejects flow, implicit and missing ports', () => {

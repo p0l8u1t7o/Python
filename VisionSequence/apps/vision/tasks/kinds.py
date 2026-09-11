@@ -8,7 +8,7 @@ from typing import Any
 
 from apps.core.errors import ValidationError
 from apps.vision.tasks.base import EdgeSpec as E
-from apps.vision.tasks.base import FieldSpec, PortRef as P, TaskDefinition, TaskLayout, register
+from apps.vision.tasks.base import ALIAS_KEY, FieldSpec, PortRef as P, TaskDefinition, TaskLayout, register
 from apps.vision.tools import base as tools
 from apps.vision.tools.builtin.polar import geometry_from_region, mapping_dict
 
@@ -60,7 +60,7 @@ def values(fields: dict, keys: str, **rename: str) -> dict:
 
 def publish(params: dict, port: str, name: Any) -> None:
     if str(name or "").strip():
-        params["_publish"] = {port: str(name).strip()}
+        params[ALIAS_KEY] = {port: str(name).strip()}
 
 
 def choice(fields: dict, key: str, allowed: tuple[str, ...]) -> str:
@@ -264,7 +264,7 @@ def read_fields(kind: str, f: dict, nodes: dict, edges: list[dict]) -> None:
     layout = LAYOUTS[kind](f)
     if "result_name" in f and layout.value_port:
         ref = layout.value_port
-        f["result_name"] = (params(ref.role).get("_publish") or {}).get(ref.port, f["result_name"])
+        f["result_name"] = tools.output_aliases(nodes.get(ref.role) or {}).get(ref.port, f["result_name"])
 
 
 def add(kind: str, label: str, fields: dict[str, FieldSpec]) -> None:

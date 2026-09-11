@@ -75,6 +75,8 @@ export interface ToolPort {
   accepts_semantics?: string[]
   /** 隱含輸出埠（例如 _overlays）：卡片上畫得較小、放最後 */
   implicit?: boolean
+  /** 畫布預設要畫的埠（後端 catalogue 沒宣告時的啟發式：第一個影像埠、分支埠）；其餘埠預設收合 */
+  primary?: boolean
 }
 
 export interface ToolTypeDef {
@@ -87,9 +89,39 @@ export interface ToolTypeDef {
   heavy: boolean
   /** 分支埠的數量由這個多行參數決定（每一行一個 case_N；後端 tools/base.py 的 cases_param） */
   cases_param?: string
+  /** 內建／資料夾外掛／複合工具 */
+  source?: 'builtin' | 'plugin' | 'composite'
   params: ToolParam[]
   inputs: ToolPort[]
   outputs: ToolPort[]
+}
+
+/** 節點介面（PRODUCT-DIRECTION v2 §5）：埠要不要畫、順序、對外名稱；複合工具則是對外埠。 */
+export interface PortSpec {
+  /** 埠 key；`param:<key>` 是參數訂閱埠 */
+  key: string
+  /** 輸出：發布成 run 具名輸出的名稱 */
+  alias?: string
+  /** 節點＝畫布上是否顯示；複合工具＝是否成為對外埠 */
+  exposed?: boolean
+  /** 由上至下 */
+  order?: number
+}
+
+/** 複合工具的對外參數（P2）。 */
+export interface ParamSpec {
+  key: string
+  alias?: string
+  help_text?: string
+  default?: unknown
+  teach?: boolean
+  order?: number
+}
+
+export interface NodeInterface {
+  inputs?: PortSpec[]
+  outputs?: PortSpec[]
+  params?: ParamSpec[]
 }
 
 export interface InspectMeta {
@@ -320,8 +352,8 @@ export interface GraphNode {
   position?: { x: number; y: number }
   width?: number
   height?: number
-  /** 外露成輸入埠的參數（`param:<key>`）；接上上游就改吃那個值 */
-  exposed_params?: string[]
+  /** 埠介面：顯示／順序／具名輸出名稱；`param:<key>` 輸入＝外露成輸入埠的參數（lib/nodeInterface.ts） */
+  interface?: NodeInterface
   meta?: { inspect?: InspectMeta; [key: string]: unknown }
 }
 

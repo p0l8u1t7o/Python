@@ -152,11 +152,11 @@ def _passthrough(cn: CompiledNode, inputs: dict[str, Any]) -> dict[str, Any] | N
 
 
 def _apply_publish(cn: CompiledNode, result: Result, context: dict[str, Any], status: str) -> None:
-    """節點埠發布成 run 具名輸出；只在節點有正常或 NG 結果時生效。"""
+    """節點埠發布成 run 具名輸出（interface.outputs[].alias）；只在節點有正常或 NG 結果時生效。"""
     if status not in ("ok", "ng"):
         return
-    publish = (cn.node.get("params") or {}).get("_publish")
-    if not isinstance(publish, dict):
+    publish = tools_base.output_aliases(cn.node)
+    if not publish:
         return
     outputs = None
     for port_key, name in publish.items():

@@ -195,7 +195,9 @@ def _register_module(module: ModuleType) -> list[str]:
             if base.has(obj.key):
                 log.warning("外掛工具 '%s' 已存在，略過 %s", obj.key, obj.__name__)
             else:
-                base.register(obj())
+                instance = obj()
+                instance.source = "plugin"  # 工具目錄以此標示來源（內建／外掛／複合）
+                base.register(instance)
                 out.append(f"tool:{obj.key}")
         elif issubclass(obj, Grabber) and getattr(obj, "kind", ""):
             if sources.register_kind(obj):

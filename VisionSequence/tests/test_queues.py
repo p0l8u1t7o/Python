@@ -18,7 +18,11 @@ from tests._helpers import run_tool
 
 
 def node(nid, kind, **params):
-    return {"id": nid, "type": kind, "params": params}
+    publish = params.pop("_publish", None)
+    out = {"id": nid, "type": kind, "params": params}
+    if publish is not None:
+        out["interface"] = {"outputs": [{"key": k, "alias": v} for k, v in publish.items()]}
+    return out
 
 
 def edge(source, target, sh, th):

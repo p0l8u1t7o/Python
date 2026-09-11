@@ -226,6 +226,8 @@ class Port:
     semantic: str = ""
     #: 輸入埠：`type="any"` 時可宣告接受哪些語意的來源。
     accepts_semantics: tuple[str, ...] = ()
+    #: 畫布預設要不要畫出這個埠（PRODUCT-DIRECTION v2 §2-3）：沒有任何埠宣告時 catalogue() 用啟發式補（第一個影像輸出＋分支埠、第一個影像輸入）。
+    primary: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         out = {
@@ -236,6 +238,8 @@ class Port:
             "multiple": self.multiple,
             "tone": self.tone,
         }
+        if self.primary:
+            out["primary"] = True
         if self.semantic:
             out["semantic"] = self.semantic
         if self.accepts_semantics:
@@ -657,6 +661,17 @@ def implicit_output(key: str) -> ImplicitPort | None:
     return next((p for p in IMPLICIT_OUTPUTS if p.key == key), None)
 
 
+def _with_default_primary(ports: list[dict[str, Any]], direction: str) -> list[dict[str, Any]]:
+    """工具沒有自己標 primary 時的預設：輸出＝第一個影像埠＋所有分支埠；輸入＝第一個影像埠。其餘埠畫布預設收合。"""
+    if any(p.get("primary") for p in ports):
+        return ports
+    first_image = next((p for p in ports if p.get("type") == "image" and not str(p.get("key", "")).startswith("_")), None)
+    for p in ports:
+        if p is first_image or (direction == "out" and p.get("type") == "flow"):
+            p["primary"] = True
+    return ports
+
+
 def catalogue() -> list[dict[str, Any]]:
     return [
         {
@@ -668,14 +683,69 @@ def catalogue() -> list[dict[str, Any]]:
             "icon": t.icon,
             "heavy": bool(getattr(t, "heavy", False)),
             "version": int(getattr(t, "version", 1)),
+            # 工具來源：內建／資料夾外掛／複合工具（PRODUCT-DIRECTION v2 §3-1），工具箱與工具庫用它標示
+            "source": str(getattr(t, "source", "") or "builtin"),
             # 分支埠的數量看節點自己的設定；前端依這個參數名長出把手（`case_ports()` 是後端那一份）
             "cases_param": str(getattr(t, "cases_param", "") or ""),
             "params": [p.as_dict() for p in t.params],
-            "inputs": [p.as_dict() for p in t.inputs] + [s.as_dict() for s in IMPLICIT_INPUTS if s.shows_on(t)],
-            "outputs": [p.as_dict() for p in t.outputs] + [s.as_dict() for s in IMPLICIT_OUTPUTS if s.shows_on(t)],
+            "inputs": _with_default_primary([p.as_dict() for p in t.inputs] + [s.as_dict() for s in IMPLICIT_INPUTS if s.shows_on(t)], "in"),
+            "outputs": _with_default_primary([p.as_dict() for p in t.outputs] + [s.as_dict() for s in IMPLICIT_OUTPUTS if s.shows_on(t)], "out"),
         }
         for t in all_types()
     ]
+
+
+# ---------------------------------------------------------------------------
+# 節點介面（PRODUCT-DIRECTION v2 §5）：node["interface"] = {inputs: [PortSpec], outputs: [PortSpec], params: [ParamSpec]}
+#   PortSpec  = {key, exposed?: bool, order?: int, alias?: str}   輸出的 alias＝發布成 run 具名輸出的名稱（取代 params._publish）
+#   輸入的 key 可以是 `param:<key>`（參數訂閱埠，取代 exposed_params）
+# 引擎只讀 alias；exposed／order 是畫布顯示（複合工具時＝對外介面）。這裡的函式是純函式，前端 lib/nodeInterface.ts 同一套語意。
+# ---------------------------------------------------------------------------
+INTERFACE_KEY = "interface"
+
+
+def node_interface(node: dict[str, Any] | None) -> dict[str, list[dict[str, Any]]]:
+    raw = (node or {}).get(INTERFACE_KEY)
+    raw = raw if isinstance(raw, dict) else {}
+    out: dict[str, list[dict[str, Any]]] = {}
+    for section in ("inputs", "outputs", "params"):
+        items = raw.get(section)
+        out[section] = [dict(i) for i in items if isinstance(i, dict) and i.get("key")] if isinstance(items, list) else []
+    return out
+
+
+def output_aliases(node: dict[str, Any] | None) -> dict[str, str]:
+    """輸出埠 → 具名輸出名稱（只回有 alias 的）。"""
+    return {str(i["key"]): str(i["alias"]).strip() for i in node_interface(node)["outputs"] if str(i.get("alias") or "").strip()}
+
+
+def exposed_param_keys(node: dict[str, Any] | None) -> list[str]:
+    """外露成輸入埠的參數鍵（interface.inputs 裡 `param:<key>` 且 exposed 不是 False 的）。"""
+    return [str(i["key"])[len(PARAM_PREFIX):] for i in node_interface(node)["inputs"]
+            if str(i["key"]).startswith(PARAM_PREFIX) and i.get("exposed", True) is not False]
+
+
+def set_output_alias(node: dict[str, Any], port: str, name: Any) -> None:
+    """設定／清除一個輸出埠的具名輸出名稱；清到沒有任何介面資料時把 interface 整個拿掉。"""
+    text = str(name or "").strip()
+    iface = node.get(INTERFACE_KEY) if isinstance(node.get(INTERFACE_KEY), dict) else {}
+    outputs = [dict(i) for i in iface.get("outputs", []) if isinstance(i, dict) and i.get("key")]
+    entry = next((i for i in outputs if i.get("key") == port), None)
+    if text:
+        if entry is None:
+            outputs.append({"key": port, "alias": text})
+        else:
+            entry["alias"] = text
+    elif entry is not None:
+        entry.pop("alias", None)
+        if set(entry) == {"key"}:
+            outputs.remove(entry)
+    iface = {**iface, "outputs": outputs}
+    iface = {k: v for k, v in iface.items() if v}
+    if iface:
+        node[INTERFACE_KEY] = iface
+    else:
+        node.pop(INTERFACE_KEY, None)
 
 
 def now() -> float:

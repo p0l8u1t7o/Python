@@ -6,7 +6,7 @@ from functools import partial
 from typing import Any
 
 from apps.core.errors import ValidationError
-from apps.vision.tasks.base import EdgeSpec, FieldSpec, PortRef, TaskDefinition, edge, register, task_fields, task_node
+from apps.vision.tasks.base import ALIAS_KEY, EdgeSpec, FieldSpec, PortRef, TaskDefinition, edge, register, task_fields, task_node
 from apps.vision.tasks.kinds import locate_layout, read_fields
 
 EDGE_OPTIONS = (
@@ -34,11 +34,12 @@ def _edge_name(params: dict[str, Any]) -> str:
 
 
 def _publish(params: dict[str, Any], key: str, name: Any) -> None:
+    """輸出埠 → 具名輸出名稱；task_node() 會把保留鍵 _alias 搬成 node.interface.outputs[].alias。"""
     text = str(name or "").strip()
     if text:
-        params["_publish"] = {key: text}
+        params[ALIAS_KEY] = {key: text}
     else:
-        params.pop("_publish", None)
+        params.pop(ALIAS_KEY, None)
 
 
 def _measure_edges(definition: TaskDefinition, fields: dict[str, Any]) -> tuple[EdgeSpec, ...]:

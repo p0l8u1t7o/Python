@@ -26,6 +26,13 @@ log = logging.getLogger(__name__)
 GX, GY = 300, 170
 
 
+def _alias(node: dict[str, Any], aliases: dict[str, str]) -> dict[str, Any]:
+    """輸出埠發布成具名輸出（node.interface.outputs[].alias）。"""
+    for port, name in aliases.items():
+        tools.set_output_alias(node, port, name)
+    return node
+
+
 def _node(nid: str, ntype: str, col: int, row: int, title: str = "", **params: Any) -> dict[str, Any]:
     return {
         "id": nid,
@@ -192,10 +199,10 @@ def _remove_default_outputs(graph: dict[str, Any]) -> None:
         src_node = nodes.get(src)
         if not src_node or not sh:
             continue
-        publish = src_node.setdefault("params", {}).setdefault("_publish", {})
-        if not isinstance(publish, dict) or (sh in publish and publish[sh] != params.get("name")):
+        aliases = tools.output_aliases(src_node)
+        if sh in aliases and aliases[sh] != params.get("name"):
             continue
-        publish[sh] = params.get("name") or "value"
+        tools.set_output_alias(src_node, sh, params.get("name") or "value")
         remove.add(node_id)
     if remove:
         _remove_nodes(graph, remove)
@@ -2019,7 +2026,7 @@ def label_map_count_flow(source_id: Any) -> dict[str, Any]:
         _node("ng", "judge", 3, 1, "NG: missing colour", verdict="ng", label="colour_count"),
         _node("out", "output", 2, 1, "Output class count", name="colour_blob_count"),
         _node("mask", "label_to_mask", 2, 2, "Select red label", values="1"),
-        _node("pixels", "pixel_count", 3, 2, "Red area", min_count=2000, _publish={"count": "red_pixels"}),
+        _alias(_node("pixels", "pixel_count", 3, 2, "Red area", min_count=2000), {"count": "red_pixels"}),
     ]
     edges = [
         _edge("src", "seg"), _edge("seg", "lbl", "labels", "labels"),
@@ -2207,7 +2214,7 @@ def point_fitting_flow(source_id: Any) -> dict[str, Any]:
         _node("tol_circle", "tolerance_judge", 3, 0, "Circle diameter", nominal=200, lower_tol=-3, upper_tol=3, name="circle_diameter", unit="px"),
         _node("tol_ellipse", "tolerance_judge", 3, 1, "Ellipse major axis", nominal=280, lower_tol=-4, upper_tol=4, name="ellipse_major", unit="px"),
         _node("tol_line", "in_range", 3, 2, "Line residual", low=0, high=1, on_false="reject"),
-        _node("area", "formula", 3, 3, "Area from fitted radius", expression="a*a*3.141592653589793", _publish={"value": "fitted_area_px2"}),
+        _alias(_node("area", "formula", 3, 3, "Area from fitted radius", expression="a*a*3.141592653589793"), {"value": "fitted_area_px2"}),
         _node("summary", "inspection_summary", 4, 1, "All three measurements required", expected_count=3),
     ]
     edges = [_edge("src", key, "image", "image") for key in ("circle_edge", "ellipse_edge", "line_edge")]
@@ -2414,7 +2421,7 @@ def queue_handoff_flow(source_id: Any) -> dict[str, Any]:
         _node("measure", "intensity", 1, 0, "Measure front"),
         _node("push", "queue_push", 2, 0, "Queue part", queue="demo_handoff", key="{run_id}", values="front=a"),
         _node("pop", "queue_pop", 3, 0, "Match part", queue="demo_handoff", key="{run_id}", match="key"),
-        _node("combine", "formula", 4, 0, "Combine measurements", expression="a['front'] + b", _publish={"value": "combined"}),
+        _alias(_node("combine", "formula", 4, 0, "Combine measurements", expression="a['front'] + b"), {"value": "combined"}),
         _node("check", "in_range", 5, 0, "Accept combined range", low=190, high=210),
     ], "edges": [
         _edge("src", "measure", "image", "image"), _edge("src", "push", "image", "image"),

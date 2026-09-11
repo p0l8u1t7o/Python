@@ -8,7 +8,7 @@ import { memo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { FLOW_HANDLE, portColor } from '@/lib/ports'
-import { publishMap } from '@/lib/graphValidation'
+import { outputAliases } from '@/lib/nodeInterface'
 import type { ToolPort } from '@/lib/types'
 import type { ToolNodeData } from './graphMapping'
 
@@ -87,7 +87,7 @@ function ToolNodeInner({ data, selected }: NodeProps) {
   // 隱含埠排最後
   const outputs = [...(def?.outputs ?? [])].sort((a, b) => Number(a.implicit === true) - Number(b.implicit === true))
   const rows = Math.max(inputs.length, outputs.length)
-  const published = publishMap(node.params)
+  const published = outputAliases(node)
 
   return (
     <div

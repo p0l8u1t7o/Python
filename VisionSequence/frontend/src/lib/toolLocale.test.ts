@@ -37,9 +37,9 @@ describe('toolLocale', () => {
 
   it('translates the implicit ports shared by every tool, plugins included', () => {
     const out = localiseCatalogue(catalogue, 'zh-Hant')
-    expect(out.items[0].inputs[0].label).toBe('影像（直通）')
+    expect(out.items[0].inputs[0].label).toBe('原始影像')
     expect(out.items[0].outputs[1].label).toBe('標記')
-    expect(out.items[1].inputs[0].label).toBe('影像（直通）')
+    expect(out.items[1].inputs[0].label).toBe('原始影像')
     expect(out.items[1].outputs[0].label).toBe('Ratio')  // 外掛自己的埠維持後端英文
     expect(out.items[0].key).toBe('image_source')
   })

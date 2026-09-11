@@ -119,35 +119,32 @@ def update(graph: dict[str, Any], task: dict[str, Any]) -> dict[str, Any]:
         old, new = before[role], after[role]
         params = node.setdefault("params", {})
         if node["type"] != new["type"]:
-            # 換工具時只帶過仍有效的發布設定，避免舊工具參數污染新工具。
-            published = params.get("_publish")
+            # 換工具時只帶過仍有效的具名輸出名稱（interface.outputs[].alias），避免舊工具參數污染新工具。
+            published = tools.output_aliases(node)
             node["type"] = new["type"]
             node["params"] = copy.deepcopy(new["params"])
-            if published:
-                ports = {p.key for p in tools.get(new["type"]).outputs}
-                retained = {p: name for p, name in published.items() if p in ports}
-                retained.update(new["params"].get("_publish") or {})
-                if retained:
-                    node["params"]["_publish"] = retained
+            node.pop(tools.INTERFACE_KEY, None)
+            ports = {p.key for p in tools.get(new["type"]).outputs}
+            retained = {p: name for p, name in published.items() if p in ports}
+            retained.update(tools.output_aliases(new))
+            for port, name in retained.items():
+                tools.set_output_alias(node, port, name)
         else:
             for key in old["params"].keys() | new["params"].keys():
                 if old["params"].get(key) == new["params"].get(key):
                     continue
-                if key == "_publish":
-                    published = dict(params.get(key) or {})
-                    retained_name = next((published[p] for p in old["params"].get(key, {}) if p in published), None)
-                    for port in old["params"].get(key, {}):
-                        published.pop(port, None)
-                    published.update({port: retained_name if retained_name is not None and "result_name" not in supplied else name
-                                      for port, name in new["params"].get(key, {}).items()})
-                    if published:
-                        params[key] = published
-                    else:
-                        params.pop(key, None)
-                elif key in new["params"]:
+                if key in new["params"]:
                     params[key] = copy.deepcopy(new["params"][key])
                 else:
                     params.pop(key, None)
+            old_alias, new_alias = tools.output_aliases(old), tools.output_aliases(new)
+            if old_alias != new_alias:
+                current_alias = tools.output_aliases(node)
+                retained_name = next((current_alias[p] for p in old_alias if p in current_alias), None)
+                for port in old_alias:
+                    tools.set_output_alias(node, port, "")
+                for port, name in new_alias.items():
+                    tools.set_output_alias(node, port, retained_name if retained_name is not None and "result_name" not in supplied else name)
     def connection(e: dict[str, Any]) -> tuple[str, str, str, str]:
         return tuple(str(e.get(k) or "") for k in ("source", "source_handle", "target", "target_handle"))
     old_connections = {connection(e) for e in old_edges}
@@ -549,8 +546,7 @@ def _locator_for(task_id: str, edges: list[dict[str, Any]], nodes: list[dict[str
 
 
 def _published_name(node: dict[str, Any] | None, port: str) -> str:
-    publish = ((node or {}).get("params") or {}).get("_publish")
-    return str(publish.get(port) or "") if isinstance(publish, dict) else ""
+    return tools.output_aliases(node).get(port, "")
 
 
 def _reason(code: str, role: str, node_id: str, detail: str) -> dict[str, str]:

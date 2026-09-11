@@ -21,7 +21,12 @@ from tests._helpers import circle_image, run_tool, temp_dir
 
 
 def n(nid: str, ntype: str, **params):
-    return {"id": nid, "type": ntype, "params": params}
+    node = {"id": nid, "type": ntype, "params": params}
+    publish = params.pop("_publish", None)
+    if publish is not None:
+        # 具名輸出名稱現在在 node.interface.outputs[].alias（PRODUCT-DIRECTION v2 P0）
+        node["interface"] = {"outputs": publish if isinstance(publish, list) else [{"key": k, "alias": v} for k, v in publish.items()]}
+    return node
 
 
 def e(s: str, t: str, sh: str = "", th: str = ""):
@@ -190,10 +195,9 @@ class SimplifyStage1EngineTests(SimpleTestCase):
     def test_publish_validation_rejects_bad_specs(self):
         bad_specs = [
             ({"result": 123}, "invalid output name"),
-            ([], "_publish"),
             ({"false": "branch_name"}, "branch output port"),
             ({"missing": "name"}, "unknown output port"),
-            ({"_image": "image_name"}, "unknown output port"),
+            ({"_image": "image_name"}, "implicit output port"),
         ]
         for spec, text in bad_specs:
             with self.subTest(spec=spec):
@@ -201,6 +205,10 @@ class SimplifyStage1EngineTests(SimpleTestCase):
                 with self.assertRaises(GraphError) as caught:
                     validate_graph(graph)
                 self.assertIn(text, str(caught.exception))
+        # 同一個節點兩個埠不能發布成同一個名稱
+        graph = {"nodes": [{"id": "c", "type": "find_circle", "params": {}, "interface": {"outputs": [{"key": "cx", "alias": "a"}, {"key": "cy", "alias": "a"}]}}], "edges": []}
+        with self.assertRaisesRegex(GraphError, "same output name"):
+            validate_graph(graph)
 
     def test_recipe_overrides_cannot_write_platform_params(self):
         graph = {"nodes": [n("cmp", "if_number", threshold=1, _publish={"result": "old"})], "edges": []}
@@ -209,8 +217,24 @@ class SimplifyStage1EngineTests(SimpleTestCase):
             out = apply_recipe(graph, recipe)
         params = out["nodes"][0]["params"]
         self.assertEqual(params["threshold"], 2)
-        self.assertEqual(params["_publish"], {"result": "old"})
+        self.assertNotIn("_publish", params)
+        self.assertEqual(out["nodes"][0]["interface"], {"outputs": [{"key": "result", "alias": "old"}]})
         self.assertIn("_publish", "\n".join(logs.output))
+
+    def test_legacy_publish_and_exposed_params_are_rejected(self):
+        # 沒有相容層：舊欄位直接拒絕，錯誤訊息指出新欄位
+        graph = {"nodes": [{"id": "cmp", "type": "if_number", "params": {"threshold": 1, "_publish": {"result": "x"}}}], "edges": []}
+        with self.assertRaisesRegex(GraphError, "interface.outputs"):
+            validate_graph(graph)
+        graph = {"nodes": [{"id": "cmp", "type": "if_number", "params": {"threshold": 1}, "exposed_params": ["threshold"]}], "edges": []}
+        with self.assertRaisesRegex(GraphError, "interface.inputs"):
+            validate_graph(graph)
+        # interface.inputs 的 param:<key> 要是可綁定的參數
+        graph = {"nodes": [{"id": "cmp", "type": "if_number", "params": {"threshold": 1}, "interface": {"inputs": [{"key": "param:threshold", "exposed": True}, {"key": "value", "exposed": False}]}}], "edges": []}
+        validate_graph(graph)
+        graph["nodes"][0]["interface"]["inputs"].append({"key": "param:nope"})
+        with self.assertRaisesRegex(GraphError, "unknown input port"):
+            validate_graph(graph)
 
     def test_wants_gray_converts_three_channel_input(self):
         image = np.zeros((2, 3, 3), np.uint8)
@@ -288,7 +312,7 @@ class SimplifyStage1ApiTests(TestCase):
 
     def test_operator_cannot_patch_publish(self):
         graph = copy.deepcopy(self.graph)
-        graph["nodes"][0]["params"]["_publish"] = {"result": "cmp_result"}
+        graph["nodes"][0]["interface"] = {"outputs": [{"key": "result", "alias": "cmp_result"}]}
         response = self.client.patch(
             f"/api/vision/flows/{self.flow.id}",
             data=json.dumps({"graph": graph}),

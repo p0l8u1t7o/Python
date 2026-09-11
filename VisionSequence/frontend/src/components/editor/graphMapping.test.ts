@@ -44,15 +44,15 @@ describe('graphMapping', () => {
     expect(back.edges[0]).toMatchObject({ source: 'src', target: 'g' })
   })
 
-  it('preserves meta and _publish through React Flow mapping', () => {
+  it('preserves meta and interface through React Flow mapping', () => {
     const source: FlowGraph = {
-      nodes: [{ id: 'm', type: 'measure', params: { _publish: { value: 'diameter' } }, meta: { inspect: { task_id: 't1', role: 'find', kind: 'measure_diameter', schema_version: 1, required: true } } }],
+      nodes: [{ id: 'm', type: 'measure', params: {}, interface: { outputs: [{ key: 'value', alias: 'diameter' }] }, meta: { inspect: { task_id: 't1', role: 'find', kind: 'measure_diameter', schema_version: 1, required: true } } }],
       edges: [],
     }
     const nodes = toFlowNodes(source, defs)
     const back = graphFrom(nodes, [], new Map(source.nodes.map((node) => [node.id, node])))
     expect(back.nodes[0].meta).toEqual(source.nodes[0].meta)
-    expect(back.nodes[0].params?._publish).toEqual({ value: 'diameter' })
+    expect(back.nodes[0].interface).toEqual({ outputs: [{ key: 'value', alias: 'diameter' }] })
   })
 
   it('does not persist display-only group nodes or synthetic group edges', () => {

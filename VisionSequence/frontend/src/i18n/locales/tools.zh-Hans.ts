@@ -2670,6 +2670,8 @@ export default {
       width: "宽",
       height: "高",
       applied: "已套用相机设置",
+      images: "图像列表",
+      timeout: "超时",
     },
   },
   stereo_grab: {
