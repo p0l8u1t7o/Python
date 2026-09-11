@@ -174,6 +174,31 @@ class ActionC4Tests(TestCase):
         self.assertSucceeded(self.approve())
         self.assertFalse(EngineLock.current().locked)
 
+    def test_save_as_tool_needs_a_trial_a_fresh_key_and_approval(self):
+        """代理自己封裝成工具：沒試執行先擋、核准前不建立、核准後建出工具與用它的新流程、重複 key 擋下。"""
+        from apps.vision.models import CompositeTool
+
+        args = {"key": "agent_thr", "label": "Agent threshold"}
+        early = self.invoke("save_as_tool", args)
+        self.assertEqual(early["result"], "not_executed")
+        self.assertIn("trial", early["error"])
+        self.assertIsNone(self.state.pending_action)
+        self.invoke("run_trial")
+        waiting = self.invoke("save_as_tool", args)
+        self.assertTrue(waiting.get("waiting_for_user"), waiting)
+        self.assertEqual(self.state.questions[0]["effects"]["steps"], ["thr"])
+        self.assertFalse(CompositeTool.objects.filter(key="agent_thr").exists())
+        done = self.approve()
+        self.assertSucceeded(done)
+        self.assertTrue(CompositeTool.objects.filter(key="agent_thr").exists())
+        made = Flow.objects.get(pk=done["evidence"]["flow_id"])
+        self.assertTrue(any(node["type"] == "composite:agent_thr" for node in made.graph["nodes"]))
+        self.assertTrue(Flow.objects.filter(pk=self.flow.id).exists())  # 原流程不動
+        again = self.invoke("save_as_tool", {"key": "agent_thr", "label": "Again"})
+        self.assertIn("already exists", again["error"])
+        bad = self.invoke("save_as_tool", {"key": "Bad Key", "label": "x"})
+        self.assertIn("lowercase", bad["error"])
+
     def test_delete_flow_success(self):
         self.invoke("delete_flow")
         self.assertTrue(Flow.objects.filter(pk=self.flow.id).exists())

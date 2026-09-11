@@ -201,6 +201,8 @@ In agentic mode the assistant can hand the mouse to you instead of guessing coor
 
 On the assistant page the result card offers **Encapsulate as a composite tool** (on by default when you may edit the tool library). Saving then creates one composite tool from the inspection steps (its on-site parameters and regions are the tool's parameters) and a flow that contains the image source and one instance of that tool, and opens the flow. The tool appears in the tool library and the tool picker, so the next flow can reuse it. Untick the box to save the steps as an ordinary flow instead.
 
+In agent mode the assistant can propose the same step itself (**save as tool**): it must run a trial on the current flow first, the tool key must be new, and nothing is created until you approve its card.
+
 ### Without an AI provider {#offline-toolbox}
 
 When no provider is configured the assistant runs its offline rule engine and says so: generation, flow edits and task lists from a conversation still work within the rules, and every such reply carries an **Open the Inspection tasks tools** shortcut. In the flow editor it opens the tool picker on the Inspection tasks category, elsewhere it opens the tool library. The assistant page shows the same note above the steps.

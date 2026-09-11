@@ -42,7 +42,7 @@ from apps.accounts.models import UserPref
 from apps.accounts.security import principal, require_feature
 from apps.core import audit
 from apps.core.errors import NotFound, ValidationError
-from apps.vision.agent import actions, chats, consult as consult_mod
+from apps.vision.agent import chats, consult as consult_mod
 from apps.vision.agent import help as help_mod
 from apps.vision.agent import jobs, loop, memory, notes, providers, service, situation, skills, tasklist
 from apps.vision.models import AgentSession, AgentSkill, Flow
@@ -536,30 +536,15 @@ def agent_generate(request: HttpRequest, payload: GenerateIn):
 @router.post("/agent/save-tool", response={201: dict})
 def agent_save_tool(request: HttpRequest, payload: SaveToolIn):
     """助手生成的流程：取像以外的步驟封裝成一個複合工具（教導參數與區域對外），再建一條「取像 → 工具實例」的流程。"""
-    from django.db import IntegrityError, transaction
-
-    from apps.core.errors import Conflict
-    from apps.vision import composites, versions
-    from apps.vision.graph import validate_graph
-    from apps.vision.models import Flow
+    from apps.vision import composites
+    from apps.vision.agent import save_tool
 
     p = require_feature(request, "tools.edit")
     require_feature(request, "flows.edit")
-    graph = validate_graph(payload.graph)
-    inner = [str(n.get("id")) for n in graph.get("nodes", []) if not actions.is_acquisition(n) and n.get("type") != "note"]
-    if not inner:
-        raise ValidationError("The flow has no inspection steps to encapsulate", code="empty_selection")
-    enc = composites.encapsulate(graph, inner, payload.key, payload.label.strip() or payload.key, expose_params=True, version=1)
-    name = payload.flow_name.strip() or payload.label.strip() or payload.key
-    with transaction.atomic():
-        row = composites.create(p.user, {"key": payload.key, "label": payload.label.strip() or payload.key, "description": payload.description,
-                                         "category": payload.category or "detect", "icon": "Sparkles", "graph": enc["tool_graph"], "interface": enc["interface"]})
-        try:
-            with transaction.atomic():
-                flow = Flow.objects.create(name=name, description=payload.description, owner=p.user, graph=validate_graph(enc["graph"]))
-        except IntegrityError:
-            raise Conflict("A flow with that name already exists", code="flow_name_taken") from None
-    versions.snapshot(flow, user=p.user, note="created")
+    out = save_tool.save_as_tool(p.user, payload.graph, payload.key, payload.label, description=payload.description,
+                                 category=payload.category or "detect", flow_name=payload.flow_name)
+    row, flow = out["row"], out["flow"]
+    enc = {"instance": {"id": out["instance"]}}
     audit.record(request, "tool.create", row, summary=row.key)
     audit.record(request, "flow.create", flow, summary=f"{len(flow.graph.get('nodes') or [])} steps (tool {row.key})")
     if payload.session_id:

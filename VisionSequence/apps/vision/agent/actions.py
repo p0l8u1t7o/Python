@@ -888,6 +888,38 @@ def h_run_batch(state: AgentState, args: dict) -> dict:
     return h_run_trial(state, {})
 
 
+def _precheck_save_as_tool(state: AgentState, args: dict[str, Any]) -> None:
+    from apps.vision import composites
+    from apps.vision.models import CompositeTool
+
+    if state.graph is None:
+        raise ValueError("There is no flow to save as a tool yet.")
+    if state.last_trial_graph != fingerprint(state.graph):
+        raise ValueError("Run a trial on the current graph before saving it as a tool.")
+    key = str(args.get("key") or "").strip()
+    if not composites.KEY_RE.match(key):
+        raise ValueError("Use a tool key of lowercase letters, digits and underscores that starts with a letter.")
+    if CompositeTool.objects.filter(key=key).exists():
+        raise ValueError(f"A tool with the key '{key}' already exists; choose another key.")
+
+
+def h_save_as_tool(state: AgentState, args: dict[str, Any]) -> dict[str, Any]:
+    """已核准：取像以外的步驟封裝成工具庫的複合工具，再建一條「取像 → 工具」的新流程（原流程不動）。"""
+    from apps.core import audit
+    from apps.vision.agent import save_tool
+
+    _precheck_save_as_tool(state, args)  # 核准到執行之間可能有人用掉這個 key
+    user = getattr(state.principal, "user", None) or state.owner
+    out = save_tool.save_as_tool(user, state.graph, str(args["key"]).strip(), str(args.get("label") or ""),
+                                 description=str(args.get("description") or ""), category=str(args.get("category") or "detect"),
+                                 flow_name=str(args.get("flow_name") or ""))
+    row, flow = out["row"], out["flow"]
+    request = _request(state)
+    audit.record(request, "tool.create", row, summary=row.key)
+    audit.record(request, "flow.create", flow, summary=f"{len(flow.graph.get('nodes') or [])} steps (tool {row.key})")
+    return {"evidence": {"tool_key": row.key, "tool_id": row.id, "flow_id": flow.id, "instance": out["instance"], "url": f"/flows/{flow.id}"}}
+
+
 ACTIONS: list[ActionSpec] = [
     ActionSpec("propose_note", "Propose an engineering note draft for human review. This never confirms a note or changes inspection specifications.",
                _obj({"title": {"type": "string"}, "body": {"type": "string"}, "kind": {"type": "string", "enum": ["decision", "lesson", "constraint", "lighting", "calibration", "tolerance_rationale", "known_issue"]},
@@ -942,6 +974,8 @@ ACTIONS += [
     ActionSpec("unlock_engine", "Request approval to release the engine lock within caller permissions.", _obj({}), h_unlock_engine),
     ActionSpec("delete_flow", "Request approval to delete the bound flow.", _obj({}), h_delete_flow),
     ActionSpec("delete_asset", "Request approval to delete one specified asset and its file.", _obj({"asset_id": _STRING}, ["asset_id"]), h_delete_asset),
+    ActionSpec("save_as_tool", "Request approval to save the tried flow as a composite tool in the tool library (every step except acquisition, on-site parameters and regions become its parameters) and create a new flow that uses it. Run a trial first; the key must be new.",
+               _obj({"key": _STRING, "label": _STRING, "flow_name": _STRING, "description": _STRING, "category": _STRING}, ["key", "label"]), h_save_as_tool),
 ]
 for _spec in ACTIONS:
     _spec.input_schema["properties"]["idempotency_key"] = _STRING
@@ -955,9 +989,12 @@ FEATURES = {
     "run_batch": ("batch", "flows.run"), "write_output": ("connections",), "save_to_share": ("assets",),
     "enable_reporting": ("connections", "flows.edit"), "unlock_engine": ("integration",),
     "delete_flow": ("flows.edit",), "delete_asset": ("assets",), "propose_note": ("flows.edit",),
+    "save_as_tool": ("tools.edit", "flows.edit"),
     **{key: ("flows.edit",) for key in ("draft_from_rules", "use_candidate", "replace_graph", "patch_graph", "crop_template")},
 }
-CONFIRM = {"write_output", "save_to_share", "enable_reporting", "unlock_engine", "delete_flow", "delete_asset", "save_flow_version"}
+CONFIRM = {"write_output", "save_to_share", "enable_reporting", "unlock_engine", "delete_flow", "delete_asset", "save_flow_version", "save_as_tool"}
+#: 出核准卡之前先檢查的動作（不合條件就直接回錯誤，不讓使用者核准一個做不成的動作）
+PRECHECKS = {"save_as_tool": _precheck_save_as_tool}
 EXECUTION = {"run_trial", "run_batch", "inspect_node", "auto_tune", "write_output", "save_to_share", "enable_reporting"}
 GRAPH_ACTIONS = {"select_source", "select_asset", "apply_calibration", "build_task", "update_task", "remove_task", "connect_source",
                  "draft_from_rules", "use_candidate", "replace_graph", "patch_graph", "crop_template", "auto_tune"}
@@ -999,6 +1036,10 @@ def _ask_action(state: AgentState, name: str, args: dict, key: str, *, choices=N
             state.pending_action = None
             raise ValueError("Bind this job to an existing flow before saving.")
         question["effects"]["changes"] = describe_changes(flow.graph, state.graph)
+    if name == "save_as_tool":
+        from apps.vision.agent.save_tool import encapsulable_steps
+
+        question["effects"]["steps"] = encapsulable_steps(state.graph or {})
     if choices:
         question["options"] = [{"value": str(i), "label": f"{e['source']}.{e['source_handle']}"} for i, e in enumerate(choices)]
     state.questions = [question]
@@ -1056,6 +1097,8 @@ def dispatch(state: AgentState, name: str, args: dict[str, Any] | None) -> dict[
     key, before, attempted, cacheable = "", copy.deepcopy(state.graph), False, False
     try:
         _authorize(state, name, args)
+        if name in PRECHECKS:  # 核准卡出現之前就擋（例如還沒試執行）；在快取鍵之前，修正後重試不會拿到舊的錯誤
+            PRECHECKS[name](state, args)
         supplied_key = args.pop("idempotency_key", None)
         signature = fingerprint({"name": name, "args": args})
         key = str(supplied_key or fingerprint([state.job_id, name, args]))
