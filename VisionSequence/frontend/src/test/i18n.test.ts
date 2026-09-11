@@ -32,8 +32,11 @@ describe('i18n locales', () => {
     expect(extra, `extra in zh-Hans: ${extra.slice(0, 20).join(', ')}`).toEqual([])
   })
 
+  /** 英文的 i18next 複數變體（key_one／key_other）：中文不分單複數，維持 base key 即可（找不到變體會退回 base） */
+  const isPluralVariant = (k: string) => /_(one|other)$/.test(k) && eng.has(k.replace(/_(one|other)$/, ''))
+
   it('en and zh-Hant have exactly the same keys (en is the source of truth)', () => {
-    const missing = [...eng.keys()].filter((k) => !hant.has(k))
+    const missing = [...eng.keys()].filter((k) => !hant.has(k) && !isPluralVariant(k))
     const untranslated = [...hant.keys()].filter((k) => !eng.has(k))
     expect(missing, `en has keys unknown to zh-Hant: ${missing.slice(0, 20).join(', ')}`).toEqual([])
     expect(untranslated, `English is the default language, so nothing may be missing from en: ${untranslated.slice(0, 20).join(', ')}`).toEqual([])
@@ -42,11 +45,18 @@ describe('i18n locales', () => {
   it('placeholders match between en and zh-Hant', () => {
     const bad: string[] = []
     for (const [k, v] of eng) {
+      if (isPluralVariant(k)) continue
       const a = [...v.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]).sort().join(',')
       const b = [...(hant.get(k) ?? '').matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]).sort().join(',')
       if (a !== b) bad.push(`${k}: ${a} vs ${b}`)
     }
     expect(bad).toEqual([])
+  })
+
+  it('English count strings carry _one/_other plural forms (no "1 pictures")', () => {
+    // PM-REVIEW-R2 L-6：帶 {{count}} 且名詞緊接在後的英文字串要有 i18next 複數變體
+    const missing = [...eng].filter(([k, v]) => /\{\{count\}\} [a-z]+s/.test(v) && !/_(one|other)$/.test(k) && !eng.has(`${k}_one`)).map(([k]) => k)
+    expect(missing).toEqual([])
   })
 
   it('interpolation placeholders match between zh-Hant and zh-Hans', () => {
