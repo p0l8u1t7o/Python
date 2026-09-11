@@ -9,7 +9,7 @@ const VARIANTS: Record<Variant, string> = {
   primary: 'bg-gradient-to-b from-brand-ink to-brand-ink-strong text-on-brand shadow-sm shadow-brand/30 hover:brightness-105 active:translate-y-px active:shadow-none border border-transparent',
   secondary: 'bg-surface text-content border border-line shadow-xs hover:bg-surface-muted active:translate-y-px active:shadow-none',
   ghost: 'bg-transparent text-muted hover:text-content hover:bg-surface-muted border border-transparent',
-  danger: 'bg-critical-ink text-white shadow-sm shadow-critical/30 hover:opacity-90 active:translate-y-px active:shadow-none border border-transparent',
+  danger: 'bg-critical-fill text-white shadow-sm shadow-critical/30 hover:opacity-90 active:translate-y-px active:shadow-none border border-transparent',
   subtle: 'bg-surface-muted text-content border border-transparent hover:bg-line',
 }
 
