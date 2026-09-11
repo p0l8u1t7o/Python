@@ -4,7 +4,7 @@ AI 助手（侧栏 `/agent`）讓不熟悉工具鏈的人以三步建立检测�
 
 ## Part 1 · 全域助手（每個页面皆有） {#editor}
 
-每個页面右下角的聊天面板可回答文件与介面地圖問題、讀取目前情境、查詢即時状态、编辑目前流程、依批量数据調校，並記住您要求它記住的內容。右下角 **AI assistant** 按鈕存在於 `AssistantDock`，切換页面不會关闭面板。對話屬於您的帳號，會寫入服务端；历史按鈕可重新开启或删除。
+每個页面右下角的聊天面板可回答文件与介面地圖問題、讀取目前情境、查詢即時状态、编辑目前流程、依批量数据調校，並記住您要求它記住的內容。右下角 **AI assistant** 按鈕存在於 `AssistantDock`，切換页面不會关闭面板。面板标题栏的面板按钮可把它**展开成右侧面板**（页面会让出宽度）或缩回右下角，选择记在这台设备。對話屬於您的帳號，會寫入服务端；历史按鈕可重新开启或删除。
 
 | 情境（页面） | 作用 | 后端 |
 |---|---|---|
@@ -172,6 +172,18 @@ LLM mode 會把目前 graph 与 feedback 交給模型；每次精修都會重新
 action layer（`apps/vision/agent/actions.py`）提供 `get_state`、`list_tools`、`get_tool_skill`、`analyze_region`、`draft_from_rules`、`use_candidate`、`replace_graph`、`patch_graph`、`run_trial`、`inspect_node`、`crop_template`、`auto_tune`、`ask_user`、`finish`。每次 graph 变更都经 `validate_graph`；dl_* 一律拒绝，write_modbus 与 save_image 只能经由已核准的动作加入（见[需要您核准的动作](#approval)），而且流程必须恰好有一个采集步骤。
 
 loop 預算為 12 turns、8 trials、30 tool calls、240 秒；若預算耗盡但已有 flow，該 flow 會作為結果並在 warnings 註記。provider shim 將中立 history 转為 Claude tools、OpenAI functions、Gemini functionDeclarations 或 OpenAI-compatible functions。
+
+### 与图像窗口互动 {#viewer-protocol}
+
+在 agentic mode 下，助手可以把鼠标交给您，而不是猜坐标。有三种提问直接在图像上回答，而不是打字：**请画一个区域**（助手需要搜索范围；它指明步骤与参数时，平台会直接把区域写进该参数）、**请框一张参考图**（框出定位标记或良品，平台裁成固定图像并接到指定的步骤）、**请确认预览**（先看某个步骤的输出，助手再往下）。卡片出现在助手面板：**在图像上画**会把当前页面的图像查看器切成画图模式，**使用此区域**把区域交回，**发送**送给助手。流程编辑器与 AI 助手页可以画；其他页面的卡片会提示该去哪里。
+
+### 把结果存成复合工具 {#save-tool}
+
+助手页的结果卡有**封装成复合工具**（有工具库编辑权限时默认勾选）。保存时会把检测步骤建成一个复合工具（现场参数与区域就是工具的参数），再建一条含图像来源与一个工具实例的流程并打开它。工具会出现在工具库与工具箱，下一条流程可以直接重用。取消勾选则存成一般流程。
+
+### 没有 AI 供应商时 {#offline-toolbox}
+
+尚未设置供应商时，助手以离线规则引擎运作并明确告知：生成、修改流程与从对话生成任务清单仍在规则范围内可用，而且每一条这类回复都附上**打开检测任务工具**的快捷方式——在流程编辑器会直接打开工具箱的“检测任务”分类，其他页面则前往工具库。助手页的步骤上方也有同样的提示。
 
 ### 需要您核准的动作 {#approval}
 

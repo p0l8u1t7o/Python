@@ -40,8 +40,9 @@ from ninja import File, Router, Schema, UploadedFile
 
 from apps.accounts.models import UserPref
 from apps.accounts.security import principal, require_feature
+from apps.core import audit
 from apps.core.errors import NotFound, ValidationError
-from apps.vision.agent import chats, consult as consult_mod
+from apps.vision.agent import actions, chats, consult as consult_mod
 from apps.vision.agent import help as help_mod
 from apps.vision.agent import jobs, loop, memory, notes, providers, service, situation, skills, tasklist
 from apps.vision.models import AgentSession, AgentSkill, Flow
@@ -260,6 +261,17 @@ class SettingsIn(Schema):
     #: single | agentic。
     mode: str | None = None
     clear_key: bool = False
+
+
+class SaveToolIn(Schema):
+    """助手產出的流程封裝成複合工具＋一條用它的流程（PRODUCT-DIRECTION v2 P4）。"""
+    graph: dict[str, Any]
+    key: str
+    label: str
+    description: str = ""
+    category: str = "detect"
+    flow_name: str = ""
+    session_id: int | None = None
 
 
 class JobIn(GenerateIn):
@@ -519,6 +531,40 @@ def agent_generate(request: HttpRequest, payload: GenerateIn):
     require_feature(request, "agent").can_execute()
     return service.generate(_images(payload), _regions(payload.regions), payload.prompt, _settings_for(request), use_llm=payload.use_llm,
                             answers=payload.answers, labels=[lb.model_dump() if isinstance(lb, ImageLabelIn) else lb for lb in payload.labels], groups=payload.groups, owner=principal(request).user)
+
+
+@router.post("/agent/save-tool", response={201: dict})
+def agent_save_tool(request: HttpRequest, payload: SaveToolIn):
+    """助手生成的流程：取像以外的步驟封裝成一個複合工具（教導參數與區域對外），再建一條「取像 → 工具實例」的流程。"""
+    from django.db import IntegrityError, transaction
+
+    from apps.core.errors import Conflict
+    from apps.vision import composites, versions
+    from apps.vision.graph import validate_graph
+    from apps.vision.models import Flow
+
+    p = require_feature(request, "tools.edit")
+    require_feature(request, "flows.edit")
+    graph = validate_graph(payload.graph)
+    inner = [str(n.get("id")) for n in graph.get("nodes", []) if not actions.is_acquisition(n) and n.get("type") != "note"]
+    if not inner:
+        raise ValidationError("The flow has no inspection steps to encapsulate", code="empty_selection")
+    enc = composites.encapsulate(graph, inner, payload.key, payload.label.strip() or payload.key, expose_params=True)
+    name = payload.flow_name.strip() or payload.label.strip() or payload.key
+    with transaction.atomic():
+        row = composites.create(p.user, {"key": payload.key, "label": payload.label.strip() or payload.key, "description": payload.description,
+                                         "category": payload.category or "detect", "icon": "Sparkles", "graph": enc["tool_graph"], "interface": enc["interface"]})
+        try:
+            with transaction.atomic():
+                flow = Flow.objects.create(name=name, description=payload.description, owner=p.user, graph=validate_graph(enc["graph"]))
+        except IntegrityError:
+            raise Conflict("A flow with that name already exists", code="flow_name_taken") from None
+    versions.snapshot(flow, user=p.user, note="created")
+    audit.record(request, "tool.create", row, summary=row.key)
+    audit.record(request, "flow.create", flow, summary=f"{len(flow.graph.get('nodes') or [])} steps (tool {row.key})")
+    if payload.session_id:
+        AgentSession.objects.filter(pk=payload.session_id).update(flow_id=flow.id)
+    return 201, {"tool": composites.out(row, with_usage=True), "flow_id": flow.id, "instance": enc["instance"]["id"]}
 
 
 @router.post("/agent/run")
@@ -854,7 +900,7 @@ def agent_chat(request: HttpRequest, payload: ChatIn):
         chats.record(chat, {"drafts": [*previous.get("drafts", []), *result["drafts"]],
                             "pending_questions": [*previous.get("pending_questions", []), *result["questions"]],
                             "assumptions": [*previous.get("assumptions", []), *assumptions]})
-        return {"kind": "tasklist", "answer": "", **result}
+        return {"kind": "tasklist", "answer": "", **result, **_offline_degrade(settings, ctx.lang, result.get("warnings"))}
     if intent != "help":
         # 使用說明問答不動引擎、也不需要助手權限；修改／諮詢／調整會試執行，要有 agent
         p = require_feature(request, "agent")
@@ -870,7 +916,7 @@ def agent_chat(request: HttpRequest, payload: ChatIn):
         report = result.get("report") or {}
         chats.record(chat, {"last_trial": {"at": timezone.now().isoformat(), "status": report.get("status", "unknown"),
                                           "summary": result.get("rationale", ""), "per_task": []}} if report else {}, "Flow edit proposal completed.")
-        return {"kind": "edit", "answer": result["rationale"], "provider": result["provider"], "result": result}
+        return {"kind": "edit", "answer": result["rationale"], "provider": result["provider"], "result": result, **_offline_degrade(settings, ctx.lang, result.get("warnings"))}
     if intent in ("consult", "tune"):
         if ctx.batch_run_id is None:
             raise ValidationError("Consulting or tuning on data needs a batch_run_id", code="no_batch_run")
@@ -906,7 +952,19 @@ def agent_chat(request: HttpRequest, payload: ChatIn):
     row = notes.record_qa(p.user, message, str(out.get("answer") or ""), context, str(out.get("provider") or ""))
     if row is not None:
         out["memory_id"] = row.id
+    if not service.has_llm(settings) and help_mod.wants_build(message):
+        # 離線又在要求「幫我建一條檢測」：明確說沒有 AI 供應商，並把人帶到工具箱的檢測任務分類
+        degraded = _offline_degrade(settings, ctx.lang, out.get("warnings"))
+        out["warnings"] = degraded["warnings"]
+        out["actions"] = [*degraded["actions"], *[a for a in (out.get("actions") or []) if a.get("kind") != "open_toolbox"]]
     return {"kind": "help", **out}
+
+
+def _offline_degrade(settings: providers.AgentSettings, lang: Any, warnings: list[str] | None) -> dict[str, Any]:
+    """沒有 LLM 時修改／任務清單／建立類的回覆一律附上「離線＋工具箱」的說明與動作。"""
+    if service.has_llm(settings):
+        return {"warnings": list(warnings or []), "actions": []}
+    return {"warnings": [*(warnings or []), help_mod.msg(lang, "offline_toolbox")], "actions": [help_mod.toolbox_action(lang)]}
 
 
 # ---------------------------------------------------------------------------

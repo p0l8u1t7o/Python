@@ -7,6 +7,7 @@ import { Bot, Check, HelpCircle, Info, Loader2, MessageSquare, Play, Square, Tri
 import { Badge, Button } from '@/components/ui'
 import type { AgentJob, AgentStep } from '@/lib/agentJob'
 import { ActionApproval } from '@/components/assistant/ActionApproval'
+import { VIEWER_KINDS, ViewerRequest } from '@/components/assistant/ViewerRequest'
 
 function StepIcon({ step }: { step: AgentStep }) {
   if (step.kind === 'error') return <TriangleAlert size={12} className="text-critical" />
@@ -38,6 +39,7 @@ export function AgentTimeline({ job, steps, onCancel }: { job: AgentJob | null; 
       {job.fallback_reason ? <p className="text-[11px] text-warning">{job.fallback_reason}</p> : null}
       {job.error ? <p className="text-[11px] text-critical">{job.error}</p> : null}
       {job.status === 'needs_input' && job.questions.filter((q) => q.kind === 'confirm' || q.action).map((q) => <ActionApproval key={q.id} jobId={job.id} question={q} />)}
+      {job.status === 'needs_input' && job.questions.filter((q) => !q.action && VIEWER_KINDS.has(q.kind)).map((q) => <ViewerRequest key={q.id} jobId={job.id} question={q} />)}
       <ol className="max-h-56 space-y-1 overflow-y-auto pr-1 text-[11px]">
         {steps.map((s) => (
           <li key={s.n} className="flex items-start gap-1.5">

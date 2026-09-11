@@ -544,12 +544,21 @@ def h_ask_user(state: AgentState, args: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(q, dict) or not q.get("text"):
             continue
         kind = str(q.get("kind") or "text")
-        if kind not in ("choice", "number", "text", "roi", "confirm"):
+        if kind not in QUESTION_KINDS:
             kind = "text"
         item: dict[str, Any] = {"id": str(q.get("id") or f"q{i + 1}"), "text": str(q["text"]), "kind": kind, "optional": bool(q.get("optional"))}
         if kind == "confirm":
             item.update({key: copy.deepcopy(q.get(key, "")) for key in ("action", "summary", "effects", "risk")})
             item["optional"] = False
+        if kind in VIEWER_KINDS:
+            # 影像視窗互動協定：要哪一張、畫什麼形狀、畫完接到哪（crop 的 target／port、roi 的 node／param、preview 的 node／port）
+            item["image"] = max(1, int(q.get("image") or 1)) if str(q.get("image") or "").lstrip("-").isdigit() or isinstance(q.get("image"), int) else 1
+            shapes = [str(x) for x in (q.get("shapes") or []) if isinstance(x, str) and x in ROI_SHAPES]
+            if kind in ("roi", "crop"):
+                item["shapes"] = shapes or (["rect"] if kind == "crop" else list(ROI_SHAPES))
+            for key in ("target", "port", "node", "param"):
+                if q.get(key):
+                    item[key] = str(q[key])
         if kind == "choice":
             item["options"] = [{"value": str(o.get("value")), "label": str(o.get("label") or o.get("value"))} for o in (q.get("options") or []) if isinstance(o, dict)]
         if q.get("hint"):
@@ -559,6 +568,54 @@ def h_ask_user(state: AgentState, args: dict[str, Any]) -> dict[str, Any]:
         return {"error": "questions 需要至少一題（含 text）"}
     state.questions = questions[:3]
     return {"ok": True, "waiting_for_user": True}
+
+
+#: ask_user 的題型：roi／crop／preview 是與影像視窗的互動協定（前端在影像上畫、平台套用），其餘是文字回答
+QUESTION_KINDS = ("choice", "number", "text", "roi", "crop", "preview", "confirm")
+VIEWER_KINDS = ("roi", "crop", "preview")
+ROI_SHAPES = ("rect", "rotated_rect", "circle", "ellipse", "annulus", "polygon", "polyline", "line", "point")
+
+
+def parse_region(value: Any) -> dict[str, Any] | None:
+    """使用者在影像上畫的區域：JSON 字串或 dict，至少要有 shape。"""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (TypeError, ValueError):
+            return None
+    if not isinstance(value, dict) or not isinstance(value.get("shape"), str):
+        return None
+    return value
+
+
+def apply_viewer_answers(state: AgentState, questions: list[dict[str, Any]], answers: list[dict[str, Any]]) -> list[str]:
+    """影像視窗協定的回答由平台代為套用：crop（有 target）→ crop_template 接到節點；roi（有 node＋param）→ 寫進參數；
+    preview 只是看過。回給模型的備註讓它知道平台已經做了什麼，不必再呼叫一次。"""
+    by_id = {str(q.get("id")): q for q in questions if isinstance(q, dict)}
+    notes: list[str] = []
+    for a in answers:
+        q = by_id.get(str(a.get("id")))
+        if not q or q.get("kind") not in VIEWER_KINDS:
+            continue
+        value = a.get("value", a.get("answer"))
+        if q["kind"] == "preview":
+            notes.append(f"{q['id']}: the user viewed the preview")
+            continue
+        region = parse_region(value)
+        if region is None:
+            notes.append(f"{q['id']}: no region was drawn")
+            continue
+        a["value"] = region
+        a.pop("answer", None)
+        if q["kind"] == "crop" and q.get("target"):
+            result = dispatch(state, "crop_template", {"image": q.get("image", 1), "region": region, "target": q["target"], "port": q.get("port") or "template_image", "name": str(q.get("text") or "")[:60]})
+            notes.append(f"{q['id']}: crop applied by the platform -> {serialize_result(result)}")
+        elif q["kind"] == "roi" and q.get("node") and q.get("param") and state.graph is not None:
+            result = dispatch(state, "patch_graph", {"ops": [{"op": "set_param", "node": q["node"], "key": q["param"], "value": region}]})
+            notes.append(f"{q['id']}: region written to {q['node']}.{q['param']} by the platform -> {serialize_result(result)}")
+        else:
+            notes.append(f"{q['id']}: region {json.dumps(region, ensure_ascii=False)}")
+    return notes
 
 
 def h_finish(state: AgentState, args: dict[str, Any]) -> dict[str, Any]:
@@ -856,11 +913,15 @@ ACTIONS: list[ActionSpec] = [
                      "target": {"type": "string", "description": "要接的節點 id；省略＝只裁不接"},
                      "port": {"type": "string", "description": "圖片輸入埠，預設 template_image"}}, ["image", "region"]), h_crop_template),
     ActionSpec("auto_tune", "用影像標記做資料驅動自動調參（只動現場調機參數，嚴格變好才採納）。", _obj({"max_evals": {"type": "integer"}, "deadline_s": {"type": "number"}}), h_auto_tune),
-    ActionSpec("ask_user", "資訊不足時向使用者提問（最多 3 題），迴圈會暫停等待回答。只在關鍵資訊缺失時使用。",
-               _obj({"questions": {"type": "array", "items": _obj({"id": {"type": "string"}, "text": {"type": "string"}, "kind": {"type": "string", "enum": ["choice", "number", "text", "roi", "confirm"]},
+    ActionSpec("ask_user", "資訊不足時向使用者提問（最多 3 題），迴圈會暫停等待回答。只在關鍵資訊缺失時使用。kind=roi／crop／preview 是與影像視窗的互動：roi 請使用者在影像上畫區域（給 node＋param 就由平台直接寫進參數），crop 請使用者框一塊當範本圖（給 target＋port 就由平台裁下並接線），preview 請使用者看某個節點的預覽。",
+               _obj({"questions": {"type": "array", "items": _obj({"id": {"type": "string"}, "text": {"type": "string"}, "kind": {"type": "string", "enum": ["choice", "number", "text", "roi", "crop", "preview", "confirm"]},
                                                                     "action": {"type": "string"}, "summary": {"type": "string"}, "effects": {"type": "object"}, "risk": {"type": "string"},
                                                                     "options": {"type": "array", "items": _obj({"value": {"type": "string"}, "label": {"type": "string"}})},
-                                                                    "optional": {"type": "boolean"}, "hint": {"type": "string"}}, ["text"])}}, ["questions"]), h_ask_user, terminal=True),
+                                                                    "optional": {"type": "boolean"}, "hint": {"type": "string"},
+                                                                    "image": {"type": "integer", "description": "roi／crop／preview：第幾張影像（1 起算）"},
+                                                                    "shapes": {"type": "array", "items": {"type": "string"}, "description": "roi／crop：允許的形狀（rect、rotated_rect、circle、annulus、polygon、line）"},
+                                                                    "node": {"type": "string", "description": "roi：寫進哪個節點；preview：看哪個節點"}, "param": {"type": "string", "description": "roi：寫進哪個區域參數"},
+                                                                    "target": {"type": "string", "description": "crop：裁好的範本圖接到哪個節點"}, "port": {"type": "string", "description": "crop：圖片輸入埠（預設 template_image）；preview：輸出埠"}}, ["text"])}}, ["questions"]), h_ask_user, terminal=True),
     ActionSpec("finish", "完成：目前流程就是最終結果。說明調參與驗收結果，可附 lessons 記錄失敗原因與適用條件。", _obj({"rationale": {"type": "string"}, "lessons": {"type": "object"}}, ["rationale"]), h_finish, terminal=True),
 ]
 _STRING = {"type": "string"}

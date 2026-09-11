@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRight, Bot, Brain, Camera, Check, ExternalLink, Eye, EyeOff, History, Lightbulb, Monitor, MonitorOff, Plus, Send, Sparkles, Square, ThumbsDown, ThumbsUp, Trash2, X } from 'lucide-react'
+import { ArrowRight, Bot, Brain, Camera, Check, ExternalLink, Eye, EyeOff, History, Lightbulb, Monitor, MonitorOff, PanelRightClose, PanelRightOpen, Plus, Send, Sparkles, Square, ThumbsDown, ThumbsUp, Trash2, X } from 'lucide-react'
 
 import { AgentTimeline } from '@/components/agent/AgentTimeline'
 import { TaskListCard, tasklistMessage } from './TaskListCard'
@@ -18,6 +18,7 @@ import { useAgentJob } from '@/lib/agentJob'
 import { activityPayload, logActivity, recentActivity, setActivityRoute, setShareEnabled, shareEnabled, subscribeActivity } from '@/lib/activity'
 import { api } from '@/lib/api'
 import { contextFromPath, subscribeAssistantProgress, useAssistantContext, type AssistantContext, type AssistantKind } from '@/lib/assistantContext'
+import { setAssistantLayout, setAssistantOpen, useAssistantLayout } from '@/lib/assistantLayout'
 import type { Suggestion, TuneResult } from '@/lib/batch'
 import { errorMessage } from '@/lib/errors'
 import { formatDateTime } from '@/lib/format'
@@ -39,6 +40,7 @@ interface Source { title: string; page: string; heading: string; url: string; sn
 export type AssistantAction =
   | { kind: 'navigate'; to: string; tab?: string; label: string }
   | { kind: 'focus_node' | 'open_tool'; node: string; flow_id: number; label: string }
+  | { kind: 'open_toolbox'; category?: string; label: string }
 interface Lookup { name: string; args: Record<string, unknown>; error?: string }
 /** 長期記憶的一筆：fact＝使用者要它記住的一句話；qa＝問過的問答（可評分）。 */
 interface MemoryItem { id: number; kind: 'fact' | 'qa'; text: string; answer: string; rating: number; created_at: string | null }
@@ -131,6 +133,10 @@ export function AssistantDock() {
   const ctx = useMemo<AssistantContext>(() => registered ?? contextFromPath(location.pathname), [registered, location.pathname])
   const initial = useMemo(load, [])
   const [open, setOpen] = useState(initial.open)
+  //: 版面：浮動視窗或右側面板（AppShell 依此讓出寬度）
+  const { layout } = useAssistantLayout()
+  useEffect(() => { setAssistantOpen(open) }, [open])
+  useEffect(() => () => setAssistantOpen(false), [])
   const [messages, setMessages] = useState<ChatMessage[]>(initial.messages)
   const [input, setInput] = useState('')
   const [mode, setMode] = useState<Mode>('auto')
@@ -396,11 +402,11 @@ export function AssistantDock() {
       if (r.kind === 'tasklist') {
         setWorkState((old) => ({ ...old, ...draftProgress([...(old.drafts ?? []), ...(r.drafts ?? [])]), pending_questions: [...(old.pending_questions ?? []), ...(r.questions ?? [])] }))
         setResumedQuestions([])
-        push({ role: 'assistant', text: r.answer || '', kind: 'tasklist', warnings: r.warnings, tasklist: { drafts: r.drafts ?? [], kinds: r.kinds, flowId: ctx.flowId ?? null }, contextKind: ctx.kind })
+        push({ role: 'assistant', text: r.answer || '', kind: 'tasklist', warnings: r.warnings, actions: r.actions, tasklist: { drafts: r.drafts ?? [], kinds: r.kinds, flowId: ctx.flowId ?? null }, contextKind: ctx.kind })
       } else if (r.kind === 'edit' && r.result) {
         const er = r.result as EditResult
         if (er.report) setWorkState((old) => ({ ...old, last_trial: { at: new Date().toISOString(), status: er.report!.status, summary: er.rationale, per_task: [] } }))
-        push({ role: 'assistant', text: r.answer, kind: 'edit', provider: r.provider, edit: er.applied ? { graph: er.graph, changes: er.changes, flowId: ctx.flowId ?? null } : undefined, contextKind: ctx.kind })
+        push({ role: 'assistant', text: r.answer, kind: 'edit', provider: r.provider, warnings: r.warnings, actions: r.actions, edit: er.applied ? { graph: er.graph, changes: er.changes, flowId: ctx.flowId ?? null } : undefined, contextKind: ctx.kind })
       } else if (r.kind === 'tune') {
         setWorkState((old) => ({ ...old, decisions: [...(old.decisions ?? []), { at: new Date().toISOString(), text: r.answer, by: 'assistant' }] }))
         push({ role: 'assistant', text: r.answer, kind: 'tune', provider: r.provider, warnings: r.warnings, newRunId: r.batch_run_id ?? null, contextKind: ctx.kind })
@@ -455,6 +461,12 @@ export function AssistantDock() {
 
   /** 回覆的捷徑：整合頁先記住要開的分頁再導頁；節點動作只在同一條流程的編輯器內有效。 */
   function runAction(a: AssistantAction) {
+    if (a.kind === 'open_toolbox') {
+      // 離線退化：編輯器裡直接開工具箱的「檢測任務」分類，其他頁面前往工具庫
+      if (ctx.openToolPicker) ctx.openToolPicker(a.category)
+      else navigate('/tools')
+      return
+    }
     if (a.kind === 'navigate') {
       if (a.tab && a.to.startsWith('/integration/')) setIntegrationTab(sectionOf(a.to), a.tab)
       navigate(a.to)
@@ -497,12 +509,15 @@ export function AssistantDock() {
   return (
     <>
       <button type="button" onClick={() => setOpen((v) => !v)} aria-label={t('assistant.title')} title={t('assistant.title')} data-testid="assistant-toggle"
-        className="fixed bottom-4 right-4 z-40 flex size-12 items-center justify-center rounded-full bg-brand text-white shadow-lg transition hover:brightness-110">
+        className={`fixed bottom-4 right-4 z-40 flex size-12 items-center justify-center rounded-full bg-brand text-white shadow-lg transition hover:brightness-110 ${open && layout === 'side' ? 'hidden' : ''}`}>
         {open ? <X size={20} /> : <Bot size={22} />}
         {!open && unread > 0 ? <span className="absolute -right-0.5 -top-0.5 flex size-5 items-center justify-center rounded-full bg-critical text-[10px] font-bold text-white">{unread}</span> : null}
       </button>
       {open ? (
-        <section className="fixed bottom-20 right-4 z-40 flex h-[min(72vh,720px)] w-[min(420px,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-2xl" data-testid="assistant-dock" aria-label={t('assistant.title')}>
+        <section className={layout === 'side'
+          ? 'fixed inset-y-0 right-0 z-40 flex w-[min(440px,100vw)] flex-col overflow-hidden border-l border-line bg-surface shadow-2xl'
+          : 'fixed bottom-20 right-4 z-40 flex h-[min(72vh,720px)] w-[min(420px,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-2xl'}
+          data-testid="assistant-dock" data-layout={layout} aria-label={t('assistant.title')}>
           <header className="flex items-center gap-2 border-b border-line px-3 py-2">
             <Sparkles size={14} className="text-brand" />
             <span className="shrink-0 whitespace-nowrap text-sm font-semibold">{t('assistant.title')}</span>
@@ -517,6 +532,8 @@ export function AssistantDock() {
                   onClick={() => { setShowHistory((v) => !v); setShowMemory(false) }} data-testid="assistant-history-toggle"><History size={14} /></button>
               ) : null}
               <button type="button" className="btn-icon" title={t('assistant.sessions.new')} onClick={newSession} data-testid="assistant-new-session"><Plus size={15} /></button>
+              <button type="button" className={`btn-icon ${layout === 'side' ? 'text-brand' : ''}`} title={t(layout === 'side' ? 'assistant.layoutFloat' : 'assistant.layoutSide')} aria-pressed={layout === 'side'}
+                onClick={() => setAssistantLayout(layout === 'side' ? 'float' : 'side')} data-testid="assistant-layout-toggle">{layout === 'side' ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}</button>
               <button type="button" className="btn-icon" title={t('common.close')} onClick={() => setOpen(false)}><X size={15} /></button>
             </span>
           </header>

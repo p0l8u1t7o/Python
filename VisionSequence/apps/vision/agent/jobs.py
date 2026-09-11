@@ -150,11 +150,14 @@ def answer(job_id: str, answers: list[dict[str, Any]]) -> dict[str, Any]:
             required = {q["id"] for q in job.questions if q.get("kind") == "confirm"}
             if any(len([a for a in answers if a.get("id") == ident and a.get("value") in ("approve", "reject")]) != 1 for ident in required):
                 raise ValidationError("Answer each confirmation explicitly.", code="approval_required")
+        asked = list(job.questions)
         job.status = "running"
         job.questions = []
         job.state.questions = None
+        answers = [dict(a) for a in answers]
+        notes = actions.apply_viewer_answers(job.state, asked, answers)
         job.state.answers = list(job.state.answers) + list(answers)
-        job.history.append(loop.answer_turn(answers))
+        job.history.append(loop.answer_turn(answers, notes))
         job.state.step("answer", "使用者回答", "；".join(f"{a.get('id')}={a.get('value', a.get('answer'))}" for a in answers))
     _spawn(job)
     return job.to_dict()

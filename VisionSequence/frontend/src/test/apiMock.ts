@@ -1163,6 +1163,7 @@ export function routes(path: string, body?: unknown): unknown {
   if (path.startsWith('/vision/agent/sessions')) return { items: [], total: 0 }
   if (path.startsWith('/vision/agent/skills/custom')) return { items: [] }
   if (path.startsWith('/vision/agent/clarify')) return { ready: true, questions: [], summary: '', intent: 'count', provider: 'rules' }
+  if (path.startsWith('/vision/agent/save-tool')) return { tool: { id: 9, key: 'ai_count', label: 'AI count', builtin: false }, flow_id: 5, instance: 'ai_count' }
   if (path.startsWith('/vision/agent/run')) return { graph: { nodes: [], edges: [] }, report: { id: 'r', status: 'ok', outputs: {}, nodes: {}, duration_ms: 1 }, reports: [], main_image: 0 }
   if (path.startsWith('/vision/agent/autotune')) return { graph: { nodes: [], edges: [] }, rationale: '', provider: 'autotune', changes: [], before: { ok: 0, ng: 0, failed: 0 }, after: null, items: [], applied: false }
   if (path.startsWith('/vision/agent/skills')) return { items: [{ key: 'platform', label: '平台規則', category: 'guide', curated: true }] }

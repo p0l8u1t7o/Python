@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { api } from '@/lib/api'
+import type { RoiShape } from '@/lib/types'
 
 export interface AgentStep {
   n: number
@@ -21,7 +22,15 @@ export interface AgentStep {
 export interface AgentQuestion {
   id: string
   text: string
-  kind: 'choice' | 'number' | 'text' | 'roi' | 'confirm'
+  /** roi／crop／preview 是與影像視窗的互動協定（ViewerRequest） */
+  kind: 'choice' | 'number' | 'text' | 'roi' | 'crop' | 'preview' | 'confirm'
+  /** roi／crop：允許的形狀；image：第幾張影像（1 起算）；target／port：crop 接到哪；node／param：roi 寫進哪；node／port：preview 看哪 */
+  shapes?: RoiShape[]
+  image?: number
+  target?: string
+  port?: string
+  node?: string
+  param?: string
   action?: string
   summary?: string
   effects?: unknown

@@ -774,5 +774,10 @@ def build_state(task: str, images: list[np.ndarray], regions: list[dict[str, Any
     return state
 
 
+def has_llm(settings: providers.AgentSettings | None) -> bool:
+    """有沒有可用的 LLM 供應商（離線規則引擎＝沒有）。"""
+    return bool(settings and settings.provider and settings.provider != "offline")
+
+
 def agentic(settings: providers.AgentSettings) -> bool:
     return settings.mode == "agentic" and providers.available(settings)

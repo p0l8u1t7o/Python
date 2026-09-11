@@ -2324,6 +2324,9 @@ const zhHant = {
     jobRunning: '代理模式執行中（可在時間軸中斷）…',
     jobWaiting: '等待模型回應…',
     jobAnswerHint: '助手在等您回答：{{text}}。請在下方輸入回答後送出。',
+    offlineToolbox: '尚未設定 AI 供應商，生成走離線規則引擎。不用助手也能建立同樣的檢測：工具箱的「檢測任務」分類有每一種檢測方式的內建工具。',
+    openToolLibrary: '開啟工具庫', saveAsTool: '封裝成複合工具', saveAsToolHint: '檢測步驟會變成工具庫裡一個可重用的工具；新流程使用此工具，參數在工具頁調整。',
+    toolLabel: '工具名稱', toolKey: '工具 key', savedTool: '已建立工具 {{key}}，前往流程',
     history: '歷史',
     historyTitle: '歷史工作階段',
     historyHint: '每次生成都會保存影像、ROI、需求與流程；標記全部命中或按讚的案例會成為之後相似影像的參數先驗。',
@@ -2349,6 +2352,8 @@ const zhHant = {
     tasklist: {"context":"檢測任務","review":"套用前請檢查數值與假設，再從流程頁儲存變更。","confirm":"全部確認","discard":"捨棄","show":"顯示在影像上","openFlow":"請開啟原流程以套用提案。","changed":"套用期間流程已變更，請檢查目前流程後重試。","status":{"confirmed":"已確認","assumed":"假設","missing":"缺少資料"},"ops":{"add":"新增","update":"修改","remove":"刪除","answer":"需要更多資料","run":"再跑一次"},"shape":"區域形狀","chooseRegion":"選擇區域","coordinates":{"x":"X","y":"Y","w":"寬度","h":"高度","cx":"中心 X","cy":"中心 Y","r":"半徑","r_inner":"內半徑","r_outer":"外半徑","angle":"角度"},"notes":{"unit":"請確認單位；未指定單位時先提議使用像素。","calibration":"使用毫米前請先選擇標定，尚未進行任何換算。","region":"請在影像上檢查區域，確認位置與大小。","missing":"套用前請填入有效數值。","assumed":"請檢查並確認此提議值。"},"errors":{"required":"請先確認必填欄位：{{fields}}。","source":"新增任務前，請先在頁面上選擇一個影像來源。","calibration":"使用毫米前請先選擇標定。","locator":"請選擇這些任務要跟隨的定位任務。","dependency":"其他任務或步驟依賴此任務。","task":"請選擇此種類的現有任務。","value":"請為 {{field}} 填入有效數值。","ambiguous":"有多項任務符合，請指明要修改第幾項，例如「第 2 項」。"},"warnings":{"missing":"部分提議欄位需要有效數值或更多資訊。","preserved":"已保留您明確說出的數值。","rateLimit":"AI 供應商已達請求上限，已改用離線解析，請逐項檢查數值。","offline":"無法使用 AI 的回覆，已改用離線解析，請逐項檢查數值。"}},
     screenshot: '把此頁面的截圖附在下一則提問', screenshotTaken: '截圖已附在下一則提問', screenshotRemove: '移除截圖',
     screenshotNeedsLlm: '截圖需要看得懂影像的 LLM 供應商', screenshotFailed: '無法擷取畫面',
+    layoutSide: '展開成右側面板', layoutFloat: '縮回右下角',
+    viewer: { roiTitle: '請畫一個區域', cropTitle: '請框一張參考圖', previewTitle: '請確認預覽', draw: '在影像上畫', redraw: '重畫', use: '使用此區域', send: '送出', skip: '略過', show: '顯示預覽', shown: '看過了，繼續', noViewer: '請到流程編輯器或 AI 助手頁，才能在影像上畫。', drawHere: '助手需要一個區域：請在影像上畫出來' },
     rateUp: '有幫助', rateDown: '沒幫助', rated: '已記錄',
       sessions: {
         new: '新對話',

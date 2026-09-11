@@ -64,6 +64,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "empty_reply": "The LLM ({provider}) returned nothing; fell back to documentation excerpts",
         "llm_failed": "The LLM ({provider}) failed; fell back to documentation excerpts: {reason}",
         "no_screenshot": "The offline rule mode cannot see screenshots; answered from text only",
+        "offline_toolbox": "No AI provider is configured, so the assistant is running in offline rule mode. You can build the same inspection without it: the tool picker's Inspection tasks category holds a built-in tool for every inspection method (check presence, count, locate, measure diameter or distance, edge defect, read code or text). Drop one onto the canvas, connect the image and draw the region.",
+        "open_toolbox": "Open the Inspection tasks tools",
     },
     "zh-Hant": {
         "recent_error": "最近一次錯誤（{ago} 秒前）：{text}",
@@ -74,6 +76,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "empty_reply": "LLM（{provider}）回了空白，已改用文件節錄",
         "llm_failed": "LLM（{provider}）失敗，已改用文件節錄：{reason}",
         "no_screenshot": "離線規則模式看不到截圖，只依文字回答",
+        "offline_toolbox": "尚未設定 AI 供應商，助手目前是離線規則模式。不用助手也能建立同樣的檢測：工具箱的「檢測任務」分類有每一種檢測方式的內建工具（檢查有無、計數、定位、量直徑或距離、邊緣缺陷、讀碼或讀文字），拖一個到畫布、接上影像、畫好區域即可。",
+        "open_toolbox": "開啟檢測任務工具",
     },
     "zh-Hans": {
         "recent_error": "最近一次错误（{ago} 秒前）：{text}",
@@ -84,8 +88,23 @@ MESSAGES: dict[str, dict[str, str]] = {
         "empty_reply": "LLM（{provider}）回了空白，已改用文档节录",
         "llm_failed": "LLM（{provider}）失败，已改用文档节录：{reason}",
         "no_screenshot": "离线规则模式看不到截图，只依文字回答",
+        "offline_toolbox": "尚未设置 AI 供应商，助手目前是离线规则模式。不用助手也能建立同样的检测：工具箱的“检测任务”分类有每一种检测方式的内置工具（检查有无、计数、定位、测直径或距离、边缘缺陷、读码或读文字），拖一个到画布、接上图像、画好区域即可。",
+        "open_toolbox": "打开检测任务工具",
     },
 }
+
+
+#: 像是在要求「幫我建／產生一條檢測」的句子（離線時要明確退化到工具箱）
+_BUILD_REQUEST = re.compile(r"建立|建一|產生|产生|生成|幫我做|帮我做|做一個|做一个|設計|设计|加一個|加一个|新增|\bbuild\b|\bcreate\b|\bgenerate\b|\bmake (me )?an?\b|\bdesign\b|\badd an?\b", re.IGNORECASE)
+
+
+def wants_build(message: str) -> bool:
+    return bool(_BUILD_REQUEST.search(message or ""))
+
+
+def toolbox_action(lang: Any) -> dict[str, Any]:
+    """離線退化：一顆「開啟檢測任務工具」的動作（編輯器裡開工具箱該分類，其他頁面前往工具庫）。"""
+    return {"kind": "open_toolbox", "category": "inspection", "label": msg(lang, "open_toolbox")}
 
 
 def msg(lang: Any, key: str, **kw: Any) -> str:
@@ -95,7 +114,7 @@ def msg(lang: Any, key: str, **kw: Any) -> str:
 #: 問答路徑最多幾回合工具呼叫（每回合可查多個），之後要求直接回答
 MAX_LOOKUP_TURNS = 4
 NL = chr(10)
-ACTION_KINDS = ("navigate", "focus_node", "open_tool")
+ACTION_KINDS = ("navigate", "focus_node", "open_tool", "open_toolbox")
 _ACTIONS_LINE = re.compile(r"^\s*ACTIONS:\s*(\[.*\])\s*$", re.MULTILINE | re.DOTALL)
 
 HELP_SYSTEM = """You are the documentation assistant for VisionSequence, a machine vision platform.
@@ -678,6 +697,8 @@ def validate_actions(raw: list[dict[str, Any]], context: dict[str, Any] | None =
             if not node or (node_ids is not None and node not in node_ids) or not ctx.get("flow_id"):
                 continue
             out.append({"kind": kind, "node": node, "flow_id": int(ctx["flow_id"]), "label": label or node})
+        elif kind == "open_toolbox":
+            out.append({"kind": kind, "category": str(a.get("category") or "inspection")[:40], "label": label or msg(ctx.get("lang"), "open_toolbox")})
     return out
 
 

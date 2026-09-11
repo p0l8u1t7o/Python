@@ -11,6 +11,13 @@
 它把指定影像的 ROI 裁下來存成**固定影像**，並加一個 `fixed_image` 節點（role=reference）接到 `target` 節點的圖片輸入埠
 （預設 `template_image`，平場校正給 `port="flat_image"`）。圖片跟著流程走、匯出會一起帶，不必也不該建立資產。
 
+## 與影像視窗互動（ask_user 的 roi／crop／preview）
+使用者的影像視窗就在旁邊，需要「人眼」的事不要用文字問：
+- `kind="roi"`：請使用者在影像上畫一個區域；帶 `node` 與 `param`（例如找圓的 `roi`）平台會直接把區域寫進那個參數，並在回答附上結果。
+- `kind="crop"`：請使用者框一塊當範本圖（預設 rect）；帶 `target`（要接的節點）與 `port`（預設 `template_image`）平台會裁下來接好線，相當於幫你呼叫了 `crop_template`。
+- `kind="preview"`：請使用者看某個節點的輸出（`node`、`port`），確認找到的是不是對的東西再往下。
+回答裡的 value 是標準 ROI dict（rect: x,y,w,h；circle: cx,cy,r；annulus: cx,cy,r_inner,r_outer）；平台套用過的動作會寫在「平台已依回答處理」，不要重複呼叫。
+
 ## 標準步驟
 
 1. `get_state`：確認需求、ROI、影像特徵、期望標記（哪些影像應判 OK／NG）與目前流程。

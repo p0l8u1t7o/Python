@@ -220,17 +220,22 @@ function ToolDetail({ def, fav, onToggleFavorite, onPick }: { def: ToolTypeDef |
   )
 }
 
-export function ToolPicker({ open, onClose, catalogue, favorites, onToggleFavorite, onPick }: {
+export function ToolPicker({ open, onClose, catalogue, favorites, onToggleFavorite, onPick, initialCategory }: {
   open: boolean
   onClose: () => void
   catalogue: ToolCatalogue | undefined
   favorites: string[]
   onToggleFavorite: (key: string) => void
   onPick: (def: ToolTypeDef) => void
+  /** 打開時先切到這個分類（助手的「開啟檢測任務工具」） */
+  initialCategory?: string
 }) {
   const { t } = useTranslation()
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('__all__')
+  useEffect(() => {
+    if (open && initialCategory) { setCategory(initialCategory); setQuery('') }
+  }, [open, initialCategory])
   const [selected, setSelected] = useState<string | null>(null)
   const mobile = useMediaQuery(MOBILE_QUERY)
 

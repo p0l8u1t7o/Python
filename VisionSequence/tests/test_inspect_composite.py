@@ -38,7 +38,8 @@ class InstanceBase(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        ensure_builtin_tools()
+        made = ensure_builtin_tools()
+        assert made["failed"] == 0, made  # 內建工具少一個，下面的斷言會變成難懂的「退回舊節點組」
 
     def setUp(self):
         composites.invalidate()

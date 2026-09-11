@@ -6,7 +6,7 @@ The AI assistant (in the sidebar, `/agent`) lets someone who does not know the t
 
 The chat panel in the bottom-right corner of every page: it answers questions from the documentation and the interface map, sees your situation, can read the live state, edits the flow you are looking at, tunes from batch data, and remembers what you tell it.
 
-The **AI assistant** button in the bottom-right corner is on every page (`AssistantDock` lives in the AppShell) and opens a chat panel that stays put: changing page does not close it. **Conversations belong to your account**: the panel keeps writing the current one to the server, ＋ starts a new one, and the history button lists the past ones to reopen or delete (fifty per person, sixty messages each), so the same conversation is there from another PC. One input box routes on **the current page's context**, so there is no hunting for the AI feature on each page:
+The **AI assistant** button in the bottom-right corner is on every page (`AssistantDock` lives in the AppShell) and opens a chat panel that stays put: changing page does not close it. The panel button in its header docks it as a **side panel** (the page makes room for it) or floats it back into the corner; the choice is remembered on this device. **Conversations belong to your account**: the panel keeps writing the current one to the server, ＋ starts a new one, and the history button lists the past ones to reopen or delete (fifty per person, sixty messages each), so the same conversation is there from another PC. One input box routes on **the current page's context**, so there is no hunting for the AI feature on each page:
 
 | Context (page) | What it does | Backend |
 |---|---|---|
@@ -192,6 +192,18 @@ Setting the working mode to "agentic" in the provider settings (or `VISION_AGENT
 **The provider shim** (`providers.complete_tools`) converts a neutral history — user text and images, assistant text and tool calls, tool results — into Claude tools (`tool_use` and `tool_result`, with consecutive results merged into one user message), OpenAI functions (`tool_calls` and `role=tool`), or Gemini `functionDeclarations` and `functionResponse` (the schema converted to the OpenAPI subset; Gemini 3's `functionCall` carries a `thoughtSignature`, and the native parts are kept and returned verbatim in the history, or the next call is a 400). OpenAI-compatible local endpoints use the functions format; where it is not supported the agentic loop fails, falls back to single-pass JSON generation, and then to the rule engine. `tool_choice` is always auto. The system prompt is the platform rules, the design principles, `skills/agentic.md` (how to work as an agent) and the condensed catalogue — stable and cacheable — and the first message carries up to four images and the relevant tool skills.
 
 Cost and latency: trial results come back as concise text with no images, action results are capped at 12k characters, and the budget is conservative. A long job never occupies the inspection thread pool (it runs on a background thread), and one process runs at most three jobs at once.
+
+### Working with the image window {#viewer-protocol}
+
+In agentic mode the assistant can hand the mouse to you instead of guessing coordinates. Three question kinds are answered on the image rather than in text: **Draw a region** (the assistant needs a search area; when it names the step and parameter, the platform writes the region straight into that parameter), **Crop a reference picture** (frame the locator mark or the good part; the platform crops it into a fixed image and connects it to the named step), and **Check a preview** (look at a step's output before the assistant goes on). The card appears in the assistant panel; **Draw on the image** switches the current page's image viewer into drawing mode, **Use this region** hands the region back, and **Send** delivers it. Drawing works on the flow editor and on the AI assistant page; on other pages the card says where to go.
+
+### Saving the result as a composite tool {#save-tool}
+
+On the assistant page the result card offers **Encapsulate as a composite tool** (on by default when you may edit the tool library). Saving then creates one composite tool from the inspection steps (its on-site parameters and regions are the tool's parameters) and a flow that contains the image source and one instance of that tool, and opens the flow. The tool appears in the tool library and the tool picker, so the next flow can reuse it. Untick the box to save the steps as an ordinary flow instead.
+
+### Without an AI provider {#offline-toolbox}
+
+When no provider is configured the assistant runs its offline rule engine and says so: generation, flow edits and task lists from a conversation still work within the rules, and every such reply carries an **Open the Inspection tasks tools** shortcut. In the flow editor it opens the tool picker on the Inspection tasks category, elsewhere it opens the tool library. The assistant page shows the same note above the steps.
 
 ### Actions that need your approval {#approval}
 

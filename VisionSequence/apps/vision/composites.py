@@ -780,3 +780,173 @@ def import_dependencies(user, doc: dict[str, Any], *, replace: bool = False) -> 
         except (ValidationError, Conflict) as exc:
             results.append({"key": str((dep or {}).get("key") or ""), "action": "failed", "error": str(exc)})
     return results
+
+
+# ---------------------------------------------------------------------------
+# 封裝：一組步驟 → 工具內部圖＋介面＋實例（與前端 lib/composite.ts 的 encapsulateSelection 同一套規則）
+# ---------------------------------------------------------------------------
+def encapsulate(graph: dict[str, Any], node_ids: list[str], key: str, label: str, *, expose_params: bool = False) -> dict[str, Any]:
+    """把 `node_ids` 那組步驟封裝成工具。回 {tool_graph, interface, instance, graph}：
+
+    - 對外輸入＝從外面接進來的資料埠＋沒接線也沒畫區域的必填輸入；控制線與隱含埠（`_` 開頭）照原樣接到實例上
+    - 對外輸出＝接到外面的埠＋有具名輸出名稱的埠（名稱搬到實例上，工具內部不留）
+    - `expose_params`：把內部步驟的教導參數與區域參數列成對外參數（助手產出的工具要能在工具頁調）
+    - `graph`＝原圖把那組步驟換成一個實例、邊重接
+    """
+    key = _clean_key(key)
+    chosen = {str(x) for x in node_ids}
+    nodes = [n for n in (graph.get("nodes") or []) if isinstance(n, dict)]
+    edges = [e for e in (graph.get("edges") or []) if isinstance(e, dict)]
+    inner = [n for n in nodes if str(n.get("id")) in chosen and n.get("type") != "note"]
+    if not inner:
+        raise ValidationError("Select at least one step to encapsulate", code="empty_selection")
+    inner_ids = {str(n["id"]) for n in inner}
+    by_id = {str(n.get("id")): n for n in nodes}
+
+    def src(e: dict[str, Any]) -> str:
+        return str(e.get("source"))
+
+    def tgt(e: dict[str, Any]) -> str:
+        return str(e.get("target"))
+
+    def tool_of(node: dict[str, Any]):
+        try:
+            return tools.get(str(node.get("type") or ""))
+        except tools.UnknownToolType:
+            return None
+
+    internal = [e for e in edges if src(e) in inner_ids and tgt(e) in inner_ids]
+    incoming = [e for e in edges if tgt(e) in inner_ids and src(e) not in inner_ids]
+    outgoing = [e for e in edges if src(e) in inner_ids and tgt(e) not in inner_ids]
+    fed = {(tgt(e), str(e.get("target_handle") or "")) for e in internal}
+
+    inputs: list[dict[str, Any]] = []
+    seen_in: set[str] = set()
+
+    def add_input(node_id: str, port: str) -> None:
+        k = f"{node_id}{PORT_SEP}{port}"
+        if k in seen_in:
+            return
+        seen_in.add(k)
+        inputs.append({"key": k, "exposed": True, "order": len(inputs)})
+
+    for e in incoming:
+        handle = str(e.get("target_handle") or "")
+        if handle == tools.FLOW_IN or handle.startswith("_"):
+            continue
+        add_input(tgt(e), handle)
+    for n in inner:
+        tool = tool_of(n)
+        params = n.get("params") if isinstance(n.get("params"), dict) else {}
+        for p in (tool.inputs if tool else ()):
+            if not p.required or p.key.startswith("_") or (str(n["id"]), p.key) in fed:
+                continue
+            if p.type == "region" and isinstance(params.get(p.key), dict):
+                continue
+            add_input(str(n["id"]), p.key)
+
+    outputs: list[dict[str, Any]] = []
+    seen_out: set[str] = set()
+    instance_aliases: list[dict[str, Any]] = []
+
+    def add_output(node_id: str, port: str) -> None:
+        k = f"{node_id}{PORT_SEP}{port}"
+        if k in seen_out:
+            return
+        seen_out.add(k)
+        outputs.append({"key": k, "exposed": True, "order": len(outputs)})
+
+    def first_output(node_id: str) -> str:
+        tool = tool_of(by_id.get(node_id) or {})
+        return tool.outputs[0].key if tool and tool.outputs else ""
+
+    for e in outgoing:
+        handle = str(e.get("source_handle") or "") or first_output(src(e))
+        if handle:
+            add_output(src(e), handle)
+    for n in inner:
+        for port, alias in tools.output_aliases(n).items():
+            add_output(str(n["id"]), port)
+            instance_aliases.append({"key": f"{n['id']}{PORT_SEP}{port}", "alias": alias})
+
+    params_spec: list[dict[str, Any]] = []
+    if expose_params:
+        used_alias: set[str] = set()
+        for n in inner:
+            tool = tool_of(n)
+            node_params = n.get("params") if isinstance(n.get("params"), dict) else {}
+            for p in (tool.params if tool else ()):
+                if not (p.teach or p.kind == "roi"):
+                    continue
+                rule = p.visible_when if isinstance(p.visible_when, dict) else None
+                if rule and isinstance(rule.get("param"), str) and isinstance(rule.get("in"), list) and node_params.get(rule["param"], next((d.default for d in tool.params if d.key == rule["param"]), None)) not in rule["in"]:
+                    continue  # 目前設定下看不到的參數不對外（門檻方式是 fixed 就不會有自適應的區塊大小）
+                alias = p.label
+                if alias in used_alias:
+                    alias = f"{n.get('label') or n['id']} {p.label}"
+                used_alias.add(alias)
+                entry: dict[str, Any] = {"key": f"{n['id']}{PORT_SEP}{p.key}", "alias": alias, "order": len(params_spec)}
+                if p.teach:
+                    entry["teach"] = True
+                params_spec.append(entry)
+
+    def pos(n: dict[str, Any]) -> tuple[float, float]:
+        p = n.get("position") if isinstance(n.get("position"), dict) else {}
+        return float(p.get("x") or 0), float(p.get("y") or 0)
+
+    min_x = min(pos(n)[0] for n in inner)
+    min_y = min(pos(n)[1] for n in inner)
+    tool_nodes = []
+    for n in inner:
+        c = copy.deepcopy(n)
+        c.pop("meta", None)
+        c.pop("selected", None)
+        x, y = pos(n)
+        c["position"] = {"x": x - min_x + 40, "y": y - min_y + 40}
+        _strip_aliases(c)
+        tool_nodes.append(c)
+    tool_graph = {"nodes": tool_nodes, "edges": [copy.deepcopy(e) for e in internal]}
+
+    existing = {str(n.get("id")) for n in nodes}
+    inst_id = key
+    counter = 2
+    while inst_id in existing:
+        inst_id = f"{key}_{counter}"
+        counter += 1
+    instance: dict[str, Any] = {
+        "id": inst_id, "type": type_key(key), "label": label, "params": {},
+        "position": {"x": round(sum(pos(n)[0] for n in inner) / len(inner)), "y": round(sum(pos(n)[1] for n in inner) / len(inner))},
+    }
+    if instance_aliases:
+        instance[tools.INTERFACE_KEY] = {"outputs": instance_aliases}
+
+    rewired: list[dict[str, Any]] = []
+    seen_edges: set[tuple[str, str, str, str]] = set()
+
+    def push(e: dict[str, Any]) -> None:
+        sig = (str(e.get("source")), str(e.get("source_handle") or ""), str(e.get("target")), str(e.get("target_handle") or ""))
+        if sig in seen_edges:
+            return
+        seen_edges.add(sig)
+        rewired.append(e)
+
+    for e in edges:
+        s_in, t_in = src(e) in inner_ids, tgt(e) in inner_ids
+        if s_in and t_in:
+            continue
+        if not s_in and not t_in:
+            push(copy.deepcopy(e))
+            continue
+        if t_in:
+            handle = str(e.get("target_handle") or "")
+            target_handle = handle if handle == tools.FLOW_IN or handle.startswith("_") else f"{tgt(e)}{PORT_SEP}{handle}"
+            push({"id": f"{src(e)}-{inst_id}-{target_handle}", "source": src(e), "source_handle": e.get("source_handle"), "target": inst_id, "target_handle": target_handle})
+            continue
+        handle = str(e.get("source_handle") or "") or first_output(src(e))
+        push({"id": f"{inst_id}-{handle}-{tgt(e)}-{e.get('target_handle') or ''}", "source": inst_id, "source_handle": f"{src(e)}{PORT_SEP}{handle}", "target": tgt(e), "target_handle": e.get("target_handle")})
+
+    interface: dict[str, Any] = {"inputs": inputs, "outputs": outputs}
+    if params_spec:
+        interface["params"] = params_spec
+    rest = [copy.deepcopy(n) for n in nodes if str(n.get("id")) not in inner_ids]
+    return {"tool_graph": tool_graph, "interface": interface, "instance": instance, "graph": {**graph, "nodes": [*rest, instance], "edges": rewired}}

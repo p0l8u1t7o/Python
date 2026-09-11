@@ -89,8 +89,11 @@ def initial_history(state: actions.AgentState) -> list[dict[str, Any]]:
     return [{"role": "user", "content": parts}]
 
 
-def answer_turn(answers: list[dict[str, Any]]) -> dict[str, Any]:
-    return {"role": "user", "content": [{"type": "text", "text": "使用者回答：" + json.dumps(answers, ensure_ascii=False) + "\n請依回答繼續；完成時呼叫 finish。"}]}
+def answer_turn(answers: list[dict[str, Any]], notes: list[str] | None = None) -> dict[str, Any]:
+    text = "使用者回答：" + json.dumps(answers, ensure_ascii=False)
+    if notes:
+        text += "\n平台已依回答處理（不必再做一次）：\n- " + "\n- ".join(notes)
+    return {"role": "user", "content": [{"type": "text", "text": text + "\n請依回答繼續；完成時呼叫 finish。"}]}
 
 
 def run_loop(settings: providers.AgentSettings, state: actions.AgentState, history: list[dict[str, Any]], budget: Budget | None = None, *,

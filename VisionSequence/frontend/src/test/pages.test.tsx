@@ -374,6 +374,27 @@ describe('pages render (smoke)', () => {
     expect(await screen.findByTestId('agent-generate')).toBeDisabled()
     expect(screen.getByTestId('agent-prompt')).toBeInTheDocument()
     await waitFor(() => expect(screen.getByText('Offline rule engine')).toBeInTheDocument())
+    // 離線時明確退化到工具箱：提示＋工具庫入口
+    expect(screen.getByTestId('agent-offline-toolbox')).toHaveTextContent('Inspection tasks category')
+    expect(screen.getByTestId('agent-open-tool-library')).toHaveAttribute('href', '/tools')
+  })
+
+  it('AssistantDock docks as a side panel and the shell makes room for it', async () => {
+    const { AssistantDock } = await import('@/components/assistant/AssistantDock')
+    const { assistantLayoutState, resetAssistantLayout } = await import('@/lib/assistantLayout')
+    resetAssistantLayout()
+    renderPage(<AssistantDock />, { route: '/flows' })
+    fireEvent.click(screen.getByTestId('assistant-toggle'))
+    expect(screen.getByTestId('assistant-dock')).toHaveAttribute('data-layout', 'float')
+    fireEvent.click(screen.getByTestId('assistant-layout-toggle'))
+    expect(screen.getByTestId('assistant-dock')).toHaveAttribute('data-layout', 'side')
+    expect(assistantLayoutState()).toEqual({ layout: 'side', open: true })
+    expect(localStorage.getItem('vs.assistant.layout')).toBe('side')
+    // 側欄模式下右下角的浮動鈕讓位給面板；關閉面板後再出現
+    expect(screen.getByTestId('assistant-toggle')).toHaveClass('hidden')
+    fireEvent.click(screen.getByTestId('assistant-layout-toggle'))
+    expect(screen.getByTestId('assistant-dock')).toHaveAttribute('data-layout', 'float')
+    resetAssistantLayout()
   })
 
   it('CalibrationPage offers the five ways and calculates from a board', async () => {

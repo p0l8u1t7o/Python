@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import copy
 import logging
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -241,44 +242,60 @@ def build_tool(spec: BuiltinSpec) -> tuple[dict[str, Any], dict[str, Any], str]:
 
 
 def ensure_builtin_tools() -> dict[str, int]:
-    """沒有就建、定義變了就更新；一個壞掉不影響其他。回 {created, updated, unchanged, failed}。"""
+    """沒有就建、定義變了就更新；一個壞掉不影響其他（SQLite 短暫鎖住會重試）。回 {created, updated, unchanged, failed}。"""
+    from django.db import OperationalError
+
+    counts = {"created": 0, "updated": 0, "unchanged": 0, "failed": 0}
+    for spec in SPECS:
+        for attempt in range(3):
+            try:
+                _ensure_one(spec, counts)
+                break
+            except OperationalError as exc:
+                # SQLite 短暫鎖住（另一條執行緒正在寫）：等一下再試，不要讓一個內建工具在這次啟動消失
+                if "locked" not in str(exc).lower() or attempt == 2:
+                    log.warning("內建複合工具 %s 建不起來", spec.key, exc_info=True)
+                    counts["failed"] += 1
+                    break
+                time.sleep(0.5)
+            except Exception:  # noqa: BLE001 - 一個任務定義壞了不該讓其他內建工具消失
+                log.warning("內建複合工具 %s 建不起來", spec.key, exc_info=True)
+                counts["failed"] += 1
+                break
+    composites.invalidate()
+    return counts
+
+
+def _ensure_one(spec: BuiltinSpec, counts: dict[str, int]) -> None:
     from django.db import transaction
 
     from apps.vision.models import CompositeTool
 
-    counts = {"created": 0, "updated": 0, "unchanged": 0, "failed": 0}
-    for spec in SPECS:
-        try:
-            graph, interface, description = build_tool(spec)
-            payload = {"key": spec.key, "label": spec.label, "description": description, "category": CATEGORY, "icon": spec.icon, "graph": graph, "interface": interface}
-            row = CompositeTool.objects.select_related("flow").filter(key=spec.key).first()
-            if row is None:
-                composites.create(None, payload, builtin=True)
-                counts["created"] += 1
-                continue
-            with transaction.atomic():
-                changed = False
-                for field_name in ("label", "description", "category", "icon"):
-                    if getattr(row, field_name) != payload[field_name]:
-                        setattr(row, field_name, payload[field_name])
-                        changed = True
-                if row.interface != interface:
-                    row.interface = interface
-                    changed = True
-                if not row.builtin:
-                    row.builtin = True
-                    changed = True
-                clean = composites._clean_graph(spec.key, copy.deepcopy(graph))
-                if (row.flow.graph or {}) != clean:
-                    row.flow.graph = clean
-                    row.flow.version += 1
-                    row.flow.save()
-                    changed = True
-                if changed:
-                    row.save()
-            counts["updated" if changed else "unchanged"] += 1
-        except Exception:  # noqa: BLE001 - 一個任務定義壞了不該讓其他內建工具消失
-            log.warning("內建複合工具 %s 建不起來", spec.key, exc_info=True)
-            counts["failed"] += 1
-    composites.invalidate()
-    return counts
+    graph, interface, description = build_tool(spec)
+    payload = {"key": spec.key, "label": spec.label, "description": description, "category": CATEGORY, "icon": spec.icon, "graph": graph, "interface": interface}
+    row = CompositeTool.objects.select_related("flow").filter(key=spec.key).first()
+    if row is None:
+        composites.create(None, payload, builtin=True)
+        counts["created"] += 1
+        return
+    with transaction.atomic():
+        changed = False
+        for field_name in ("label", "description", "category", "icon"):
+            if getattr(row, field_name) != payload[field_name]:
+                setattr(row, field_name, payload[field_name])
+                changed = True
+        if row.interface != interface:
+            row.interface = interface
+            changed = True
+        if not row.builtin:
+            row.builtin = True
+            changed = True
+        clean = composites._clean_graph(spec.key, copy.deepcopy(graph))
+        if (row.flow.graph or {}) != clean:
+            row.flow.graph = clean
+            row.flow.version += 1
+            row.flow.save()
+            changed = True
+        if changed:
+            row.save()
+    counts["updated" if changed else "unchanged"] += 1

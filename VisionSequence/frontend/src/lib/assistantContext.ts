@@ -7,7 +7,7 @@
 import { useEffect, useSyncExternalStore } from 'react'
 
 import type { Suggestion } from '@/lib/batch'
-import type { AssistantWorkState, FlowGraph, Region, RunReport } from '@/lib/types'
+import type { AssistantWorkState, FlowGraph, Region, RoiShape, RunReport } from '@/lib/types'
 
 const progressListeners = new Set<(flowId: number, state: AssistantWorkState, decision?: string) => void>()
 /** 只有目前綁定該流程的對話接收成功動作的摘要，不攜帶圖或影像。 */
@@ -52,6 +52,12 @@ export interface AssistantContext {
   /** 套用前先等待頁面內尚未完成的欄位變更。 */
   prepareGraph?: () => Promise<void>
   runInspection?: () => Promise<void>
+  /** 影像視窗互動協定：請使用者在這一頁的影像上畫一個區域（取消回 null） */
+  requestRegion?: (shapes?: RoiShape[]) => Promise<Region | null>
+  /** 影像視窗互動協定：顯示某個節點（或整條流程）的預覽 */
+  showPreview?: (request: { node?: string; port?: string; image?: number }) => Promise<void>
+  /** 流程編輯器：開工具箱（可指定分類，離線退化到「檢測任務」） */
+  openToolPicker?: (category?: string) => void
 }
 
 let current: AssistantContext | null = null

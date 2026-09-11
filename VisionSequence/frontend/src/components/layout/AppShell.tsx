@@ -13,6 +13,7 @@ import { ChangePasswordModal } from '@/components/auth/ChangePasswordModal'
 import { BrandMark, LoadingState } from '@/components/ui'
 import { LockBanner } from '@/components/auth/LockBanner'
 import { GlobalSearch } from '@/components/layout/GlobalSearch'
+import { SIDE_PANEL_WIDTH, useAssistantLayout } from '@/lib/assistantLayout'
 import { useLockEvents } from '@/lib/flowStream'
 import { MOBILE_QUERY, NARROW_QUERY, useMediaQuery } from '@/lib/useMediaQuery'
 import { useCapacity, useFlow } from '@/lib/queries'
@@ -274,6 +275,9 @@ export function AppShell() {
     if (group) setOpenGroups((prev) => (prev.includes(group.key) ? prev : [...prev, group.key]))
   }, [pathname])
   const narrow = collapsed && !mobile
+  // 助手展開成右側面板時，內容區讓出面板的寬度（手機寬度面板蓋滿整個畫面，不讓）
+  const assistant = useAssistantLayout()
+  const sideOpen = assistant.open && assistant.layout === 'side' && !mobile
   // 鎖定事件：流程串流會濾掉沒有 flow_id 的事件，所以這裡另開一條只聽 lock 的全域串流。
   useLockEvents(auth.authenticated)
   useEffect(() => {
@@ -368,7 +372,7 @@ export function AppShell() {
           {!narrow && auth.me?.version ? <span className="ml-auto pr-1 font-mono text-[10px] text-sidebar-muted" data-testid="app-version">v{auth.me.version}</span> : null}
         </button>
       </nav>
-      <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <main className="flex min-w-0 flex-1 flex-col overflow-hidden" style={sideOpen ? { paddingRight: SIDE_PANEL_WIDTH } : undefined} data-assistant-side={sideOpen ? 'true' : undefined}>
         <header className="flex h-12 shrink-0 items-center gap-3 border-b border-line bg-surface px-3" data-testid="topbar">
           <button type="button" className="btn-icon" onClick={() => (mobile ? setMobileOpen((v) => !v) : setCollapsed((v) => !v))} aria-expanded={mobile ? mobileOpen : !collapsed} title={mobile ? t('nav.menu') : collapsed ? t('nav.expand') : t('nav.collapse')} aria-label={mobile ? t('nav.menu') : collapsed ? t('nav.expand') : t('nav.collapse')} data-testid="topbar-toggle">
             <Menu size={18} />

@@ -68,7 +68,7 @@ import { useFlowStream, type StreamEvent } from '@/lib/flowStream'
 import { DECORATION_TYPES, checkConnection, graphProblems } from '@/lib/graphValidation'
 import { fetchCompositeUsage, useAssetMutations, useClearRecent, useCompositeToolMutations, useContinuous, useFlow, useFlowMutations, usePreviewFlow, useRecentRuns, useRecipes, useScratchImage, useSources, useToolTypes, type FlowPatch } from '@/lib/queries'
 import { graphOutputNames } from '@/lib/portLayout'
-import { isImageRef, type FlowGraph, type GraphEdge, type GraphNode, type NodeInterface, type NodeReport, type Overlay, type Region, type RunReport, type ToolTypeDef } from '@/lib/types'
+import { isImageRef, type FlowGraph, type GraphEdge, type GraphNode, type NodeInterface, type NodeReport, type Overlay, type Region, type RoiShape, type RunReport, type ToolTypeDef } from '@/lib/types'
 import { isLockHolder, useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
 
@@ -304,6 +304,10 @@ function EditorInner({ flowId }: { flowId: number }) {
     return () => document.removeEventListener('keydown', onKey)
   }, [drawer])
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [pickerCategory, setPickerCategory] = useState<string | undefined>(undefined)
+  //: 助手要求在影像上畫一個區域（影像視窗互動協定）：畫完按「使用」才回給助手
+  const [regionRequest, setRegionRequest] = useState<{ shapes?: RoiShape[]; resolve: (region: Region | null) => void } | null>(null)
+  const [requestedRegion, setRequestedRegion] = useState<Region | null>(null)
   const [favorites, setFavorites] = useState<string[]>(readFavorites)
   const toggleFavorite = useCallback((key: string) => {
     setFavorites((old) => {
@@ -1089,12 +1093,16 @@ function EditorInner({ flowId }: { flowId: number }) {
       last_run: describeReport(activeRun, types),
     }
   }
+  const doPreviewRef = useRef<(untilNode?: string) => Promise<void>>(async () => undefined)
   useRegisterAssistantContext({
     kind: 'flow_editor', flowId, flowName: meta.name, imageRef: lastSourceRef, execLocked, getGraph: currentGraph,
     applyGraph: (g, why) => { pushHistory(); restoreGraph(g); toast.success(why ? `${t('agent.applied')}: ${why}` : t('agent.applied')) },
     describe: () => snapshotRef.current(), focusNode: (id) => setSelectedId(id),
     showProposals: setProposals,
-  }, [flowId, meta.name, lastSourceRef, execLocked])
+    openToolPicker: readOnly ? undefined : (category) => { setPickerCategory(category); setPickerOpen(true) },
+    requestRegion: (shapes) => new Promise((resolve) => { setRequestedRegion(null); setRegionRequest({ shapes, resolve }) }),
+    showPreview: async ({ node }) => { await doPreviewRef.current(node); if (node) setViewMode('output') },
+  }, [flowId, meta.name, lastSourceRef, execLocked, readOnly])
   /** 固定的來源影像：暫存影像優先，其次「用上次影像重跑」。 */
   const pinnedRef = scratch?.ref ?? (reuseImage ? lastSourceRef : null)
 
@@ -1113,6 +1121,7 @@ function EditorInner({ flowId }: { flowId: number }) {
       toast.error(errorMessage(error))
     }
   }, [preview, flowId, currentGraph, pinnedRef, setPreviewRun, toast, t])
+  doPreviewRef.current = doPreview
 
   const clearSequenceTimer = useCallback(() => {
     if (sequenceTimer.current === undefined) return
@@ -1574,7 +1583,14 @@ function EditorInner({ flowId }: { flowId: number }) {
   if (catalogue.isError || flow.isError) return <ErrorState error={flow.error ?? catalogue.error} onRetry={() => void flow.refetch()} />
 
   const isContinuous = Boolean(flow.data?.continuous)
-  const viewerRoiProps = roiParam && selected
+  const finishRegionRequest = (region: Region | null) => {
+    regionRequest?.resolve(region)
+    setRegionRequest(null)
+    setRequestedRegion(null)
+  }
+  const viewerRoiProps = regionRequest
+    ? { roi: requestedRegion, roiShapes: regionRequest.shapes?.length ? regionRequest.shapes : undefined, onRoiChange: setRequestedRegion }
+    : roiParam && selected
     ? { roi: roiValue, roiShapes: roiParam.shapes.length ? roiParam.shapes : undefined, onRoiChange: (region: Region) => patchNode(selected.id, { params: { ...(selected.params ?? {}), [roiParam.key]: region } }) }
     : templateKey
       ? { roi: templateRegion, roiShapes: ['rect' as const], onRoiChange: setTemplateRegion }
@@ -1753,6 +1769,13 @@ function EditorInner({ flowId }: { flowId: number }) {
                     {...viewerRoiProps}
                   />
                   {split ? <span className="pointer-events-none absolute left-2 top-16 rounded bg-black/50 px-1.5 py-0.5 text-[11px] text-white/90">{t('editor.viewer.before')}</span> : null}
+                  {regionRequest ? (
+                    <div className="absolute left-2 top-12 z-30 flex flex-wrap items-center gap-2 rounded-lg border border-brand bg-surface/95 px-2 py-1 text-xs shadow backdrop-blur" data-testid="viewer-region-request">
+                      <span>{t('assistant.viewer.drawHere')}</span>
+                      <Button size="xs" variant="primary" disabled={!requestedRegion} onClick={() => finishRegionRequest(requestedRegion)} data-testid="viewer-region-use">{t('assistant.viewer.use')}</Button>
+                      <Button size="xs" onClick={() => finishRegionRequest(null)} data-testid="viewer-region-cancel">{t('common.cancel')}</Button>
+                    </div>
+                  ) : null}
                 </div>
                 {split && outputView ? (
                   <div className="relative min-w-0 flex-1 border-l border-line" data-testid="viewer-after">
@@ -2119,7 +2142,7 @@ function EditorInner({ flowId }: { flowId: number }) {
           </div>
         }
       />
-      <ToolPicker open={pickerOpen} onClose={() => setPickerOpen(false)} catalogue={paletteCatalogue}
+      <ToolPicker open={pickerOpen} onClose={() => { setPickerOpen(false); setPickerCategory(undefined) }} catalogue={paletteCatalogue} initialCategory={pickerCategory}
         favorites={favorites} onToggleFavorite={toggleFavorite} onPick={insertAtCenter} />
       <TemplateGallery open={galleryOpen} onClose={() => setGalleryOpen(false)} mode="load" prefix={templatePrefix} onPick={loadTemplate} />
       <RecipeDrawer open={recipesOpen} onClose={() => setRecipesOpen(false)} flowId={flowId} readOnly={readOnly} />

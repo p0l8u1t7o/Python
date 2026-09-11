@@ -4,7 +4,7 @@
  * 縮圖列標 OK/NG）→ 口語回饋微調 → 存成流程。右上「AI 供應商」可設定自己的供應商與金鑰。
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { BookOpen, Bot, HelpCircle, History, Loader2, Plus, RotateCcw, Save, Settings2, Sparkles, Square, ThumbsDown, ThumbsUp, Trash2, Upload, Wand2, X } from 'lucide-react'
@@ -15,10 +15,14 @@ import { Page } from '@/components/layout/AppShell'
 import { TemplateThumb } from '@/components/templates/TemplateGallery'
 import { Badge, Button, Card, Modal, PageHeader, Select, StatusBadge, TextArea, TextInput } from '@/components/ui'
 import { ImageViewer } from '@/components/viewer/ImageViewer'
+import { VIEWER_KINDS } from '@/components/assistant/ViewerRequest'
 import { useAgentJob } from '@/lib/agentJob'
 import { api, imageUrl } from '@/lib/api'
+import { useRegisterAssistantContext } from '@/lib/assistantContext'
+import { slugKey } from '@/lib/composite'
 import { errorMessage } from '@/lib/errors'
-import type { FlowGraph, Overlay, Region, RunReport } from '@/lib/types'
+import type { FlowGraph, Overlay, Region, RoiShape, RunReport } from '@/lib/types'
+import { useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
 
 interface UploadedImage {
@@ -451,6 +455,14 @@ export function AgentPage() {
   const [result, setResult] = useState<AgentResult | null>(null)
   const [feedback, setFeedback] = useState('')
   const [flowName, setFlowName] = useState('')
+  //: 存檔時把步驟封裝成複合工具（P4）：工具名稱／key，key 沒動過就跟著名稱
+  const auth = useAuth()
+  const [asTool, setAsTool] = useState(true)
+  const [toolLabel, setToolLabel] = useState('')
+  const [toolKey, setToolKey] = useState('')
+  const [keyTouched, setKeyTouched] = useState(false)
+  //: 助手要求在影像上畫一個區域（影像視窗互動協定）
+  const [regionRequest, setRegionRequest] = useState<{ shapes?: RoiShape[]; resolve: (region: Region | null) => void } | null>(null)
   const [busy, setBusy] = useState<BusyKind | null>(null)
   /** 每張影像的期望判定（OK／NG）：候選排名與自動調參的依據 */
   const [labels, setLabels] = useState<Record<number, ImageLabel>>({})
@@ -471,6 +483,24 @@ export function AgentPage() {
 
   const image = images[active] ?? null
   const activeReport = result?.reports[active] ?? null
+  const stateRef = useRef({ images, active, result, drawing })
+  stateRef.current = { images, active, result, drawing }
+  useRegisterAssistantContext({
+    kind: 'agent', route: '/agent',
+    requestRegion: (shapes) => new Promise((resolve) => { setDrawing(null); setRegionRequest({ shapes, resolve }) }),
+    showPreview: async () => {
+      const { images: list, active: idx, result: current } = stateRef.current
+      if (!current || !list.length) return
+      const r = await api.post<AgentResult>('/vision/agent/run', { images: list.map((im) => im.ref), graph: current.graph, main: idx })
+      setResult({ ...current, report: r.report, reports: r.reports })
+      setShowOverlays(true)
+    },
+  }, [])
+  const finishRegionRequest = (region: Region | null) => {
+    regionRequest?.resolve(region)
+    setRegionRequest(null)
+    setDrawing(null)
+  }
 
   const overlays = useMemo<Overlay[]>(() => {
     const list: Overlay[] = rois
@@ -562,7 +592,8 @@ export function AgentPage() {
       }
       setBusy(null)
     } else if (j.status === 'needs_input') {
-      const questions = j.questions.filter((q) => q.kind !== 'confirm' && !q.action) as Question[]
+      // 影像視窗互動題（roi／crop／preview）由時間軸的互動卡處理，文字題才進問題卡
+      const questions = j.questions.filter((q) => q.kind !== 'confirm' && !q.action && !VIEWER_KINDS.has(q.kind)) as Question[]
       setClarify(questions.length ? { ready: false, questions, summary: '', intent: '', provider: j.provider, fromJob: true } : null)
       setBusy(null)
     } else if (j.status === 'cancelled') {
@@ -730,11 +761,21 @@ export function AgentPage() {
     toast.success(t('agent.restored', { id: s.id }))
   }
 
+  const canSaveTool = auth.can('tools.edit') && Boolean(result?.graph.nodes.some((node) => !['image_source', 'multi_light_grab', 'stereo_grab'].includes(node.type) && !(node.type === 'fixed_image' && (node.params?.role ?? 'acquire') === 'acquire') && node.type !== 'note'))
+  const effectiveToolLabel = toolLabel.trim() || flowName.trim() || t('agent.defaultFlowName')
+  const effectiveToolKey = keyTouched && toolKey.trim() ? toolKey.trim() : slugKey(effectiveToolLabel, 'ai_tool')
   async function saveFlow() {
     if (!result) return
     setBusy('save')
     try {
       const name = flowName.trim() || t('agent.defaultFlowName')
+      if (asTool && canSaveTool) {
+        // 封裝成複合工具：取像以外的步驟變成工具庫裡的一個工具，新流程用它
+        const r = await api.post<{ tool: { id: number; key: string }; flow_id: number }>('/vision/agent/save-tool', { graph: result.graph, key: effectiveToolKey, label: effectiveToolLabel, description: result.rationale, flow_name: name, session_id: result.session_id ?? null })
+        toast.success(t('agent.savedTool', { key: r.tool.key }))
+        navigate(`/flows/${r.flow_id}`)
+        return
+      }
       const r = await api.post<{ id: number }>('/vision/flows', { name, description: result.rationale, graph: result.graph })
       if (result.session_id) void api.patch(`/vision/agent/sessions/${result.session_id}`, { flow_id: r.id }).catch(() => undefined)
       toast.success(t('agent.saved'))
@@ -771,6 +812,12 @@ export function AgentPage() {
         <div className="flex min-h-0 flex-1 gap-4">
           {/* 左：步驟 */}
           <div className="w-full shrink-0 space-y-3 overflow-y-auto pb-4 pr-1 md:w-[380px]">
+            {info.data && !info.data.llm ? (
+              <div className="rounded-md border border-line bg-surface-muted px-3 py-2 text-xs" data-testid="agent-offline-toolbox">
+                <span>{t('agent.offlineToolbox')} </span>
+                <Link to="/tools" className="text-brand hover:underline" data-testid="agent-open-tool-library">{t('agent.openToolLibrary')}</Link>
+              </div>
+            ) : null}
             <Card className="space-y-2 p-3">
               <p className="text-xs font-semibold text-muted">1 · {t('agent.stepImage')}</p>
               <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { void onUpload(e.target.files); e.target.value = '' }} />
@@ -965,6 +1012,21 @@ export function AgentPage() {
                     {t('agent.refine')}
                   </Button>
                 </div>
+                {canSaveTool ? (
+                  <div className="space-y-1.5 border-t border-line pt-2" data-testid="agent-save-tool">
+                    <label className="flex items-center gap-2 text-xs">
+                      <input type="checkbox" checked={asTool} onChange={(e) => setAsTool(e.target.checked)} data-testid="agent-save-as-tool" />
+                      <span>{t('agent.saveAsTool')}</span>
+                    </label>
+                    <p className="text-[11px] text-subtle">{t('agent.saveAsToolHint')}</p>
+                    {asTool ? (
+                      <div className="flex gap-2">
+                        <TextInput className="flex-1 text-xs" placeholder={t('agent.toolLabel')} aria-label={t('agent.toolLabel')} value={toolLabel} onChange={(e) => setToolLabel(e.target.value)} data-testid="agent-tool-label" />
+                        <TextInput className="w-40 font-mono text-xs" placeholder={t('agent.toolKey')} aria-label={t('agent.toolKey')} value={keyTouched ? toolKey : effectiveToolKey} onChange={(e) => { setKeyTouched(true); setToolKey(e.target.value) }} data-testid="agent-tool-key" />
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div className="flex gap-2 border-t border-line pt-2">
                   <TextInput className="flex-1 text-xs" placeholder={t('agent.flowName')} value={flowName} onChange={(e) => setFlowName(e.target.value)} />
                   <Button variant="primary" disabled={busy !== null}
@@ -988,7 +1050,7 @@ export function AgentPage() {
                 overlays={overlays}
                 roi={drawing}
                 onRoiChange={setDrawing}
-                roiShapes={['rect', 'rotated_rect', 'circle', 'annulus', 'polygon', 'line']}
+                roiShapes={regionRequest?.shapes?.length ? regionRequest.shapes : ['rect', 'rotated_rect', 'circle', 'annulus', 'polygon', 'line']}
                 toolbar
                 className="h-full w-full"
                 badge={activeReport ? { text: activeReport.status.toUpperCase(), tone: tone(activeReport.status) } : null}
@@ -1001,6 +1063,13 @@ export function AgentPage() {
                 <p className="text-sm">{t('agent.emptyState')}</p>
               </button>
             )}
+            {regionRequest ? (
+              <div className="absolute left-2 top-2 z-30 flex flex-wrap items-center gap-2 rounded-lg border border-brand bg-surface/95 px-2 py-1 text-xs shadow backdrop-blur" data-testid="viewer-region-request">
+                <span>{t('assistant.viewer.drawHere')}</span>
+                <Button size="xs" variant="primary" disabled={!drawing} onClick={() => finishRegionRequest(drawing)} data-testid="viewer-region-use">{t('assistant.viewer.use')}</Button>
+                <Button size="xs" onClick={() => finishRegionRequest(null)} data-testid="viewer-region-cancel">{t('common.cancel')}</Button>
+              </div>
+            ) : null}
             {image ? (
               <div className="pointer-events-none absolute left-2 top-10 rounded bg-black/50 px-2 py-1 text-[11px] text-white/90">
                 {t('agent.imageN', { n: active + 1 })} · {image.name} · {t('agent.roiCount', { count: rois.filter((r) => r.image === active).length })}
