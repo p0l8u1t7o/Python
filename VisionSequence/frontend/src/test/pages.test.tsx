@@ -196,6 +196,36 @@ describe('pages render (smoke)', () => {
     await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/vision/flows/1', expect.objectContaining({ continuous_interval_ms: 500, stop_on_ng: true, timeout_s: 0, concurrency: 1 })))
   })
 
+  it('FlowEditorPage opens the side panes as drawers on narrow screens', async () => {
+    // Suggest5 第 2 點：< lg 右側面板、< md 左側工具區整個消失；現在工具列有三顆入口以抽屜開啟
+    const { FlowEditorPage } = await import('@/pages/FlowEditorPage')
+    const { clearSession } = await import('@/lib/flowDraft')
+    clearSession(1)
+    const original = window.matchMedia
+    const stub = (query: string) => ({ matches: /max-width: (767|1023)px/.test(query), media: query, onchange: null, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false })
+    window.matchMedia = stub as unknown as typeof window.matchMedia
+    try {
+      renderDataPage(<FlowEditorPage />, '/flows/1', '/flows/:flowId')
+      await screen.findByTestId('editor-toolbar')
+      expect(screen.getByTestId('inspector-pane')).not.toHaveAttribute('data-drawer')
+      fireEvent.click(screen.getByTestId('editor-drawer-settings'))
+      expect(screen.getByTestId('inspector-pane')).toHaveAttribute('data-drawer', 'open')
+      expect(screen.getByText('Flow settings')).toBeInTheDocument()
+      fireEvent.keyDown(document, { key: 'Escape' })
+      expect(screen.getByTestId('inspector-pane')).not.toHaveAttribute('data-drawer')
+      fireEvent.click(screen.getByTestId('editor-drawer-results'))
+      expect(screen.getByTestId('inspector-pane')).toHaveAttribute('data-drawer', 'open')
+      fireEvent.click(screen.getByTestId('editor-drawer-backdrop'))
+      expect(screen.getByTestId('inspector-pane')).not.toHaveAttribute('data-drawer')
+      fireEvent.click(screen.getByTestId('editor-drawer-tools'))
+      expect(screen.getByTestId('tools-pane')).toHaveAttribute('data-drawer', 'open')
+      fireEvent.click(screen.getByTestId('editor-drawer-close'))
+      expect(screen.getByTestId('tools-pane')).not.toHaveAttribute('data-drawer')
+    } finally {
+      window.matchMedia = original
+    }
+  })
+
   it('InspectPage successful removal retains the source and unrelated advanced steps', async () => {
     const { InspectPage } = await import('@/pages/InspectPage')
     const { api } = await import('@/lib/api')

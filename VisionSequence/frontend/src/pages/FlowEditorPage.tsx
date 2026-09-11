@@ -26,7 +26,8 @@ import {
   type Node,
   type NodeChange,
 } from '@xyflow/react'
-import { Camera, Check, ChevronDown, ChevronUp, Columns2, FileText, Layers, LayoutGrid, RotateCcw } from 'lucide-react'
+import { Camera, Check, ChevronDown, ChevronUp, Columns2, FileText, Layers, LayoutGrid, RotateCcw, X } from 'lucide-react'
+import { MOBILE_QUERY, useMediaQuery } from '@/lib/useMediaQuery'
 
 import { EditorToolbar } from '@/components/editor/EditorToolbar'
 import { FlowCanvas, readInteractionMode, storeInteractionMode, type InteractionMode } from '@/components/editor/FlowCanvas'
@@ -67,6 +68,18 @@ import { isLockHolder, useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
 
 const LAYOUT_KEY = 'vs.editorLayout'
+type EditorDrawer = 'tools' | 'settings' | 'results'
+/** 右側面板在 lg（1024px）以下隱藏，這條查詢要與 aside 的 lg:flex 一致 */
+const BELOW_LG_QUERY = '(max-width: 1023px)'
+
+function DrawerHead({ title, closeLabel, onClose }: { title: string; closeLabel: string; onClose: () => void }) {
+  return (
+    <div className="flex items-center justify-between border-b border-line px-3 py-2">
+      <span className="text-sm font-semibold">{title}</span>
+      <button type="button" className="btn-icon" onClick={onClose} aria-label={closeLabel} data-testid="editor-drawer-close"><X size={16} /></button>
+    </div>
+  )
+}
 const FOCUS_OPTIONS = { duration: 300, maxZoom: 1.2 }
 const SEQUENCE_DEFAULT_INTERVAL_MS = 1000
 const AUTO_VERSION_INTERVAL_MS = 5 * 60 * 1000
@@ -263,6 +276,18 @@ function EditorInner({ flowId }: { flowId: number }) {
   const [meta, setMeta] = useState<{ name: string; description: string; settings: FlowSettings }>({ name: '', description: '', settings: { continuous_interval_ms: 0, timeout_s: 0, concurrency: 1, stop_on_ng: false } })
   const [dirty, setDirty] = useState(false)
   const [layout, setLayout] = useState<LayoutState>(readLayout)
+  // 窄螢幕的抽屜：< md 左側工具區、< lg 右側設定／結果面板本來整個消失（Suggest5 第 2 點）
+  const [drawer, setDrawer] = useState<EditorDrawer | null>(null)
+  const belowMd = useMediaQuery(MOBILE_QUERY)
+  const belowLg = useMediaQuery(BELOW_LG_QUERY)
+  const leftDrawer = drawer === 'tools' && belowMd
+  const rightDrawer = (drawer === 'settings' || drawer === 'results') && belowLg
+  useEffect(() => {
+    if (!drawer) return
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setDrawer(null) }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [drawer])
   const [pickerOpen, setPickerOpen] = useState(false)
   const [favorites, setFavorites] = useState<string[]>(readFavorites)
   const toggleFavorite = useCallback((key: string) => {
@@ -1493,6 +1518,7 @@ function EditorInner({ flowId }: { flowId: number }) {
         readOnly={readOnly}
         saving={patch.isPending}
         onSave={() => void save()}
+        onOpenDrawer={(which) => { setDrawer(which); if (which === 'settings') setRightTab('inspector'); if (which === 'results') setRightTab('results') }}
         problemCount={problemMap.size}
         execLocked={execLocked}
         lockHint={lockHint}
@@ -1563,8 +1589,10 @@ function EditorInner({ flowId }: { flowId: number }) {
 
       {/* 三欄 */}
       <div className="flex min-h-0 flex-1">
-        {/* 左：工具箱 + 步驟清單 */}
-        <aside className="hidden shrink-0 flex-col border-r border-line bg-surface md:flex" style={{ width: layout.left }}>
+        {leftDrawer || rightDrawer ? <div className="fixed inset-0 z-30 bg-black/40" onClick={() => setDrawer(null)} aria-hidden data-testid="editor-drawer-backdrop" /> : null}
+        {/* 左：工具箱 + 步驟清單（< md 時由工具列的「工具」喚出成抽屜） */}
+        <aside className={leftDrawer ? 'fixed inset-y-0 left-0 z-40 flex w-[min(92vw,340px)] shrink-0 flex-col border-r border-line bg-surface shadow-2xl' : 'hidden shrink-0 flex-col border-r border-line bg-surface md:flex'} style={leftDrawer ? undefined : { width: layout.left }} data-testid="tools-pane" data-drawer={leftDrawer ? 'open' : undefined}>
+          {leftDrawer ? <DrawerHead title={t('editor.drawerTools')} closeLabel={t('common.close')} onClose={() => setDrawer(null)} /> : null}
           <div className="min-h-0 flex-[2]">
             <FavoriteTools catalogue={catalogue.data} favorites={favorites} onOpenPicker={() => setPickerOpen(true)} onInsert={insertAtCenter} onAddNote={insertNoteAtCenter} onToggleFavorite={toggleFavorite} />
           </div>
@@ -1819,8 +1847,9 @@ function EditorInner({ flowId }: { flowId: number }) {
         </div>
         <div className="vs-resizer vs-resizer-x hidden lg:block" onMouseDown={onRightResize} />
 
-        {/* 右：側欄（設定 / 結果） */}
-        <aside className="hidden shrink-0 flex-col border-l border-line bg-surface lg:flex" style={{ width: layout.right }} data-testid="inspector-pane">
+        {/* 右：側欄（設定 / 結果；< lg 時由工具列的「設定」「結果」喚出成抽屜） */}
+        <aside className={rightDrawer ? 'fixed inset-y-0 right-0 z-40 flex w-[min(92vw,380px)] shrink-0 flex-col border-l border-line bg-surface shadow-2xl' : 'hidden shrink-0 flex-col border-l border-line bg-surface lg:flex'} style={rightDrawer ? undefined : { width: layout.right }} data-testid="inspector-pane" data-drawer={rightDrawer ? 'open' : undefined}>
+          {rightDrawer ? <DrawerHead title={t(drawer === 'results' ? 'editor.drawerResults' : 'editor.drawerSettings')} closeLabel={t('common.close')} onClose={() => setDrawer(null)} /> : null}
           <FlowNotesLink flowId={flowId} />
           <Tabs
             size="sm"

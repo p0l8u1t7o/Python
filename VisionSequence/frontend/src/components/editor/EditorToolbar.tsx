@@ -8,7 +8,7 @@
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { BarChart3, BookOpen, ChevronDown, Download, Eraser, FlaskConical, Gem, HelpCircle, ImageUp, Keyboard, Layers2, LayoutTemplate, Lock, Network, Pause, Play, Plug, PowerOff, Radio, Redo2, Save, SlidersHorizontal, Square, TriangleAlert, Undo2, X } from 'lucide-react'
+import { BarChart3, BookOpen, ChevronDown, Download, Eraser, FlaskConical, Gem, HelpCircle, ImageUp, Keyboard, Layers2, LayoutTemplate, ListChecks, Lock, Network, PanelLeft, Pause, Play, Plug, PowerOff, Radio, Redo2, Save, SlidersHorizontal, Square, TriangleAlert, Undo2, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { CapacityPill } from '@/components/layout/AppShell'
@@ -28,6 +28,8 @@ export interface EditorToolbarProps {
   readOnly: boolean
   saving: boolean
   onSave: () => void
+  /** 窄螢幕：把左側工具區／右側設定／結果面板以抽屜開啟（面板本身在 < md／< lg 時不顯示） */
+  onOpenDrawer?: (which: 'tools' | 'settings' | 'results') => void
   problemCount: number
   execLocked: boolean
   lockHint?: string
@@ -141,6 +143,13 @@ export function EditorToolbar(p: EditorToolbarProps) {
             {p.dirty ? t('editor.save') : t('editor.savedState')}
           </Button>
         </span>
+        {p.onOpenDrawer ? (
+          <span className="flex items-center gap-1 lg:hidden" data-testid="editor-drawer-buttons">
+            <Button size="sm" className="md:hidden" icon={<PanelLeft size={14} />} onClick={() => p.onOpenDrawer?.('tools')} data-testid="editor-drawer-tools">{t('editor.drawerTools')}</Button>
+            <Button size="sm" icon={<SlidersHorizontal size={14} />} onClick={() => p.onOpenDrawer?.('settings')} data-testid="editor-drawer-settings">{t('editor.drawerSettings')}</Button>
+            <Button size="sm" icon={<ListChecks size={14} />} onClick={() => p.onOpenDrawer?.('results')} data-testid="editor-drawer-results">{t('editor.drawerResults')}</Button>
+          </span>
+        ) : null}
         <Dropdown testId="menu-templates" trigger={(open) => <Button size="sm" icon={<LayoutTemplate size={14} />} active={open} data-testid="btn-templates">{t('templates.menu')} <ChevronDown size={12} /></Button>}>
           <MenuItem icon={<LayoutTemplate size={13} />} onClick={p.onLoadTemplate} testId="menu-load-template">{t('templates.load')}</MenuItem>
           <MenuItem icon={<Save size={13} />} onClick={p.onSaveTemplate} testId="menu-save-template">{t('templates.saveAs')}</MenuItem>
