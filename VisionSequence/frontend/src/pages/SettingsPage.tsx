@@ -1,7 +1,9 @@
-/** 設定：API 金鑰、主題、語言、帳號與修改密碼、容量資訊。
+/** 設定：三個分頁依作用範圍分——這台瀏覽器（API 金鑰、顯示）、我的帳號（語言、主題、顯示名稱、密碼）、整站（執行策略、資料保留）；
+ * 每張卡片標「作用範圍 · 生效方式」（D8）。整合方（API 金鑰身分）沒有帳號，主題與語言就落在這台瀏覽器。
  * 引擎鎖定由 HTTP／TCP 下指令，狀態顯示在上方橫幅；自動化接口說明在「外部整合」各頁。 */
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { Check, KeyRound } from 'lucide-react'
 
@@ -9,7 +11,8 @@ import { ChangePasswordModal } from '@/components/auth/ChangePasswordModal'
 import { Page } from '@/components/layout/AppShell'
 import { ExecutionPolicyCard } from '@/components/settings/ExecutionPolicyCard'
 import { RetentionCard } from '@/components/settings/RetentionCard'
-import { Button, Card, CardBody, CardHeader, DetailRow, PageHeader, Panel, SegmentedControl, Switch, TextInput } from '@/components/ui'
+import { ScopeBadge } from '@/components/settings/ScopeBadge'
+import { Button, Card, CardBody, CardHeader, DetailRow, PageHeader, Panel, SegmentedControl, Switch, Tabs, TextInput } from '@/components/ui'
 import { setLanguage, storedLanguage, type Language } from '@/i18n'
 import { api, apiKey, setApiKey } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
@@ -20,8 +23,15 @@ import { useAuth } from '@/providers/AuthProvider'
 import { useTheme, type ThemePreference } from '@/providers/ThemeProvider'
 import { useToast } from '@/providers/ToastProvider'
 
+type SettingsTab = 'browser' | 'account' | 'station'
+const TABS: SettingsTab[] = ['browser', 'account', 'station']
+
 export function SettingsPage() {
   const { t } = useTranslation()
+  const [params, setParams] = useSearchParams()
+  const tabParam = params.get('tab')
+  const tab: SettingsTab = TABS.includes(tabParam as SettingsTab) ? (tabParam as SettingsTab) : 'browser'
+  const selectTab = (next: SettingsTab) => setParams(next === 'browser' ? {} : { tab: next }, { replace: true })
   const toast = useToast()
   const theme = useTheme()
   const client = useQueryClient()
@@ -51,15 +61,10 @@ export function SettingsPage() {
     toast.success(t('settings.saved'))
   }
 
-  return (
-    <Page>
-      <PageHeader title={t('settings.title')} />
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title={t('settings.apiKey')} description={t('settings.apiKeyHint')} bodyClassName="flex items-end gap-2 p-4">
-            <TextInput className="font-mono" type="password" aria-label="API key" value={key} onChange={(e) => setKey(e.target.value)} autoComplete="off" />
-            <Button variant="primary" onClick={saveKey}>{t('common.save')}</Button>
-        </Panel>
-        <Panel title={t('settings.theme')} bodyClassName="space-y-4 p-4">
+  // 已登入：主題與語言存在帳號（換裝置跟著走）；整合方只有這台瀏覽器
+  const accountScoped = auth.me?.kind === 'user'
+  const themeCard = (
+        <Panel title={t('settings.theme')} description={<ScopeBadge scope={accountScoped ? 'account' : 'browser'} mode="immediate" />} bodyClassName="space-y-4 p-4" testId="panel-theme">
             {/* 主題風格卡：迷你預覽（底色＋面板＋主色點）；已登入者的選擇會存進使用者設定 */}
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" data-testid="theme-picker">
               {([
@@ -114,7 +119,19 @@ export function SettingsPage() {
               {auth.me?.kind === 'user' ? <p className="mt-1 text-xs text-subtle">{t('settings.languageSaved')}</p> : null}
             </div>
         </Panel>
-        <Panel title={t('settings.display')} description={t('settings.displayHint')} bodyClassName="space-y-3 p-4" testId="panel-display">
+  )
+
+  return (
+    <Page>
+      <PageHeader title={t('settings.title')} description={t('settings.tabsHint')} />
+      <Tabs tabs={TABS.map((value) => ({ value, label: t(`settings.tabs.${value}`) }))} value={tab} onChange={selectTab} className="mb-4" />
+      {tab === 'browser' ? (
+      <div className="grid gap-4 lg:grid-cols-2" data-testid="settings-tab-browser">
+        <Panel title={t('settings.apiKey')} description={<><ScopeBadge scope="browser" mode="save" /><span className="block">{t('settings.apiKeyHint')}</span></>} bodyClassName="flex items-end gap-2 p-4">
+            <TextInput className="font-mono" type="password" aria-label="API key" value={key} onChange={(e) => setKey(e.target.value)} autoComplete="off" />
+            <Button variant="primary" onClick={saveKey}>{t('common.save')}</Button>
+        </Panel>
+        <Panel title={t('settings.display')} description={<><ScopeBadge scope="browser" mode="immediate" /><span className="block">{t('settings.displayHint')}</span></>} bodyClassName="space-y-3 p-4" testId="panel-display">
           <TextInput
             label={t('settings.overlayLimit')}
             hint={t('settings.overlayLimitHint')}
@@ -137,8 +154,14 @@ export function SettingsPage() {
             <span>{t('settings.draftAutoVersion')}</span>
           </label>
         </Panel>
-        <Card>
-          <CardHeader title={t('auth.account')} />
+        {accountScoped ? null : themeCard}
+      </div>
+      ) : null}
+      {tab === 'account' ? (
+      <div className="grid gap-4 lg:grid-cols-2" data-testid="settings-tab-account">
+        {accountScoped ? themeCard : null}
+        <Card testId="panel-account">
+          <CardHeader title={t('auth.account')} description={<ScopeBadge scope="account" mode="save" />} />
           <CardBody className="space-y-3">
             {auth.me?.user ? (
               <dl>
@@ -160,9 +183,14 @@ export function SettingsPage() {
             <ChangePasswordModal open={changing} onClose={() => setChanging(false)} />
           </CardBody>
         </Card>
+      </div>
+      ) : null}
+      {tab === 'station' ? (
+      <div className="grid gap-4 lg:grid-cols-2" data-testid="settings-tab-station">
         <ExecutionPolicyCard />
         {auth.isAdmin ? <RetentionCard /> : null}
       </div>
+      ) : null}
     </Page>
   )
 }

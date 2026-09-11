@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Activity, Save } from 'lucide-react'
 
+import { ScopeBadge } from '@/components/settings/ScopeBadge'
 import { Button, Card, CardBody, CardHeader, DetailRow, Select, Switch, TextInput } from '@/components/ui'
 import { errorMessage } from '@/lib/errors'
 import { useAutoSaveSettings, useCapacity, useExecutionSettings, useLogLevel, useSaveAutoSaveSettings, useSaveExecutionSettings, useSaveLogLevel } from '@/lib/queries'
@@ -11,6 +12,16 @@ import { useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
 
 const LOG_LEVELS: LogLevel[] = ['error', 'info', 'debug', 'trace']
+
+/** 標籤用白話，環境變數名當灰色副標（維運人員仍找得到 .env 的對應鍵；PM-REVIEW-R2 P4）。 */
+function EnvLabel({ text, env }: { text: string; env: string }) {
+  return (
+    <span className="inline-flex flex-wrap items-baseline gap-x-1.5">
+      {text}
+      <span className="font-mono text-[10px] text-subtle" data-testid={`env-${env}`}>{env}</span>
+    </span>
+  )
+}
 
 export function ExecutionPolicyCard() {
   const { t } = useTranslation()
@@ -67,19 +78,19 @@ export function ExecutionPolicyCard() {
 
   return (
     <Card testId="execution-policy-card">
-      <CardHeader title={t('settings.ops.title')} description={t('settings.ops.hint')} />
+      <CardHeader title={t('settings.ops.title')} description={<><ScopeBadge scope="station" mode="mixed" /><span className="block">{t('settings.ops.hint')}</span></>} />
       <CardBody className="space-y-4">
         {cap ? (
           <dl>
-            <DetailRow label="MAX_WORKERS">{cap.configured_max_workers ?? cap.max_workers}</DetailRow>
+            <DetailRow label={<EnvLabel text={t('settings.ops.maxWorkers')} env="MAX_WORKERS" />}>{cap.configured_max_workers ?? cap.max_workers}</DetailRow>
             <p className="hint mb-1">{t('settings.ops.maxWorkersHint')}</p>
-            <DetailRow label="CV_THREADS">{cap.cv_threads ?? '-'}</DetailRow>
+            <DetailRow label={<EnvLabel text={t('settings.ops.cvThreads')} env="CV_THREADS" />}>{cap.cv_threads ?? '-'}</DetailRow>
             <p className="hint mb-1">{t('settings.ops.cvThreadsHint')}</p>
-            <DetailRow label="SSE_MAX_STREAMS">{cap.sse_max_streams ?? '-'}</DetailRow>
+            <DetailRow label={<EnvLabel text={t('settings.ops.sse')} env="SSE_MAX_STREAMS" />}>{cap.sse_max_streams ?? '-'}</DetailRow>
             <p className="hint mb-1">{t('settings.ops.sseHint')}</p>
-            <DetailRow label="MAX_QUEUE_PER_FLOW">{cap.max_queue_per_flow ?? '-'}</DetailRow>
+            <DetailRow label={<EnvLabel text={t('settings.ops.queue')} env="MAX_QUEUE_PER_FLOW" />}>{cap.max_queue_per_flow ?? '-'}</DetailRow>
             <p className="hint mb-1">{t('settings.ops.queueHint')}</p>
-            <DetailRow label="RUN_TIMEOUT_S">{cap.run_timeout_s ?? '-'}</DetailRow>
+            <DetailRow label={<EnvLabel text={t('settings.ops.timeout')} env="RUN_TIMEOUT_S" />}>{cap.run_timeout_s ?? '-'}</DetailRow>
             <p className="hint">{t('settings.ops.timeoutHint')}</p>
           </dl>
         ) : null}

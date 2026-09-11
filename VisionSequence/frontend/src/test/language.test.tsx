@@ -33,7 +33,7 @@ describe('language preference', () => {
   it('writes the choice back to the account from the Settings page', async () => {
     vi.mocked(api.patch).mockClear()
     const { SettingsPage } = await import('@/pages/SettingsPage')
-    renderPage(<SettingsPage />, { route: '/settings' })
+    renderPage(<SettingsPage />, { route: '/settings?tab=account' })  // 語言與主題在「我的帳號」分頁（D8）
     fireEvent.click(await screen.findByText('简体中文'))
     await waitFor(() => expect(i18n.language).toBe('zh-Hans'))
     expect(localStorage.getItem('vs.language')).toBe('zh-Hans')

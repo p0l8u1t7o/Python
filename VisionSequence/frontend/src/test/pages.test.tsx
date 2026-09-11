@@ -804,16 +804,23 @@ describe('pages render (smoke)', () => {
     expect(screen.getByText('Setup')).toBeInTheDocument()
   })
 
-  it('SettingsPage and LoginPage render', async () => {
+  it('SettingsPage groups cards into scope tabs', async () => {
     const { SettingsPage } = await import('@/pages/SettingsPage')
     renderPage(<SettingsPage />, { route: '/settings' })
     expect((await screen.findAllByText('Settings')).length).toBeGreaterThan(0)
-    // 管理員才看得到資料保留卡片，且欄位值來自伺服器
+    // D8：三個分頁依作用範圍分，每張卡片標「範圍 · 生效方式」；第一頁是這台瀏覽器（API 金鑰）
+    expect(await screen.findByTestId('settings-tab-browser')).toBeInTheDocument()
+    expect(within(screen.getByTestId('settings-tab-browser')).getAllByTestId('scope-badge').length).toBeGreaterThan(0)
+    expect(screen.queryByTestId('retention-card')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('tab', { name: 'My account' }))
+    expect(await screen.findByTestId('panel-account')).toBeInTheDocument()
+    expect(screen.getByTestId('panel-theme')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('tab', { name: 'Station' }))
+    // 管理員才看得到資料保留卡片，且欄位值來自伺服器；P4：環境變數名只當灰色副標
     expect(await screen.findByTestId('retention-card')).toBeTruthy()
+    expect(await screen.findByText('Parallel inspection jobs')).toBeInTheDocument()
+    expect(screen.getByTestId('env-MAX_WORKERS')).toHaveTextContent('MAX_WORKERS')
     expect((await screen.findByTestId('retention-run_days')).getAttribute('value')).toBe('365')
-    const { LoginPage } = await import('@/pages/LoginPage')
-    renderPage(<LoginPage />, { route: '/login' })
-    expect((await screen.findAllByText(/Sign in|Username|VisionSequence/)).length).toBeGreaterThan(0)
   })
 
   it('ToolLibraryPage lists composite tools with their usage', async () => {

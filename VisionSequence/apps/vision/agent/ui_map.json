@@ -1156,6 +1156,32 @@
     "zh-Hant": "金鑰、主題、語言、帳號與密碼",
     "zh-Hans": "密钥、主题、语言、账号与密码"
    },
+   "tabs": [
+    {
+     "key": "browser",
+     "names": {
+      "en": "This browser",
+      "zh-Hant": "這台瀏覽器",
+      "zh-Hans": "这台浏览器"
+     }
+    },
+    {
+     "key": "account",
+     "names": {
+      "en": "My account",
+      "zh-Hant": "我的帳號",
+      "zh-Hans": "我的账号"
+     }
+    },
+    {
+     "key": "station",
+     "names": {
+      "en": "Station",
+      "zh-Hant": "整站",
+      "zh-Hans": "整站"
+     }
+    }
+   ],
    "actions": [
     {
      "en": "Change password",

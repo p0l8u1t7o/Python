@@ -72,7 +72,7 @@ export const UI_PAGES: UiPage[] = [
   { route: '/calibration', id: 'calibration', nav: 'nav.calibration', feature: 'assets', help: '/calibration', actions: ['calibration.capture', 'calibration.calculate', 'calibration.save'] },
   { route: '/users', id: 'users', nav: 'nav.users', admin: true, help: '/users', actions: ['users.create', 'permissions.title'] },
   { route: '/audit', id: 'audit', nav: 'nav.audit', feature: 'audit', help: '/audit', actions: ['audit.export'] },
-  { route: '/settings', id: 'settings', nav: 'nav.settings', help: '/settings', actions: ['auth.changePassword'] },
+  { route: '/settings', id: 'settings', nav: 'nav.settings', help: '/settings', tabs: [{ key: 'browser', label: 'settings.tabs.browser' }, { key: 'account', label: 'settings.tabs.account' }, { key: 'station', label: 'settings.tabs.station' }], actions: ['auth.changePassword'] },
   { route: '/login', id: 'login', title: 'auth.loginTitle', help: '/login' },
   { route: '/board/:flowId', id: 'board', title: 'board.settings.title', help: '/board/:flowId' },
 ]

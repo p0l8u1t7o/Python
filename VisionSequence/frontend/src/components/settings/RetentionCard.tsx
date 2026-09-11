@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Brush, Save } from 'lucide-react'
 
+import { ScopeBadge } from '@/components/settings/ScopeBadge'
 import { Button, Card, CardBody, CardHeader, Checkbox, DetailRow, Select, TextInput } from '@/components/ui'
 import { errorMessage } from '@/lib/errors'
 import { formatDateTime } from '@/lib/format'
@@ -63,7 +64,7 @@ export function RetentionCard() {
   const usage = state.data?.usage
   return (
     <Card testId="retention-card">
-      <CardHeader title={t('settings.retention.title')} description={t('settings.retention.hint')} />
+      <CardHeader title={t('settings.retention.title')} description={<><ScopeBadge scope="station" mode="save" /><span className="block">{t('settings.retention.hint')}</span></>} />
       <CardBody className="space-y-3">
         {form ? (
           <>
