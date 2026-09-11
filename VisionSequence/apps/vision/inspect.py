@@ -265,8 +265,9 @@ def evidence(graph: dict[str, Any], report: Any) -> list[dict[str, Any]]:
                     scale = reports[roles["scale"]]["outputs"]["scale"]
                     per_caliper = radius * math.radians(.5) * scale
                 longest = max(counts, default=0) * per_caliper
-                reason = f"{int(value or 0)} defects, longest {longest:.3f} {unit} (minimum {fields['min_length']:.3f} {unit})"
-                unit = ""
+                count_unit = "defect" if value == 1 else "defects"
+                reason = f"{int(value or 0)} {count_unit}, longest {longest:.3f} {unit} (minimum {fields['min_length']:.3f} {unit})"
+                unit = count_unit
             readings.append(_reading(task_id, verdict, valid, detected, value, unit, reason, overlays, nid))
             continue
         find_row = reports.get(find_id or "", {})

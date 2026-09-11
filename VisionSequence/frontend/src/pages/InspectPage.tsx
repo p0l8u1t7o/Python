@@ -9,7 +9,7 @@ import { Button, ErrorState, LoadingState, Modal } from '@/components/ui'
 import { ImageViewer } from '@/components/viewer/ImageViewer'
 import { fixedImageFromRef, imageUrl, teachContourFromImage } from '@/lib/api'
 import { GeometrySourceField } from '@/components/inspect/GeometrySourceField'
-import { inspectionFieldVisible, inspectionHasImage } from '@/lib/inspect'
+import { inspectionFieldVisible, inspectionHasImage, inspectionReuseRef, normalizeInspectionSources } from '@/lib/inspect'
 import { errorMessage } from '@/lib/errors'
 import { publishAssistantProgress, useRegisterAssistantContext } from '@/lib/assistantContext'
 import { getSession, setDraft, updateSession, useFlowSession } from '@/lib/flowDraft'
@@ -79,7 +79,11 @@ function InspectPageInner({ flowId }: { flowId: number }) {
     baseline.current = flow.data.updated_at
     const old = getSession(flowId).draft
     if (!old || (!old.dirty && old.baseVersion !== flow.data.version)) {
-      setDraft(flowId, { baseVersion: flow.data.version, graph: flow.data.graph, name: flow.data.name, description: flow.data.description, dirty: false })
+      const normalized = normalizeInspectionSources(flow.data.graph)
+      setDraft(flowId, { baseVersion: flow.data.version, graph: normalized, name: flow.data.name, description: flow.data.description, dirty: normalized !== flow.data.graph })
+    } else {
+      const normalized = normalizeInspectionSources(old.graph)
+      if (normalized !== old.graph) setDraft(flowId, { ...old, graph: normalized, dirty: true })
     }
   }, [flow.data, flowId])
 
@@ -202,7 +206,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
     if (locked || !auth.can('flows.run') || formInvalid && pending) return
     await flushEdits()
     const snapshot = nextGraph ?? currentGraph()
-    const reuseRef = session.scratch?.ref ?? (reuse ? image?.ref : null)
+    const reuseRef = inspectionReuseRef(snapshot, session.scratch?.ref, reuse, image?.ref)
     if (!inspectionHasImage(snapshot, reuseRef)) { setOperationError(t('inspect.missingImage')); return }
     setOperationError(null)
     const report = await preview.mutateAsync({ flowId, graph: snapshot, reuse_image_ref: reuseRef, analysis: false })
@@ -290,7 +294,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
       next.nodes.unshift(source)
     }
     source.type = sourceId === 'fixed' ? 'fixed_image' : 'image_source'
-    source.params = sourceId === 'fixed' ? { images: [], mode: 'cycle', role: 'source' } : { source_id: sourceId ? Number(sourceId) : null, mode: 'auto' }
+    source.params = sourceId === 'fixed' ? { images: [], mode: 'cycle', role: 'acquire' } : { source_id: sourceId ? Number(sourceId) : null, mode: 'auto' }
     updateSession(flowId, { scratch: null, previewRun: null })
     forgetInspectionRun(flowId); setRunHash(null); setReadings([]); setRun(null)
     putGraph(next)
@@ -324,6 +328,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
   if (!graph || !session.draft || kinds.isPending || tools.isPending) return <LoadingState />
   const activeRoi = kind?.fields.find((field) => field.key === roiKey && field.kind === 'roi')
   const source = graph.nodes.find((node) => ['image_source', 'fixed_image'].includes(node.type) && node.params?.role !== 'reference')
+  const readingUnit = reading && ['defect', 'defects'].includes(reading.unit) ? t('inspect.defectCount', { count: Number(reading.value) }) : reading?.unit
   const taskTitle = (entry: typeof list.tasks[number]) => `${String(entry.fields.result_name || kinds.data?.items.find((item) => item.kind === entry.kind)?.label || entry.kind)} ${list.tasks.filter((item) => item.kind === entry.kind).indexOf(entry) + 1}`
   const taskNodes = graph.nodes.filter((node) => Object.values(task?.nodes ?? {}).includes(node.id))
 
@@ -344,7 +349,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
         <Button size="sm" icon={<ImageUp size={14} />} loading={upload.isPending} onClick={() => uploadInput.current?.click()}>{t('inspect.upload')}</Button>
         <input ref={uploadInput} className="hidden" type="file" accept="image/*" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void action(() => uploadImage(file)) }} />
         {session.scratch ? <Button size="xs" onClick={() => { updateSession(flowId, { scratch: null }); forgetInspectionRun(flowId); setRunHash(null); setReadings([]); setRun(null) }}>{session.scratch.name} · {t('inspect.clearImage')}</Button> : null}
-        <label><input type="checkbox" checked={reuse} onChange={(event) => setReuse(event.target.checked)} /> {t('inspect.reuseImage')}</label>
+        {source?.type === 'fixed_image' ? <span className="text-muted">{t('inspect.fixedImageSelection')}</span> : <label><input type="checkbox" checked={reuse} onChange={(event) => setReuse(event.target.checked)} /> {t('inspect.reuseImage')}</label>}
         {locked ? <span className="text-warning">{t('inspect.locked')}</span> : null}
       </div>
     </header>
@@ -395,7 +400,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
           className="h-full w-full" stateKey={`inspect:${flowId}`} toolbar /></div>
         <div className="space-y-2 border-t border-line bg-surface p-4" data-testid="inspect-reading">
           <p className="text-sm font-semibold">{t(`inspect.status.${status}`)}</p>
-          <p title={reading?.value == null ? undefined : `${String(reading.value)} ${reading.unit}`} className={`font-mono text-2xl ${stale ? 'text-muted line-through' : ''}`}>{inspectionValue(reading)} {inspectionValue(reading) !== '—' ? reading?.unit : ''}</p>
+          <p title={reading?.value == null ? undefined : `${String(reading.value)} ${readingUnit}`} className={`font-mono text-2xl ${stale ? 'text-muted line-through' : ''}`}>{inspectionValue(reading)} {inspectionValue(reading) !== '—' ? readingUnit : ''}</p>
           {stale && !newKind ? <p className="text-xs text-muted">{t('inspect.staleHint')}</p> : null}
           {reading?.reason ? <p className="text-xs text-muted">{reading.reason}</p> : null}
           {task?.kind === 'locate_part' && reading?.verdict === 'pass' && !stale && !newKind ? <Button disabled={!run?.id || readOnly || preview.isPending} onClick={() => void action(teachPose)} data-testid="inspect-teach-pose">{t('inspect.teachPose')}</Button> : null}

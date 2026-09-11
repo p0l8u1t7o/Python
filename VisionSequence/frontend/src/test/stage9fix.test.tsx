@@ -1,13 +1,14 @@
 /** 任務頁的新增狀態、固定影像及裝置讀值還原回歸。 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { RouterProvider, createMemoryRouter } from 'react-router-dom'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FLOW, INSPECT_GRAPH, INSPECT_KINDS, installApiMock } from './apiMock'
 import { InspectPage } from '@/pages/InspectPage'
-import { api } from '@/lib/api'
-import { clearSession, getSession, setDraft } from '@/lib/flowDraft'
-import { forgetInspectionRun, inspectionHasImage, inspectionRunFor, inspectionStale, inspectionValue, rememberInspectionRun } from '@/lib/inspect'
+import { api, request } from '@/lib/api'
+import { clearSession, getSession, setDraft, updateSession } from '@/lib/flowDraft'
+import { forgetInspectionRun, inspectionHasImage, inspectionReuseRef, inspectionRunFor, inspectionStale, inspectionValue, normalizeInspectionSources, rememberInspectionRun } from '@/lib/inspect'
+import i18n from '@/i18n'
 import type { InspectReading, InspectTask, RunReport } from '@/lib/types'
 import { AuthProvider } from '@/providers/AuthProvider'
 import { ThemeProvider } from '@/providers/ThemeProvider'
@@ -28,6 +29,93 @@ function showPage() {
 
 describe('stage9fix inspection', () => {
   beforeEach(() => { clearSession(6); forgetInspectionRun(6); vi.mocked(api.post).mockClear(); vi.mocked(api.patch).mockClear() })
+  afterEach(async () => { await act(() => i18n.changeLanguage('en')) })
+
+  it('advances all four fixed images across repeated previews and resumes the server cursor after remount', async () => {
+    const graph = structuredClone(INSPECT_GRAPH)
+    const pictures = ['one', 'two', 'three', 'four'].map((id) => ({ id, name: `${id}.png`, width: 100, height: 80 }))
+    graph.nodes[0] = { ...graph.nodes[0], type: 'fixed_image', params: { images: pictures, mode: 'cycle', role: 'acquire' } }
+    setDraft(6, { graph, name: 'Cycle', description: '', baseVersion: 1, dirty: true })
+    let cursor = 0
+    const seen: string[] = []
+    await vi.mocked(request).withImplementation(async (_path, options) => {
+      const body = options?.body as { reuse_image_ref?: string | null }
+      const ref = body.reuse_image_ref ?? pictures[cursor++ % pictures.length].id
+      seen.push(ref)
+      return { ...report, id: `preview-${seen.length}`, nodes: { camera: { outputs: { image: { ref, width: 100, height: 80 } } } } }
+    }, async () => {
+      let page = showPage()
+      await screen.findByTestId('inspect-fixed-images')
+      expect(screen.queryByLabelText('Reuse last image')).not.toBeInTheDocument()
+      expect(screen.getByText(/Fixed images follow the step/)).toBeInTheDocument()
+      for (let index = 0; index < 5; index++) {
+        await waitFor(() => expect(screen.getByTestId('inspect-run')).toBeEnabled())
+        fireEvent.click(screen.getByTestId('inspect-run'))
+        await waitFor(() => expect(getSession(6).previewRun?.id).toBe(`preview-${index + 1}`))
+      }
+      expect(seen).toEqual(['one', 'two', 'three', 'four', 'one'])
+      page.unmount()
+      page = showPage()
+      await screen.findByTestId('inspect-fixed-images')
+      fireEvent.click(screen.getByTestId('inspect-run'))
+      await waitFor(() => expect(getSession(6).previewRun?.id).toBe('preview-6'))
+      expect(seen.at(-1)).toBe('two')
+      act(() => updateSession(6, { scratch: { ref: 'scratch', width: 100, height: 80, name: 'Scratch' } }))
+      await waitFor(() => expect(screen.getByTestId('inspect-run')).toBeEnabled())
+      fireEvent.click(screen.getByTestId('inspect-run'))
+      await waitFor(() => expect(getSession(6).previewRun?.id).toBe('preview-7'))
+      expect(seen.at(-1)).toBe('scratch')
+      expect(cursor).toBe(6)
+    })
+  })
+
+  it('retains camera reuse and scratch priority while ignoring reference-only and disabled fixed nodes', () => {
+    expect(inspectionReuseRef(INSPECT_GRAPH, null, true, 'last')).toBe('last')
+    expect(inspectionReuseRef(INSPECT_GRAPH, null, false, 'last')).toBeNull()
+    expect(inspectionReuseRef(INSPECT_GRAPH, 'scratch', false, 'last')).toBe('scratch')
+    for (const params of [{ role: 'reference' }, { role: 'acquire' }]) {
+      const graph = { ...INSPECT_GRAPH, nodes: [...INSPECT_GRAPH.nodes, { id: 'fixed', type: 'fixed_image', params, enabled: params.role === 'reference' }] }
+      expect(inspectionReuseRef(graph, null, true, 'last')).toBe('last')
+    }
+    for (const mode of ['cycle', 'fixed']) {
+      const graph = { nodes: [{ id: 'fixed', type: 'fixed_image', params: { mode, role: 'source' } }], edges: [] }
+      expect(inspectionReuseRef(graph, null, true, 'last')).toBeNull()
+      expect(inspectionReuseRef(graph, 'scratch', true, 'last')).toBe('scratch')
+    }
+  })
+
+  it('creates acquire sources and normalizes legacy source roles without losing pictures or reference nodes', async () => {
+    const page = showPage()
+    await screen.findByTestId('inspect-task')
+    fireEvent.change(screen.getByTestId('inspect-source'), { target: { value: 'fixed' } })
+    await screen.findByTestId('inspect-fixed-images')
+    expect(getSession(6).draft!.graph.nodes[0].params?.role).toBe('acquire')
+    page.unmount(); clearSession(6)
+    const graph = structuredClone(INSPECT_GRAPH)
+    const pictures = [{ id: 'legacy', name: 'legacy.png', width: 100, height: 80 }]
+    graph.nodes[0] = { ...graph.nodes[0], type: 'fixed_image', params: { images: pictures, mode: 'cycle', role: 'source' } }
+    graph.nodes.push({ id: 'reference', type: 'fixed_image', params: { role: 'reference', images: pictures } })
+    const original = structuredClone(graph)
+    const get = vi.mocked(api.get).getMockImplementation()!
+    await vi.mocked(api.get).withImplementation(async (path) => path === '/vision/flows/6' ? { ...FLOW, id: 6, graph } : get(path), async () => {
+      showPage()
+      await screen.findByTestId('inspect-fixed-images')
+      expect(screen.getByTestId('inspect-source')).toHaveValue('fixed')
+      expect(getSession(6).draft!.graph.nodes[0]).toMatchObject({ params: { role: 'acquire', images: pictures, mode: 'cycle' } })
+      expect(getSession(6).draft!.graph.nodes.at(-1)).toEqual(graph.nodes.at(-1))
+      expect(graph).toEqual(original)
+      fireEvent.click(screen.getByTestId('inspect-save'))
+      await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/vision/flows/6', expect.objectContaining({ graph: normalizeInspectionSources(graph) })))
+    })
+  })
+
+  it.each([['en', 0, 'defects'], ['en', 1, 'defect'], ['en', 2, 'defects'], ['zh-Hant', 1, '處'], ['zh-Hans', 2, '处']])('labels defect readings in %s for count %s', async (language, count, unit) => {
+    rememberInspectionRun(6, INSPECT_GRAPH, report, [{ ...reading, value: Number(count), unit: count === 1 ? 'defect' : 'defects' }])
+    showPage()
+    await screen.findByTestId('inspect-reading')
+    await act(() => i18n.changeLanguage(String(language)))
+    await waitFor(() => expect(within(screen.getByTestId('inspect-reading')).getByText(`${count} ${unit}`)).toBeInTheDocument())
+  })
 
   it('rounds by unit, keeps zero, and persists only summaries across a page reload', async () => {
     expect(inspectionValue(reading)).toBe('35.012')

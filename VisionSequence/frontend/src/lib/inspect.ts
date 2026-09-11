@@ -102,6 +102,18 @@ export function inspectionHasImage(graph: FlowGraph, reuseRef?: string | null): 
     return ['stereo_grab', 'multi_light_grab'].includes(node.type)
   })
 }
+/** 舊任務頁曾寫入 source；讀入草稿時改用固定影像正式的 acquire 選項。 */
+export function normalizeInspectionSources(graph: FlowGraph): FlowGraph {
+  if (!graph.nodes.some((node) => node.type === 'fixed_image' && node.params?.role === 'source')) return graph
+  return { ...graph, nodes: graph.nodes.map((node) => node.type === 'fixed_image' && node.params?.role === 'source'
+    ? { ...node, params: { ...node.params, role: 'acquire' } } : node) }
+}
+/** 固定影像由節點選圖；明確上傳的暫存影像仍可覆寫本次輸入。 */
+export function inspectionReuseRef(graph: FlowGraph, scratchRef: string | null | undefined, reuse: boolean, lastRef?: string | null): string | null {
+  if (scratchRef) return scratchRef
+  const fixed = graph.nodes.some((node) => node.enabled !== false && node.type === 'fixed_image' && node.params?.role !== 'reference')
+  return reuse && !fixed ? lastRef ?? null : null
+}
 export function missingInspectionFields(kind: InspectKind, values: Record<string, unknown>): string[] {
   return kind.fields.filter((f) => {
     if (!inspectionFieldVisible(f, values)) return false

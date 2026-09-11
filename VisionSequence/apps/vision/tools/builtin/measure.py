@@ -1638,7 +1638,19 @@ class ToleranceJudgeTool(Tool):
         tolerances = [t for t in (outputs.get("tolerances") or []) if isinstance(t, dict) and t.get("name") != name]
         outputs["tolerances"] = tolerances + [entry]
         verdict = "pass" if ok else "fail"
-        msg = (f"{v:.4g}{unit} deviation {deviation:+.4g} ({lower:.4g} to {upper:.4g}) -> {verdict.upper()}" if valid else f"The measurement is invalid ({raw!r}) -> FAIL")
+        msg = f"The measurement is invalid ({raw!r}) -> FAIL"
+        if valid:
+            # 比最小非零公差多留一位；接近界限時再增加精度，避免顯示相等卻判失敗。
+            tolerances = [abs(ctx.number(key, default)) for key, default in (("upper_tol", .1), ("lower_tol", -.1))]
+            smallest = min((t for t in tolerances if t > 0 and math.isfinite(t)), default=1)
+            digits = min(15, max(3, 1 - math.floor(math.log10(smallest))))
+            for precision in range(digits, 17):
+                spec = f".{precision}f" if precision < 16 else ".17g"
+                measured, low, high = (format(number, spec) for number in (v, lower, upper))
+                if all((float(measured) < float(bound), float(measured) > float(bound)) == (v < actual, v > actual)
+                       for bound, actual in ((low, lower), (high, upper))):
+                    break
+            msg = f"{measured}{unit} deviation {format(deviation, '+' + spec)} ({low} to {high}) -> {verdict.upper()}"
         return Result(
             outputs={"verdict": verdict, "deviation": deviation, "in_spec": ok, "nominal": nominal, "upper": upper, "lower": lower, "spec_source": source},
             branch=verdict, status="ok" if ok else "ng", message=msg, context={"_outputs": outputs},
