@@ -126,6 +126,22 @@ describe('pages render (smoke)', () => {
     await waitFor(() => expect(screen.getByLabelText('Nominal')).toHaveValue(100))
   })
 
+  it('InspectPage lets the assistant ask for a region on its image', async () => {
+    const { InspectPage } = await import('@/pages/InspectPage')
+    const { clearSession } = await import('@/lib/flowDraft')
+    const { getAssistantContext } = await import('@/lib/assistantContext')
+    clearSession(6)
+    renderDataPage(<InspectPage />, '/flows/6/inspect', '/flows/:flowId/inspect')
+    await screen.findByTestId('inspect-task')
+    await waitFor(() => expect(getAssistantContext()?.requestRegion).toBeTypeOf('function'))
+    const promise = getAssistantContext()!.requestRegion!(['rect'])
+    expect(await screen.findByTestId('viewer-region-request')).toBeInTheDocument()
+    expect(screen.getByTestId('viewer-region-use')).toBeDisabled()
+    fireEvent.click(screen.getByTestId('viewer-region-cancel'))
+    expect(await promise).toBeNull()
+    expect(screen.queryByTestId('viewer-region-request')).not.toBeInTheDocument()
+  })
+
   it('InspectPage rereads a returned advanced draft and retains stale readings until rerun', async () => {
     const { InspectPage } = await import('@/pages/InspectPage')
     const { api } = await import('@/lib/api')

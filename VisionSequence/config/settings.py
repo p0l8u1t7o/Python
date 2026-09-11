@@ -102,6 +102,9 @@ DATABASES = {
         "OPTIONS": {
             # 執行記錄由背景執行緒寫入；WAL 讓讀寫不互鎖。
             "init_command": "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000;",
+            # 交易一開始就取寫入鎖（BEGIN IMMEDIATE）：預設的 DEFERRED 在「先讀後寫」的交易裡碰到別的執行緒已經寫過時，
+            # SQLite 直接回 SQLITE_BUSY_SNAPSHOT（不經 busy_timeout 等待）＝立刻 "database is locked"；IMMEDIATE 讓它照 busy_timeout 排隊。
+            "transaction_mode": "IMMEDIATE",
         },
         # 測試用檔案型資料庫：記憶體共享快取的 SQLite 對跨執行緒（執行緒池、背景寫入）
         # 會回 "database table is locked"，檔案 + WAL 才是正式環境的行為。

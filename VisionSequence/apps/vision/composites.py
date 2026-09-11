@@ -68,7 +68,7 @@ class CompositeToolType:
     accepts: tuple[str, ...] = ("u8",)
     wants_gray = False
     source = "composite"
-    #: 隱含埠（直通影像、標記）不套在複合工具上；位置修正埠仍依有沒有 roi 參數決定
+    #: 隱含埠只留位置修正輸入與直通影像輸出（`ImplicitPort.on_composite`）；標記埠內部節點各自有
     implicit_ports = False
 
     def __init__(self, row, graph: dict[str, Any], resolve) -> None:
@@ -337,7 +337,15 @@ def flatten(graph: dict[str, Any], *, depth: int = 0) -> tuple[dict[str, Any], d
         if s in instances:
             ct = reg[type_key(instances[s]["tool"])]
             sh = str(e.get("source_handle") or (ct.outputs[0].key if ct.outputs else ""))
-            edge["source"], edge["source_handle"] = _resolve_source(instances, s, sh)
+            if sh == tools.IMAGE_THRU:
+                # 直通影像＝送進第一個對外影像輸入的那張：把這條邊改接到那個上游；沒接影像就沒有東西可直通
+                feed = _image_feed(edges, instances, s, ct)
+                if feed is None:
+                    log.debug("複合工具實例 %s 沒有影像輸入，直通邊略過", s)
+                    continue
+                edge["source"], edge["source_handle"] = feed
+            else:
+                edge["source"], edge["source_handle"] = _resolve_source(instances, s, sh)
         if t in instances:
             th = str(e.get("target_handle") or "")
             if th in ("", tools.FLOW_IN):
@@ -351,6 +359,22 @@ def flatten(graph: dict[str, Any], *, depth: int = 0) -> tuple[dict[str, Any], d
             edge["target"], edge["target_handle"] = _resolve_target(instances, t, th)
         out_edges.append(edge)
     return {**graph, "nodes": out_nodes, "edges": out_edges}, instances
+
+
+def _image_feed(edges: list[dict[str, Any]], instances: dict[str, dict[str, Any]], inst: str, ct: CompositeToolType) -> tuple[str, str] | None:
+    """實例的第一個對外影像輸入接的是誰（來源也是實例就沿著它的對外輸出往下解）。"""
+    first = next((p.key for p in ct.inputs if p.type == "image"), None)
+    if first is None:
+        return None
+    feed = next((x for x in edges if str(x.get("target")) == inst and str(x.get("target_handle") or "") == first), None)
+    if feed is None:
+        return None
+    src, sh = str(feed.get("source")), str(feed.get("source_handle") or "")
+    if src in instances:
+        if not sh:
+            sh = next(iter(instances[src]["outputs"]), "")
+        return _resolve_source(instances, src, sh)
+    return src, sh
 
 
 def _resolve_target(instances: dict[str, dict[str, Any]], node: str, handle: str) -> tuple[str, str]:

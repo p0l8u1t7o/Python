@@ -90,13 +90,14 @@ class RegistryTests(CompositeBase):
         with self.assertRaises(tools.UnknownToolType):
             tools.get("composite:nope")
 
-    def test_catalogue_lists_the_composite_with_its_source_and_no_implicit_outputs(self):
+    def test_catalogue_lists_the_composite_with_its_source_and_only_the_pass_through_implicit_output(self):
         entry = next(item for item in tools.catalogue() if item["key"] == "composite:count_blobs")
         self.assertEqual(entry["source"], "composite")
         self.assertEqual(entry["composite"]["tool_key"], "count_blobs")
         self.assertEqual(entry["composite"]["flow_id"], self.tool.flow_id)
-        self.assertNotIn("_image", [p["key"] for p in entry["outputs"]])
+        self.assertIn("_image", [p["key"] for p in entry["outputs"]])
         self.assertNotIn("_overlays", [p["key"] for p in entry["outputs"]])
+        self.assertNotIn("_image", [p["key"] for p in entry["inputs"]])
         self.assertTrue(next(p for p in entry["outputs"] if p["key"] == "blob:found")["primary"])
 
     def test_tool_flow_is_hidden_from_flow_lists(self):
@@ -139,6 +140,20 @@ class FlattenTests(CompositeBase):
         self.assertEqual(instances["count"]["tool"], "count_blobs")
         self.assertEqual(instances["count"]["inner"], ["count.gray", "count.thr", "count.blob"])
         self.assertEqual(instances["count"]["outputs"]["blob:count"], ("count.blob", "count", "number"))
+
+    def test_image_pass_through_feeds_the_downstream_step_with_the_instance_input(self):
+        graph = self.flow_graph()
+        graph["nodes"].append(n("blur", "blur", ksize=3))
+        graph["edges"].append(e("count", "blur", "_image", "image"))
+        flat, _ = composites.flatten(validate_graph(graph))
+        edges = {(edge["source"], edge.get("source_handle"), edge["target"], edge.get("target_handle")) for edge in flat["edges"]}
+        self.assertIn(("src", "image", "blur", "image"), edges)
+        report = run_graph(graph)
+        self.assertEqual((report.nodes["blur"].status, report.nodes["count"].status), ("ok", "ok"))
+        # 沒接影像的實例：直通邊沒有東西可傳，展平時略過而不是炸
+        bare = {"nodes": [n("count", "composite:count_blobs"), n("blur", "blur", ksize=3)], "edges": [e("count", "blur", "_image", "image")]}
+        flat, _ = composites.flatten(validate_graph(bare))
+        self.assertFalse(any(edge["target"] == "blur" for edge in flat["edges"]))
 
     def test_engine_runs_the_flattened_graph_and_folds_the_instance_report(self):
         report = run_graph(self.flow_graph())

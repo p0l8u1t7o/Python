@@ -64,6 +64,10 @@ function InspectPageInner({ flowId }: { flowId: number }) {
   const [advancedRoi, setAdvancedRoi] = useState<{ nodeId: string; key: string; shapes: RoiShape[] } | null>(null)
   const [cropKey, setCropKey] = useState<string | null>(null)
   const [cropRegion, setCropRegion] = useState<Region | null>(null)
+  //: 助手要求在影像上畫一個區域（影像視窗互動協定）：畫完按「使用此區域」才交回
+  const [regionRequest, setRegionRequest] = useState<{ shapes?: RoiShape[]; resolve: (region: Region | null) => void } | null>(null)
+  const [requestedRegion, setRequestedRegion] = useState<Region | null>(null)
+  const finishRegionRequest = (region: Region | null) => { regionRequest?.resolve(region); setRegionRequest(null); setRequestedRegion(null) }
   const [reuse, setReuse] = useState(true)
   const [operationError, setOperationError] = useState<string | null>(null)
   const [proposals, setProposals] = useState<Region[]>([])
@@ -275,6 +279,8 @@ function InspectPageInner({ flowId }: { flowId: number }) {
     getGraph: currentGraph, applyGraph: readOnly ? undefined : (next) => putGraph(next),
     prepareGraph: flushEdits, showProposals: setProposals, proposalTasks: setProposalTasks,
     runInspection: auth.can('flows.run') && !locked ? () => runPreview() : undefined,
+    requestRegion: (shapes) => new Promise((resolve) => { setRequestedRegion(null); setRegionRequest({ shapes, resolve }) }),
+    showPreview: auth.can('flows.run') && !locked ? () => runPreview() : undefined,
   }, [flowId, flow.data?.name, image?.ref, locked, readOnly, graph, pending, busy, reuse, auth.me])
   async function teachPose() {
     if (!task || !run?.id || stale || readOnly) return
@@ -501,9 +507,16 @@ function InspectPageInner({ flowId }: { flowId: number }) {
       </section>
       <section className="flex min-h-[420px] min-w-0 flex-1 flex-col md:min-w-[480px]" data-testid="inspect-viewer">
         <div className="min-h-[300px] flex-1"><ImageViewer proposals={proposals} src={image?.ref ? imageUrl(image.ref, 1600) : null} imageWidth={image?.width ?? 0} imageHeight={image?.height ?? 0} overlays={reading?.overlays ?? []}
-          roi={!image ? null : cropKey ? cropRegion : advancedRoi ? graph.nodes.find((node) => node.id === advancedRoi.nodeId)?.params?.[advancedRoi.key] as Region | null : activeRoi ? values[activeRoi.key] as Region | null : null} roiShapes={cropKey ? ['rect'] : advancedRoi?.shapes ?? activeRoi?.shapes}
-          onRoiChange={image && !readOnly && !busy && (!task?.custom || Boolean(newKind)) ? cropKey ? setCropRegion : advancedRoi ? (region) => void action(() => changeNodeParam(advancedRoi.nodeId, advancedRoi.key, region)) : activeRoi ? (region) => changeField(activeRoi.key, region) : undefined : undefined}
+          roi={!image ? null : regionRequest ? requestedRegion : cropKey ? cropRegion : advancedRoi ? graph.nodes.find((node) => node.id === advancedRoi.nodeId)?.params?.[advancedRoi.key] as Region | null : activeRoi ? values[activeRoi.key] as Region | null : null} roiShapes={regionRequest ? (regionRequest.shapes?.length ? regionRequest.shapes : undefined) : cropKey ? ['rect'] : advancedRoi?.shapes ?? activeRoi?.shapes}
+          onRoiChange={regionRequest && image ? setRequestedRegion : image && !readOnly && !busy && (!task?.custom || Boolean(newKind)) ? cropKey ? setCropRegion : advancedRoi ? (region) => void action(() => changeNodeParam(advancedRoi.nodeId, advancedRoi.key, region)) : activeRoi ? (region) => changeField(activeRoi.key, region) : undefined : undefined}
           className="h-full w-full" stateKey={`inspect:${flowId}`} toolbar /></div>
+        {regionRequest ? (
+          <div className="flex flex-wrap items-center gap-2 border-t border-brand bg-brand-soft/40 px-4 py-2 text-xs" data-testid="viewer-region-request">
+            <span>{t('assistant.viewer.drawHere')}</span>
+            <Button size="xs" variant="primary" disabled={!requestedRegion} onClick={() => finishRegionRequest(requestedRegion)} data-testid="viewer-region-use">{t('assistant.viewer.use')}</Button>
+            <Button size="xs" onClick={() => finishRegionRequest(null)} data-testid="viewer-region-cancel">{t('common.cancel')}</Button>
+          </div>
+        ) : null}
         <div className="space-y-2 border-t border-line bg-surface p-4" data-testid="inspect-reading">
           <p className="text-sm font-semibold">{t(`inspect.status.${status}`)}</p>
           <p title={reading?.value == null ? undefined : `${String(reading.value)} ${readingUnit}`} className={`font-mono text-2xl ${stale ? 'text-muted line-through' : ''}`}>{inspectionValue(reading)} {inspectionValue(reading) !== '—' ? readingUnit : ''}</p>

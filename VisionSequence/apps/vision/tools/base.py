@@ -623,10 +623,11 @@ class ImplicitPort:
     keep_none: bool = False
     semantic: str = ""
     accepts_semantics: tuple[str, ...] = ()
+    #: True＝複合工具實例也有這個埠（位置修正輸入、直通影像輸出）；其餘隱含埠內部節點各自有，不套在實例上
+    on_composite: bool = False
 
     def shows_on(self, tool: ToolType) -> bool:
-        # 複合工具沒有直通影像與標記埠（內部節點各自有）；位置修正埠仍看有沒有 roi 參數
-        if not getattr(tool, "implicit_ports", True) and self.key != TRANSFORM_IN:
+        if not getattr(tool, "implicit_ports", True) and not self.on_composite:
             return False
         return self.catalogued and (self.when is None or self.when(tool))
 
@@ -646,10 +647,11 @@ IMPLICIT_INPUTS: tuple[ImplicitPort, ...] = (
     ImplicitPort(IMAGE_THRU, "Image (pass-through)", "image", when=_takes_no_image, collect=True),
     # 位置修正：有畫 ROI 的工具才出現；`ctx.roi()` 會把區域跟著工件移動，工具本身不必知道
     ImplicitPort(TRANSFORM_IN, "Position correction", "any", when=_has_roi_param, collect=True, keep_none=True,
-                 accepts_semantics=("transform",)),
+                 accepts_semantics=("transform",), on_composite=True),
 )
 IMPLICIT_OUTPUTS: tuple[ImplicitPort, ...] = (
-    ImplicitPort(IMAGE_THRU, "Image (pass-through)", "image"),
+    # 複合工具的直通＝送進第一個對外影像輸入的那張影像（composites.flatten 把邊改接到上游）
+    ImplicitPort(IMAGE_THRU, "Image (pass-through)", "image", on_composite=True),
     ImplicitPort(OVERLAYS_OUT, "Overlays", "list"),
 )
 
