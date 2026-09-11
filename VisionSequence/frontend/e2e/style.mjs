@@ -12,7 +12,8 @@ import path from 'node:path'
 
 import { BASE, OUT, createHarness } from './full-lib.mjs'
 
-const SCRATCH = 'C:/Users/grown/AppData/Local/Temp/claude/d--Working-Space-Python-VisionSequence/6c0c530e-1ec2-4b18-9f56-572ac47cb72c/scratchpad'
+// 匯出／匯入測試用的暫存檔放在 Image/style-scratch（.gitignore 已忽略）
+const SCRATCH = path.join(OUT, 'style-scratch')
 fs.mkdirSync(SCRATCH, { recursive: true })
 
 const h = await createHarness()

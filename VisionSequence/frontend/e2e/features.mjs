@@ -4,12 +4,14 @@
  * 需要：後端 :8000（manage.py serve，含 TCP）、前端 :5173；Playwright 取自 ZQS-Cloud 的 node_modules。
  * 截圖寫到 <repo>/Image/60-*.png。
  */
-import { chromium } from 'file:///D:/Working%20Space/Python/ZQS-Cloud/frontend/node_modules/playwright/index.mjs'
+import { chromium } from 'playwright'
 import fs from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
 const BASE = 'http://127.0.0.1:5173'
-const OUT = 'D:/Working Space/Python/VisionSequence/Image'
+// 截圖輸出到專案根目錄的 Image/（.gitignore 已忽略），依本檔位置推算、不寫死
+const OUT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../Image')
 fs.mkdirSync(OUT, { recursive: true })
 
 const issues = []

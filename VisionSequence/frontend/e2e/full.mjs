@@ -8,6 +8,7 @@
  * 再以 `node frontend/e2e/full-mark.mjs` 標回 CHECKLIST.md。截圖：Image/120-*.png（配方儲存範圍／頂列兩列回合；風格改版回合為 110-*、v0.2 回合為 90-*、更早為 70-*）。
  */
 import { execSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import fs from 'node:fs'
 
 import { ADMIN, BASE, createHarness } from './full-lib.mjs'
@@ -19,7 +20,7 @@ const merge = args.includes('--merge')
 const picked = args.filter((a) => !a.startsWith('--'))
 const modules = picked.length ? picked : MODULES
 
-const REPO = 'D:/Working Space/Python/VisionSequence'
+const REPO = fileURLToPath(new URL('../../', import.meta.url)).slice(0, -1)  // 專案根目錄（依本檔位置推算，不寫死）
 if (fresh) {
   console.log('--fresh：清空所有使用者（登入頁會進入建立管理員模式）')
   execSync(`"${REPO}/.venv/Scripts/python.exe" manage.py shell -c "from django.contrib.auth import get_user_model; get_user_model().objects.all().delete()"`, { cwd: REPO, stdio: 'inherit' })

@@ -5,12 +5,14 @@
  * 流程：setup 管理員（或 create_admin 重設後登入）→ 建使用者 → 設定頁鎖定 → 編輯器橫幅與按鈕 disabled → 解鎖。
  * 截圖寫到 <repo>/Image/30-*.png。
  */
-import { chromium } from 'file:///D:/Working%20Space/Python/ZQS-Cloud/frontend/node_modules/playwright/index.mjs'
+import { chromium } from 'playwright'
 import fs from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
 const BASE = 'http://127.0.0.1:5173'
-const OUT = 'D:/Working Space/Python/VisionSequence/Image'
+// 截圖輸出到專案根目錄的 Image/（.gitignore 已忽略），依本檔位置推算、不寫死
+const OUT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../Image')
 const ADMIN = { username: 'admin', password: 'admin123' }
 const WORKER = { username: 'worker1', password: 'worker123' }
 fs.mkdirSync(OUT, { recursive: true })

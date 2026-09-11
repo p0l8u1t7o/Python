@@ -1,9 +1,10 @@
 /** 模組 layout：1280×800 與 1600×1000 排版（W01、W02、F22）、深色截圖（W03）、SSE 斷線重連（W04）。 */
 import { execSync, spawn } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 
 import { BASE } from './full-lib.mjs'
 
-const REPO = 'D:/Working Space/Python/VisionSequence'
+const REPO = fileURLToPath(new URL('../../', import.meta.url)).slice(0, -1)  // 專案根目錄（依本檔位置推算，不寫死）
 
 /** 真的把後端重啟一次：SSE 會斷線（onerror）→ 5 秒後重連。 */
 async function restartBackend(h) {

@@ -6,12 +6,14 @@
  *      → 改 min_area 看自動更新與直方圖 → 返回編輯器確認參數保留 → 製造錯誤（image_source mode=input 且清除暫存）
  *      → 重置 → 說明頁各分頁。截圖到 <repo>/Image/50-*.png；console error / pageerror 收集在最後列出。
  */
-import { chromium } from 'file:///D:/Working%20Space/Python/ZQS-Cloud/frontend/node_modules/playwright/index.mjs'
+import { chromium } from 'playwright'
 import fs from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
 const BASE = 'http://127.0.0.1:5173'
-const OUT = 'D:/Working Space/Python/VisionSequence/Image'
+// 截圖輸出到專案根目錄的 Image/（.gitignore 已忽略），依本檔位置推算、不寫死
+const OUT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../Image')
 fs.mkdirSync(OUT, { recursive: true })
 
 const issues = []

@@ -2,12 +2,14 @@
  * full-*.mjs 共用的測試骨架：瀏覽器、登入、API、截圖編號、問題收集、清單回報。
  * Playwright 取自 ZQS-Cloud 的 node_modules（與 smoke.mjs 相同）。
  */
-import { chromium } from 'file:///D:/Working%20Space/Python/ZQS-Cloud/frontend/node_modules/playwright/index.mjs'
+import { chromium } from 'playwright'
 import fs from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
 export const BASE = 'http://127.0.0.1:5173'
-export const OUT = 'D:/Working Space/Python/VisionSequence/Image'
+export // 截圖輸出到專案根目錄的 Image/（.gitignore 已忽略），依本檔位置推算、不寫死
+const OUT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../Image')
 export const ADMIN = { username: 'admin', password: 'admin123' }
 export const WORKER = { username: 'worker1', password: 'worker123' }
 
@@ -246,7 +248,7 @@ export async function createHarness({ headless = true } = {}) {
     await browser.close()
   }
   h.writeResults = () => {
-    const p = path.resolve('D:/Working Space/Python/VisionSequence/frontend/e2e/full-results.json')
+    const p = fileURLToPath(new URL('./full-results.json', import.meta.url))
     fs.writeFileSync(p, JSON.stringify({ results: h.results, issues: h.issues, shots: h.shots.length }, null, 2))
     return p
   }
