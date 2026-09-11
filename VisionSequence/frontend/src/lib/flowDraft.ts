@@ -9,7 +9,19 @@
  */
 import { useSyncExternalStore } from 'react'
 
-import type { FlowGraph, RunReport, ScratchImage } from './types'
+import type { Flow, FlowGraph, RunReport, ScratchImage } from './types'
+
+/** 隨流程一起儲存的運行設定（以前每改一下就送伺服器，與描述的生效時機不一致）。 */
+export interface FlowSettings {
+  continuous_interval_ms: number
+  timeout_s: number
+  concurrency: number
+  stop_on_ng: boolean
+}
+
+export function settingsOf(flow: Pick<Flow, 'continuous_interval_ms' | 'timeout_s' | 'concurrency' | 'stop_on_ng'>): FlowSettings {
+  return { continuous_interval_ms: flow.continuous_interval_ms ?? 0, timeout_s: flow.timeout_s ?? 0, concurrency: flow.concurrency ?? 1, stop_on_ng: flow.stop_on_ng === true }
+}
 
 export interface FlowDraft {
   /** 依據的伺服器版本；不符（別人存過）就丟掉草稿 */
@@ -17,6 +29,8 @@ export interface FlowDraft {
   graph: FlowGraph
   name: string
   description: string
+  /** 運行設定；舊草稿沒有這個欄位時儲存不帶（維持伺服器的值） */
+  settings?: FlowSettings
   dirty: boolean
 }
 

@@ -48,7 +48,7 @@ import { useConfirm } from '@/lib/useConfirm'
 import { selectVisibleRun } from '@/lib/clearResults'
 import { errorMessage } from '@/lib/errors'
 import { createHistory, pushHistory as pushEditHistory, redoHistory, undoHistory } from '@/lib/flowHistory'
-import { getSession, setDraft, updateSession, useFlowSession } from '@/lib/flowDraft'
+import { settingsOf, type FlowSettings, getSession, setDraft, updateSession, useFlowSession } from '@/lib/flowDraft'
 import { flowGraphSignature, shouldSaveDraftVersion } from '@/lib/flowAutoVersion'
 import { searchNodes } from '@/lib/nodeSearch'
 import { readEditorCollapsedTasks, readEditorEdgeValues, readEditorGridView, readFlowDescriptionPanelCollapsed, readFlowDraftAutoVersion, writeEditorCollapsedTasks, writeEditorEdgeValues, writeEditorGridView, writeFlowDescriptionPanelCollapsed } from '@/lib/localState'
@@ -260,7 +260,7 @@ function EditorInner({ flowId }: { flowId: number }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [meta, setMeta] = useState({ name: '', description: '' })
+  const [meta, setMeta] = useState<{ name: string; description: string; settings: FlowSettings }>({ name: '', description: '', settings: { continuous_interval_ms: 0, timeout_s: 0, concurrency: 1, stop_on_ng: false } })
   const [dirty, setDirty] = useState(false)
   const [layout, setLayout] = useState<LayoutState>(readLayout)
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -369,7 +369,7 @@ function EditorInner({ flowId }: { flowId: number }) {
     payloads.current = new Map((graph.nodes ?? []).map((n) => [n.id, n]))
     setNodes(toFlowNodes(graph, defs))
     setEdges(toFlowEdges(graph, defs))
-    setMeta(source ? { name: source.name, description: source.description } : { name: data.name, description: data.description })
+    setMeta(source ? { name: source.name, description: source.description, settings: source.settings ?? settingsOf(data) } : { name: data.name, description: data.description, settings: settingsOf(data) })
     setDirty(source ? source.dirty : false)
     lastAutoVersionSignature.current = flowGraphSignature(data.graph)
     history.current = createHistory<FlowGraph>(HISTORY_LIMIT)
@@ -384,7 +384,7 @@ function EditorInner({ flowId }: { flowId: number }) {
       setEdges(toFlowEdges(details.graph, defs))
       setDirty(false)
       lastAutoVersionSignature.current = flowGraphSignature(details.graph)
-      setDraft(flowId, { baseVersion: details.version, graph: details.graph, name: meta.name, description: meta.description, dirty: false })
+      setDraft(flowId, { baseVersion: details.version, graph: details.graph, name: meta.name, description: meta.description, settings: meta.settings, dirty: false })
       void flow.refetch()
     },
     [defs, flow, flowId, meta.description, meta.name, setEdges, setNodes],
@@ -403,7 +403,7 @@ function EditorInner({ flowId }: { flowId: number }) {
     () => () => {
       const l = latest.current
       if (!l.loaded) return
-      setDraft(flowId, { baseVersion: l.version, graph: currentGraph(), name: l.meta.name, description: l.meta.description, dirty: l.dirty })
+      setDraft(flowId, { baseVersion: l.version, graph: currentGraph(), name: l.meta.name, description: l.meta.description, settings: l.meta.settings, dirty: l.dirty })
     },
     [flowId, currentGraph],
   )
@@ -428,13 +428,13 @@ function EditorInner({ flowId }: { flowId: number }) {
       autoVersionSaving.current = true
       try {
         const saved = await patch.mutateAsync(
-          { id: flowId, name: l.meta.name.trim() || t('editor.untitled'), description: l.meta.description, graph, expected_updated_at: saveBaseline.current },
+          { id: flowId, name: l.meta.name.trim() || t('editor.untitled'), description: l.meta.description, ...l.meta.settings, graph, expected_updated_at: saveBaseline.current },
           { onSuccess: markSaved },
         )
         lastAutoVersionSignature.current = signature
         if (flowGraphSignature(currentGraph()) === signature) {
           setDirty(false)
-          setDraft(flowId, { baseVersion: saved.version, graph, name: l.meta.name, description: l.meta.description, dirty: false })
+          setDraft(flowId, { baseVersion: saved.version, graph, name: l.meta.name, description: l.meta.description, settings: l.meta.settings, dirty: false })
         }
         toast.success(t('editor.toast.autoVersionSaved', { version: saved.version }))
       } catch (error) {
@@ -443,11 +443,11 @@ function EditorInner({ flowId }: { flowId: number }) {
           graph,
           loadServer: loadServerConflict,
           overwrite: async (updatedAt) => {
-            const saved = await patch.mutateAsync({ id: flowId, name: l.meta.name.trim() || t('editor.untitled'), description: l.meta.description, graph, expected_updated_at: updatedAt }, { onSuccess: markSaved })
+            const saved = await patch.mutateAsync({ id: flowId, name: l.meta.name.trim() || t('editor.untitled'), description: l.meta.description, ...l.meta.settings, graph, expected_updated_at: updatedAt }, { onSuccess: markSaved })
             lastAutoVersionSignature.current = signature
             if (flowGraphSignature(currentGraph()) === signature) {
               setDirty(false)
-              setDraft(flowId, { baseVersion: saved.version, graph, name: l.meta.name, description: l.meta.description, dirty: false })
+              setDraft(flowId, { baseVersion: saved.version, graph, name: l.meta.name, description: l.meta.description, settings: l.meta.settings, dirty: false })
             }
             toast.success(t('editor.toast.autoVersionSaved', { version: saved.version }))
           },
@@ -922,7 +922,7 @@ function EditorInner({ flowId }: { flowId: number }) {
     if (problemMap.size > 0) toast.warning(t('editor.toast.validationWarning', { count: problemMap.size }))
     try {
       const graph = currentGraph()
-      const saveBody = { id: flowId, name: meta.name.trim() || t('editor.untitled'), description: meta.description, graph }
+      const saveBody = { id: flowId, name: meta.name.trim() || t('editor.untitled'), description: meta.description, ...meta.settings, graph }
       await patch.mutateAsync(
         { ...saveBody, expected_updated_at: saveBaseline.current },
         // 回應的新 version 會觸發「重載圖」effect；先標記為已載入，畫布才不會被重設。
@@ -939,10 +939,10 @@ function EditorInner({ flowId }: { flowId: number }) {
         graph,
         loadServer: loadServerConflict,
         overwrite: async (updatedAt) => {
-          const saved = await patch.mutateAsync({ id: flowId, name: meta.name.trim() || t('editor.untitled'), description: meta.description, graph, expected_updated_at: updatedAt }, { onSuccess: markSaved })
+          const saved = await patch.mutateAsync({ id: flowId, name: meta.name.trim() || t('editor.untitled'), description: meta.description, ...meta.settings, graph, expected_updated_at: updatedAt }, { onSuccess: markSaved })
           lastAutoVersionSignature.current = flowGraphSignature(graph)
           setDirty(false)
-          setDraft(flowId, { baseVersion: saved.version, graph, name: meta.name, description: meta.description, dirty: false })
+          setDraft(flowId, { baseVersion: saved.version, graph, name: meta.name, description: meta.description, settings: meta.settings, dirty: false })
           toast.success(t('editor.toast.saved'))
         },
       })) return false
@@ -1850,6 +1850,8 @@ function EditorInner({ flowId }: { flowId: number }) {
                   <p className="text-xs text-muted">{t('editor.selectNodeHint')}</p>
                   <div className="space-y-3">
                     <p className="text-xs font-semibold text-heading">{t('editor.flowSettings')}</p>
+                    {/* 描述與運行設定都進草稿、隨儲存寫入；以前數字欄位每改一下就送伺服器，與「儲存」按鈕的語意打架 */}
+                    <p className="text-xs text-muted">{t('editor.flowSettingsHint')}</p>
                     <TextInput
                       label={t('common.description')}
                       value={meta.description}
@@ -1863,42 +1865,42 @@ function EditorInner({ flowId }: { flowId: number }) {
                         label={t('flows.continuousInterval')}
                         type="number"
                         min={0}
-                        value={String(flow.data?.continuous_interval_ms ?? 0)}
+                        value={String(meta.settings.continuous_interval_ms)}
                         disabled={readOnly}
-                        onChange={(e) => void patchFlowSettings({ continuous_interval_ms: Number(e.target.value) || 0 })}
+                        onChange={(e) => { setMeta({ ...meta, settings: { ...meta.settings, continuous_interval_ms: Number(e.target.value) || 0 } }); setDirty(true) }}
                       />
                       <TextInput
                         label={t('flow.timeoutS')}
                         type="number"
                         min={0}
-                        value={String(flow.data?.timeout_s ?? 0)}
+                        value={String(meta.settings.timeout_s)}
                         disabled={readOnly}
-                        onChange={(e) => void patchFlowSettings({ timeout_s: Number(e.target.value) || 0 })}
+                        onChange={(e) => { setMeta({ ...meta, settings: { ...meta.settings, timeout_s: Number(e.target.value) || 0 } }); setDirty(true) }}
                       />
                       <TextInput
                         label={t('flow.concurrency')}
                         type="number"
                         min={1}
                         step={1}
-                        value={String(flow.data?.concurrency ?? 1)}
+                        value={String(meta.settings.concurrency)}
                         disabled={readOnly}
-                        onChange={(e) => void patchFlowSettings({ concurrency: Math.max(1, Number(e.target.value) || 1) })}
+                        onChange={(e) => { setMeta({ ...meta, settings: { ...meta.settings, concurrency: Math.max(1, Number(e.target.value) || 1) } }); setDirty(true) }}
                       />
                     </div>
                     <div className="flex flex-wrap gap-x-4 gap-y-1">
                       {/* 複製出來的流程預設停用；不用回列表就能在這裡開啟 */}
                       <Checkbox
                         label={t('flows.enabledToggle')}
-                        hint={flow.data?.is_enabled === false ? t('editor.flowDisabledHint') : undefined}
+                        hint={flow.data?.is_enabled === false ? t('editor.flowDisabledHint') : t('editor.appliesImmediately')}
                         checked={flow.data?.is_enabled !== false}
                         disabled={readOnly}
                         onChange={(v) => void patchFlowSettings({ is_enabled: v })}
                       />
                       <Checkbox
                         label={t('flow.stopOnNg')}
-                        checked={flow.data?.stop_on_ng === true}
+                        checked={meta.settings.stop_on_ng}
                         disabled={readOnly}
-                        onChange={(v) => void patchFlowSettings({ stop_on_ng: v })}
+                        onChange={(v) => { setMeta({ ...meta, settings: { ...meta.settings, stop_on_ng: v } }); setDirty(true) }}
                       />
                     </div>
                   </div>

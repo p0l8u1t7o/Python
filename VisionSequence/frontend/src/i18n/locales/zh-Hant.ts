@@ -902,6 +902,8 @@ const zhHant = {
     results: '結果',
     selectNodeHint: '選取畫布上的步驟以編輯基本設定；完整參數在工具頁',
     flowSettings: '流程設定',
+    flowSettingsHint: '與流程一起儲存（儲存或 Ctrl+S）。',
+    appliesImmediately: '立即生效',
     moreSettings: '更多設定',
     openVariables: '變數…',
     openBoard: '看板設定…',

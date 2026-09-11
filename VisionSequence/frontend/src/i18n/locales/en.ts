@@ -2162,6 +2162,8 @@ const enExtra3 = {
     clearResultsHint: 'Clear only the visible run result, step status and marks. The draft and saved flow are unchanged.',
     selectNodeHint: 'Select a step on the canvas to edit its basics; the full parameters are on the tool page',
     flowSettings: 'Flow settings',
+    flowSettingsHint: 'Saved together with the flow (Save or Ctrl+S).',
+    appliesImmediately: 'Applies immediately',
     moreSettings: 'More settings',
     openVariables: 'Variables…',
     openBoard: 'Board settings…',

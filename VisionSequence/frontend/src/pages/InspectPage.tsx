@@ -12,7 +12,7 @@ import { GeometrySourceField } from '@/components/inspect/GeometrySourceField'
 import { inspectionFieldVisible, inspectionHasImage, inspectionReuseRef, normalizeInspectionSources, inspectionRunFromTrial, inspectionTrialPayload } from '@/lib/inspect'
 import { errorMessage } from '@/lib/errors'
 import { publishAssistantProgress, useRegisterAssistantContext } from '@/lib/assistantContext'
-import { getSession, setDraft, updateSession, useFlowSession } from '@/lib/flowDraft'
+import { getSession, setDraft, settingsOf, updateSession, useFlowSession } from '@/lib/flowDraft'
 import { INSPECT_DOTS, OUTPUT_NAME, forgetInspectionRun, inspectGraphHash, inspectionAdvancedPath, inspectionDefaults, inspectionEditableKind, inspectionOverall, inspectionParam, inspectionReasonKey, inspectionRemovalGraph, inspectionRunFor, inspectionStale, inspectionStatus, inspectionValue, missingInspectionFields, rememberInspectionRun } from '@/lib/inspect'
 import { inspectionEvidence, readInspection, readLastInspectionTrial, saveLastInspectionTrial, removeInspection, teachInspectionPose, useFlow, useFlowMutations, useInspectKinds, usePreviewFlow, useScratchImage, useSources, useToolTypes, writeInspection } from '@/lib/queries'
 import type { FlowGraph, ImageRef, InspectDependency, InspectField, InspectKind, InspectList, InspectReading, Region, RoiShape, RunReport } from '@/lib/types'
@@ -108,7 +108,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
     const old = getSession(flowId).draft
     if (!old || (!old.dirty && old.baseVersion !== flow.data.version)) {
       const normalized = normalizeInspectionSources(flow.data.graph)
-      setDraft(flowId, { baseVersion: flow.data.version, graph: normalized, name: flow.data.name, description: flow.data.description, dirty: normalized !== flow.data.graph })
+      setDraft(flowId, { baseVersion: flow.data.version, graph: normalized, name: flow.data.name, description: flow.data.description, settings: settingsOf(flow.data), dirty: normalized !== flow.data.graph })
     } else {
       const normalized = normalizeInspectionSources(old.graph)
       if (normalized !== old.graph) setDraft(flowId, { ...old, graph: normalized, dirty: true })
@@ -284,7 +284,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
   async function saveWithBaseline(updatedAt: string | null) {
     const current = getSession(flowId).draft
     if (!current) return
-    const saved = await patch.mutateAsync({ id: flowId, graph: current.graph, name: current.name, description: current.description, expected_updated_at: updatedAt })
+    const saved = await patch.mutateAsync({ id: flowId, graph: current.graph, name: current.name, description: current.description, ...(current.settings ?? {}), expected_updated_at: updatedAt })
     baseline.current = saved.updated_at
     publishAssistantProgress(flowId, { flow_updated_at: saved.updated_at, flow_version: saved.version }, 'Flow saved.')
     const latest = getSession(flowId).draft

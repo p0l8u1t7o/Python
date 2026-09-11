@@ -177,6 +177,25 @@ describe('pages render (smoke)', () => {
     localStorage.removeItem('vs.editorCollapsed.v1')
   })
 
+  it('FlowEditorPage keeps run settings in the draft until Save', async () => {
+    // Suggest5 第 1 點：間隔／逾時／並行度以前每改一下就 PATCH，描述卻要按儲存；現在一律隨儲存寫入
+    const { FlowEditorPage } = await import('@/pages/FlowEditorPage')
+    const { api } = await import('@/lib/api')
+    const { clearSession } = await import('@/lib/flowDraft')
+    clearSession(1)
+    vi.mocked(api.patch).mockClear()
+    renderDataPage(<FlowEditorPage />, '/flows/1', '/flows/:flowId')
+    await screen.findByTestId('editor-toolbar')
+    const interval = await screen.findByLabelText('Continuous interval (ms)')
+    fireEvent.change(interval, { target: { value: '500' } })
+    fireEvent.click(screen.getByLabelText('Stop on NG'))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(vi.mocked(api.patch).mock.calls.some(([, body]) => 'continuous_interval_ms' in (body as object))).toBe(false)
+    expect(screen.getByText('Applies immediately')).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('btn-save'))
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/vision/flows/1', expect.objectContaining({ continuous_interval_ms: 500, stop_on_ng: true, timeout_s: 0, concurrency: 1 })))
+  })
+
   it('InspectPage successful removal retains the source and unrelated advanced steps', async () => {
     const { InspectPage } = await import('@/pages/InspectPage')
     const { api } = await import('@/lib/api')

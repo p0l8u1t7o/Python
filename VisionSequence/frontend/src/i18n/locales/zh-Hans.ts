@@ -902,6 +902,8 @@ const zhHans = {
     results: '结果',
     selectNodeHint: '选取画布上的步骤以编辑基本设置；完整参数在工具页',
     flowSettings: '流程设置',
+    flowSettingsHint: '与流程一起保存（保存或 Ctrl+S）。',
+    appliesImmediately: '立即生效',
     moreSettings: '更多设置',
     openVariables: '变量…',
     openBoard: '看板设置…',

@@ -137,7 +137,7 @@ export function EditorToolbar(p: EditorToolbarProps) {
         <input className="input !w-48 min-w-32 !py-1 font-medium" value={p.name} onChange={(e) => p.onNameChange(e.target.value)} placeholder={t('editor.untitled')} aria-label={t('common.name')} />
         {p.dirty ? <span className="whitespace-nowrap text-[11px] text-warning">{t('editor.unsaved')}</span> : null}
         <span title={p.readOnly ? t('flows.readOnlyHint') : t('editor.saveShortcut')}>
-          <Button size="sm" variant={p.dirty ? 'primary' : 'secondary'} icon={<Save size={14} />} loading={p.saving} disabled={p.readOnly} onClick={p.onSave}>
+          <Button size="sm" variant={p.dirty ? 'primary' : 'secondary'} icon={<Save size={14} />} loading={p.saving} disabled={p.readOnly} onClick={p.onSave} data-testid="btn-save">
             {p.dirty ? t('editor.save') : t('editor.savedState')}
           </Button>
         </span>
