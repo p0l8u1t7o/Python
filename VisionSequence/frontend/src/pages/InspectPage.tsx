@@ -4,6 +4,7 @@ import { Link, useBlocker, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ChevronLeft, ChevronRight, Plus, Play, Save, Trash2, ImageUp } from 'lucide-react'
 import { ImagesField, ParamField, type InspectorActions } from '@/components/editor/ParamField'
+import { FlowSubNav } from '@/components/flow/FlowSubNav'
 import { useSaveConflictDialog } from '@/components/flow/SaveConflictDialog'
 import { Button, ErrorState, LoadingState, Modal } from '@/components/ui'
 import { ImageViewer } from '@/components/viewer/ImageViewer'
@@ -405,7 +406,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
       <Button icon={<Save size={14} />} loading={patch.isPending} disabled={readOnly || busy || Boolean(newKind) || formInvalid} onClick={() => void action(save)} data-testid="inspect-save">{t('inspect.save')}</Button>
       {dirty ? <span className="text-xs text-warning">{t('inspect.unsaved')}</span> : null}
       <span className={`rounded px-2 py-1 text-xs ${stale ? 'text-muted' : run?.status === 'ok' ? 'text-ok' : 'text-warning'}`} data-testid="inspect-overall">{stale ? t('inspect.status.stale') : inspectionOverall(run, stale)}</span>
-      <Link className="btn-secondary" to={editorPath}>{t('inspect.advancedFlow')}</Link>
+      <FlowSubNav flowId={flowId} />
       <div className="flex w-full flex-wrap items-center gap-2 text-xs">
         <label>{t('inspect.source')} <select className="input !w-48" value={source?.type === 'fixed_image' ? 'fixed' : String(source?.params?.source_id ?? '')} disabled={readOnly || busy} onChange={(event) => void action(() => changeSource(event.target.value))} data-testid="inspect-source">
           <option value="">{t('common.none')}</option><option value="fixed">{t('inspect.fixedImages')}</option>{(sources.data?.items ?? []).map((item) => <option key={item.id} value={item.id}>{localiseDataName(item.name, i18n.language as Language)}</option>)}

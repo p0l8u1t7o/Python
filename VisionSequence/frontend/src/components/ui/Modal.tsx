@@ -134,7 +134,7 @@ export function ConfirmDialog({ open, onClose, onConfirm, title, message, confir
         </>
       }
     >
-      <p className="text-sm text-content">{message}</p>
+      <div className="text-sm text-content">{message}</div>
     </Modal>
   )
 }

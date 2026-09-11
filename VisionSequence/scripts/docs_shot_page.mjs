@@ -58,8 +58,16 @@ const PAGES = {
     callouts: [
       { target: '[data-testid="toolbar-row-1"]', label: 'toolbar-row-1' }, { target: '[data-testid="toolbar-row-2"]', label: 'toolbar-row-2' }, { target: '[data-testid="btn-add-tool"]', label: 'btn-add-tool' },
       { target: '.react-flow', label: 'canvas' }, { target: '[data-testid="viewer-main"]', label: 'viewer-main' }, { target: '[data-testid="inspector"]', label: 'inspector' },
-      { target: '[data-testid="open-tool-page"]', label: 'open-tool-page' }, { target: '[data-testid="btn-preview"]', label: 'btn-preview' }, { target: '[data-testid="btn-teach"]', label: 'btn-teach' },
-      { target: '[data-testid="btn-stats"]', label: 'btn-stats' },
+      { target: '[data-testid="open-tool-page"]', label: 'open-tool-page' }, { target: '[data-testid="btn-preview"]', label: 'btn-preview' }, { target: '[data-testid="flow-subnav"]', label: 'flow-subnav' },
+      { target: '[data-testid="editor-more"]', label: 'editor-more' },
+    ],
+  },
+  // 流程列表：兩種建立入口、每列 檢測任務／更多
+  'flows': {
+    route: '/flows', ready: '[data-testid="btn-import"]',
+    callouts: [
+      { target: '[data-testid="btn-create-inspection"]', label: 'New inspection' }, { target: '[data-testid="btn-create-advanced"]', label: 'btn-create-advanced' }, { target: '[data-testid="btn-from-template"]', label: 'btn-from-template' },
+      { target: '[data-testid="btn-import"]', label: 'btn-import' }, { target: '[data-testid="row-inspect"]', label: 'row-inspect' }, { target: '[data-testid="row-more"]', label: 'row-more' }, { target: '[data-testid="row-recipes"]', label: 'row-recipes' },
     ],
   },
   // 流程編輯器右側「未選取節點」的流程設定：三顆按鈕開變數／看板／結果回報對話框

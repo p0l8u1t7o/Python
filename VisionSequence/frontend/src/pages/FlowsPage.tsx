@@ -1,14 +1,14 @@
-/** 流程列表：新增、複製、刪除、啟用切換、進入編輯器。 */
+/** 流程列表：建立檢測任務／建立進階流程、每列 檢測任務／開啟畫布／更多（參數卡、Golden Set、統計、匯出、複製、刪除）、啟用切換；點整列進檢測任務頁。 */
 import { useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { BarChart3, BookOpen, Copy, Download, Gem, LayoutTemplate, Lock, Pencil, Plus, SlidersHorizontal, Trash2, Upload, Users, Workflow } from 'lucide-react'
+import { BarChart3, BookOpen, Copy, Download, Gem, LayoutTemplate, ListChecks, Lock, MoreHorizontal, Pencil, Plus, SlidersHorizontal, Trash2, Upload, Users, Workflow } from 'lucide-react'
 
 import { Page } from '@/components/layout/AppShell'
 import { BoundBadge, BoundRecipeSelect } from '@/components/recipes/BoundRecipeSelect'
 import { RecipeDrawer } from '@/components/recipes/RecipeDrawer'
 import { TemplateGallery } from '@/components/templates/TemplateGallery'
-import { Badge, Button, Card, ConfirmDialog, EmptyRow, ErrorState, IconButton, LoadingState, Modal, PageHeader, Select, StatusBadge, Switch, TBody, THead, Table, Td, TextArea, TextInput, Th, Tr } from '@/components/ui'
+import { ActionMenu, ActionMenuItem, ActionMenuSeparator, Badge, Button, Card, ConfirmDialog, EmptyRow, ErrorState, IconButton, LoadingState, Modal, PageHeader, Select, StatusBadge, Switch, TBody, THead, Table, Td, TextArea, TextInput, Th, Tr } from '@/components/ui'
 import { downloadFile } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
 import { useFlowMutations, useFlows, useImportFlow, useRecipes, useSources } from '@/lib/queries'
@@ -49,7 +49,8 @@ export function FlowsPage() {
   /** 共用流程（或別人的）一般使用者只能看、複製，不能改 */
   const readOnly = (_flow: Flow) => !auth.isEngineer
   const { create, patch, remove, duplicate } = useFlowMutations()
-  const [creating, setCreating] = useState(false)
+  /** 建立入口分兩種（Suggest5 第 6 點）：檢測任務（建好進任務頁）與進階流程（建好進畫布） */
+  const [creating, setCreating] = useState<'inspect' | 'advanced' | null>(null)
   const [gallery, setGallery] = useState(false)
   const [form, setForm] = useState({ name: '', description: '' })
   const [nameError, setNameError] = useState<string | null>(null)
@@ -92,11 +93,12 @@ export function FlowsPage() {
       return
     }
     try {
+      const mode = creating
       const flow = await create.mutateAsync({ name: form.name.trim(), description: form.description })
-      setCreating(false)
+      setCreating(null)
       setForm({ name: '', description: '' })
       toast.success(t('flows.created'))
-      navigate(`/flows/${flow.id}`)
+      navigate(mode === 'advanced' ? `/flows/${flow.id}` : `/flows/${flow.id}/inspect`)
     } catch (error) {
       toast.error(errorMessage(error))
     }
@@ -149,8 +151,11 @@ export function FlowsPage() {
             <Button icon={<Upload size={15} />} onClick={() => setImporting(true)} title={t('flows.importHint')} data-testid="btn-import">
               {t('flows.import')}
             </Button>
-            <Button variant="primary" icon={<Plus size={15} />} onClick={() => setCreating(true)}>
-              {t('flows.create')}
+            <Button icon={<Plus size={15} />} onClick={() => setCreating('advanced')} title={t('flows.createAdvancedHint')} data-testid="btn-create-advanced">
+              {t('flows.createAdvanced')}
+            </Button>
+            <Button variant="primary" icon={<ListChecks size={15} />} onClick={() => setCreating('inspect')} title={t('flows.createInspectionHint')} data-testid="btn-create-inspection">
+              {t('flows.createInspection')}
             </Button>
           </>
         }
@@ -178,7 +183,7 @@ export function FlowsPage() {
                 <EmptyRow colSpan={9} message={<span className="inline-flex flex-col items-center gap-1"><Workflow className="size-5" />{t('flows.empty')}<span className="text-xs">{t('flows.emptyHint')}</span></span>} />
               ) : (
                 flows.data.items.map((flow) => (
-                  <Tr key={flow.id} onClick={() => navigate(`/flows/${flow.id}`)}>
+                  <Tr key={flow.id} onClick={() => navigate(`/flows/${flow.id}/inspect`)}>
                     <Td className="sm:min-w-52">
                       {/* min-w：名稱旁有「未教導」「綁定：…」標籤時，表格自動配寬會把名稱擠成一字一行 */}
                       <p className="flex flex-wrap items-center gap-1.5 font-medium">
@@ -213,16 +218,20 @@ export function FlowsPage() {
                     <Td className="max-xl:hidden"><RecipeCell flow={flow} readOnly={readOnly(flow)} onOpen={() => setRecipeFlow(flow)} /></Td>
                     <Td className="tnum max-xl:hidden whitespace-nowrap text-xs text-muted"><span title={formatDateTimeFull(flow.updated_at)}>{formatDateTime(flow.updated_at)}</span></Td>
                     <Td align="right">
-                      <span className="inline-flex min-w-24 max-w-28 flex-wrap justify-end gap-0.5 sm:min-w-0 sm:max-w-none sm:flex-nowrap sm:gap-1" onClick={(e) => e.stopPropagation()}>
+                      {/* 每列只留 檢測任務／開啟畫布／更多（Suggest5 第 5 點）；其餘動作收進選單 */}
+                      <span className="inline-flex items-center justify-end gap-1 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                         <Link to={`/flows/${flow.id}/inspect`} className="btn-secondary !h-8 whitespace-nowrap !px-2 !text-xs" data-testid="row-inspect">{t('inspect.title')}</Link>
-                        <Link to={`/flows/${flow.id}`} aria-label={t('flows.open')} title={t('flows.open')}><IconButton label={t('flows.open')}><Pencil size={15} /></IconButton></Link>
-                        {auth.can('flows.teach') ? <Link to={`/flows/${flow.id}/teach`} aria-label={t('flows.teach')} title={t('flows.teach')}><IconButton label={t('flows.teach')} data-testid="row-teach"><SlidersHorizontal size={15} /></IconButton></Link> : null}
-                        <Link to={`/flows/${flow.id}/golden`} aria-label={t('flows.golden')} title={t('flows.golden')}><IconButton label={t('flows.golden')} data-testid="row-golden"><Gem size={15} /></IconButton></Link>
-                        <Link to={`/flows/${flow.id}/stats`} aria-label={t('stats.open')} title={t('stats.open')}><IconButton label={t('stats.open')}><BarChart3 size={15} /></IconButton></Link>
-                        <IconButton label={t('flows.export')} title={t('flows.exportHint')} onClick={() => void onExport(flow)} data-testid="row-export"><Download size={15} /></IconButton>
-                        <IconButton label={t('common.duplicate')} onClick={() => void onDuplicate(flow)}><Copy size={15} /></IconButton>
-                        <span className="mx-0.5 hidden h-4 w-px bg-line sm:inline-block" aria-hidden />
-                        <IconButton label={readOnly(flow) ? t('flows.readOnly') : t('common.delete')} disabled={readOnly(flow)} onClick={() => setPendingDelete(flow)} className="hover:!bg-critical-soft hover:!text-critical"><Trash2 size={15} /></IconButton>
+                        <Link to={`/flows/${flow.id}`} aria-label={t('flows.open')} title={t('flows.open')} data-testid="row-open"><IconButton label={t('flows.open')}><Pencil size={15} /></IconButton></Link>
+                        <ActionMenu testId={`row-more-${flow.id}`} label={t('common.more')} trigger={(open, props) => <IconButton label={t('common.more')} active={open} data-testid="row-more" {...props}><MoreHorizontal size={15} /></IconButton>}>
+                          {auth.can('flows.teach') ? <ActionMenuItem icon={<SlidersHorizontal size={13} />} to={`/flows/${flow.id}/teach`} testId="row-teach">{t('flows.teach')}</ActionMenuItem> : null}
+                          <ActionMenuItem icon={<Gem size={13} />} to={`/flows/${flow.id}/golden`} testId="row-golden">{t('flows.golden')}</ActionMenuItem>
+                          <ActionMenuItem icon={<BarChart3 size={13} />} to={`/flows/${flow.id}/stats`} testId="row-stats">{t('stats.open')}</ActionMenuItem>
+                          <ActionMenuSeparator />
+                          <ActionMenuItem icon={<Download size={13} />} onClick={() => void onExport(flow)} title={t('flows.exportHint')} testId="row-export">{t('flows.export')}</ActionMenuItem>
+                          <ActionMenuItem icon={<Copy size={13} />} onClick={() => void onDuplicate(flow)} testId="row-duplicate">{t('common.duplicate')}</ActionMenuItem>
+                          <ActionMenuSeparator />
+                          <ActionMenuItem icon={<Trash2 size={13} />} danger disabled={readOnly(flow)} title={readOnly(flow) ? t('flows.readOnly') : undefined} onClick={() => setPendingDelete(flow)} testId="row-delete">{t('common.delete')}</ActionMenuItem>
+                        </ActionMenu>
                       </span>
                     </Td>
                   </Tr>
@@ -234,9 +243,10 @@ export function FlowsPage() {
       </Card>
 
       <Modal
-        open={creating}
-        onClose={() => { setCreating(false); setNameError(null) }}
-        title={t('flows.createTitle')}
+        open={creating !== null}
+        onClose={() => { setCreating(null); setNameError(null) }}
+        title={creating === 'advanced' ? t('flows.createAdvancedTitle') : t('flows.createInspectionTitle')}
+        description={creating === 'advanced' ? t('flows.createAdvancedHint') : t('flows.createInspectionHint')}
         dirty={Boolean(form.name || form.description)}
         footer={(close) => (
           <>

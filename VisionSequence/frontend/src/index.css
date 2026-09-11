@@ -337,6 +337,7 @@
   .text-warning { color: var(--warning-ink); }
   .text-critical { color: var(--critical-ink); }
   .text-info { color: var(--info-ink); }
+  .\!text-brand { color: var(--brand-ink) !important; }
 }
 /* 深色容器裡（影像檢視器、側欄、黑底浮層）ink 與次要文字換回深底用的值：淺色主題的 ink 在深底只有 3:1、subtle 只有 3.4:1 */
 .bg-viewer, .bg-sidebar, .bg-black\/40, .bg-black\/45, .bg-black\/50, .bg-black\/55, .bg-black\/60 {

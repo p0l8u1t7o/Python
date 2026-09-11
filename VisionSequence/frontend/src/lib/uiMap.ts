@@ -29,10 +29,10 @@ const TRACE = { key: 'trace', label: 'integration.trace.title' }
 
 export const UI_PAGES: UiPage[] = [
   { route: '/notes', id: 'notes', nav: 'nav.notes', help: '/help', actions: ['notes.create', 'notes.confirm', 'notes.retract'] },
-  { route: '/flows/:flowId/inspect', id: 'inspect', title: 'inspect.title', help: '/flows/:id', actions: ['inspect.add', 'inspect.run', 'inspect.save', 'inspect.advancedFlow'] },
+  { route: '/flows/:flowId/inspect', id: 'inspect', title: 'inspect.title', help: '/flows/:id', actions: ['inspect.add', 'inspect.run', 'inspect.save'] },
   { route: '/', id: 'dashboard', nav: 'nav.dashboard', help: '/', actions: ['dashboard.runOnce'] },
-  { route: '/flows', id: 'flows', nav: 'nav.flows', help: '/flows', actions: ['flows.create', 'flows.export'] },
-  { route: '/flows/:flowId', id: 'flow_editor', title: 'breadcrumb.editor', feature: 'flows.edit', help: '/flows/:id', actions: ['editor.save', 'editor.preview', 'editor.openVariables', 'editor.openBoard', 'editor.openComm', 'editor.export'] },
+  { route: '/flows', id: 'flows', nav: 'nav.flows', help: '/flows', actions: ['flows.createInspection', 'flows.createAdvanced', 'flows.export'] },
+  { route: '/flows/:flowId', id: 'flow_editor', title: 'breadcrumb.editor', feature: 'flows.edit', help: '/flows/:id', actions: ['editor.save', 'editor.preview', 'editor.openVariables', 'editor.openBoard', 'editor.openComm', 'editor.export', 'editor.clearHistory'] },
   { route: '/flows/:flowId/tools/:nodeId', id: 'tool', title: 'breadcrumb.tools', feature: 'flows.edit', help: '/flows/:id/tools/:nodeId' },
   { route: '/flows/:flowId/stats', id: 'stats', title: 'breadcrumb.stats', help: '/flows/:id/stats' },
   { route: '/flows/:flowId/teach', id: 'teach', title: 'breadcrumb.teach', feature: 'flows.teach', help: '/flows/:id/teach', actions: ['teach.saveGraph', 'teach.saveRecipe'] },

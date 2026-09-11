@@ -65,11 +65,6 @@
      "en": "Save",
      "zh-Hant": "儲存",
      "zh-Hans": "保存"
-    },
-    {
-     "en": "Advanced flow",
-     "zh-Hant": "進階流程",
-     "zh-Hans": "高级流程"
     }
    ]
   },
@@ -109,9 +104,14 @@
    },
    "actions": [
     {
-     "en": "New flow",
-     "zh-Hant": "新增流程",
-     "zh-Hans": "添加流程"
+     "en": "New inspection",
+     "zh-Hant": "建立檢測任務",
+     "zh-Hans": "建立检测任务"
+    },
+    {
+     "en": "New advanced flow",
+     "zh-Hant": "建立進階流程",
+     "zh-Hans": "建立进阶流程"
     },
     {
      "en": "Export",
@@ -164,6 +164,11 @@
      "en": "Export",
      "zh-Hant": "匯出",
      "zh-Hans": "导出"
+    },
+    {
+     "en": "Clear run history",
+     "zh-Hant": "清除執行紀錄",
+     "zh-Hans": "清除执行记录"
     }
    ]
   },

@@ -48,12 +48,12 @@
 
 <figure class="shot"><img src="/docs/img/flows.jpg" alt="流程頁"><figcaption><b>流程</b>（側欄 › 流程）
 <ol class="callouts">
-<li data-n="1"><strong>新增流程</strong>會建立空流程並開啟編輯器。</li>
-<li data-n="2"><strong>從範本建立</strong>會開啟範本畫廊。</li>
-<li data-n="3"><strong>匯入</strong>會載入匯出成 JSON 的流程，可來自另一站或版本控制。</li>
-<li data-n="4">每條流程：<strong>參數卡</strong>（現場參數與配方）。</li>
-<li data-n="5">該流程的 <strong>Golden Set</strong>。</li>
-<li data-n="6"><strong>匯出</strong>流程為 JSON。</li>
+<li data-n="1"><strong>建立檢測任務</strong>會建立空流程並開啟其檢測任務頁。</li>
+<li data-n="2"><strong>建立進階流程</strong>會建立空流程並開啟畫布編輯器。</li>
+<li data-n="3"><strong>從範本建立</strong>會開啟範本畫廊。</li>
+<li data-n="4"><strong>匯入</strong>會載入匯出成 JSON 的流程，可來自另一站或版本控制。</li>
+<li data-n="5">每條流程：<strong>檢測任務</strong>開啟該流程的任務頁；點選整列也一樣。</li>
+<li data-n="6"><strong>更多</strong>：參數卡、Golden Set、統計、匯出、複製與刪除。鉛筆圖示開啟畫布。</li>
 <li data-n="7"><strong>配方</strong>：換線用的參數集。</li>
 </ol></figcaption></figure>
 
@@ -89,16 +89,16 @@ AI 助手也能從對話建出同樣的任務清單，請參考[從對話產生�
 
 <figure class="shot"><img src="/docs/img/editor.jpg" alt="選取步驟的流程編輯器"><figcaption><b>流程編輯器</b>（流程 › 某條流程，路由 <code>/flows/:id</code>）
 <ol class="callouts">
-<li data-n="1">頂列第 1 列：流程名稱、<strong>儲存</strong>、<strong>範本</strong>、<strong>配方</strong>、<strong>版本</strong>（歷史與還原），以及連到參數卡的「未教導」徽章。</li>
-<li data-n="2">頂列第 2 列：<strong>試執行</strong>、來源為資料夾或 Fixed image 時的<strong>影像序列試執行</strong>、「用上次影像重跑」、<strong>上傳暫存影像</strong>、<strong>連續執行</strong>、<strong>清除結果</strong>與<strong>重置</strong>。批次測試位於側欄檢測群組的專屬頁面。</li>
+<li data-n="1">頂列第 1 列：流程名稱、<strong>儲存</strong>、目前配方，以及連到參數卡的「未教導」徽章。其餘都在右側的流程導覽與「更多」選單。</li>
+<li data-n="2">頂列第 2 列：<strong>試執行</strong>、來源為資料夾或 Fixed image 時的<strong>影像序列試執行</strong>、「用上次影像重跑」、<strong>上傳暫存影像</strong>與<strong>連續執行</strong>。批次測試在側欄「影像檢測」群組有自己的頁面。</li>
 <li data-n="3"><strong>新增工具</strong>會開啟工具選擇器（下一張圖）；「新增註解」會放下一張便利貼。您在選擇器收藏的工具會顯示在下方，欄位底部的步驟清單可跳到指定步驟。</li>
 <li data-n="4"><strong>畫布</strong>：步驟與帶型別的埠。從輸出埠拖到下一步輸入埠；只有同色埠能連接。</li>
 <li data-n="5"><strong>影像視窗</strong>：選取步驟的前後影像與標記；下方列可切換輸入、輸出、前後對照，以及「疊加所有步驟標記」。</li>
 <li data-n="6">右側<strong>側欄</strong>：標題、啟用、顏色、「錯誤時繼續」與所選步驟參數；其「結果」分頁顯示上次試執行。</li>
 <li data-n="7"><strong>開啟工具頁</strong>前往該步驟的專屬調整頁。</li>
 <li data-n="8"><strong>試執行</strong>會用目前畫布執行，包含未儲存變更。</li>
-<li data-n="9"><strong>參數卡</strong>捷徑。</li>
-<li data-n="10"><strong>統計</strong>捷徑；旁邊圖示依序為復原、重做、自動排版、版本、匯出與 Golden Set。</li>
+<li data-n="9">同一條流程四個頁面共用的<strong>流程導覽</strong>：檢測任務、畫布、參數卡、統計。</li>
+<li data-n="10"><strong>更多</strong>：範本、配方、版本（歷史與還原）、自動排版、摺疊任務、Golden Set、匯出、<strong>清空結果</strong>與<strong>清除執行紀錄</strong>（對話框會列出影響）。旁邊圖示是復原與重做。</li>
 </ol></figcaption></figure>
 
 影像視窗工具列包含**十字線**按鈕。開啟後會顯示一條水平線與一條垂直線，拖曳任一條線即可量測影像位置。視窗會顯示交點的影像 X/Y 座標，並讀取該點像素值。滑鼠移過影像時也會顯示游標資訊列，包含影像座標與目前灰階或 RGB 值；縮放與平移不會改變座標系。
@@ -512,7 +512,7 @@ Golden Set 是調參後的安全網：它會精確告訴您哪些影像在 OK �
 
 ### 快速上手 {#quick-start}
 
-1. **建流程** 到「流程」頁按「新增流程」，或複製示範流程。流程屬於產線而不是個人：每位工程師都能看到並修改，「擁有者」欄只記錄是誰建立的。
+1. **建流程** 到「流程」頁按「建立檢測任務」（任務頁）或「建立進階流程」（畫布），或複製示範流程。流程屬於產線而不是個人：每位工程師都能看到並修改，「擁有者」欄只記錄是誰建立的。
 2. **取像** 從工具箱插入「影像來源」步驟，選影像來源庫裡的資料夾、合成或擷取端相機來源；或用頂列「上傳暫存影像」只為試執行放一張圖（不進來源庫）。相機由相機所在電腦上的擷取端程式驅動（影像來源庫「下載擷取端」）：連到伺服端後新增「擷取端相機」來源，選擷取端與通道即可。
 3. **加工具** 把工具箱的工具拖到畫布（或點選插到最右邊），把上一步的輸出埠拉線接到下一步的輸入埠；同色的埠才能相接。
 4. **ROI** 有「區域」參數的工具：在工具頁或側欄按「在影像上編輯」，直接在影像視窗拖曳畫出矩形／圓／多邊形等；座標是該步驟輸入影像的像素座標。

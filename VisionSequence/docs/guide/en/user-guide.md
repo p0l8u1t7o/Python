@@ -48,12 +48,12 @@ Nothing is installed on your PC: open the station's address in Chrome, Edge (111
 
 <figure class="shot"><img src="/docs/img/flows.jpg" alt="The Flows page"><figcaption><b>Flows</b> (sidebar › Flows)
 <ol class="callouts">
-<li data-n="1"><strong>New flow</strong> creates an empty flow and opens the editor.</li>
-<li data-n="2"><strong>Create from template</strong> opens the template gallery.</li>
-<li data-n="3"><strong>Import</strong> loads a flow exported as JSON (from another station or from version control).</li>
-<li data-n="4">Per flow: the <strong>teach page</strong> (on-site parameters and recipes).</li>
-<li data-n="5">The <strong>Golden Set</strong> of that flow.</li>
-<li data-n="6"><strong>Export</strong> the flow as JSON.</li>
+<li data-n="1"><strong>New inspection</strong> creates an empty flow and opens its Inspection tasks page.</li>
+<li data-n="2"><strong>New advanced flow</strong> creates an empty flow and opens the canvas editor.</li>
+<li data-n="3"><strong>Create from template</strong> opens the template gallery.</li>
+<li data-n="4"><strong>Import</strong> loads a flow exported as JSON (from another station or from version control).</li>
+<li data-n="5">Per flow: <strong>Inspection tasks</strong> opens that flow's task page; selecting the row does the same.</li>
+<li data-n="6"><strong>More</strong>: the teach page, Golden Set, statistics, export, duplicate and delete. The pencil icon opens the canvas.</li>
 <li data-n="7"><strong>Recipes</strong>: the parameter sets for changeover.</li>
 </ol></figcaption></figure>
 
@@ -89,16 +89,16 @@ The AI assistant can build the same task list from a conversation; see [From a c
 
 <figure class="shot"><img src="/docs/img/editor.jpg" alt="The flow editor with a step selected"><figcaption><b>Flow editor</b> (Flows › a flow, route <code>/flows/:id</code>)
 <ol class="callouts">
-<li data-n="1">Toolbar row 1: the flow name, <strong>Save</strong>, <strong>Templates</strong>, <strong>Recipes</strong>, <strong>Versions</strong> (history and restore) and the "Not taught" badge that links to the teach page.</li>
-<li data-n="2">Toolbar row 2: <strong>Preview</strong>, <strong>Image sequence preview</strong> when the source is a folder or Fixed image, "Rerun with last image", <strong>Upload scratch image</strong>, <strong>Continuous</strong>, <strong>Clear result</strong> and <strong>Reset</strong>. Batch testing has its own page under the sidebar's Inspection group.</li>
+<li data-n="1">Toolbar row 1: the flow name, <strong>Save</strong>, the current recipe and the "Not taught" badge that links to the teach page. Everything else lives in the flow navigation and the More menu on the right.</li>
+<li data-n="2">Toolbar row 2: <strong>Preview</strong>, <strong>Image sequence preview</strong> when the source is a folder or Fixed image, "Rerun with last image", <strong>Upload scratch image</strong> and <strong>Continuous</strong>. Batch testing has its own page under the sidebar's Inspection group.</li>
 <li data-n="3"><strong>Add tool</strong> opens the tool picker (next figure); "Add note" drops a sticky note. Favourites you star in the picker appear underneath, and the step list at the bottom of the column jumps to a step.</li>
 <li data-n="4">The <strong>canvas</strong>: steps and their typed ports. Drag from an output port to the next step's input port; only ports of the same colour connect.</li>
 <li data-n="5">The <strong>image viewer</strong>: before and after images of the selected step with its overlays; the strip below switches input, output, before/after and "Overlay every step's marks".</li>
 <li data-n="6">The <strong>inspector</strong> on the right: title, enabled, colour, "Continue on error" and the parameters of the selected step; its Results tab shows the last preview.</li>
 <li data-n="7"><strong>Open tool page</strong> goes to the dedicated tuning page for that step.</li>
 <li data-n="8"><strong>Preview</strong> runs the current canvas, unsaved changes included.</li>
-<li data-n="9">The <strong>teach page</strong> shortcut.</li>
-<li data-n="10">The <strong>statistics</strong> shortcut; the icons next to it are undo, redo, auto-layout, versions, export and Golden Set.</li>
+<li data-n="9">The <strong>flow navigation</strong> shared by the four pages of a flow: Inspection tasks, Canvas, Teach page and Statistics.</li>
+<li data-n="10"><strong>More</strong>: templates, recipes, versions (history and restore), auto-layout, collapse tasks, Golden Set, export, <strong>Clear result</strong> and <strong>Clear run history</strong> (the dialog lists what it affects). The icons next to it are undo and redo.</li>
 </ol></figcaption></figure>
 
 The image viewer toolbar includes a **Crosshair** button. Turn it on to show one horizontal and one vertical line, then drag either line to measure an image position. The viewer shows the line intersection as image X/Y coordinates and reads the pixel value at that point. Moving the mouse over the image also shows a cursor information bar with image coordinates and the current grey or RGB value; zooming and panning do not change the coordinate system.
@@ -512,7 +512,7 @@ The trail records changes, not runs: who changed which flow, parameter, recipe, 
 
 ### Quick start {#quick-start}
 
-1. **Create a flow** Press "New flow" on the Flows page, or copy one of the demo flows. A flow belongs to the line rather than to a person: any engineer can see and edit it, and the Owner column only records who created it.
+1. **Create a flow** Press "New inspection" (task page) or "New advanced flow" (canvas) on the Flows page, or copy one of the demo flows. A flow belongs to the line rather than to a person: any engineer can see and edit it, and the Owner column only records who created it.
 2. **Acquire an image** Insert an "Image source" step from the palette and pick a folder, synthetic or capture client source from the source library — or use "Upload scratch image" in the toolbar to provide one image for previews only (it does not join the library). Cameras are driven by the capture client on the PC they are attached to ("Download capture client" on the Image sources page): connect it to the server and add a "capture client camera" source naming the client and the channel.
 3. **Add tools** Drag a tool from the palette onto the canvas (or click to insert it at the right), then drag from one step's output port to the next step's input port. Only ports of the same colour connect.
 4. **Draw an ROI** For a tool with a region parameter, press "Edit on image" on the tool page or in the inspector and drag out a rectangle, circle, polygon or any other shape directly on the image. Coordinates are pixels in that step's input image.

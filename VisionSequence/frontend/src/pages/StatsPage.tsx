@@ -5,13 +5,14 @@
 import { useMemo, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, BarChart3, Copy, Ruler } from 'lucide-react'
+import { useParams } from 'react-router-dom'
+import { BarChart3, Copy, Ruler } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { ArchiveHint, ArchivedImages } from '@/components/flow/ArchiveHint'
 import { outputsSummary } from '@/components/editor/ResultsPanel'
 import { Page } from '@/components/layout/AppShell'
+import { FlowSubNav } from '@/components/flow/FlowSubNav'
 import { Button, Card, CardBody, CardHeader, EmptyRow, ErrorState, LoadingState, PageHeader, SegmentedControl, Select, StatusBadge, TBody, THead, Table, Td, Th, Tr, Tile } from '@/components/ui'
 import { api } from '@/lib/api'
 import { SpcPanel } from '@/components/stats/SpcPanel'
@@ -162,7 +163,7 @@ export function StatsPage() {
           <>
             <SegmentedControl size="sm" value={view} onChange={(v) => setView(v as 'yield' | 'spc')} options={[{ value: 'yield', label: t('stats.viewYield') }, { value: 'spc', label: t('stats.viewSpc') }]} />
             <SegmentedControl size="sm" value={period} onChange={(v) => { setPeriod(v); setOffset(0) }} options={PERIODS.map((v) => ({ value: v, label: t(`stats.periods.${v}`) }))} />
-            <Link to={`/flows/${id}`}><Button size="sm" icon={<ArrowLeft size={14} />}>{t('stats.backToEditor')}</Button></Link>
+            <FlowSubNav flowId={id} />
           </>
         }
       />

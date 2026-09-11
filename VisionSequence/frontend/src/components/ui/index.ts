@@ -1,4 +1,6 @@
 export { BrandMark } from './BrandMark'
+export { ActionMenu, ActionMenuItem, ActionMenuSeparator } from './ActionMenu'
+export type { ActionMenuTriggerProps } from './ActionMenu'
 export { Button, IconButton } from './Button'
 export { Card, CardBody, CardHeader, DetailRow, PageHeader, Panel, Tile } from './Card'
 export { Badge, STATUS_TONE, StatusBadge } from './Badge'

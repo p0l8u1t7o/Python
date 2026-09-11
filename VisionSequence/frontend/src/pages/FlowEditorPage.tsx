@@ -1985,7 +1985,26 @@ function EditorInner({ flowId }: { flowId: number }) {
       </Modal>
       {confirmDialog}
       {saveConflictDialog}
-      <ConfirmDialog open={askReset} onClose={() => setAskReset(false)} onConfirm={() => void doReset()} title={t('editor.reset')} message={t('editor.resetConfirm')} confirmLabel={t('editor.reset')} danger loading={clearRecent.isPending} />
+      <ConfirmDialog
+        open={askReset}
+        onClose={() => setAskReset(false)}
+        onConfirm={() => void doReset()}
+        title={t('editor.clearHistory')}
+        confirmLabel={t('editor.clearHistory')}
+        danger
+        loading={clearRecent.isPending}
+        message={
+          <div className="space-y-2">
+            <p>{t('editor.clearHistoryConfirm')}</p>
+            <ul className="list-disc space-y-0.5 pl-5 text-xs text-muted" data-testid="clear-history-effects">
+              <li>{t('editor.clearHistoryEffectCanvas')}</li>
+              <li>{t('editor.clearHistoryEffectResults')}</li>
+              <li>{t('editor.clearHistoryEffectStats')}</li>
+            </ul>
+            <p className="text-xs text-muted">{t('editor.clearHistoryKeeps')}</p>
+          </div>
+        }
+      />
       <ToolPicker open={pickerOpen} onClose={() => setPickerOpen(false)} catalogue={catalogue.data}
         favorites={favorites} onToggleFavorite={toggleFavorite} onPick={insertAtCenter} />
       <TemplateGallery open={galleryOpen} onClose={() => setGalleryOpen(false)} mode="load" prefix={templatePrefix} onPick={loadTemplate} />

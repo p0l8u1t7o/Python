@@ -48,12 +48,12 @@
 
 <figure class="shot"><img src="/docs/img/flows.jpg" alt="流程页"><figcaption><b>流程</b>（侧栏 › 流程）
 <ol class="callouts">
-<li data-n="1"><strong>新建流程</strong>会建立空流程并打开编辑器。</li>
-<li data-n="2"><strong>从模板建立</strong>会打开模板画廊。</li>
-<li data-n="3"><strong>导入</strong>会载入导出成 JSON 的流程，可来自另一站或版本控制。</li>
-<li data-n="4">每条流程：<strong>参数卡</strong>（现场参数与配方）。</li>
-<li data-n="5">该流程的 <strong>Golden Set</strong>。</li>
-<li data-n="6"><strong>导出</strong>流程为 JSON。</li>
+<li data-n="1"><strong>建立检测任务</strong>会建立空流程并打开其检测任务页。</li>
+<li data-n="2"><strong>建立进阶流程</strong>会建立空流程并打开画布编辑器。</li>
+<li data-n="3"><strong>从模板建立</strong>会打开模板画廊。</li>
+<li data-n="4"><strong>导入</strong>会载入导出成 JSON 的流程，可来自另一站或版本控制。</li>
+<li data-n="5">每条流程：<strong>检测任务</strong>打开该流程的任务页；点选整行也一样。</li>
+<li data-n="6"><strong>更多</strong>：参数卡、Golden Set、统计、导出、复制与删除。铅笔图标打开画布。</li>
 <li data-n="7"><strong>配方</strong>：换线用的参数集。</li>
 </ol></figcaption></figure>
 
@@ -89,16 +89,16 @@ AI 助手也能从对话建出同样的任务清单，请参考[从对话生成�
 
 <figure class="shot"><img src="/docs/img/editor.jpg" alt="选取步骤的流程编辑器"><figcaption><b>流程编辑器</b>（流程 › 某条流程，路由 <code>/flows/:id</code>）
 <ol class="callouts">
-<li data-n="1">顶栏第 1 行：流程名称、<strong>保存</strong>、<strong>模板</strong>、<strong>配方</strong>、<strong>版本</strong>（历史与还原），以及连到参数卡的「未教导」徽章。</li>
-<li data-n="2">顶栏第 2 行：<strong>试执行</strong>、来源为文件夹或 Fixed image 时的<strong>图像序列试执行</strong>、「用上次图像重跑」、<strong>上传暂存图像</strong>、<strong>连续执行</strong>、<strong>清除结果</strong>与<strong>重置</strong>。批次测试位于侧栏检测分组的专属页。</li>
+<li data-n="1">顶栏第 1 行：流程名称、<strong>保存</strong>、当前配方，以及连到参数卡的「未教导」徽章。其余都在右侧的流程导航与「更多」菜单。</li>
+<li data-n="2">顶栏第 2 行：<strong>试执行</strong>、来源为文件夹或 Fixed image 时的<strong>图像序列试执行</strong>、「用上次图像重跑」、<strong>上传暂存图像</strong>与<strong>连续执行</strong>。批量测试在侧栏「图像检测」群组有自己的页面。</li>
 <li data-n="3"><strong>新增工具</strong>会打开工具选择器（下一张图）；「新增注释」会放下一张便利贴。您在选择器收藏的工具会显示在下方，栏位底部的步骤列表可跳到指定步骤。</li>
 <li data-n="4"><strong>画布</strong>：步骤与带类型的端口。从输出端口拖到下一步输入端口；只有同色端口能连接。</li>
 <li data-n="5"><strong>图像窗口</strong>：选取步骤的前后图像与标记；下方行可切换输入、输出、前后对照，以及「叠加所有步骤标记」。</li>
 <li data-n="6">右侧<strong>侧栏</strong>：标题、启用、颜色、「错误时继续」与所选步骤参数；其「结果」分页显示上次试执行。</li>
 <li data-n="7"><strong>打开工具页</strong>前往该步骤的专属调整页。</li>
 <li data-n="8"><strong>试执行</strong>会用当前画布执行，包含未保存变更。</li>
-<li data-n="9"><strong>参数卡</strong>快捷方式。</li>
-<li data-n="10"><strong>统计</strong>快捷方式；旁边图标依序为撤销、重做、自动排版、版本、导出与 Golden Set。</li>
+<li data-n="9">同一条流程四个页面共用的<strong>流程导航</strong>：检测任务、画布、参数卡、统计。</li>
+<li data-n="10"><strong>更多</strong>：模板、配方、版本（历史与还原）、自动排版、折叠任务、Golden Set、导出、<strong>清空结果</strong>与<strong>清除执行记录</strong>（对话框会列出影响）。旁边图标是撤销与重做。</li>
 </ol></figcaption></figure>
 
 图像窗口工具栏包含**十字线**按钮。打开后会显示一条水平线与一条垂直线，拖拽任一条线即可测量图像位置。窗口会显示交点的图像 X/Y 坐标，并读取该点像素值。鼠标移过图像时也会显示光标信息栏，包含图像坐标与当前灰阶或 RGB 值；缩放与平移不会改变坐标系。
@@ -512,7 +512,7 @@ Golden Set 是调参后的安全网：它会精确告诉您哪些图像在 OK �
 
 ### 快速上手 {#quick-start}
 
-1. **建流程** 到「流程」页按「新建流程」，或复制示范流程。流程属于产线而不是个人：每位工程师都能看到并修改，「拥有者」栏只记录是谁建立的。
+1. **建流程** 到「流程」页按「建立检测任务」（任务页）或「建立进阶流程」（画布），或复制示范流程。流程属于产线而不是个人：每位工程师都能看到并修改，「拥有者」栏只记录是谁建立的。
 2. **取像** 从工具箱插入「图像来源」步骤，选图像来源库里的文件夹、合成或采集端相机来源；或用顶栏「上传暂存图像」只为试执行放一张图（不进来源库）。相机由相机所在电脑上的采集端程序驱动（图像来源库「下载采集端」）：连到服务端后新增「采集端相机」来源，选采集端与通道即可。
 3. **加工具** 把工具箱的工具拖到画布（或点选插到最右边），把上一步的输出端口拉线接到下一步的输入端口；同色的端口才能相接。
 4. **ROI** 有「区域」参数的工具：在工具页或侧栏按「在图像上编辑」，直接在图像窗口拖拽画出矩形／圆／多边形等；坐标是该步骤输入图像的像素坐标。

@@ -14,8 +14,8 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, useBlocker, useParams } from 'react-router-dom'
-import { ArrowLeft, BookOpen, BookmarkPlus, CheckCircle2, CircleDashed, ImageUp, Loader2, Lock, Save, SlidersHorizontal, Undo2 } from 'lucide-react'
+import { useBlocker, useParams } from 'react-router-dom'
+import { BookOpen, BookmarkPlus, CheckCircle2, CircleDashed, ImageUp, Loader2, Lock, Save, SlidersHorizontal, Undo2 } from 'lucide-react'
 
 import { ScratchBadge } from '@/components/editor/EditorToolbar'
 import type { InspectorActions } from '@/components/editor/ParamField'
@@ -25,6 +25,7 @@ import { iconFor } from '@/components/editor/ToolNode'
 import { useSaveConflictDialog } from '@/components/flow/SaveConflictDialog'
 import { BoundBadge } from '@/components/recipes/BoundRecipeSelect'
 import { RecipeDrawer, compactOverrides, countOverrides, useSaveCheck, type Overrides } from '@/components/recipes/RecipeDrawer'
+import { FlowSubNav } from '@/components/flow/FlowSubNav'
 import { Badge, Button, ErrorState, LoadingState, Modal, StatusBadge, TextInput } from '@/components/ui'
 import { ImageViewer } from '@/components/viewer/ImageViewer'
 import { imageUrl } from '@/lib/api'
@@ -382,7 +383,7 @@ function TeachPageInner({ flowId }: { flowId: number }) {
       <header className="border-b border-line bg-surface" data-testid="teach-header">
         {/* 第一排：動作 */}
         <div className="flex flex-wrap items-center gap-1.5 px-3 py-1.5">
-          <Link to={editorPath} className="btn-secondary !h-8 !px-2.5 !text-xs" data-testid="btn-back"><ArrowLeft size={14} /> {t('teach.back')}</Link>
+          <FlowSubNav flowId={flowId} />
           <span className="flex items-center gap-1.5 text-sm font-semibold"><SlidersHorizontal size={15} className="text-brand" /> {t('teach.title')} <span className="font-normal text-muted">· {draft.name}</span></span>
           <span className="mx-1 h-5 w-px bg-line" aria-hidden />
           <span title={t('teach.saveShortcut')}>

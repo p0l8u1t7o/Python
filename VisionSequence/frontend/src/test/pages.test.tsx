@@ -164,6 +164,9 @@ describe('pages render (smoke)', () => {
     expect(screen.queryByRole('link', { name: /Other steps/ })).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Open in advanced flow' })).toHaveAttribute('href', '/flows/6')
     expect(screen.getByTestId('inspect-remove')).toBeDisabled()
+    // 四個工作頁共用的子導覽（Suggest5 第 6 點）
+    expect(screen.getByTestId('flow-nav-canvas')).toHaveAttribute('href', '/flows/6')
+    expect(screen.getByTestId('flow-nav-stats')).toHaveAttribute('href', '/flows/6/stats')
   })
 
   it('FlowEditorPage focuses a node from the URL after the draft loads', async () => {
@@ -386,12 +389,33 @@ describe('pages render (smoke)', () => {
     expect(await screen.findByText('示範流程')).toBeInTheDocument()
   })
 
+  it('FlowsPage offers two create entries, folds row actions into More and links rows to the inspection page', async () => {
+    const { FlowsPage } = await import('@/pages/FlowsPage')
+    renderPage(<FlowsPage />, { route: '/flows' })
+    await screen.findByText('示範流程')
+    expect(screen.getByTestId('btn-create-inspection')).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('btn-create-advanced'))
+    expect(await screen.findByRole('dialog')).toHaveAccessibleName('New advanced flow')
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    const row = screen.getAllByTestId('row-inspect')[0].closest('tr') as HTMLElement
+    expect(within(row).getByTestId('row-inspect')).toHaveAttribute('href', expect.stringMatching(/\/flows\/\d+\/inspect$/))
+    expect(within(row).queryByTestId('row-golden')).toBeNull()
+    fireEvent.click(within(row).getByTestId('row-more'))
+    const menu = await screen.findByRole('menu')
+    expect(within(menu).getByTestId('row-golden')).toHaveAttribute('href', expect.stringMatching(/\/golden$/))
+    expect(within(menu).getByTestId('row-export')).toBeInTheDocument()
+    expect(within(menu).getByTestId('row-delete')).toBeInTheDocument()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+
   it('FlowsPage keeps the missing-name error next to the field and focuses it', async () => {
     // Suggest5 第 7 點：欄位問題留在欄位旁，不用 toast；取消鈕走同一套草稿檢查
     const { FlowsPage } = await import('@/pages/FlowsPage')
     renderPage(<FlowsPage />, { route: '/flows' })
     await screen.findByText('示範流程')
-    fireEvent.click(screen.getByRole('button', { name: 'New flow' }))
+    fireEvent.click(screen.getByRole('button', { name: 'New inspection' }))
     const dialog = await screen.findByRole('dialog')
     expect(dialog).toHaveAttribute('aria-labelledby')
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create' }))
@@ -468,9 +492,12 @@ describe('pages render (smoke)', () => {
   it('FlowEditorPage clears visible results without throwing', async () => {
     const { FlowEditorPage } = await import('@/pages/FlowEditorPage')
     renderDataPage(<FlowEditorPage />, '/flows/1', '/flows/:flowId')
-    const button = await screen.findByTestId('editor-clear-results')
-    fireEvent.click(button)
-    expect(button).toBeInTheDocument()
+    await screen.findByTestId('editor-toolbar')
+    // 清空結果收進「更多」選單（Suggest5 第 5 點）
+    fireEvent.click(within(screen.getByTestId('editor-more')).getByRole('button'))
+    fireEvent.click(await screen.findByTestId('editor-clear-results'))
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(screen.getByTestId('flow-nav-inspect')).toHaveAttribute('href', '/flows/1/inspect')
   })
 
   it('FlowEditorPage collapses inspection task groups and expands them', async () => {
@@ -479,11 +506,14 @@ describe('pages render (smoke)', () => {
     const view = renderDataPage(<FlowEditorPage />, '/flows/3', '/flows/:flowId')
     await screen.findByTestId('editor-toolbar')
     expect(screen.queryByTestId('group-node')).toBeNull()
+    const openMore = () => fireEvent.click(within(screen.getByTestId('editor-more')).getByRole('button'))
+    openMore()
     fireEvent.click(await screen.findByTestId('btn-toggle-groups'))
     await waitFor(() => expect(screen.getAllByTestId('group-node')).toHaveLength(2))
     expect(view.container.querySelectorAll('.react-flow__node')).toHaveLength(3)
     fireEvent.click(screen.getAllByTestId('group-expand')[0])
     await waitFor(() => expect(screen.getAllByTestId('group-node')).toHaveLength(1))
+    openMore()
     fireEvent.click(screen.getByTestId('btn-toggle-groups'))
     await waitFor(() => expect(screen.queryByTestId('group-node')).toBeNull())
   })

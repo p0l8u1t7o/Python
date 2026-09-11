@@ -1,20 +1,22 @@
 /**
- * 頂列（EditorToolbar）：兩列，按鈕都是圖示＋短文字，寬度不足時換行（flex-wrap）。
- *  - 第一列：流程名稱、儲存狀態、儲存、範本下拉、配方鈕、綁定配方下拉、（唯讀／問題／鎖定／停用／未教導標籤）；
- *            右側：即時 badge、容量、復原、自動排列、參數卡／Golden Set／匯出／統計圖示。
- *  - 第二列：試執行、用上次影像重跑、上傳暫存影像、連續執行、重置；右側：fps 標籤、說明下拉。
+ * 頂列（EditorToolbar）：兩列，寬度不足時換行（flex-wrap）。常駐的只有高頻動作（Suggest5 第 5 點），其餘收進「更多」。
+ *  - 第一列：流程名稱、儲存狀態、儲存、（窄螢幕的工具／設定／結果抽屜入口）、目前配方、（唯讀／問題／鎖定／停用／未教導標籤）；
+ *            右側：即時 badge、容量、復原／重做、流程子導覽（檢測任務／畫布／參數卡／統計）、「更多」選單
+ *            （範本、配方管理、版本、自動排版、摺疊任務、Golden Set、匯出、清空結果、清除執行紀錄）。
+ *  - 第二列：試執行、影像序列試執行、用上次影像重跑、上傳暫存影像、連續執行；右側：fps 標籤、說明選單。
  * 選取／平移切換在畫布右上角（FlowCanvas 的 CanvasModePanel），不在頂列。
  * 全部是受控 props，狀態與動作都在 FlowEditorPage。
  */
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { BarChart3, BookOpen, ChevronDown, Download, Eraser, FlaskConical, Gem, HelpCircle, ImageUp, Keyboard, Layers2, LayoutTemplate, ListChecks, Lock, Network, PanelLeft, Pause, Play, Plug, PowerOff, Radio, Redo2, Save, SlidersHorizontal, Square, TriangleAlert, Undo2, X } from 'lucide-react'
+import { BookOpen, Download, Eraser, FlaskConical, Gem, HelpCircle, History, ImageUp, Keyboard, Layers2, LayoutTemplate, ListChecks, Lock, MoreHorizontal, Network, PanelLeft, Pause, Play, Plug, PowerOff, Radio, Redo2, Save, SlidersHorizontal, Square, Trash2, TriangleAlert, Undo2, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { CapacityPill } from '@/components/layout/AppShell'
-import { VersionButton } from '@/components/flow/VersionPanel'
+import { FlowSubNav } from '@/components/flow/FlowSubNav'
+import { VersionPanel } from '@/components/flow/VersionPanel'
 import { BoundRecipeSelect } from '@/components/recipes/BoundRecipeSelect'
-import { Badge, Button, IconButton } from '@/components/ui'
+import { ActionMenu, ActionMenuItem, ActionMenuSeparator, Badge, Button, IconButton } from '@/components/ui'
 import type { FlowRecipe, ScratchImage } from '@/lib/types'
 import { useAuth } from '@/providers/AuthProvider'
 
@@ -66,6 +68,7 @@ export interface EditorToolbarProps {
   collapsedTaskCount?: number
   onToggleTaskGroups?: () => void
   resetting: boolean
+  /** 清除執行紀錄（記憶體內的執行紀錄與統計；呼叫端會先列出影響再確認） */
   onReset: () => void
   onClearResults: () => void
   onLoadTemplate: () => void
@@ -93,48 +96,14 @@ export function ScratchBadge({ scratch, onClear }: { scratch: ScratchImage; onCl
   )
 }
 
-/** 小型下拉選單（範本、說明）。 */
-export function Dropdown({ trigger, children, testId, align = 'left' }: { trigger: (open: boolean) => ReactNode; children: ReactNode; testId?: string; align?: 'left' | 'right' }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!open) return
-    const onDown = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false)
-    }
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
-    document.addEventListener('mousedown', onDown)
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('mousedown', onDown)
-      document.removeEventListener('keydown', onKey)
-    }
-  }, [open])
-  return (
-    <div ref={ref} className="relative" data-testid={testId}>
-      <span onClick={() => setOpen((v) => !v)}>{trigger(open)}</span>
-      {open ? (
-        <div role="menu" className={`absolute top-full z-40 mt-1 w-52 rounded-xl border border-line bg-surface p-1 text-sm shadow-lg ${align === 'right' ? 'right-0' : 'left-0'}`} onClick={() => setOpen(false)}>
-          {children}
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
-export function MenuItem({ icon, children, onClick, to, disabled, testId }: { icon?: ReactNode; children: ReactNode; onClick?: () => void; to?: string; disabled?: boolean; testId?: string }) {
-  const cls = 'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs hover:bg-surface-muted disabled:opacity-40'
-  if (to) return <Link to={to} role="menuitem" className={cls} data-testid={testId}>{icon} {children}</Link>
-  return <button type="button" role="menuitem" className={cls} onClick={onClick} disabled={disabled} data-testid={testId}>{icon} {children}</button>
-}
-
 export function EditorToolbar(p: EditorToolbarProps) {
   const { t } = useTranslation()
   const canTeach = useAuth().can('flows.teach')  // 沒有現場教導功能的角色不給參數卡入口
   const scratchInput = useRef<HTMLInputElement>(null)
+  const [versionsOpen, setVersionsOpen] = useState(false)
   return (
     <header className="flex flex-col gap-1 border-b border-line bg-surface px-3 py-1.5" data-testid="editor-toolbar">
-      {/* 第一列：名稱、儲存、範本、配方、綁定 */}
+      {/* 第一列：名稱、儲存、目前配方、標籤；右側子導覽與「更多」 */}
       <div className="flex flex-nowrap items-center gap-1.5 overflow-x-auto md:flex-wrap md:overflow-visible" data-testid="toolbar-row-1">
         <input className="input !w-48 min-w-32 !py-1 font-medium" value={p.name} onChange={(e) => p.onNameChange(e.target.value)} placeholder={t('editor.untitled')} aria-label={t('common.name')} />
         {p.dirty ? <span className="whitespace-nowrap text-[11px] text-warning">{t('editor.unsaved')}</span> : null}
@@ -150,14 +119,6 @@ export function EditorToolbar(p: EditorToolbarProps) {
             <Button size="sm" icon={<ListChecks size={14} />} onClick={() => p.onOpenDrawer?.('results')} data-testid="editor-drawer-results">{t('editor.drawerResults')}</Button>
           </span>
         ) : null}
-        <Dropdown testId="menu-templates" trigger={(open) => <Button size="sm" icon={<LayoutTemplate size={14} />} active={open} data-testid="btn-templates">{t('templates.menu')} <ChevronDown size={12} /></Button>}>
-          <MenuItem icon={<LayoutTemplate size={13} />} onClick={p.onLoadTemplate} testId="menu-load-template">{t('templates.load')}</MenuItem>
-          <MenuItem icon={<Save size={13} />} onClick={p.onSaveTemplate} testId="menu-save-template">{t('templates.saveAs')}</MenuItem>
-        </Dropdown>
-        {p.onManageRecipes ? (
-          <Button size="sm" icon={<BookOpen size={14} />} onClick={p.onManageRecipes} title={t('recipes.manage')} data-testid="btn-recipes">{t('recipes.drawerTitle')}</Button>
-        ) : null}
-        <VersionButton flowId={p.flowId} onRestored={p.onVersionRestored} />
         {p.recipes && p.recipes.length > 0 ? <BoundRecipeSelect flowId={p.flowId} recipes={p.recipes} disabled={p.readOnly} testId="editor-recipe" /> : null}
         {p.readOnly ? (
           <span className="flex items-center gap-1 whitespace-nowrap text-[11px] text-muted" title={t('flows.readOnlyHint')} data-testid="readonly-badge">
@@ -195,17 +156,29 @@ export function EditorToolbar(p: EditorToolbarProps) {
           <CapacityPill />
           <IconButton label={t('editor.undo')} onClick={p.onUndo} size="sm"><Undo2 size={15} /></IconButton>
           <IconButton label={t('editor.redo')} onClick={p.onRedo} size="sm"><Redo2 size={15} /></IconButton>
-          <IconButton label={t('editor.autoLayoutHint')} onClick={p.onAutoLayout} size="sm"><Network size={15} /></IconButton>
-          {p.onToggleTaskGroups ? (
-            <Button size="sm" icon={<Layers2 size={14} />} disabled={!p.taskGroupCount} onClick={p.onToggleTaskGroups} title={t('editor.groups.toggleHint')} data-testid="btn-toggle-groups">
-              {p.collapsedTaskCount ? t('editor.groups.expandAll') : t('editor.groups.collapseTasks')}
-            </Button>
-          ) : null}
-          <Link to={`/flows/${p.flowId}/inspect`} className="btn-secondary !h-8 !text-xs" data-testid="btn-inspect">{t('inspect.title')}</Link>
-          {canTeach ? <Link to={`/flows/${p.flowId}/teach`} className="btn-icon" title={t('editor.teach')} aria-label={t('editor.teach')} data-testid="btn-teach"><SlidersHorizontal size={15} /></Link> : null}
-          <Link to={`/flows/${p.flowId}/golden`} className="btn-icon" title={t('editor.golden')} aria-label={t('editor.golden')} data-testid="btn-golden"><Gem size={15} /></Link>
-          {p.onExport ? <IconButton label={t('editor.export')} title={t('flows.exportHint')} onClick={p.onExport} size="sm" data-testid="btn-export"><Download size={15} /></IconButton> : null}
-          <Link to={`/flows/${p.flowId}/stats`} className="btn-icon" title={t('stats.open')} aria-label={t('stats.open')} data-testid="btn-stats"><BarChart3 size={15} /></Link>
+          <FlowSubNav flowId={p.flowId} />
+          <ActionMenu testId="editor-more" label={t('common.more')} trigger={(open, props) => (
+            <Button size="sm" icon={<MoreHorizontal size={14} />} active={open} title={t('common.more')} {...props}>{t('common.more')}</Button>
+          )}>
+            <ActionMenuItem icon={<LayoutTemplate size={13} />} onClick={p.onLoadTemplate} testId="menu-load-template">{t('templates.load')}</ActionMenuItem>
+            <ActionMenuItem icon={<Save size={13} />} onClick={p.onSaveTemplate} testId="menu-save-template">{t('templates.saveAs')}</ActionMenuItem>
+            {p.onManageRecipes ? <ActionMenuItem icon={<BookOpen size={13} />} onClick={p.onManageRecipes} title={t('recipes.manage')} testId="menu-recipes">{t('recipes.drawerTitle')}</ActionMenuItem> : null}
+            <ActionMenuItem icon={<History size={13} />} onClick={() => setVersionsOpen(true)} testId="menu-versions">{t('versions.open')}</ActionMenuItem>
+            <ActionMenuSeparator />
+            <ActionMenuItem icon={<Network size={13} />} onClick={p.onAutoLayout} title={t('editor.autoLayoutHint')} testId="menu-auto-layout">{t('editor.autoLayout')}</ActionMenuItem>
+            {p.onToggleTaskGroups ? (
+              <ActionMenuItem icon={<Layers2 size={13} />} disabled={!p.taskGroupCount} onClick={p.onToggleTaskGroups} title={t('editor.groups.toggleHint')} testId="btn-toggle-groups">
+                {p.collapsedTaskCount ? t('editor.groups.expandAll') : t('editor.groups.collapseTasks')}
+              </ActionMenuItem>
+            ) : null}
+            <ActionMenuSeparator />
+            <ActionMenuItem icon={<Gem size={13} />} to={`/flows/${p.flowId}/golden`} testId="btn-golden">{t('editor.golden')}</ActionMenuItem>
+            {p.onExport ? <ActionMenuItem icon={<Download size={13} />} onClick={p.onExport} title={t('flows.exportHint')} testId="btn-export">{t('editor.export')}</ActionMenuItem> : null}
+            <ActionMenuSeparator />
+            <ActionMenuItem icon={<Eraser size={13} />} onClick={p.onClearResults} title={t('editor.clearResultsHint')} testId="editor-clear-results">{t('editor.clearResults')}</ActionMenuItem>
+            <ActionMenuItem icon={<Trash2 size={13} />} danger disabled={p.readOnly || p.resetting} onClick={p.onReset} title={t('editor.clearHistoryHint')} testId="btn-reset">{t('editor.clearHistory')}</ActionMenuItem>
+          </ActionMenu>
+          <VersionPanel flowId={p.flowId} open={versionsOpen} onClose={() => setVersionsOpen(false)} onRestored={p.onVersionRestored} />
         </span>
       </div>
 
@@ -279,22 +252,12 @@ export function EditorToolbar(p: EditorToolbarProps) {
           </Button>
         </span>
         {p.fpsLabel ? <span className="tnum whitespace-nowrap text-[11px] text-muted">{p.fpsLabel}</span> : null}
-        <span title={t('editor.clearResultsHint')}>
-          <Button size="sm" icon={<Eraser size={14} />} onClick={p.onClearResults} data-testid="editor-clear-results">
-            {t('editor.clearResults')}
-          </Button>
-        </span>
-        <span title={t('editor.resetHint')}>
-          <Button size="sm" icon={<Eraser size={14} />} loading={p.resetting} disabled={p.readOnly} onClick={p.onReset} data-testid="btn-reset">
-            {t('editor.reset')}
-          </Button>
-        </span>
         <span className="ml-auto flex items-center gap-1">
-          <Dropdown testId="menu-help" align="right" trigger={() => <button type="button" className="btn-icon" title={t('nav.help')} aria-label={t('nav.help')}><HelpCircle size={15} /></button>}>
-            <MenuItem icon={<HelpCircle size={13} />} to="/help">{t('helpMenu.help')}</MenuItem>
-            <MenuItem icon={<Keyboard size={13} />} to="/help?tab=shortcuts">{t('helpMenu.shortcuts')}</MenuItem>
-            <MenuItem icon={<Plug size={13} />} to="/integration">{t('helpMenu.integration')}</MenuItem>
-          </Dropdown>
+          <ActionMenu testId="menu-help" label={t('nav.help')} trigger={(_open, props) => <button type="button" className="btn-icon" title={t('nav.help')} aria-label={t('nav.help')} {...props}><HelpCircle size={15} /></button>}>
+            <ActionMenuItem icon={<HelpCircle size={13} />} to="/help">{t('helpMenu.help')}</ActionMenuItem>
+            <ActionMenuItem icon={<Keyboard size={13} />} to="/help?tab=shortcuts">{t('helpMenu.shortcuts')}</ActionMenuItem>
+            <ActionMenuItem icon={<Plug size={13} />} to="/integration">{t('helpMenu.integration')}</ActionMenuItem>
+          </ActionMenu>
         </span>
       </div>
     </header>

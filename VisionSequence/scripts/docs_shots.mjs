@@ -91,8 +91,8 @@ try {
   // 2 流程頁
   await go('/flows', 'table')
   await capture(page, 'flows', [
-    { target: page.getByRole('button', { name: 'New flow' }), label: 'New flow' }, { target: '[data-testid="btn-from-template"]' }, { target: '[data-testid="btn-import"]' },
-    { target: '[data-testid="row-teach"]' }, { target: '[data-testid="row-golden"]' }, { target: '[data-testid="row-export"]' }, { target: '[data-testid="row-recipes"]' },
+    { target: '[data-testid="btn-create-inspection"]', label: 'New inspection' }, { target: '[data-testid="btn-create-advanced"]' }, { target: '[data-testid="btn-from-template"]' }, { target: '[data-testid="btn-import"]' },
+    { target: '[data-testid="row-inspect"]' }, { target: '[data-testid="row-more"]' }, { target: '[data-testid="row-recipes"]' },
   ])
   // 3 編輯器（先選一個節點讓右側顯示參數）
   await go(`/flows/${flow.id}`, '[data-testid="btn-preview"]')
@@ -101,7 +101,7 @@ try {
   await capture(page, 'editor', [
     { target: '[data-testid="toolbar-row-1"]' }, { target: '[data-testid="toolbar-row-2"]' }, { target: '[data-testid="btn-add-tool"]' }, { target: '.react-flow' },
     { target: '[data-testid="viewer-main"]' }, { target: '[data-testid="inspector"]' }, { target: '[data-testid="open-tool-page"]' }, { target: '[data-testid="btn-preview"]' },
-    { target: '[data-testid="btn-teach"]' }, { target: '[data-testid="btn-stats"]' },
+    { target: '[data-testid="flow-subnav"]' }, { target: '[data-testid="editor-more"]' },
   ])
   // 4 工具選擇視窗
   await page.click('[data-testid="btn-add-tool"]')
