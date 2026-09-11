@@ -69,6 +69,23 @@ class ScaleClaimTests(TestCase):
                 abs(claimed - actual) / max(actual, 1), 0.05,
                 f"{name} 宣稱後端約 {claimed} 項測試，實際 {actual} 項，差太多了")
 
+    def test_data_models_are_documented(self):
+        """README 的資料模型表要列出每一個 model，規模數字也要對。
+
+        2026-09-11 對帳時表上只有 37 個裡的 17 個（版本、稽核、SPC、助手對話、工程筆記……全都沒寫），
+        「33 個資料模型」也停在舊值——接手的人照表找不到東西，AI 代理會以為沒有這些資料。
+        """
+        from django.apps import apps
+
+        models = sorted(m.__name__ for m in apps.get_models() if m.__module__.startswith("apps."))
+        readme = _read("README.md")
+        section = readme.split("## 資料模型", 1)[1].split("\n---", 1)[0]
+        missing = [name for name in models if f"`{name}`" not in section]
+        self.assertEqual(missing, [], "README 的「資料模型」表漏列這些 model")
+        for name in ("README.md", "CLAUDE.md"):
+            claimed = _one_int(r"(\d+) 個資料模型", _read(name), "資料模型數")
+            self.assertEqual(claimed, len(models), f"{name} 的資料模型數過期")
+
 
     def test_documented_categories_cover_every_tool(self):
         """架構頁的工具表要列出登錄表裡的每一個工具，也不能列出不存在的。"""

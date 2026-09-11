@@ -10,7 +10,7 @@
 | 後端 | Django 5.1 + django-ninja + OpenCV／numpy／scipy（可選 onnxruntime、torch/ultralytics、anthropic） |
 | 前端 | React 19 + Vite + TypeScript + Tailwind v4 + @xyflow/react（React Flow）+ TanStack Query + i18next |
 | 執行 | 單一行程：uvicorn（HTTP + SSE）＋ TCP 介面同行程；資料流 DAG 引擎在執行緒池內跑，影像以 numpy 在記憶體傳遞 |
-| 規模 | 156 個內建工具、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁文件、後端約 1600 項＋前端約 320 項自動測試；擷取端桌面程式（vscapture，PySide6） |
+| 規模 | 156 個內建工具、304 個 API 端點、37 個資料模型、26 個前端頁面（另 7 個整合子頁）、19 頁文件、後端約 1600 項＋前端約 320 項自動測試；擷取端桌面程式（vscapture，PySide6） |
 
 ---
 
@@ -275,6 +275,21 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 | `GoldenCase`／`GoldenBaseline` | 回歸案例與基準 |
 | `Connection` | 主動輸出連線（Modbus 等） |
 | `UserPref`／`AuthToken`／`EngineLock` | 介面偏好與 AI 供應商設定（金鑰不回前端）、登入 token、引擎鎖（單列） |
+| `RolePermission` | 角色可用的功能鍵（一角色一列，沒有列＝出廠值） |
+| `AuditLog` | 稽核軌跡（只記變更不記執行） |
+| `FlowVersion` | 流程版本快照（圖真的變了才 +1、發行標記） |
+| `FlowRunHourly`／`MeasurementLog` | 每小時良率彙總（永久保留）、每次 run 的數值具名輸出（SPC） |
+| `FlowVariable` | 流程／站台變數的落地副本（記憶體是正本） |
+| `ScriptApproval` | Python 腳本工具的 sha256 核准清單 |
+| `InspectionTrial` | 檢測任務頁每條流程最近一次試執行的讀值摘要（圖簽章＋純量讀值） |
+| `BatchSet`／`BatchRun` | 批次測試的影像集與每次執行 |
+| `DlModelVersion` | 模型與資料版本（產物、訓練參數、凍結資料集、保留集評估） |
+| `AgentSession`／`AgentSkill` | AI 助手的生成記憶（含失敗案例）、站點／個人技能補充 |
+| `AssistantChat`／`AssistantMemory` | 助手對話（綁流程、`work_state` 工作進度）、個人長期記憶 |
+| `EngineeringNote` | 工程筆記（草稿→確認、取代鏈，助手只引用已確認的） |
+| `Dashboard` | 運行介面版面（站台級、跨流程） |
+| `StationRules` | 站台接收規則（TCP 指令埠收到非指令的一行時比對） |
+| `RetentionSettings`／`VisionSettings` | 保存時限、執行策略／日誌等級／自動存（單列，`.env` 是出廠值） |
 
 graph JSON 格式與埠合約見 `docs/contract.html`；**不改 graph 格式、不把 `Flow.graph` 搬出資料庫**是紅線。
 
@@ -295,6 +310,9 @@ graph JSON 格式與埠合約見 `docs/contract.html`；**不改 graph 格式、
 | 工具目錄與容量 | `/vision/tool-types`、`/vision/capacity` |
 | 深度學習 | `/vision/dl/projects`、`/samples`、`/split`、`/dataset-export|import`、`/versions`、`/train`、`/train/status`、`/devices`、`/settings`、`/trainers`、`/sam` |
 | AI 助手 | `/vision/agent/info`、`/settings`（＋`/test`、`/models`）、`/image`、`/clarify`、`/generate`、`/run`、`/refine`、`/edit`、`/tune`、`/autotune`、`/chat`、`/help/search`、`/jobs`（＋`/{id}`、`/cancel`、`/answer`）、`/sessions`（＋`/{id}`、`/restore`）、`/skills`、`/skills/custom/{key}`；`/flows/{id}/golden/autotune` |
+| 檢測任務 | `/vision/inspect/kinds`、`/inspect/read`、`/build`、`/update`、`/remove`、`/evidence`、`/teach-pose`、`/inspect/{flow_id}/last-trial`（GET／PUT 上次試執行讀值） |
+| 工程筆記 | `/vision/notes`（CRUD）、`/notes/{id}/confirm`、`/notes/{id}/retract` |
+| 運行介面與佇列 | `/vision/dashboards`（CRUD、`/default`、`/{id}/data`）、`/vision/queues`（檢視、清空） |
 | 整合 | `/vision/integration/info`、`/integration/tcp`、`/vision/connections` |
 | 擷取端 | `/vision/capture/clients`（＋`/{name}/channels/{cid}/preview`、`/stream`）、`/vision/capture/download`（＋`/info`） |
 
