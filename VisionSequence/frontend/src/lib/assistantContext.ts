@@ -7,7 +7,17 @@
 import { useEffect, useSyncExternalStore } from 'react'
 
 import type { Suggestion } from '@/lib/batch'
-import type { FlowGraph, Region, RunReport } from '@/lib/types'
+import type { AssistantWorkState, FlowGraph, Region, RunReport } from '@/lib/types'
+
+const progressListeners = new Set<(flowId: number, state: AssistantWorkState, decision?: string) => void>()
+/** 只有目前綁定該流程的對話接收成功動作的摘要，不攜帶圖或影像。 */
+export function publishAssistantProgress(flowId: number, state: AssistantWorkState, decision?: string) {
+  progressListeners.forEach((fn) => fn(flowId, state, decision))
+}
+export function subscribeAssistantProgress(fn: (flowId: number, state: AssistantWorkState, decision?: string) => void) {
+  progressListeners.add(fn)
+  return () => { progressListeners.delete(fn) }
+}
 
 export type AssistantKind = 'inspect' | 'flow_editor' | 'tool' | 'batch' | 'golden' | 'agent' | 'dl' | 'sources' | 'assets' | 'dashboard' | 'page'
 

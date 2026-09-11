@@ -35,6 +35,7 @@ import uuid
 from typing import Any, Literal
 
 from django.http import HttpRequest
+from django.utils import timezone
 from ninja import File, Router, Schema, UploadedFile
 
 from apps.accounts.models import UserPref
@@ -42,7 +43,7 @@ from apps.accounts.security import principal, require_feature
 from apps.core.errors import NotFound, ValidationError
 from apps.vision.agent import chats, consult as consult_mod
 from apps.vision.agent import help as help_mod
-from apps.vision.agent import jobs, loop, memory, notes, providers, service, skills, tasklist
+from apps.vision.agent import jobs, loop, memory, notes, providers, service, situation, skills, tasklist
 from apps.vision.models import AgentSession, AgentSkill, Flow
 from apps.vision.api import _decode_upload
 from apps.vision.images import store
@@ -123,6 +124,7 @@ class ChatContext(Schema):
 
 
 class ChatIn(Schema):
+    chat_id: int | None = None
     message: str
     #: auto | help | edit | consult | tune
     mode: str = "auto"
@@ -140,6 +142,8 @@ class TaskListProposeIn(Schema):
 
 
 class TaskListApplyIn(Schema):
+    chat_id: int | None = None
+    flow_id: int | None = None
     graph: dict[str, Any]
     drafts: list[dict[str, Any]]
     confirmations: dict[str, Any] = {}
@@ -158,7 +162,15 @@ def propose_tasklist(request: HttpRequest, payload: TaskListProposeIn):
 def apply_tasklist(request: HttpRequest, payload: TaskListApplyIn):
     require_feature(request, "agent")
     require_feature(request, "flows.edit")
-    return tasklist.apply(payload.graph, payload.drafts, payload.confirmations)
+    row = _chat_for(request, payload.chat_id, payload.flow_id)
+    result = tasklist.apply(payload.graph, payload.drafts, payload.confirmations)
+    if result["applied"]:
+        drafts = [d for d in (row.work_state.get("drafts", []) if row else []) if d.get("draft_id") not in result["applied"]]
+        questions = [q for q in (row.work_state.get("pending_questions", []) if row else []) if not any(q.get("id", "").startswith(f"{item}:") for item in result["applied"])]
+        assumptions = [{"task_id": d.get("task_id", ""), "field": key, "value": v.get("value"), "note": v.get("note", "")}
+                       for d in drafts for key, v in d["fields"].items() if v["status"] == "assumed"]
+        chats.record(row, {"drafts": drafts, "pending_questions": questions, "assumptions": assumptions}, "Confirmed task proposals applied to the draft flow.")
+    return result
 
 
 class MemoryIn(Schema):
@@ -170,6 +182,8 @@ class ChatSaveIn(Schema):
 
     messages: list[dict] | None = None
     title: str | None = None
+    flow_id: int | None = None
+    work_state: dict[str, Any] | None = None
 
 
 class RateIn(Schema):
@@ -249,6 +263,8 @@ class SettingsIn(Schema):
 
 
 class JobIn(GenerateIn):
+    chat_id: int | None = None
+    flow_id: int | None = None
     task: str = "generate"
     graph: dict[str, Any] | None = None
     instruction: str = ""
@@ -558,6 +574,7 @@ def start_agent_job(request: HttpRequest, payload: JobIn):
     """代理模式背景工作：generate（影像＋ROI＋需求）、edit（graph＋指令＋影像 ref）、tune（graph＋指令＋批次列）。
     沒有 LLM 時工作仍會建立並立即以規則引擎完成。"""
     require_feature(request, "agent").can_execute()
+    chat = _chat_for(request, payload.chat_id, payload.flow_id)
     settings = _settings_for(request)
     images = _images(payload) if (payload.images or payload.ref) else []
     if payload.task == "generate" and not images:
@@ -577,11 +594,30 @@ def start_agent_job(request: HttpRequest, payload: JobIn):
         images = [run_images[r["image_ref"]] for r in selected]
     labels = ([{"expected": r.get("expected", ""), "group": r.get("group", "tune")} for r in selected] if from_runs else
               [lb.model_dump() if isinstance(lb, ImageLabelIn) else lb for lb in payload.labels])
+    if chat:
+        extra_summary += "\n" + situation.describe({"work_state": chat.work_state})
     state = service.build_state(payload.task, images, _regions(payload.regions), payload.prompt, answers=payload.answers, labels=labels,
                                 graph=graph, instruction=payload.instruction, runs=runs, owner=principal(request).user, extra_summary=extra_summary,
                                 groups=None if from_runs else payload.groups)
     budget = loop.Budget(max_turns=max(1, min(40, payload.max_turns)), max_trials=max(1, min(30, payload.max_trials)), deadline_s=max(10.0, min(900.0, payload.deadline_s)))
-    return 202, jobs.start(payload.task, settings, state, budget, runs=runs, run_images=run_images, batch_run_id=batch_run_id)
+    job_question_ids = set()
+    def record_progress(out):
+        nonlocal job_question_ids
+        chat.refresh_from_db()
+        result = out.get("result") or {}
+        report = result.get("report") or {}
+        questions = [q for q in chat.work_state.get("pending_questions", []) if q.get("id") not in job_question_ids]
+        incoming = out.get("questions", []) if out["status"] == "needs_input" else []
+        update = {"pending_questions": [*questions, *incoming]}
+        job_question_ids = {q.get("id") for q in incoming}
+        if runs:
+            update["sample_groups"] = {group: [r["image_ref"] for r in runs if r.get("group", "tune") == group] for group in ("tune", "accept")}
+        if report or result.get("items"):
+            update["last_trial"] = {"at": timezone.now().isoformat(), "status": report.get("status", out["status"]),
+                                    "summary": result.get("rationale", ""), "per_task": []}
+        chats.record(chat, update, f"Assistant job {out['status']}.")
+    return 202, jobs.start(payload.task, settings, state, budget, runs=runs, run_images=run_images, batch_run_id=batch_run_id,
+                          **({"on_progress": record_progress} if chat else {}))
 
 
 @router.get("/agent/jobs")
@@ -756,6 +792,13 @@ def agent_chat(request: HttpRequest, payload: ChatIn):
         raise ValidationError("The message cannot be empty", code="empty_message")
     settings = _settings_for(request)
     ctx = payload.context
+    chat = _chat_for(request, payload.chat_id, ctx.flow_id)
+    progress = {k: chat.work_state.get(k) for k in ("pending_questions", "assumptions", "last_trial")} if chat else {}
+    history = payload.history
+    if progress:
+        from apps.vision.agent.situation import describe
+
+        history = [*history, {"role": "user", "text": describe({"work_state": progress})}]
     # 「記住：…」／「忘記：…」是記憶指令，不經 LLM（整合方沒有使用者身分就當一般問句）
     cmd = notes.parse_command(message)
     if cmd and p.user is not None:
@@ -774,7 +817,13 @@ def agent_chat(request: HttpRequest, payload: ChatIn):
     if intent == "tasklist":
         require_feature(request, "agent")
         result = tasklist.propose(message, ctx.lang, ctx.graph, settings,
-                                  image=store.get(ctx.image_ref) if ctx.image_ref else None, history=payload.history)
+                                  image=store.get(ctx.image_ref) if ctx.image_ref else None, history=history)
+        assumptions = [{"task_id": d.get("task_id", ""), "field": key, "value": v.get("value"), "note": v.get("note", "")}
+                       for d in result["drafts"] for key, v in d["fields"].items() if v["status"] == "assumed"]
+        previous = chat.work_state if chat else {}
+        chats.record(chat, {"drafts": [*previous.get("drafts", []), *result["drafts"]],
+                            "pending_questions": [*previous.get("pending_questions", []), *result["questions"]],
+                            "assumptions": [*previous.get("assumptions", []), *assumptions]})
         return {"kind": "tasklist", "answer": "", **result}
     if intent != "help":
         # 使用說明問答不動引擎、也不需要助手權限；修改／諮詢／調整會試執行，要有 agent
@@ -787,7 +836,10 @@ def agent_chat(request: HttpRequest, payload: ChatIn):
             return {"kind": "edit", "agentic": True, "answer": "", "provider": settings.provider}
         image = store.get(ctx.image_ref) if ctx.image_ref else None
         # 帶對話脈絡：「請幫我直接修改」這種句子本身沒有內容，真正的需求在前一句
-        result = service.edit(ctx.graph, message, image, settings, history=payload.history)
+        result = service.edit(ctx.graph, message, image, settings, history=history)
+        report = result.get("report") or {}
+        chats.record(chat, {"last_trial": {"at": timezone.now().isoformat(), "status": report.get("status", "unknown"),
+                                          "summary": result.get("rationale", ""), "per_task": []}} if report else {}, "Flow edit proposal completed.")
         return {"kind": "edit", "answer": result["rationale"], "provider": result["provider"], "result": result}
     if intent in ("consult", "tune"):
         if ctx.batch_run_id is None:
@@ -796,7 +848,8 @@ def agent_chat(request: HttpRequest, payload: ChatIn):
             if service.agentic(settings):
                 return {"kind": "tune", "agentic": True, "answer": "", "provider": settings.provider}
             run, bset, graph, runs, images, extra = _batch_context(request, ctx.batch_run_id, ctx.graph)
-            result = service.tune(graph, message, runs, images, settings, extra_summary=extra, detail=True)
+            result = service.tune(graph, message, runs, images, settings,
+                                  extra_summary=extra + ("\n" + situation.describe({"work_state": progress}) if progress else ""), detail=True)
             new = None
             if result.get("applied"):
                 from apps.vision.batch import store as bstore
@@ -804,7 +857,9 @@ def agent_chat(request: HttpRequest, payload: ChatIn):
                 origin = "autotune" if result.get("provider") == "autotune" else "ai_tune"
                 new = bstore.persist_tune(run.id, result["graph"], result["items"], origin=origin, label=message[:60], owner=p.user,
                                           meta={"rationale": result["rationale"], "changes": result["changes"], "provider": result.get("provider"), "autotune": result.get("autotune"), "acceptance": result.get("acceptance")})
-            return {"kind": "tune", "answer": result["rationale"], "provider": result["provider"], "result": {**result, "batch_run_id": new.id if new else None}, "batch_run_id": new.id if new else None}
+            work_state = chats.record(chat, {"sample_groups": {group: [r["image_ref"] for r in runs if r.get("group", "tune") == group] for group in ("tune", "accept")},
+                                "last_trial": {"at": timezone.now().isoformat(), "status": "done", "summary": result["rationale"], "per_task": []}}, "Parameter tuning completed.")
+            return {"kind": "tune", "answer": result["rationale"], "provider": result["provider"], "result": {**result, "batch_run_id": new.id if new else None}, "batch_run_id": new.id if new else None, "work_state": work_state}
         from apps.vision.batch.api import _run_or_404
 
         run = _run_or_404(request, ctx.batch_run_id)
@@ -816,6 +871,7 @@ def agent_chat(request: HttpRequest, payload: ChatIn):
 
     shot = _screenshot_b64(ctx.screenshot)
     context = {k: v for k, v in ctx.dict().items() if k != "screenshot"}
+    context["work_state"] = progress
     out = help_mod.answer(message, settings, context=context, history=payload.history, user=p.user, principal=p, lock=EngineLock.current().to_dict(), screenshot=shot)
     row = notes.record_qa(p.user, message, str(out.get("answer") or ""), context, str(out.get("provider") or ""))
     if row is not None:
@@ -826,6 +882,22 @@ def agent_chat(request: HttpRequest, payload: ChatIn):
 # ---------------------------------------------------------------------------
 # 長期記憶（每位使用者自己的：事實與可評分的問答）
 # ---------------------------------------------------------------------------
+def _chat_for(request: HttpRequest, chat_id: int | None, flow_id: int | None = None):
+    """動作前先驗證擁有者與流程綁定，不能用 best-effort 吞掉授權錯誤。"""
+    if chat_id is None:
+        return None
+    row = chats.get(_memory_user(request), chat_id)
+    if row is None:
+        raise NotFound(f"No conversation {chat_id}", code="chat_not_found")
+    if flow_id is not None:
+        previous = row.flow_id or (row.work_state or {}).get("flow_id")
+        if previous:
+            chats.bind(row, flow_id)
+        else:
+            row = chats.save(row, flow_id=flow_id)
+    return row
+
+
 def _memory_user(request: HttpRequest):
     p = principal(request)
     if p.user is None:
@@ -877,7 +949,7 @@ def list_chats(request: HttpRequest):
 @router.post("/agent/chats", response={201: dict})
 def create_chat(request: HttpRequest, payload: ChatSaveIn):
     """Start a conversation (usually empty; the window saves into it as you talk)."""
-    row = chats.create(_memory_user(request), payload.messages, payload.title or "")
+    row = chats.create(_memory_user(request), payload.messages, payload.title or "", flow_id=payload.flow_id, work_state=payload.work_state)
     return 201, chats.out(row, with_messages=True)
 
 
@@ -889,13 +961,20 @@ def get_chat(request: HttpRequest, chat_id: int):
     return chats.out(row, with_messages=True)
 
 
+@router.get("/agent/chats/{chat_id}/resume")
+def resume_chat(request: HttpRequest, chat_id: int):
+    return chats.resume(_chat_for(request, chat_id))
+
+
 @router.patch("/agent/chats/{chat_id}")
 def save_chat(request: HttpRequest, chat_id: int, payload: ChatSaveIn):
     """Replace the conversation's messages (the window saves after each reply) or rename it."""
     row = chats.get(_memory_user(request), chat_id)
     if row is None:
         raise NotFound(f"No conversation {chat_id}", code="chat_not_found")
-    return chats.out(chats.save(row, payload.messages, payload.title), with_messages=True)
+    return chats.out(chats.save(row, payload.messages, payload.title,
+                               flow_id=payload.flow_id if "flow_id" in payload.model_fields_set else chats.UNSET,
+                               work_state=payload.work_state), with_messages=True)
 
 
 @router.delete("/agent/chats/{chat_id}", response={204: None})

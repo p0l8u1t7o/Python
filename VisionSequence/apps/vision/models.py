@@ -577,6 +577,8 @@ class AssistantChat(models.Model):
     """
 
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="assistant_chats")
+    flow = models.ForeignKey(Flow, null=True, blank=True, on_delete=models.SET_NULL, related_name="assistant_chats")
+    work_state = models.JSONField(default=dict, blank=True)
     title = models.CharField(max_length=120, blank=True, default="")
     messages = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

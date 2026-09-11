@@ -117,6 +117,26 @@ export interface TaskDraft {
   note?: string
 }
 
+export interface AssistantWorkState {
+  version?: 1
+  flow_id?: number | null
+  flow_updated_at?: string
+  flow_version?: number | null
+  pending_questions?: { id: string; text: string; kind: string; options?: { value: string; label: string }[]; optional?: boolean }[]
+  assumptions?: { task_id?: string; field: string; value: unknown; note: string }[]
+  decisions?: { at: string; text: string; by: 'user' | 'assistant' }[]
+  sample_groups?: { tune: string[]; accept: string[] }
+  last_trial?: { at: string; status: string; summary: string; per_task: { task_id: string; status: string; value: unknown }[] }
+  drafts?: TaskDraft[]
+}
+export interface AssistantResume {
+  work_state: AssistantWorkState
+  flow: { id: number; name: string; updated_at: string; version: number } | null
+  changed: boolean
+  flow_missing?: boolean
+  diff_summary?: string
+}
+
 export interface InspectField extends Omit<ToolParam, 'visible_when' | 'group'> {
   role: string | null
   param: string | null

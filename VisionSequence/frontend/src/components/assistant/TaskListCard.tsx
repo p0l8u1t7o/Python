@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui'
 import { ParamField } from '@/components/editor/ParamField'
 import { api } from '@/lib/api'
-import { getAssistantContext, type AssistantContext } from '@/lib/assistantContext'
+import { getAssistantContext, publishAssistantProgress, type AssistantContext } from '@/lib/assistantContext'
 import { errorMessage } from '@/lib/errors'
 import { useInspectKinds } from '@/lib/queries'
 import { inspectionParam } from '@/lib/inspect'
@@ -51,8 +51,8 @@ function FieldValue({ value, kind, onChange, label, options }: { value: unknown;
   }} />
 }
 
-export function TaskListCard({ drafts, flowId, context, onChange, kinds: supplied }: {
-  drafts: TaskDraft[]; flowId: number | null; context: AssistantContext; onChange: (drafts: TaskDraft[]) => void; kinds?: InspectKind[]
+export function TaskListCard({ drafts, flowId, context, onChange, kinds: supplied, chatId }: {
+  drafts: TaskDraft[]; flowId: number | null; context: AssistantContext; onChange: (drafts: TaskDraft[]) => void; kinds?: InspectKind[]; chatId?: number | null
 }) {
   const { t } = useTranslation()
   const catalogue = useInspectKinds()
@@ -85,6 +85,8 @@ export function TaskListCard({ drafts, flowId, context, onChange, kinds: supplie
       const signature = JSON.stringify(graph)
       const confirmed = confirmDraft(draft)
       const out = await api.post<{ graph: FlowGraph; tasks: InspectTask[]; applied: string[]; skipped: { draft_id: string; reason: string }[] }>('/vision/agent/tasklist/apply', {
+        chat_id: chatId,
+        flow_id: flowId,
         graph, drafts: [confirmed], confirmations: { [draft.draft_id]: { confirmed: true, fields: Object.fromEntries(Object.entries(confirmed.fields).filter(([, v]) => v.status === 'confirmed').map(([k]) => [k, true])) } },
       }, undefined, control.signal)
       const current = getAssistantContext()
@@ -92,6 +94,7 @@ export function TaskListCard({ drafts, flowId, context, onChange, kinds: supplie
       if (out.skipped.length) { setError(out.skipped.map((s) => s.reason).join(' ')); return }
       current.applyGraph?.(out.graph, '')
       current.showProposals?.([])
+      if (flowId) publishAssistantProgress(flowId, {}, `Confirmed ${draft.op} proposal: ${draft.kind}.`)
       onChange(drafts.filter((d) => d.draft_id !== draft.draft_id))
     } catch (e) { if (!control.signal.aborted) setError(errorMessage(e)) } finally { setBusy(false) }
   }

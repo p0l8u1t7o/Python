@@ -2189,6 +2189,7 @@ const zhHant = {
     skillsCustomDeleted: '已刪除補充要領',
   },
   assistant: {
+    resume: { title: "恢復工作進度", continue: "繼續", questions: "待確認問題", assumptions: "未確認的假設", trial: "最近試執行", changed: "此對話之後流程已變更。", missing: "此流程已刪除。請為其他流程開啟新對話。", otherFlow: "請開啟綁定流程或建立新對話以繼續。", latest: "繼續此流程最近的對話", answer: "回答", choose: "選擇答案" },
     tasklist: {"context":"檢測任務","review":"套用前請檢查數值與假設，再從流程頁儲存變更。","confirm":"全部確認","discard":"捨棄","show":"顯示在影像上","openFlow":"請開啟原流程以套用提案。","changed":"套用期間流程已變更，請檢查目前流程後重試。","status":{"confirmed":"已確認","assumed":"假設","missing":"缺少資料"},"ops":{"add":"新增","update":"修改","remove":"刪除","answer":"需要更多資料","run":"再跑一次"},"shape":"區域形狀","chooseRegion":"選擇區域","coordinates":{"x":"X","y":"Y","w":"寬度","h":"高度","cx":"中心 X","cy":"中心 Y","r":"半徑","r_inner":"內半徑","r_outer":"外半徑","angle":"角度"},"notes":{"unit":"請確認單位；未指定單位時先提議使用像素。","calibration":"使用毫米前請先選擇標定，尚未進行任何換算。","region":"請在影像上檢查區域，確認位置與大小。","missing":"套用前請填入有效數值。","assumed":"請檢查並確認此提議值。"}},
     screenshot: '把此頁面的截圖附在下一則提問', screenshotTaken: '截圖已附在下一則提問', screenshotRemove: '移除截圖',
     screenshotNeedsLlm: '截圖需要看得懂影像的 LLM 供應商', screenshotFailed: '無法擷取畫面',

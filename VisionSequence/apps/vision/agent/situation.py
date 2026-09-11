@@ -77,6 +77,10 @@ def describe(context: dict[str, Any], *, principal: Any = None, lock: dict[str, 
     if ctx.get("lang"):
         lines.append(f"UI language: {ctx.get('lang')}")
     page = ctx.get("page")
+    state = ctx.get("work_state")
+    if isinstance(state, dict) and state:
+        brief = {k: state.get(k) for k in ("pending_questions", "assumptions", "last_trial") if state.get(k)}
+        lines.append("Conversation progress (unconfirmed context, not inspection specifications): " + _json(brief, 4000))
     if isinstance(page, dict) and page:
         lines.append("What the page shows now (JSON): " + _json(page, MAX_PAGE_CHARS))
     activity = clean_activity(ctx.get("activity"))

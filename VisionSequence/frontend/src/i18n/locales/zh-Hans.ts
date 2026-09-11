@@ -1,4 +1,4 @@
-﻿/** 简体中文（由 zh-Hant 以 OpenCC tw2sp 转换＋人工词汇微调产生；缺的 key 会退回繁中）。 */
+/** 简体中文（由 zh-Hant 以 OpenCC tw2sp 转换＋人工词汇微调产生；缺的 key 会退回繁中）。 */
 const zhHans = {
   evidence: {
     group: '样本分组', groupFilter: '按样本分组筛选', allGroups: '所有分组', tune: '调参组', accept: '验收组',
@@ -2189,6 +2189,7 @@ const zhHans = {
     skillsCustomDeleted: '已删除补充要领',
   },
   assistant: {
+    resume: { title: "恢复工作进度", continue: "继续", questions: "待确认问题", assumptions: "未确认的假设", trial: "最近试运行", changed: "此对话之后流程已更改。", missing: "此流程已删除。请为其他流程打开新对话。", otherFlow: "请打开绑定流程或创建新对话以继续。", latest: "继续此流程最近的对话", answer: "回答", choose: "选择答案" },
     tasklist: {"context":"检测任务","review":"应用前请检查数值与假设，再从流程页保存更改。","confirm":"全部确认","discard":"舍弃","show":"显示在图像上","openFlow":"请打开原流程以应用提案。","changed":"应用期间流程已更改，请检查当前流程后重试。","status":{"confirmed":"已确认","assumed":"假设","missing":"缺少数据"},"ops":{"add":"新增","update":"修改","remove":"删除","answer":"需要更多数据","run":"再运行一次"},"shape":"区域形状","chooseRegion":"选择区域","coordinates":{"x":"X","y":"Y","w":"宽度","h":"高度","cx":"中心 X","cy":"中心 Y","r":"半径","r_inner":"内半径","r_outer":"外半径","angle":"角度"},"notes":{"unit":"请确认单位；未指定单位时先建议使用像素。","calibration":"使用毫米前请先选择标定，尚未进行任何换算。","region":"请在图像上检查区域，确认位置与大小。","missing":"应用前请填写有效数值。","assumed":"请检查并确认此建议值。"}},
     screenshot: '把此页面的截图附在下一条提问', screenshotTaken: '截图已附在下一条提问', screenshotRemove: '移除截图',
     screenshotNeedsLlm: '截图需要能看图像的 LLM 供应商', screenshotFailed: '无法截取画面',

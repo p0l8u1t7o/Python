@@ -11,11 +11,12 @@ import { ArrowRight, Bot, Brain, Camera, Check, ExternalLink, Eye, EyeOff, Histo
 
 import { AgentTimeline } from '@/components/agent/AgentTimeline'
 import { TaskListCard } from './TaskListCard'
+import { draftProgress, ResumeCard, ResumeQuestions } from './ResumeCard'
 import { Badge, Button } from '@/components/ui'
 import { useAgentJob } from '@/lib/agentJob'
 import { activityPayload, logActivity, recentActivity, setActivityRoute, setShareEnabled, shareEnabled, subscribeActivity } from '@/lib/activity'
 import { api } from '@/lib/api'
-import { contextFromPath, useAssistantContext, type AssistantContext, type AssistantKind } from '@/lib/assistantContext'
+import { contextFromPath, subscribeAssistantProgress, useAssistantContext, type AssistantContext, type AssistantKind } from '@/lib/assistantContext'
 import type { Suggestion, TuneResult } from '@/lib/batch'
 import { errorMessage } from '@/lib/errors'
 import { formatDateTime } from '@/lib/format'
@@ -24,7 +25,7 @@ import { dismissHint, hintFor, shouldShow, type Hint } from '@/lib/hints'
 import { pageSnapshot, screenSummary, setIntegrationTab } from '@/lib/screen'
 import { base64Of, captureScreenshot } from '@/lib/screenshot'
 import { sectionOf } from '@/pages/integration/sections'
-import type { FlowGraph, InspectKind, RunReport, TaskDraft } from '@/lib/types'
+import type { AssistantResume, AssistantWorkState, FlowGraph, InspectKind, RunReport, TaskDraft } from '@/lib/types'
 import { useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
 
@@ -41,9 +42,11 @@ interface Lookup { name: string; args: Record<string, unknown>; error?: string }
 interface MemoryItem { id: number; kind: 'fact' | 'qa'; text: string; answer: string; rating: number; created_at: string | null }
 interface MemoryList { facts: MemoryItem[]; qa: MemoryItem[]; limits: { facts: number; qa: number } }
 /** 過去的對話（伺服器存，每位使用者自己的） */
-interface ChatSummary { id: number; title: string; count: number; updated_at: string | null }
+interface ChatSummary { id: number; title: string; count: number; updated_at: string | null; flow_id?: number | null; flow_name?: string; work_state?: AssistantWorkState }
 interface EditResult { graph: FlowGraph; rationale: string; provider: string; changes: string[]; report: RunReport | null; applied: boolean }
 interface ChatReply {
+  work_state?: AssistantWorkState
+  questions?: NonNullable<AssistantWorkState['pending_questions']>
   drafts?: TaskDraft[]
   kinds?: InspectKind[]
   kind: ReplyKind
@@ -145,6 +148,18 @@ export function AssistantDock() {
   const auth = useAuth()
   const canStore = auth.me?.kind === 'user'
   const [sessionId, setSessionId] = useState<number | null>(initial.sessionId)
+  const [boundFlow, setBoundFlow] = useState<number | null>(null)
+  const [boundName, setBoundName] = useState('')
+  const [workState, setWorkState] = useState<AssistantWorkState>({})
+  const [resume, setResume] = useState<AssistantResume | null>(null)
+  const [resumedQuestions, setResumedQuestions] = useState<NonNullable<AssistantWorkState['pending_questions']>>([])
+  const [hydrated, setHydrated] = useState(!initial.sessionId)
+  const sessionEpoch = useRef(0)
+  const sessionRef = useRef(sessionId)
+  sessionRef.current = sessionId
+  const creatingRef = useRef<{ epoch: number; promise: Promise<ChatSummary> } | null>(null)
+  const boundRef = useRef(boundFlow)
+  boundRef.current = boundFlow
   const [showHistory, setShowHistory] = useState(false)
   const [memoryInput, setMemoryInput] = useState('')
   const queryClient = useQueryClient()
@@ -152,12 +167,12 @@ export function AssistantDock() {
   const chatList = useQuery({
     queryKey: ['assistant-chats'],
     queryFn: () => api.get<{ items: ChatSummary[] }>('/vision/agent/chats'),
-    enabled: canStore && showHistory,
+    enabled: canStore && (showHistory || open),
   })
   const removeChat = useMutation({
     mutationFn: (id: number) => api.delete(`/vision/agent/chats/${id}`),
     onSuccess: (_data, id) => {
-      if (id === sessionId) { setMessages([]); setSessionId(null) }
+      if (id === sessionId) newSession()
       void queryClient.invalidateQueries({ queryKey: ['assistant-chats'] })
     },
     onError: (error) => toast.error(errorMessage(error)),
@@ -192,36 +207,61 @@ export function AssistantDock() {
   openRef.current = open
   const info = useQuery({ queryKey: ['agent-info'], queryFn: () => api.get<{ llm: boolean; provider: string; model: string; mode?: string }>('/vision/agent/info') })
   const jobs = useAgentJob<EditResult | TuneResult>()
+  const jobContextRef = useRef<{ epoch: number; flowId: number | null } | null>(null)
+  const jobQuestionIds = useRef<string[]>([])
   const agentic = Boolean(info.data?.llm && info.data?.mode === 'agentic')
 
   useEffect(() => { persist(open, messages, sessionId) }, [open, messages, sessionId])
   //: 訊息變了就寫回伺服器（延遲 1 秒批次寫；沒有對話就先開一條）。失敗不打擾使用者——本機還留著。
-  const savingRef = useRef(false)
-  useEffect(() => {
-    if (!canStore || messages.length === 0) return
-    const timer = window.setTimeout(async () => {
-      if (savingRef.current) return
-      savingRef.current = true
-      try {
-        const body = { messages: messages.slice(-MAX_MESSAGES) }
-        if (sessionId === null) {
-          const row = await api.post<ChatSummary>('/vision/agent/chats', body)
-          setSessionId(row.id)
-        } else {
-          await api.patch(`/vision/agent/chats/${sessionId}`, body)
-        }
-        void queryClient.invalidateQueries({ queryKey: ['assistant-chats'] })
-      } catch {
-        /* 對話存檔失敗（離線、權限）：不擋使用，下一則再試 */
-      } finally {
-        savingRef.current = false
+  const saveQueue = useRef(Promise.resolve())
+  async function ensureSession(epoch: number, flowId: number | null) {
+    if (sessionRef.current !== null) return sessionRef.current
+    if (creatingRef.current?.epoch !== epoch) {
+      creatingRef.current = { epoch, promise: api.post<ChatSummary>('/vision/agent/chats', { flow_id: flowId }) }
+    }
+    try {
+      const row = await creatingRef.current.promise
+      if (sessionEpoch.current === epoch) {
+        sessionRef.current = row.id
+        boundRef.current = row.flow_id ?? null
+        setSessionId(row.id); setBoundFlow(row.flow_id ?? null); setBoundName(row.flow_name ?? '')
+        setWorkState((state) => ({ ...row.work_state, ...state }))
       }
+      return row.id
+    } finally {
+      if (creatingRef.current?.epoch === epoch) creatingRef.current = null
+    }
+  }
+  useEffect(() => {
+    if (!canStore || !hydrated || busy || messages.length === 0) return
+    const epoch = sessionEpoch.current
+    const timer = window.setTimeout(() => {
+      saveQueue.current = saveQueue.current.then(async () => {
+        const id = sessionId ?? (epoch === sessionEpoch.current ? await ensureSession(epoch, boundFlow) : null)
+        if (id === null) return
+        await api.patch(`/vision/agent/chats/${id}`, { messages: messages.slice(-MAX_MESSAGES), work_state: workState })
+        void queryClient.invalidateQueries({ queryKey: ['assistant-chats'] })
+      }).catch((error) => { console.warn('Conversation progress could not be saved', error) })
     }, 1000)
     return () => window.clearTimeout(timer)
-  }, [messages, canStore, sessionId, queryClient])
+  }, [messages, workState, canStore, hydrated, busy, sessionId, queryClient, boundFlow])
+
+  useEffect(() => subscribeAssistantProgress((flowId, state, decision) => {
+    if (boundRef.current !== flowId) return
+    const entry = decision ? { at: new Date().toISOString(), text: decision, by: 'user' as const } : null
+    setWorkState((old) => ({ ...old, ...state, ...(entry ? { decisions: [...(old.decisions ?? []), entry] } : {}) }))
+    const id = sessionRef.current
+    if (id !== null) saveQueue.current = saveQueue.current.then(async () => {
+      await api.patch(`/vision/agent/chats/${id}`, { work_state: { ...state, ...(entry ? { decisions: [entry] } : {}) } })
+    }).catch((error) => { console.warn('Conversation progress could not be saved', error) })
+  }), [])
 
   /** 開新對話：目前這條已經在伺服器上，直接清空畫面即可。 */
   function newSession() {
+    sessionEpoch.current += 1
+    abortRef.current?.abort(); sessionRef.current = null; boundRef.current = null
+    setBusy(false)
+    setHydrated(true); setBoundFlow(null); setBoundName(''); setWorkState({}); setResume(null); setResumedQuestions([])
     setMessages([])
     setSessionId(null)
     setShowHistory(false)
@@ -231,15 +271,40 @@ export function AssistantDock() {
 
   /** 回到過去的對話：把訊息整條載回來（來源、建議、動作都還原）。 */
   async function openSession(id: number) {
+    const epoch = ++sessionEpoch.current
+    abortRef.current?.abort(); setBusy(false)
+    setHydrated(false)
     try {
-      const row = await api.get<{ id: number; messages: ChatMessage[] }>(`/vision/agent/chats/${id}`)
+      const [row, restored] = await Promise.all([
+        api.get<ChatSummary & { messages: ChatMessage[] }>(`/vision/agent/chats/${id}`),
+        api.get<AssistantResume>(`/vision/agent/chats/${id}/resume`),
+      ])
+      if (epoch !== sessionEpoch.current) return
       setMessages(Array.isArray(row.messages) ? row.messages : [])
       setSessionId(row.id)
+      sessionRef.current = row.id; boundRef.current = row.flow_id ?? null
+      setBoundFlow(row.flow_id ?? null); setBoundName(row.flow_name ?? '')
+      setWorkState(restored.work_state ?? {}); setResume(Object.keys(restored.work_state ?? {}).length ? restored : null); setResumedQuestions([])
+      setHydrated(true)
       setShowHistory(false)
     } catch (error) {
       toast.error(errorMessage(error))
     }
   }
+  useEffect(() => {
+    if (canStore && initial.sessionId) void openSession(initial.sessionId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canStore])
+  const wasOpen = useRef(open)
+  useEffect(() => {
+    if (open && !wasOpen.current && sessionId && hydrated) {
+      const epoch = sessionEpoch.current
+      void api.get<AssistantResume>(`/vision/agent/chats/${sessionId}/resume`).then((value) => {
+        if (epoch === sessionEpoch.current && Object.keys(value.work_state ?? {}).length) setResume(value)
+      }).catch((error) => console.warn('Conversation progress could not be loaded', error))
+    }
+    wasOpen.current = open
+  }, [open, hydrated, sessionId])
   useEffect(() => {
     if (!open) return
     setUnread(0)
@@ -258,17 +323,24 @@ export function AssistantDock() {
   useEffect(() => {
     const j = jobs.job
     if (!j || j.status === 'running') return
+    if (jobContextRef.current && jobContextRef.current.epoch !== sessionEpoch.current) return
     if ((j.status === 'done' || j.status === 'budget') && j.result) {
       const r = j.result
+      setWorkState((old) => ({ ...old, pending_questions: old.pending_questions?.filter((q) => !jobQuestionIds.current.includes(q.id)), decisions: [...(old.decisions ?? []), { at: new Date().toISOString(), text: r.rationale, by: 'assistant' }],
+        ...('report' in r && r.report ? { last_trial: { at: new Date().toISOString(), status: r.report.status, summary: r.rationale, per_task: [] } }
+          : 'items' in r ? { last_trial: { at: new Date().toISOString(), status: 'done', summary: r.rationale, per_task: [] } } : {}) }))
       if ('items' in r && 'before' in r) {
         const tr = r as TuneResult
         push({ role: 'assistant', text: tr.rationale, kind: 'tune', provider: tr.provider, warnings: tr.warnings, newRunId: tr.batch_run_id ?? null, contextKind: ctx.kind })
         if (tr.batch_run_id) ctx.onNewRun?.(tr.batch_run_id)
       } else {
         const er = r as EditResult
-        push({ role: 'assistant', text: er.rationale, kind: 'edit', provider: er.provider, edit: { graph: er.graph, changes: er.changes, flowId: ctx.flowId ?? null }, contextKind: ctx.kind })
+        push({ role: 'assistant', text: er.rationale, kind: 'edit', provider: er.provider, edit: { graph: er.graph, changes: er.changes, flowId: jobContextRef.current?.flowId ?? ctx.flowId ?? null }, contextKind: ctx.kind })
       }
     } else if (j.status === 'needs_input') {
+      const oldQuestionIds = jobQuestionIds.current
+      jobQuestionIds.current = j.questions.map((q) => q.id)
+      setWorkState((old) => ({ ...old, pending_questions: [...(old.pending_questions ?? []).filter((q) => !oldQuestionIds.includes(q.id)), ...j.questions] }))
       push({ role: 'assistant', text: t('agent.jobAnswerHint', { text: j.questions.map((q) => q.text).join('; ') }) })
     } else if (j.status === 'cancelled') push({ role: 'assistant', text: t('agent.aborted') })
     else if (j.status === 'error') push({ role: 'assistant', text: j.error || t('agent.jobStatus.error') })
@@ -277,33 +349,45 @@ export function AssistantDock() {
   }, [jobStatus, jobId])
 
   async function send(text = input.trim()) {
-    if (!text || busy) return
+    if (!text || busy || !hydrated || boundFlow !== null && ctx.flowId !== boundFlow) return
     setInput('')
     push({ role: 'user', text, contextKind: ctx.kind })
     setBusy(true)
+    if (boundFlow === null && ctx.flowId) { boundRef.current = ctx.flowId; setBoundFlow(ctx.flowId); setBoundName(ctx.flowName ?? '') }
     if (jobs.waiting && jobs.job) {
       try { await jobs.answer(jobs.job.questions.map((q, i) => ({ id: q.id, answer: i === 0 ? text : '' }))) } catch (error) { toast.error(errorMessage(error)); setBusy(false) }
       return
     }
     const controller = new AbortController()
+    const epoch = sessionEpoch.current
     abortRef.current = controller
     const history = messages.slice(-8).map((m) => ({ role: m.role, text: m.text.slice(0, 400) }))
     try {
+      const chatId = sessionId
       const payload = { ...contextPayload(ctx, location.pathname), screen: attachScreen && share ? screenSummary() : '', screenshot: shot ? base64Of(shot) : '' }
+      if (payload.image_ref) setWorkState((old) => ({ ...old, sample_groups: { tune: [...new Set([...(old.sample_groups?.tune ?? []), ...(old.sample_groups?.accept.includes(payload.image_ref) ? [] : [payload.image_ref])])], accept: old.sample_groups?.accept ?? [] } }))
       setShot(null)
-      const r = await api.post<ChatReply>('/vision/agent/chat', { message: text, mode, context: payload, history }, undefined, controller.signal)
+      const r = await api.post<ChatReply>('/vision/agent/chat', { chat_id: chatId, message: text, mode, context: payload, history }, undefined, controller.signal)
+      if (epoch !== sessionEpoch.current) return
+      if (r.work_state) setWorkState((old) => ({ ...old, ...r.work_state }))
       if (r.agentic && (r.kind === 'edit' || r.kind === 'tune')) {
+        jobContextRef.current = { epoch, flowId: ctx.flowId ?? null }
+        jobQuestionIds.current = []
         await jobs.start(r.kind === 'edit'
-          ? { task: 'edit', graph: payload.graph, instruction: text, images: payload.image_ref ? [payload.image_ref] : [] }
-          : { task: 'tune', batch_run_id: payload.batch_run_id, instruction: text, graph: payload.graph })
+          ? { task: 'edit', chat_id: chatId, flow_id: payload.flow_id, graph: payload.graph, instruction: text, images: payload.image_ref ? [payload.image_ref] : [] }
+          : { task: 'tune', chat_id: chatId, flow_id: payload.flow_id, batch_run_id: payload.batch_run_id, instruction: text, graph: payload.graph })
         return
       }
       if (r.kind === 'tasklist') {
+        setWorkState((old) => ({ ...old, ...draftProgress([...(old.drafts ?? []), ...(r.drafts ?? [])]), pending_questions: [...(old.pending_questions ?? []), ...(r.questions ?? [])] }))
+        setResumedQuestions([])
         push({ role: 'assistant', text: r.answer || '', kind: 'tasklist', warnings: r.warnings, tasklist: { drafts: r.drafts ?? [], kinds: r.kinds, flowId: ctx.flowId ?? null }, contextKind: ctx.kind })
       } else if (r.kind === 'edit' && r.result) {
         const er = r.result as EditResult
+        if (er.report) setWorkState((old) => ({ ...old, last_trial: { at: new Date().toISOString(), status: er.report!.status, summary: er.rationale, per_task: [] } }))
         push({ role: 'assistant', text: r.answer, kind: 'edit', provider: r.provider, edit: er.applied ? { graph: er.graph, changes: er.changes, flowId: ctx.flowId ?? null } : undefined, contextKind: ctx.kind })
       } else if (r.kind === 'tune') {
+        setWorkState((old) => ({ ...old, decisions: [...(old.decisions ?? []), { at: new Date().toISOString(), text: r.answer, by: 'assistant' }] }))
         push({ role: 'assistant', text: r.answer, kind: 'tune', provider: r.provider, warnings: r.warnings, newRunId: r.batch_run_id ?? null, contextKind: ctx.kind })
         if (r.batch_run_id) ctx.onNewRun?.(r.batch_run_id)
       } else if (r.kind === 'consult') {
@@ -313,11 +397,12 @@ export function AssistantDock() {
         if (r.provider === 'memory') void queryClient.invalidateQueries({ queryKey: ['assistant-memory'] })
       }
     } catch (error) {
+      if (epoch !== sessionEpoch.current) return
       if (controller.signal.aborted) push({ role: 'assistant', text: t('agent.aborted') })
       else push({ role: 'assistant', text: errorMessage(error) })
     } finally {
       if (abortRef.current === controller) abortRef.current = null
-      setBusy(false)
+      if (epoch === sessionEpoch.current) setBusy(false)
     }
   }
 
@@ -381,6 +466,18 @@ export function AssistantDock() {
   const quick = (t(`assistant.quick.${ctx.kind}`, { returnObjects: true, defaultValue: [] }) as string[] | string)
   const quickList = Array.isArray(quick) ? quick : (t('assistant.quick.page', { returnObjects: true }) as string[])
   const ctxLabel = `${t(ctx.kind === 'inspect' ? 'assistant.tasklist.context' : `assistant.ctx.${ctx.kind}`)}${ctx.flowName ? ` · ${ctx.flowName}` : ''}${ctx.nodeType ? ` · ${ctx.nodeType}` : ''}${ctx.batchRunId ? ` · #${ctx.batchRunId}` : ''}`
+  const latestConversation = ctx.flowId ? chatList.data?.items?.find((chat) => chat.flow_id === ctx.flowId) : undefined
+  const lastConversation = latestConversation?.id !== sessionId ? latestConversation : undefined
+  function continueSession() {
+    if (!resume || resume.flow_missing) return
+    if (boundFlow && ctx.flowId !== boundFlow) navigate(`/flows/${boundFlow}/inspect`)
+    setResumedQuestions(resume.work_state.pending_questions ?? [])
+    if (resume.work_state.drafts?.length) {
+      setMessages((old) => [...old.map((m) => m.tasklist ? { ...m, tasklist: { ...m.tasklist, drafts: [] } } : m),
+        { id: uid(), at: Date.now(), role: 'assistant', text: '', kind: 'tasklist', tasklist: { drafts: resume.work_state.drafts!, flowId: boundFlow } }])
+    }
+    setResume(null)
+  }
 
   return (
     <>
@@ -408,6 +505,9 @@ export function AssistantDock() {
               <button type="button" className="btn-icon" title={t('common.close')} onClick={() => setOpen(false)}><X size={15} /></button>
             </span>
           </header>
+          {boundFlow && <div className="truncate border-b border-line px-3 py-1 text-xs" data-testid="assistant-bound-flow"><Link to={`/flows/${boundFlow}/inspect`}>{boundName || `#${boundFlow}`}</Link></div>}
+          {boundFlow !== null && ctx.flowId !== boundFlow && <p className="px-3 py-1 text-xs text-warning">{t('assistant.resume.otherFlow')}</p>}
+          {lastConversation && <Button size="xs" onClick={() => void openSession(lastConversation.id)}>{t('assistant.resume.latest')}</Button>}
           <div className="flex flex-wrap items-center gap-1 border-b border-line px-3 py-1.5 text-[11px]">
             <Badge tone="info">{ctxLabel}</Badge>
             <span className="ml-auto flex gap-1">
@@ -472,6 +572,14 @@ export function AssistantDock() {
             </div>
           ) : (
           <div ref={listRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3 text-xs" data-testid="assistant-messages">
+            {resume && <ResumeCard resume={resume} onContinue={continueSession} />}
+            {!!resumedQuestions.length && <ResumeQuestions questions={resumedQuestions} disabled={busy || boundFlow !== ctx.flowId} onAnswer={(text, id) => {
+              if (busy || boundFlow !== ctx.flowId) return
+              setResumedQuestions((old) => old.filter((q) => q.id !== id))
+              setWorkState((old) => ({ ...old, pending_questions: old.pending_questions?.filter((q) => q.id !== id),
+                decisions: [...(old.decisions ?? []), { at: new Date().toISOString(), text, by: 'user' }] }))
+              void send(text)
+            }} />}
             {hint ? (
               <div className="rounded-lg border border-warning/40 bg-warning-soft px-2.5 py-2 text-[11px]" data-testid="assistant-hint">
                 <p className="flex items-center gap-1 font-semibold text-warning"><Lightbulb size={12} /> {t('assistant.hintTitle')}</p>
@@ -493,7 +601,11 @@ export function AssistantDock() {
             {messages.map((m) => (
               <div key={m.id} className={`rounded-lg px-2.5 py-2 ${m.role === 'user' ? 'ml-8 bg-brand-soft' : 'mr-4 bg-surface-muted'}`} data-testid={`assistant-msg-${m.role}`}>
                 <p className="whitespace-pre-wrap leading-relaxed">{m.text}</p>
-                {m.tasklist?.drafts.length ? <TaskListCard drafts={m.tasklist.drafts} kinds={m.tasklist.kinds} flowId={m.tasklist.flowId} context={ctx} onChange={(drafts) => setMessages((list) => list.map((entry) => entry.id === m.id ? { ...entry, tasklist: { ...m.tasklist!, drafts } } : entry))} /> : null}
+                {m.tasklist?.drafts.length ? <TaskListCard chatId={sessionId} drafts={m.tasklist.drafts} kinds={m.tasklist.kinds} flowId={m.tasklist.flowId} context={ctx} onChange={(drafts) => {
+                  const next = messages.map((entry) => entry.id === m.id ? { ...entry, tasklist: { ...m.tasklist!, drafts } } : entry)
+                  setMessages(next)
+                  setWorkState((old) => ({ ...old, ...draftProgress(next.flatMap((entry) => entry.tasklist?.flowId === boundFlow ? entry.tasklist.drafts : [])) }))
+                }} /> : null}
                 {m.provider ? <p className="mt-1 text-[10px] text-subtle">{m.provider}{m.kind ? ` · ${t(`assistant.mode.${m.kind}`)}` : ''}</p> : null}
                 {m.warnings?.length ? <ul className="mt-1 list-disc pl-4 text-[11px] text-warning">{m.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul> : null}
                 {m.sources?.length ? (

@@ -55,7 +55,7 @@ import { readEditorCollapsedTasks, readEditorGridView, readFlowDescriptionPanelC
 import { collapseView, expandOnDrop, groupsOf, taskIdFromGroupNodeId, taskKindLabel, type NodeGroup } from '@/lib/nodeGroups'
 import { GRID_COUNTS, bindGridCell, gridCellImage, gridPlacement, normalizeGridLayout, setGridCount, type GridBinding, type GridCount, type GridLayout } from '@/lib/gridView'
 import { countFolderPreviewFiles, countPreviewSequenceResult, createPreviewSequenceState, findPreviewSequenceSource, graphForPreviewSequenceItem, isPreviewSequenceDone, nextPreviewSequenceIndex, previewSequenceStatusLabel, type PreviewSequenceSource, type PreviewSequenceState } from '@/lib/previewSequence'
-import { describeReport, useRegisterAssistantContext } from '@/lib/assistantContext'
+import { describeReport, publishAssistantProgress, useRegisterAssistantContext } from '@/lib/assistantContext'
 import { useFlowStream, type StreamEvent } from '@/lib/flowStream'
 import { DECORATION_TYPES, checkConnection, graphProblems } from '@/lib/graphValidation'
 import { useAssetMutations, useClearRecent, useContinuous, useFlow, useFlowMutations, usePreviewFlow, useRecentRuns, useRecipes, useScratchImage, useSources, useToolTypes, type FlowPatch } from '@/lib/queries'
@@ -387,6 +387,7 @@ function EditorInner({ flowId }: { flowId: number }) {
   )
 
   const markSaved = useCallback((saved: { id: number; version: number; updated_at: string }) => {
+    publishAssistantProgress(saved.id, { flow_updated_at: saved.updated_at, flow_version: saved.version }, 'Flow saved.')
     loadedFor.current = `${saved.id}:${saved.version}`
     saveBaseline.current = saved.updated_at
   }, [])
@@ -993,6 +994,8 @@ function EditorInner({ flowId }: { flowId: number }) {
       // untilNode：只跑到那一步（含它的上游），下游全部略過——調某一步時不必等整張圖跑完
       const report = await preview.mutateAsync({ flowId, graph: currentGraph(), reuse_image_ref: pinnedRef, until_node: untilNode ?? null })
       setPreviewRun(report)
+      publishAssistantProgress(flowId, { last_trial: { at: new Date().toISOString(), status: report.status,
+        summary: report.error || `${Math.round(report.duration_ms)} ms`, per_task: [] } })
       setPinnedRunId(null)
       setClearedRunId(null)
       if (untilNode) setSelectedId(untilNode)

@@ -11,7 +11,7 @@ import { fixedImageFromRef, imageUrl, teachContourFromImage } from '@/lib/api'
 import { GeometrySourceField } from '@/components/inspect/GeometrySourceField'
 import { inspectionFieldVisible, inspectionHasImage } from '@/lib/inspect'
 import { errorMessage } from '@/lib/errors'
-import { useRegisterAssistantContext } from '@/lib/assistantContext'
+import { publishAssistantProgress, useRegisterAssistantContext } from '@/lib/assistantContext'
 import { getSession, setDraft, updateSession, useFlowSession } from '@/lib/flowDraft'
 import { INSPECT_DOTS, forgetInspectionRun, inspectGraphHash, inspectionAdvancedPath, inspectionDefaults, inspectionEditableKind, inspectionOverall, inspectionParam, inspectionReasonKey, inspectionRemovalGraph, inspectionRunFor, inspectionStale, inspectionStatus, inspectionValue, missingInspectionFields, rememberInspectionRun } from '@/lib/inspect'
 import { inspectionEvidence, readInspection, removeInspection, teachInspectionPose, useFlow, useFlowMutations, useInspectKinds, usePreviewFlow, useScratchImage, useSources, useToolTypes, writeInspection } from '@/lib/queries'
@@ -207,6 +207,8 @@ function InspectPageInner({ flowId }: { flowId: number }) {
     setOperationError(null)
     const report = await preview.mutateAsync({ flowId, graph: snapshot, reuse_image_ref: reuseRef, analysis: false })
     const result = await inspectionEvidence(snapshot, report)
+    publishAssistantProgress(flowId, { last_trial: { at: new Date().toISOString(), status: report.status,
+      summary: report.error || `${Math.round(report.duration_ms)} ms`, per_task: result.items.map((item) => ({ task_id: item.task_id, status: item.verdict, value: item.value })) } })
     if (!alive.current) return
     rememberInspectionRun(flowId, snapshot, report, result.items)
     updateSession(flowId, { previewRun: report }); setRun(report); setReadings(result.items); setRunHash(inspectGraphHash(snapshot))
@@ -228,6 +230,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
     if (!current) return
     const saved = await patch.mutateAsync({ id: flowId, graph: current.graph, name: current.name, description: current.description, expected_updated_at: updatedAt })
     baseline.current = saved.updated_at
+    publishAssistantProgress(flowId, { flow_updated_at: saved.updated_at, flow_version: saved.version }, 'Flow saved.')
     const latest = getSession(flowId).draft
     const changedWhileSaving = latest && inspectGraphHash(latest.graph) !== inspectGraphHash(current.graph)
     setDraft(flowId, changedWhileSaving ? { ...latest, baseVersion: saved.version, dirty: true } : { ...current, graph: saved.graph, baseVersion: saved.version, dirty: false })

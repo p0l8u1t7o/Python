@@ -12,7 +12,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 
@@ -48,6 +48,8 @@ class AgentJob:
     #: 持久化批次（BatchRun）id：tune 結果會落成新的一次執行
     batch_run_id: int | None = None
     fallback_reason: str = ""
+    #: 工作暫停或完成後才通知，不在工具執行／引擎熱路徑寫資料庫。
+    on_progress: Callable[[dict[str, Any]], None] | None = None
 
     def to_dict(self, step_from: int = 0) -> dict[str, Any]:
         steps = self.state.steps
@@ -98,11 +100,12 @@ def cancel(job_id: str) -> bool:
 
 
 def start(task: str, settings: providers.AgentSettings, state: actions.AgentState, budget: loop.Budget | None = None, *,
-          runs: list[dict[str, Any]] | None = None, run_images: dict[str, np.ndarray] | None = None, batch_run_id: int | None = None) -> dict[str, Any]:
+          runs: list[dict[str, Any]] | None = None, run_images: dict[str, np.ndarray] | None = None, batch_run_id: int | None = None,
+          on_progress: Callable[[dict[str, Any]], None] | None = None) -> dict[str, Any]:
     if task not in TASKS:
         raise ValidationError(f"Unknown job type '{task}'", code="bad_task")
     job = AgentJob(id=uuid.uuid4().hex[:12], task=task, settings=settings, state=state, budget=budget or loop.Budget(),
-                   runs=list(runs or []), run_images=dict(run_images or {}), batch_run_id=batch_run_id)
+                   runs=list(runs or []), run_images=dict(run_images or {}), batch_run_id=batch_run_id, on_progress=on_progress)
     with _lock:
         _prune_locked()
         if sum(1 for j in _jobs.values() if j.status == "running") >= MAX_RUNNING:
@@ -165,6 +168,11 @@ def _run(job: AgentJob) -> None:
                                       provider=job.settings.provider, mode=job.settings.mode, turns=job.turns, groups=st.groups,
                                       lessons={"outcome": "failure", "failure_reasons": ["tool_error"]} if job.status == "error" else st.lessons)
             job.result = {**(job.result or {}), "session_id": session.id if session else None}
+        if job.on_progress:
+            try:
+                job.on_progress(job.to_dict())
+            except Exception:
+                log.exception("助手進度回呼失敗")
         close_old_connections()
 
 
