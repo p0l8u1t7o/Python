@@ -70,9 +70,9 @@
 | 输送带取料（ByteTrack） | 同一组六张输送带帧 | 分割工具使用内置 ByteTrack 追踪器，让每个零件保有一个 tracker ID；`track_objects` 以追踪器参考模式依该 ID 确认，而不是自行比对位置 | `ai_segment``edge_filter``format_text``track_objects``write_modbus` |
 | 输送带取料（双视野） | 已知视差的合成输送带零件立体图像对 | 立体取料交握：成对取像、分割、边缘过滤、追踪确认、由 `stereo_depth` 取得物件顶面 Z、格式化 `cls,x,y,z` 文本，以及机械手臂写出 | `ai_segment``edge_filter``format_text``stereo_depth``stereo_grab``track_objects``write_modbus` |
 | 按变量切换配方 | 默认配方有三个亮点；第四张对该分支而言太暗 | 读取配方变量，用 switch 分流到亮或暗阈值分支，再保存累计数。Sample mode 使用变量覆盖层，因此不会持久化站台值 | `blob``judge``switch``threshold``variable_get``variable_set` |
-| 影像切片逐格巡检 | 2×2 面板图像；第四张某一格有斑点，但 sample mode 只示范子流程接线 | Tile 建立四个区域，For each 会以 sandbox mode 对每格调用 seed 建立的示范流程，直接的 Call flow 节点则示范非循环版本 | `call_flow``for_each``judge``tile` |
+| 图像切片逐格巡检 | 2×2 面板图像；第四张某一格有斑点，但 sample mode 只示范子流程接线 | Tile 建立四个区域，For each 会以 sandbox mode 对每格调用 seed 建立的示范流程，直接的 Call flow 节点则示范非循环版本 | `call_flow``for_each``judge``tile` |
 | 灯源、相机 I/O 与设备信号 | 三个亮色信号点；第四张缺少一个点 | 流程会套用相机设置、设置环形光源、检查亮点，接着脉冲输出站台与相机输出并读取 Modbus。缺少连接时会降级为警告 | `blob``camera_io``camera_set``if_number``io_output``judge``read_modbus``set_light``threshold` |
-| 记录、存图、送图与触发 | 三个方形零件；第四张多了一个零件 | 计数会格式化成文本、写入 CSV 记录、保存 NG 图像、送出结果影像给图像主机，并触发审计流程。Sandbox mode 会报告 Would actions 导出图像包含物体标记，并以具名输出将测量面积取至两位小数。 | `blob``draw_result``format_text``if_number``judge``output``save_image``send_image``threshold``trigger_flow``write_log` |
+| 记录、存图、送图与触发 | 三个方形零件；第四张多了一个零件 | 计数会格式化成文本、写入 CSV 记录、保存 NG 图像、送出结果图像给图像主机，并触发审计流程。Sandbox mode 会报告 Would actions 导出图像包含物体标记，并以具名输出将测量面积取至两位小数。 | `blob``draw_result``format_text``if_number``judge``output``save_image``send_image``threshold``trigger_flow``write_log` |
 | AI 目标计数（官方底模） | 停止标志；第四张有一个，第五张有三个 | 无需训练的深度学习：官方底模可直接识别并判定数量。权重会在首次执行时下载，需要深度学习依赖 | `ai_detect``if_number` |
 | AI 实例分割：标志面积 | 同一组图像 | 分割的并集掩膜进入像素计数得到总面积，再依阈值判定，是分割接到下游测量的示例 | `ai_segment``judge``pixel_count` |
 | 库存分类器闸门 | 四张小型合成产品卡，颜色与形状各不相同 | 库存分类器输出 ImageNet 标签，接着 `string_match` 示范按标签分流。合成产线零件未必会命中允收标签；实务可训练分类器或设置 `pass_labels` | `ai_classify``string_match` |

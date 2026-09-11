@@ -43,7 +43,7 @@
 |---|---|
 | `GET /api/vision/flows/{id}/golden` | `{items:[{id, name, expect_status, expect_outputs, note, created_at, image_url}], total, can_manage, baseline_version, baseline_at, flow_version}` |
 | `POST /api/vision/flows/{id}/golden` (multipart) | `images[]`（最多 200 张）加上选填表单字段 `expect_status`、`note`、`expect_outputs`（JSON 字符串）。每张图像建立一个案例，以文件名命名。返回 201 与 `{items, created}`。 |
-| `POST /api/vision/flows/{id}/golden` (JSON) | `{"from_batch": [{"image_ref", "name", "expect_status", "expect_outputs", "note"}]}` — 从批次执行返回的 image ref 建立案例，前提是 ref 仍在图像缓存中。若任一 ref 已过期，整个请求返回 404 `image_gone`，且不建立任何案例。 |
+| `POST /api/vision/flows/{id}/golden` (JSON) | `{"from_batch": [{"image_ref", "name", "expect_status", "expect_outputs", "note"}]}` — 从批量执行返回的 image ref 建立案例，前提是 ref 仍在图像缓存中。若任一 ref 已过期，整个请求返回 404 `image_gone`，且不建立任何案例。 |
 | `GET /api/vision/flows/{id}/golden/baseline` | `{baseline: {id, flow_version, results, created_at, case_count} \| null, flow_version, case_count}` |
 | `GET /api/vision/flows/{id}/golden/{case_id}/image?max=&fmt=&q=` | 缩略图或完整图像，JPEG 或 PNG。供 `<img>` 标签使用，因此接受 `?token=` 或 `?api_key=`。 |
 | `PATCH /api/vision/flows/{id}/golden/{case_id}` | `{name?, expect_status?, expect_outputs?, note?}` |
@@ -205,4 +205,4 @@ manage.py regress hole_count --fail-under 0.98 --json > regress.json
 | `apps/vision/serialize.py` | 稳定序列化、parse、import_flow、find_flow |
 | `apps/vision/api_flowio.py` | 导出与导入端点 |
 | `apps/vision/management/commands/flow.py` | `manage.py flow export\|import\|run` |
-| `tests/test_golden.py`, `tests/test_flow_cli.py` | 上传、从批次建立、图像端点、比对规则、回归报告与基准、CLI 退出码与权限；导出格式、byte-identical round trips、导入 upsert、用文件夹或文件执行，以及 API |
+| `tests/test_golden.py`, `tests/test_flow_cli.py` | 上传、从批量建立、图像端点、比对规则、回归报告与基准、CLI 退出码与权限；导出格式、byte-identical round trips、导入 upsert、用文件夹或文件执行，以及 API |

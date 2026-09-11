@@ -4,15 +4,15 @@ AI 助手（侧栏 `/agent`）讓不熟悉工具鏈的人以三步建立检测�
 
 ## Part 1 · 全域助手（每個页面皆有） {#editor}
 
-每個页面右下角的聊天面板可回答文件与介面地圖問題、讀取目前情境、查詢即時状态、编辑目前流程、依批次数据調校，並記住您要求它記住的內容。右下角 **AI assistant** 按鈕存在於 `AssistantDock`，切換页面不會关闭面板。對話屬於您的帳號，會寫入服务端；历史按鈕可重新开启或删除。
+每個页面右下角的聊天面板可回答文件与介面地圖問題、讀取目前情境、查詢即時状态、编辑目前流程、依批量数据調校，並記住您要求它記住的內容。右下角 **AI assistant** 按鈕存在於 `AssistantDock`，切換页面不會关闭面板。對話屬於您的帳號，會寫入服务端；历史按鈕可重新开启或删除。
 
 | 情境（页面） | 作用 | 后端 |
 |---|---|---|
 | 任何页面 | **Help**：依文件回答平台使用問題，並附引用段落連結 | `POST /agent/chat` -> `help.py` |
 | 流程编辑器与工具页 | **Edit the flow**：依指令修改目前畫布，含未保存變更；工具页則提供参数建议 | `service.edit` 或 agentic `/agent/jobs` |
-| 批次页，且選定完成执行 | **Consult the data** 与 **Tune from the data**：回答数据問題並提供参数建议，或產生新調校执行 | `consult.consult`、`service.tune`、`persist_tune` |
+| 批量页，且選定完成执行 | **Consult the data** 与 **Tune from the data**：回答数据問題並提供参数建议，或產生新調校执行 | `consult.consult`、`service.tune`、`persist_tune` |
 
-模式 chip 默认 Auto。問題會走 help；编辑指令會改流程；批次页上談到数据、图像、NG、threshold、results 時會走数据諮詢。猜錯時可手動選 Help、Edit flow、Consult data 或 Tune from data。页面以 `useRegisterAssistantContext` 登錄情境，離開時清除。
+模式 chip 默认 Auto。問題會走 help；编辑指令會改流程；批量页上談到数据、图像、NG、threshold、results 時會走数据諮詢。猜錯時可手動選 Help、Edit flow、Consult data 或 Tune from data。页面以 `useRegisterAssistantContext` 登錄情境，離開時清除。
 
 ### 从对话生成检测任务清单 {#tasklist}
 
@@ -26,7 +26,7 @@ AI 助手（侧栏 `/agent`）讓不熟悉工具鏈的人以三步建立检测�
 
 ### 说明回答如何運作 {#help-answering}
 
-第一次查詢時，`agent/help.py` 會把 `docs/*.html` 依 h2/h3 与錨点切成段落，加入各工具 skill text，並建立索引。分詞使用英數詞与 CJK bigram；BM25 以標題命中、用户指南、批次与助手页加權。文件變更時索引會重建。有 LLM 時會把最相關五段与近期對話送到 provider，系统提示要求只從段落回答、未涵蓋時明說、少於 300 字並列出使用段落。離线或 LLM 失敗時，回傳摘要与連結，並在 warnings 说明原因。
+第一次查詢時，`agent/help.py` 會把 `docs/*.html` 依 h2/h3 与錨点切成段落，加入各工具 skill text，並建立索引。分詞使用英數詞与 CJK bigram；BM25 以標題命中、用户指南、批量与助手页加權。文件變更時索引會重建。有 LLM 時會把最相關五段与近期對話送到 provider，系统提示要求只從段落回答、未涵蓋時明說、少於 300 字並列出使用段落。離线或 LLM 失敗時，回傳摘要与連結，並在 warnings 说明原因。
 
 | 離线指令 | 效果 |
 |---|---|
@@ -91,7 +91,7 @@ LLM 被要求先解釋近期错误、指出確切页面/分页/按鈕，且不�
 
 ### 從一批图像調校 {#tune}
 
-[批次页](batch.md) 透過全域助手与調校面板提供三項能力：**consultation**、**tuning** 与 **auto-tuning**。执行批次后，在結果表下方使用「Ask the AI to tune from these results」输入提示，助手會看到每張图像 verdict，調整流程並**重新执行同一批图像**，回報前后 OK、NG、failed 与每張變化。滿意后可套用到畫布。
+[批量页](batch.md) 透過全域助手与調校面板提供三項能力：**consultation**、**tuning** 与 **auto-tuning**。执行批量后，在結果表下方使用「Ask the AI to tune from these results」输入提示，助手會看到每張图像 verdict，調整流程並**重新执行同一批图像**，回報前后 OK、NG、failed 与每張變化。滿意后可套用到畫布。
 
 ```text
 POST /api/vision/agent/tune  {graph, instruction, runs:[{name, image_ref, status, outputs}]}
@@ -175,7 +175,7 @@ loop 預算為 12 turns、8 trials、30 tool calls、240 秒；若預算耗盡�
 
 ### 需要您核准的动作 {#approval}
 
-在 agentic mode 下，助手可以在**您的**权限范围内操作平台：选择图像来源、资产或标定，建立、修改或删除检测任务，接上来源，试运行，自动调参（只用调参组的图像），以及运行批次。每个动作都会重新检查您的权限、遵守引擎锁定，并回报成功、未执行或不确定，附上证据——超时算不确定，绝不会回报成成功。
+在 agentic mode 下，助手可以在**您的**权限范围内操作平台：选择图像来源、资产或标定，建立、修改或删除检测任务，接上来源，试运行，自动调参（只用调参组的图像），以及运行批量。每个动作都会重新检查您的权限、遵守引擎锁定，并回报成功、未执行或不确定，附上证据——超时算不确定，绝不会回报成成功。
 
 有些动作会改变产线状态，一定会停下来等您：写输出到设备、存档到共享文件夹、启用结果回传、解除引擎锁定、删除流程或资产，以及把草稿存成流程版本。工作会暂停，面板上出现**动作核准**卡，列出动作、会改变什么与风险。只有点卡片上的**核准**才会执行；点**拒绝**则什么都不动，模型用文字说“已核准”也不算数。修改工程规格（放宽公差、换单位）同样会先问。保存版本时若发现别人已存了较新的版本，这次保存不会执行——助手会说明差异并询问您，绝不覆盖。助手要结束前，一定要在当前的流程上试运行过一次；试运行之后流程若又改过，就得再运行一次。
 

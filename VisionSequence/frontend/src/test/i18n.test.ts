@@ -76,6 +76,14 @@ describe('i18n locales', () => {
     expect(hits).toEqual([])
   })
 
+  it('zh-Hans uses mainland terms consistently (PM-REVIEW-R2 L-2)', () => {
+    // 同一畫面曾同時出現 影像／图像、范本／模板、批次／批量；統一成大陸慣用詞後由這裡擋住混回去
+    const banned = ['影像', '范本', '储存', '拖曳', '批次']
+    const hits: string[] = []
+    for (const [k, v] of hans) for (const w of banned) if (v.includes(w)) hits.push(`${k} ⟶ ${w}`)
+    expect(hits).toEqual([])
+  })
+
   it('no empty strings', () => {
     const empty = [...hant].filter(([, v]) => v.trim() === '').map(([k]) => k)
     expect(empty).toEqual([])

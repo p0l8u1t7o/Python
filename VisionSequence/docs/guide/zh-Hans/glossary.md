@@ -17,7 +17,7 @@
 | Help | 说明 | `/help` | HelpPage | 定义与操作说明 |
 | Sign in | 登录 | `/login` | LoginPage | 登录或建立第一位管理員 |
 | Statistics | 统计 | `/flows/:id/stats` | StatsPage | 單一流程的执行历史、良率、每小時 OK/NG 与耗時趨勢 |
-| Batch test | 批次测试 | `/batch` | BatchPage | 图像集、批次执行、洞察、調校与比較 |
+| Batch test | 批量测试 | `/batch` | BatchPage | 图像集、批量执行、洞察、調校与比較 |
 | Deep-learning teaching | 深度学习教导 | `/dl` | DlPage | 教导项目、样本、标注、训练与导出 |
 | AI assistant | AI 助手 | `/agent` | AgentPage | 图像、ROI 与 prompt 進來，可执行流程出去 |
 | Golden Set | Golden Set | `/flows/:id/golden` | GoldenPage | cases、expectations、回歸与 baseline |
@@ -140,9 +140,9 @@
 | Template library | 模板庫 | 內建或自訂流程模板。 |
 | Template | 模板 | 模板庫中的一個項目。 |
 | Note | 註記 | graph 中不执行的裝飾節点。 |
-| Batch test | 批次测试 | `/batch` 的調校工作台。 |
+| Batch test | 批量测试 | `/batch` 的調校工作台。 |
 | Image set | 图像集 | 测试图像与每張 OK/NG 期望標籤的集合。 |
-| Batch run | 批次执行 | 以 graph snapshot 對图像集执行一次。 |
+| Batch run | 批量执行 | 以 graph snapshot 對图像集执行一次。 |
 | Insights | 洞察 | 命中率、混淆矩陣、缺失图像、失敗節点、阈值建议与输出分布。 |
 | Threshold suggestion | 阈值建议 | 由 expected-OK/NG 群組推得可一鍵套用的較佳阈值。 |
 | Consult | 諮詢 | 詢問一個 batch run 的数据。 |

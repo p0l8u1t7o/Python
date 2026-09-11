@@ -225,7 +225,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       a: "直线 A",
       b: "直线 B",
       angle_deg: "夹角",
@@ -261,13 +261,13 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       mask: "遮罩",
     },
   },
   arithmetic: {
-    label: "影像運算",
-    description: "兩張影像相加／相減／差異／AND／OR，或单張的反相、亮度对比调整。",
+    label: "图像運算",
+    description: "兩張图像相加／相減／差異／AND／OR，或单張的反相、亮度对比调整。",
     params: {
       op: {
         label: "運算",
@@ -283,7 +283,7 @@ export default {
       weight: { label: "A ??" },
     },
     ports: {
-      image: "影像",
+      image: "图像",
     },
   },
   paste_back: {
@@ -304,7 +304,7 @@ export default {
     params: {
       roi: {
         label: "区域",
-        help: "留空則整張影像。",
+        help: "留空則整張图像。",
       },
       types: {
         label: "类型",
@@ -321,7 +321,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       roi: "区域（動态）",
       found: "找到／符合",
       not_found: "沒找到／不符",
@@ -337,7 +337,7 @@ export default {
     params: {
       roi: {
         label: "区域",
-        help: "留空則整張影像。",
+        help: "留空則整張图像。",
       },
       threshold_method: {
         label: "门槛",
@@ -420,7 +420,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       roi: "区域（動态）",
       found: "找到",
       not_found: "沒找到",
@@ -519,7 +519,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
     },
   },
   bool_logic: {
@@ -659,7 +659,7 @@ export default {
       },
     },
     ports: { width_world: "宽度（物理量）", edge1_x_world: "边缘 1 X（世界）", edge1_y_world: "边缘 1 Y（世界）", edge2_x_world: "边缘 2 X（世界）", edge2_y_world: "边缘 2 Y（世界）", unit: "单位",
-      image: "影像",
+      image: "图像",
       roi: "区域（動态）",
       width: "宽",
       edge1_x: "边缘1 X",
@@ -732,7 +732,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       roi: "区域（動态）",
       angle_deg: "夹角",
       length: "倒角长度",
@@ -769,9 +769,9 @@ export default {
   },
   multi_light_grab: {
     label: "多光源取像",
-    description: "按步骤切换光源并连续取像，输出影像序列、前四张影像与光源角度。",
+    description: "按步骤切换光源并连续取像，输出图像序列、前四张图像与光源角度。",
     params: {
-      source: { label: "影像来源", help: "capture 来源会要求 fresh frame；非 capture 来源会重复同一张影像并警告。" },
+      source: { label: "图像来源", help: "capture 来源会要求 fresh frame；非 capture 来源会重复同一张图像并警告。" },
       connection: { label: "光源连接" },
       steps: { label: "打光步骤", help: "每行 channel,brightness[,exposure_us][,azimuth][,elevation]，最多 8 步。" },
       settle_ms: { label: "稳定等待", help: "0 表示使用光源连接的 lead time。" },
@@ -781,11 +781,11 @@ export default {
       required: { label: "连接必须存在" },
     },
     ports: {
-      images: "影像列表",
-      image: "影像 1",
-      image_1: "影像 2",
-      image_2: "影像 3",
-      image_3: "影像 4",
+      images: "图像列表",
+      image: "图像 1",
+      image_1: "图像 2",
+      image_2: "图像 3",
+      image_3: "图像 4",
       azimuths: "方位角",
       elevations: "仰角",
       count: "张数",
@@ -795,21 +795,21 @@ export default {
   },
   multi_light_fuse: {
     label: "多光源融合",
-    description: "把多张不同打光影像按逐像素规则合成，用于去反光、阴影增强、方向增强或平均。",
+    description: "把多张不同打光图像按逐像素规则合成，用于去反光、阴影增强、方向增强或平均。",
     params: {
       mode: { label: "模式", options: { reflection: "去反光", shadow: "阴影差", direction: "方向增强", mean: "平均" } },
-      azimuths: { label: "方位角", help: "direction 模式每张影像的光源角度。" },
+      azimuths: { label: "方位角", help: "direction 模式每张图像的光源角度。" },
       angle: { label: "强调方向" },
       halo_removal: { label: "去光晕", help: "只作用于去反光模式。" },
       halo_size: { label: "光晕尺寸" },
       normalize: { label: "正规化输出" },
     },
     ports: {
-      images: "影像列表",
-      image: "影像",
-      image_1: "影像 2",
-      image_2: "影像 3",
-      image_3: "影像 4",
+      images: "图像列表",
+      image: "图像",
+      image_1: "图像 2",
+      image_2: "图像 3",
+      image_3: "图像 4",
       azimuths: "方位角",
       gradient: "梯度",
     },
@@ -933,7 +933,7 @@ export default {
     params: {
       roi: {
         label: "区域",
-        help: "留空則整張影像。",
+        help: "留空則整張图像。",
       },
       color: {
         label: "目标色",
@@ -951,7 +951,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       roi: "区域（動态）",
       match: "符合",
       mismatch: "不符",
@@ -1036,7 +1036,7 @@ export default {
       weight_b: { label: "B 权重" },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       r: "R 灰阶",
       g: "G 灰阶",
       b: "B 灰阶",
@@ -1076,11 +1076,11 @@ export default {
     params: {
       roi: {
         label: "区域",
-        help: "留空則整張影像。",
+        help: "留空則整張图像。",
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       roi: "区域（動态）",
       mean_r: "R 平均",
       mean_g: "G 平均",
@@ -1102,7 +1102,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       a: "圆 A",
       b: "圆 B",
       ax: "A 圆心 X",
@@ -1223,7 +1223,7 @@ export default {
   },
   convert_depth: {
     label: "位深转换",
-    description: "8 位元／16 位元／浮点影像互转。转 8 位元可选右移（线性、可預期）或 min-max 拉伸（吃滿動态范围）。",
+    description: "8 位元／16 位元／浮点图像互转。转 8 位元可选右移（线性、可預期）或 min-max 拉伸（吃滿動态范围）。",
     params: {
       to: {
         label: "目标位深",
@@ -1243,7 +1243,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       depth: "位深",
     },
   },
@@ -1363,14 +1363,14 @@ export default {
   },
   crop: {
     label: "裁切 ROI",
-    description: "裁出区域成为新影像（旋转矩形會摆正）。下游工具在小图上跑會快很多。",
+    description: "裁出区域成为新图像（旋转矩形會摆正）。下游工具在小图上跑會快很多。",
     params: {
       roi: {
         label: "区域",
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       roi: "区域（動态）",
       offset_x: "偏移 X",
       offset_y: "偏移 Y",
@@ -1391,7 +1391,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       roi: "区域（動态）",
       ratio: "比例",
       pass: "合格",
@@ -1470,14 +1470,14 @@ export default {
   },
   defect_diff: {
     label: "差異缺陷",
-    description: "与良品范本对齊後做灰阶差異（absdiff → 门槛 → 形态學），差異区域即缺陷。",
+    description: "与良品模板对齊後做灰阶差異（absdiff → 门槛 → 形态學），差異区域即缺陷。",
     params: {
       template: {
-        label: "良品范本",
+        label: "良品模板",
       },
       roi: {
         label: "区域",
-        help: "留空則整張影像。范本需与影像同尺寸（或會被缩放到相同尺寸）。",
+        help: "留空則整張图像。模板需与图像同尺寸（或會被缩放到相同尺寸）。",
       },
       align: {
         label: "对齊",
@@ -1512,7 +1512,7 @@ export default {
     },
     ports: {
       template_image: "良品图",
-      image: "影像",
+      image: "图像",
       roi: "区域（動态）",
       ok: "無缺陷",
       defect: "有缺陷",
@@ -1520,7 +1520,7 @@ export default {
       count: "数量",
       total_area: "总面积",
       defect_mask: "缺陷遮罩",
-      diff: "差異影像",
+      diff: "差異图像",
     },
   },
   defect_stat: {
@@ -1567,7 +1567,7 @@ export default {
   },
   dl_retrieval: {
     label: '参考库比对',
-    description: '将影像与已保存的参考库比较，返回最接近的类别。',
+    description: '将图像与已保存的参考库比较，返回最接近的类别。',
     params: {
       model: { label: '参考库', help: '用于比对的已保存参考库。' },
       roi: { label: 'ROI', help: '要比对的区域；留空代表全图。' },
@@ -1630,7 +1630,7 @@ export default {
       },
       roi: {
         label: "区域",
-        help: "留空則整張影像。",
+        help: "留空則整張图像。",
       },
       threshold: {
         label: "分数门槛",
@@ -1646,7 +1646,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       roi: "区域（動态）",
       pass: "合格",
       fail: "不良",
@@ -1685,7 +1685,7 @@ export default {
       },
       roi: {
         label: "区域",
-        help: "留空則整張影像。",
+        help: "留空則整張图像。",
       },
       conf: {
         label: "信心门槛",
@@ -1711,7 +1711,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       roi: "区域（動态）",
       found: "找到",
       not_found: "沒找到",
@@ -1751,7 +1751,7 @@ export default {
       },
       roi: {
         label: "区域",
-        help: "留空則整張影像。",
+        help: "留空則整張图像。",
       },
       conf: {
         label: "信心门槛",
@@ -1777,7 +1777,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       roi: "区域（動态）",
       found: "找到",
       not_found: "沒找到",
@@ -1817,7 +1817,7 @@ export default {
       },
       roi: {
         label: "区域",
-        help: "留空則整張影像。",
+        help: "留空則整張图像。",
       },
       target_class: {
         label: "目标类别索引",
@@ -1834,7 +1834,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       roi: "区域（動态）",
       ok: "合格",
       ng: "不良",
@@ -1845,8 +1845,8 @@ export default {
     },
   },
   draw_result: {
-    label: "结果影像",
-    description: "把上游工具的标记画进影像，产生可存档／可显示的结果图（OK 綠、NG 紅）。",
+    label: "结果图像",
+    description: "把上游工具的标记画进图像，产生可存档／可显示的结果图（OK 綠、NG 紅）。",
     params: {
       thickness: {
         label: "线宽",
@@ -1856,7 +1856,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       overlays: "标记",
     },
   },
@@ -1866,7 +1866,7 @@ export default {
     params: {
       roi: {
         label: "区域",
-        help: "留空則整張影像。",
+        help: "留空則整張图像。",
       },
       canny_low: {
         label: "Canny 低门槛",
@@ -1883,13 +1883,13 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       roi: "区域（動态）",
       ok: "合格",
       ng: "超标",
       ratio: "边缘比例",
       edge_pixels: "边缘像素数",
-      edges: "边缘影像",
+      edges: "边缘图像",
     },
   },
   surface_filter: {
@@ -1929,7 +1929,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       spectrum: "频谱",
     },
   },
@@ -1967,7 +1967,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
     },
   },
   find_circle: {
@@ -2021,7 +2021,7 @@ export default {
       },
     },
     ports: { cx_world: "圆心 X（世界）", cy_world: "圆心 Y（世界）", r_world: "半径（物理量）", diameter_world: "直径（物理量）", unit: "单位",
-      image: "影像",
+      image: "图像",
       roi: "区域（動态）",
       found: "找到",
       not_found: "沒找到",
@@ -2217,7 +2217,7 @@ export default {
       },
     },
     ports: { cx_world: "圆心 X（世界）", cy_world: "圆心 Y（世界）", radius_world: "半径（物理量）", start_angle_world: "起始角度（世界）", end_angle_world: "结束角度（世界）", unit: "单位",
-      image: "影像",
+      image: "图像",
       roi: "区域（動态）",
       radius: "半径",
       cx: "中心 X",
@@ -2270,7 +2270,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       roi: "区域（動态）",
       cx: "中心 X",
       cy: "中心 Y",
@@ -2345,7 +2345,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       transform: "变换",
       region: "区域",
     },
@@ -2420,7 +2420,7 @@ export default {
     label: "灰阶",
     description: "彩色转灰阶；已是灰阶則直通。",
     ports: {
-      image: "影像",
+      image: "图像",
     },
   },
   sharpness: {
@@ -2473,14 +2473,14 @@ export default {
     params: {
       roi: {
         label: "区域",
-        help: "留空則整張影像。",
+        help: "留空則整張图像。",
       },
       normalize: {
         label: "正規化（比例）",
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       roi: "区域（動态）",
       histogram: "直方图",
       peak: "峰值灰阶",
@@ -2494,7 +2494,7 @@ export default {
     params: {
       roi: {
         label: "区域",
-        help: "留空則整張影像。",
+        help: "留空則整張图像。",
       },
       min_radius: {
         label: "最小半径",
@@ -2523,7 +2523,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       roi: "区域（動态）",
       found: "找到",
       not_found: "沒找到",
@@ -2537,7 +2537,7 @@ export default {
     params: {
       roi: {
         label: "区域",
-        help: "留空則整張影像。",
+        help: "留空則整張图像。",
       },
       canny_low: {
         label: "Canny 低门槛",
@@ -2559,7 +2559,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       roi: "区域（動态）",
       found: "找到",
       not_found: "沒找到",
@@ -2610,7 +2610,7 @@ export default {
       role: {
         label: "角色",
         options: {
-          acquire: "待检图像（API 送图、批次测试或重跑时以送来的图取代）",
+          acquire: "待检图像（API 送图、批量测试或重跑时以送来的图取代）",
           reference: "供其他工具使用的参考图（模板、良品、白参考）：永不取代",
         },
       },
@@ -2633,19 +2633,19 @@ export default {
     },
   },
   image_source: {
-    label: "影像来源",
-    description: "从设定的影像来源抓一張影像；API 直接送图时（POST run 附影像）優先使用送来的影像。",
+    label: "图像来源",
+    description: "从设定的图像来源抓一張图像；API 直接送图时（POST run 附图像）優先使用送来的图像。",
     params: {
       source_id: {
-        label: "影像来源",
-        help: "留空則只接受 API 送来的影像。",
+        label: "图像来源",
+        help: "留空則只接受 API 送来的图像。",
       },
       mode: {
         label: "取像模式",
         options: {
           auto: "暫存／API 送图優先，否則从来源庫抓",
           source: "一律从来源抓",
-          input: "只用暫存影像（试跑上传或 API 送图；沒有就報錯）",
+          input: "只用暫存图像（试跑上传或 API 送图；沒有就報錯）",
         },
       },
       convert: {
@@ -2666,7 +2666,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       width: "宽",
       height: "高",
       applied: "已套用相机设置",
@@ -2674,17 +2674,17 @@ export default {
   },
   stereo_grab: {
     label: "立体成对取像",
-    description: "从左右两个影像来源取一组立体影像；两者都是同一台采集端的 capture 来源时，会同时送出 GRAB。",
+    description: "从左右两个图像来源取一组立体图像；两者都是同一台采集端的 capture 来源时，会同时送出 GRAB。",
     params: {
-      left: { label: "左影像来源" },
-      right: { label: "右影像来源" },
+      left: { label: "左图像来源" },
+      right: { label: "右图像来源" },
       timeout_ms: { label: "超时" },
       max_dt_ms: { label: "最大左右时间差" },
       on_timeout: { label: "超时处理", options: { error: "报错", ng: "标记 NG 并走超时分支" } },
     },
     ports: {
-      image: "左影像",
-      image_right: "右影像",
+      image: "左图像",
+      image_right: "右图像",
       dt_ms: "左右时间差",
       captured_at: "采集时间",
       timeout: "超时",
@@ -2692,7 +2692,7 @@ export default {
   },
   stereo_depth: {
     label: "双视野量高度",
-    description: "用双相机标定与左右影像量分割物件顶面距离，并依带面基准换算机构 Z。",
+    description: "用双相机标定与左右图像量分割物件顶面距离，并依带面基准换算机构 Z。",
     params: {
       calibration: { label: "双视野标定" },
       min_disparity: { label: "最小视差" },
@@ -2706,8 +2706,8 @@ export default {
       motion_compensation: { label: "时间差补偿" },
     },
     ports: {
-      image: "左影像",
-      image_right: "右影像",
+      image: "左图像",
+      image_right: "右图像",
       matches: "物件",
       dt_ms: "左右时间差",
       z: "Z",
@@ -2741,11 +2741,11 @@ export default {
     params: {
       roi: {
         label: "区域",
-        help: "留空則整張影像；点＝单一像素。",
+        help: "留空則整張图像；点＝单一像素。",
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       roi: "区域（動态）",
       mean: "平均",
       std: "标準差",
@@ -2790,7 +2790,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       roi: "线（動态）",
       values: "剖面值",
       mean: "平均",
@@ -2839,7 +2839,7 @@ export default {
       target_std: { label: "目标标准差" },
     },
     ports: {
-      image: "影像",
+      image: "图像",
     },
   },
   morphology: {
@@ -2874,7 +2874,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
     },
   },
   ocr_read: {
@@ -2930,7 +2930,7 @@ export default {
     params: {
       roi: {
         label: "区域",
-        help: "留空則整張影像。",
+        help: "留空則整張图像。",
       },
       threshold: {
         label: "门槛",
@@ -2945,7 +2945,7 @@ export default {
       },
     },
     ports: {
-      image: "遮罩／影像",
+      image: "遮罩／图像",
       roi: "区域（動态）",
       ok: "合格",
       ng: "不良",
@@ -3079,11 +3079,11 @@ export default {
   },
   python_script: {
     label: "Python 脚本",
-    description: "自己寫一段 Python（def run(ctx)）做检测：讀影像／上游值／現場参数，回传数值、布林、文字、资料、新影像与标记，并決定通过／不良分支。只有管理員能編輯脚本；受限执行（白名单匯入、逾时中止）。",
+    description: "自己寫一段 Python（def run(ctx)）做检测：讀图像／上游值／現場参数，回传数值、布林、文字、资料、新图像与标记，并決定通过／不良分支。只有管理員能編輯脚本；受限执行（白名单匯入、逾时中止）。",
     params: {
       code: {
         label: "程式碼",
-        help: "定义 def run(ctx)；可用 np、cv2、math 与白名单模组。回传 dict 或单一值（数值／布林／文字／影像）。",
+        help: "定义 def run(ctx)；可用 np、cv2、math 与白名单模组。回传 dict 或单一值（数值／布林／文字／图像）。",
       },
       p1: {
         label: "現場参数 1",
@@ -3100,7 +3100,7 @@ export default {
       },
       roi: {
         label: "区域",
-        help: "脚本以 ctx.roi()／ctx.crop() 取用；留空則整張影像。",
+        help: "脚本以 ctx.roi()／ctx.crop() 取用；留空則整張图像。",
       },
       max_ms: {
         label: "逾时（毫秒）",
@@ -3109,7 +3109,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       roi: "区域（動态）",
       pass: "合格",
       fail: "不良",
@@ -3198,7 +3198,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       scale_x: "比例 X",
       scale_y: "比例 Y",
     },
@@ -3224,7 +3224,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
     },
   },
   send_image: {
@@ -3273,7 +3273,7 @@ export default {
     label: "相机 I/O",
     description: "依当前 OK/NG 判定写出撷取端相机的输出线；脉冲由撷取端复位，宽度不受网络延迟影响。",
     params: {
-      source: { label: "影像来源" },
+      source: { label: "图像来源" },
       line: { label: "输出线" },
       on_when: { label: "何时输出", options: { ok: "OK", ng: "NG", always: "总是" } },
       pulse_ms: { label: "脉冲", help: "0 维持电平；大于 0 时由撷取端背景计时器复位。" },
@@ -3287,7 +3287,7 @@ export default {
     label: "相机设置",
     description: "写入撷取端相机特征，并可加载或保存 user set。",
     params: {
-      source: { label: "影像来源" },
+      source: { label: "图像来源" },
       values: { label: "参数", help: "一行一个 name=value，例如 exposure_us=5000。" },
       user_set: { label: "User set", options: { none: "不使用", load: "套参数前加载", save: "套参数后保存" } },
       user_set_name: { label: "User set 名称" },
@@ -3314,7 +3314,7 @@ export default {
   },
   save_image: {
     label: "存档",
-    description: "把影像存到资料夹（依判定 OK/NG 分子资料夹可选）。档名含时间戳与 run id。",
+    description: "把图像存到资料夹（依判定 OK/NG 分子资料夹可选）。档名含时间戳与 run id。",
     params: {
       folder: {
         label: "资料夹",
@@ -3349,7 +3349,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       path: "路径",
     },
   },
@@ -3407,7 +3407,7 @@ export default {
       direction: { label: "方向", options: { forward: "正向", inverse: "反向" } },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       points: "点集",
       matches: "定位结果",
       x: "X",
@@ -3435,7 +3435,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       matches: "匹配",
       a: "目前 X",
       b: "目前 Y",
@@ -3488,8 +3488,8 @@ export default {
     },
   },
   template_match: {
-    label: "范本比对",
-    description: "以正規化相关（NCC）在影像或搜尋范围内找范本；支援旋转搜尋、金字塔加速与次像素精修。角度以画面順时針为正（与 ROI／找直线相同）。",
+    label: "模板比对",
+    description: "以正規化相关（NCC）在图像或搜尋范围内找模板；支援旋转搜尋、金字塔加速与次像素精修。角度以画面順时針为正（与 ROI／找直线相同）。",
     params: {
       refine_rotation: { label: "精修刚体姿态", help: "同时精修角度与位置。请选用可辨方向的标记；对称十字无法区分相差 90 度的姿态。" },
       templates: { label: "更多模板", help: "好几种形状都算找到：同一个工件的两种姿态、同一条线上的三种盖子。每个结果都会说是哪一种。" },
@@ -3503,12 +3503,12 @@ export default {
       allow_clipped: { label: "允许工件在边上", help: "把搜索范围的边界往外复制，跨在边上的工件也找得到。被切掉的工件分数会低，阈值要放宽一点。" },
       timeout_ms: { label: "超时放弃", help: "时间到就回目前找到最好的，不让产线等。0＝不限。" },
       template: {
-        label: "范本影像",
-        help: "上传的范本影像（灰阶比对）。",
+        label: "模板图像",
+        help: "上传的模板图像（灰阶比对）。",
       },
       roi: {
         label: "搜尋范围",
-        help: "留空則搜尋整張影像。",
+        help: "留空則搜尋整張图像。",
       },
       threshold: {
         label: "分数门槛",
@@ -3533,7 +3533,7 @@ export default {
       },
       pyramid: {
         label: "金字塔加速",
-        help: "先在 1/4 缩图粗找，再在候选附近细找。范本很小时自動关闭。",
+        help: "先在 1/4 缩图粗找，再在候选附近细找。模板很小时自動关闭。",
         group: "进阶",
       },
       subpixel: {
@@ -3544,7 +3544,7 @@ export default {
     },
     ports: {
       template_image: "模板图",
-      image: "影像",
+      image: "图像",
       roi: "搜尋范围（動态）",
       found: "找到",
       not_found: "沒找到",
@@ -3596,7 +3596,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       roi: "区域（動态）",
       present: "有",
       absent: "無",
@@ -3661,7 +3661,7 @@ export default {
     label: "真实世界坐标",
     description: "把像素位置换成机器实际使用的坐标：台面上的毫米，或机械手要的数字。接入一个位置就读出 X 与 Y；长度与角度用同一份标定换算。",
     params: {
-      mode: { label: "换算方向", help: "to_pixel 将 x/y/points 视为世界或坐标系内的坐标，输出 x/y/points_world 为影像像素；长度与角度同方向换算。", options: { to_world: "转为世界坐标", to_pixel: "转为像素坐标" } },
+      mode: { label: "换算方向", help: "to_pixel 将 x/y/points 视为世界或坐标系内的坐标，输出 x/y/points_world 为图像像素；长度与角度同方向换算。", options: { to_world: "转为世界坐标", to_pixel: "转为像素坐标" } },
       calibration: { label: "标定资产", group: "高级", help: "选填；未选标定时输出坐标系内的像素值，未接 frame 时保留原坐标。" },
       decimals: { label: "小数位数", group: "高级" },
     },
@@ -3755,7 +3755,7 @@ export default {
       edge_select: { label: "选哪个边", options: { strongest: "最强", first: "第一个", last: "最后一个" } },
     },
     ports: {
-      image: "影像", roi: "参考（动态）", line: "参考线", circle: "参考圆",
+      image: "图像", roi: "参考（动态）", line: "参考线", circle: "参考圆",
       ok: "趋势合格", ng: "趋势超标",
       offsets: "偏移序列", widths: "宽度序列", positions: "位置", points: "边缘点",
       missing: "打空索引", mean: "平均", std: "标准差", min: "最小", max: "最大", range: "范围",
@@ -3799,7 +3799,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       roi: "区域（動态）",
       thickness: "壁厚（平均）",
       min: "最小",
@@ -3812,10 +3812,10 @@ export default {
     },
   },
   stitch_images: {
-    label: "影像拼接",
-    description: "合成 2 到 4 台相机影像。固定排列且无透视差用硬拼；每张有世界标定，或第 2 到第 4 张有映到第 1 张的相机映射时，用投影拼。",
+    label: "图像拼接",
+    description: "合成 2 到 4 台相机图像。固定排列且无透视差用硬拼；每张有世界标定，或第 2 到第 4 张有映到第 1 张的相机映射时，用投影拼。",
     params: {
-      images: { label: "固定影像", help: "备用来源：没有接 image_1 到 image_4 时，按清单顺序拼接这些固定影像。正式流程建议接 image_1 到 image_4。" },
+      images: { label: "固定图像", help: "备用来源：没有接 image_1 到 image_4 时，按清单顺序拼接这些固定图像。正式流程建议接 image_1 到 image_4。" },
       mode: { label: "模式", options: { grid: "硬拼", homography: "投影拼" } },
       rows: { label: "行数" },
       cols: { label: "列数" },
@@ -3831,12 +3831,12 @@ export default {
       scale: { label: "平面比例", help: "输出每像素代表多少世界单位。0 表示使用第一份世界标定比例；相机映射到第 1 张时使用 1 px/px。" },
     },
     ports: {
-      image_1: "影像 1",
-      image_2: "影像 2",
-      image_3: "影像 3",
-      image_4: "影像 4",
-      image: "影像",
-      count: "影像数",
+      image_1: "图像 1",
+      image_2: "图像 2",
+      image_3: "图像 3",
+      image_4: "图像 4",
+      image: "图像",
+      count: "图像数",
       width: "宽度",
       height: "高度",
       offsets: "硬拼位移",
@@ -3877,7 +3877,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
     },
   },
   write_modbus: {
@@ -3890,7 +3890,7 @@ export default {
       },
       mapping: {
         label: "对映表",
-        help: "阵列，每项 {\"src\": 来源, \"address\": 位址, \"dtype\"?: bool|int|float, \"scale\"?: 倍率, \"offset\"?: 加值, \"value\"?: 常数}。src：judge（OK→1 / NG→0）、具名输出名称、或本節点输入埠的 v0、v1…。位址：modbus 用 coil:10 / holding:100 / holding:100:float32 / holding:100:int32；tcp_client 用范本欄位名；dio_sim 用通道名。",
+        help: "阵列，每项 {\"src\": 来源, \"address\": 位址, \"dtype\"?: bool|int|float, \"scale\"?: 倍率, \"offset\"?: 加值, \"value\"?: 常数}。src：judge（OK→1 / NG→0）、具名输出名称、或本節点输入埠的 v0、v1…。位址：modbus 用 coil:10 / holding:100 / holding:100:float32 / holding:100:int32；tcp_client 用模板欄位名；dio_sim 用通道名。",
       },
       on_error: {
         label: "寫入失敗时",
@@ -3956,7 +3956,7 @@ export default {
       },
       roi: {
         label: "区域",
-        help: "留空則整張影像。",
+        help: "留空則整張图像。",
       },
       threshold: {
         label: "分数门槛",
@@ -3967,7 +3967,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       roi: "区域（動态）",
       pass: "合格",
       fail: "不良",
@@ -4021,7 +4021,7 @@ export default {
       },
       roi: {
         label: "区域",
-        help: "留空則整張影像。",
+        help: "留空則整張图像。",
       },
       conf: {
         label: "信心门槛",
@@ -4049,7 +4049,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       roi: "区域（動态）",
       found: "找到",
       not_found: "沒找到",
@@ -4104,7 +4104,7 @@ export default {
       },
       roi: {
         label: "区域",
-        help: "留空則整張影像。",
+        help: "留空則整張图像。",
       },
       conf: {
         label: "信心门槛",
@@ -4132,7 +4132,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       roi: "区域（動态）",
       found: "找到",
       not_found: "沒找到",
@@ -4187,7 +4187,7 @@ export default {
       },
       roi: {
         label: "区域",
-        help: "留空則整張影像。",
+        help: "留空則整張图像。",
       },
       conf: {
         label: "信心门槛",
@@ -4219,7 +4219,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       roi: "区域（動态）",
       found: "找到",
       not_found: "沒找到",
@@ -4274,7 +4274,7 @@ export default {
       },
       roi: {
         label: "区域",
-        help: "留空則整張影像。",
+        help: "留空則整張图像。",
       },
       conf: {
         label: "信心门槛",
@@ -4327,7 +4327,7 @@ export default {
       },
     },
     ports: {
-      image: "影像",
+      image: "图像",
       roi: "区域（動态）",
       found: "找到",
       not_found: "沒找到",

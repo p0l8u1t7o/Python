@@ -239,7 +239,7 @@
    "summary": {
     "en": "All visible flows' on-site parameters, batch saving and custom shortcut groups",
     "zh-Hant": "所有可見流程的現場參數、批次儲存與自訂捷徑群組",
-    "zh-Hans": "所有可见流程的现场参数、批次保存与自定义快捷项组"
+    "zh-Hans": "所有可见流程的现场参数、批量保存与自定义快捷项组"
    },
    "feature": "flows.teach",
    "actions": [
@@ -268,7 +268,7 @@
     {
      "en": "Upload images",
      "zh-Hant": "上傳影像新增",
-     "zh-Hans": "上传影像添加"
+     "zh-Hans": "上传图像添加"
     },
     {
      "en": "Run regression",
@@ -351,7 +351,7 @@
    "summary": {
     "en": "Full-screen operator interface with live images, verdicts, counts, controls and station status",
     "zh-Hant": "全螢幕操作介面，包含即時影像、判定、數量、控制與站台狀態",
-    "zh-Hans": "全屏操作界面，包含实时影像、判定、数量、控制与站台状态"
+    "zh-Hans": "全屏操作界面，包含实时图像、判定、数量、控制与站台状态"
    },
    "actions": [
     {
@@ -372,7 +372,7 @@
    "summary": {
     "en": "Full-screen operator interface with live images, verdicts, counts, controls and station status",
     "zh-Hant": "全螢幕操作介面，包含即時影像、判定、數量、控制與站台狀態",
-    "zh-Hans": "全屏操作界面，包含实时影像、判定、数量、控制与站台状态"
+    "zh-Hans": "全屏操作界面，包含实时图像、判定、数量、控制与站台状态"
    },
    "actions": [
     {
@@ -398,7 +398,7 @@
    "names": {
     "en": "Batch test",
     "zh-Hant": "批次測試",
-    "zh-Hans": "批次测试"
+    "zh-Hans": "批量测试"
    },
    "summary": {
     "en": "Run an image set through a flow; every run is stored, with expected labels, insights, tuning, comparison and AI consultation",
@@ -420,7 +420,7 @@
      "names": {
       "en": "Image set",
       "zh-Hant": "影像集",
-      "zh-Hans": "影像集"
+      "zh-Hans": "图像集"
      }
     },
     {
@@ -452,12 +452,12 @@
     {
      "en": "New image set",
      "zh-Hant": "新增影像集",
-     "zh-Hans": "新增影像集"
+     "zh-Hans": "新增图像集"
     },
     {
      "en": "Run this set",
      "zh-Hant": "執行此影像集",
-     "zh-Hans": "执行此影像集"
+     "zh-Hans": "执行此图像集"
     },
     {
      "en": "Save to Golden Set",
@@ -489,7 +489,7 @@
     {
      "en": "Upload images",
      "zh-Hant": "上傳影像",
-     "zh-Hans": "上传影像"
+     "zh-Hans": "上传图像"
     },
     {
      "en": "Train",
@@ -977,7 +977,7 @@
    "names": {
     "en": "Source library",
     "zh-Hant": "影像來源庫",
-    "zh-Hans": "影像来源库"
+    "zh-Hans": "图像来源库"
    },
    "summary": {
     "en": "Capture client cameras, folders and synthetic sources",
@@ -1147,7 +1147,7 @@
    "summary": {
     "en": "Full-screen board for one flow: the picture, the verdict, the values chosen under Board, today's counts and variables",
     "zh-Hant": "單一流程的全螢幕看板：影像、判定、看板設定選的數值、今日數量與變數",
-    "zh-Hans": "单一流程的全屏看板：影像、判定、看板设置选的数值、今日数量与变量"
+    "zh-Hans": "单一流程的全屏看板：图像、判定、看板设置选的数值、今日数量与变量"
    }
   }
  ]
