@@ -1,7 +1,7 @@
 /** 複合工具純函式：封裝選取（邊界埠、必填未接、具名輸出搬到實例、邊重接）、介面候選、對外參數規格、key 轉換。 */
 import { describe, expect, it } from 'vitest'
 
-import { encapsulateSelection, interfaceCandidates, isCompositeType, orderedParamSpecs, slugKey, splitCompositeKey, withParamOrder, withParamSpec } from './composite'
+import { compositeDiffLines, encapsulateSelection, instanceVersion, interfaceCandidates, isCompositeType, orderedParamSpecs, slugKey, splitCompositeKey, toolOutdated, withParamOrder, withParamSpec } from './composite'
 import type { FlowGraph, ToolParam, ToolPort, ToolTypeDef } from './types'
 
 function port(key: string, type: ToolPort['type'] = 'image', extra: Partial<ToolPort> = {}): ToolPort {
@@ -91,6 +91,18 @@ describe('param specs and keys', () => {
     iface = withParamSpec(iface, 'thr:threshold', { alias: 'Level' })
     expect(orderedParamSpecs(withParamOrder(iface, ['blob:min_area', 'thr:threshold'])).map((spec) => `${spec.key}=${spec.alias}`)).toEqual(['blob:min_area=Min area', 'thr:threshold=Level'])
     expect(withParamSpec(withParamSpec(iface, 'thr:threshold', null), 'blob:min_area', null)).toEqual({})
+  })
+
+  it('reads the pinned tool version and flags instances behind the library version', () => {
+    const def = { key: 'composite:x', label: 'X', description: '', category: 'detect', category_label: '', icon: '', params: [], inputs: [], outputs: [], heavy: false, source: 'composite', composite: { id: 1, flow_id: 2, builtin: false, tool_key: 'x', version: 3 } } as unknown as ToolTypeDef
+    expect(instanceVersion({ id: 'a', type: 'composite:x', params: {} })).toBeNull()
+    expect(instanceVersion({ id: 'a', type: 'composite:x', params: {}, meta: { tool_version: 2 } })).toBe(2)
+    expect(instanceVersion({ id: 'a', type: 'composite:x', params: {}, meta: { tool_version: 0 } })).toBeNull()
+    expect(toolOutdated({ id: 'a', type: 'composite:x', params: {}, meta: { tool_version: 2 } }, def)).toEqual({ pinned: 2, current: 3 })
+    expect(toolOutdated({ id: 'a', type: 'composite:x', params: {}, meta: { tool_version: 3 } }, def)).toBeNull()
+    expect(toolOutdated({ id: 'a', type: 'composite:x', params: {} }, def)).toBeNull()
+    expect(toolOutdated({ id: 'a', type: 'composite:x', params: {}, meta: { tool_version: 1 } }, { ...def, composite: { ...def.composite!, builtin: true } })).toBeNull()
+    expect(compositeDiffLines({ from: 1, to: 2, summary: 'threshold 60 → 70', graph: {}, interface: { inputs: { added: [], removed: [], renamed: [] }, outputs: { added: [], removed: ['blob:mask'], renamed: [] }, params: { added: ['thr:offset'], removed: [], renamed: ['thr:threshold'] } }, empty: false })).toEqual(['threshold 60 → 70', '- outputs blob:mask', '+ params thr:offset', '~ params thr:threshold'])
   })
 
   it('slugs labels into tool keys and splits composite keys', () => {

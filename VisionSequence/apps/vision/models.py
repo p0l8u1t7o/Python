@@ -79,12 +79,33 @@ class CompositeTool(models.Model):
     flow = models.OneToOneField(Flow, on_delete=models.CASCADE, related_name="composite_tool")
     #: 對外介面 {inputs: [PortSpec], outputs: [PortSpec], params: [ParamSpec]}，key 是 `<inner>:<port>`
     interface = models.JSONField(default=dict, blank=True)
+    #: 內部圖或介面變了就 +1（P5 版本鎖定：實例 `meta.tool_version` 記放入時的版本，執行用那一版的快照）
+    version = models.PositiveIntegerField(default=1)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="composite_tools")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self) -> str:  # pragma: no cover
         return f"{self.label} ({self.key})"
+
+
+class CompositeToolVersion(models.Model):
+    """複合工具每一版的快照（內部圖＋介面）：鎖定在舊版的實例照舊版展平執行，「有新版可用」的 diff 也從這裡比。"""
+
+    tool = models.ForeignKey(CompositeTool, on_delete=models.CASCADE, related_name="versions")
+    version = models.PositiveIntegerField()
+    graph = models.JSONField(default=dict)
+    interface = models.JSONField(default=dict, blank=True)
+    label = models.CharField(max_length=120, default="")
+    description = models.TextField(blank=True, default="")
+    saved_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    saved_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [("tool", "version")]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"{self.tool_id} v{self.version}"
 
 
 class EngineeringNote(models.Model):

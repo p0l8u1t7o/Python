@@ -92,7 +92,8 @@ export interface ToolTypeDef {
   /** 內建／資料夾外掛／複合工具 */
   source?: 'builtin' | 'plugin' | 'composite'
   /** 複合工具：工具庫的 id、內部流程 id（進入編輯）、是否內建 */
-  composite?: { id: number; flow_id: number; builtin: boolean; tool_key: string }
+  /** 複合工具：工具庫 id／內部流程／是否內建／目前版本（實例 `meta.tool_version` 對照它） */
+  composite?: { id: number; flow_id: number; builtin: boolean; tool_key: string; version: number }
   params: ToolParam[]
   inputs: ToolPort[]
   outputs: ToolPort[]
@@ -158,6 +159,16 @@ export interface CompositeTool {
   used_by_tools?: number
   /** 這個工具內部用到的其他複合工具 key */
   uses?: string[]
+}
+
+/** 兩版之間的差異（GET /composite-tools/{id}/diff） */
+export interface CompositeDiff {
+  from: number
+  to: number
+  summary: string
+  graph: { count?: number; params?: { node: string; param: string; before: unknown; after: unknown }[] }
+  interface: Record<'inputs' | 'outputs' | 'params', { added: string[]; removed: string[]; renamed: string[] }>
+  empty: boolean
 }
 
 export interface CompositeUsage {

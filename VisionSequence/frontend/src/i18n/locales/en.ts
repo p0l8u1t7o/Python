@@ -1298,6 +1298,7 @@ const en = {
     exportHint: 'Download as a .tool.json file (nested tools included)',
     key: 'Key',
     category: 'Category',
+    toolVersion: 'Version',
     usedBy: 'Used by',
     usedByHint: '{{flows}} flow(s), {{tools}} tool(s)',
     updatedAt: 'Updated',
@@ -2331,6 +2332,9 @@ const enExtra3 = {
       builtinReadOnly: 'Built-in tools are read-only. Use "Save a copy" in the tool library to make an editable one.',
       previewHint: 'Try-run feeds the scratch image to every exposed image input',
       noNesting: 'A composite tool cannot contain another composite tool; flows and tools are the only two levels',
+      versionPinned: 'Tool version {{version}}', versionLatest: 'latest', versionBuiltin: 'Built-in tools always run their latest version.',
+      versionOutdated: 'A newer version of this tool exists (v{{from}} to v{{to}}). This step keeps running v{{from}} until you update it.',
+      versionUpdate: 'Update to v{{to}}', versionDiff: 'Show changes', versionNoDiff: 'No parameter or port changes', versionBadge: 'Tool v{{from}} placed here; the library now has v{{to}}',
     },
     ports: {
       title: 'Ports',

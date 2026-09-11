@@ -290,12 +290,17 @@ def _ensure_one(spec: BuiltinSpec, counts: dict[str, int]) -> None:
         if not row.builtin:
             row.builtin = True
             changed = True
+        bumped = row.interface != interface
         clean = composites._clean_graph(spec.key, copy.deepcopy(graph))
         if (row.flow.graph or {}) != clean:
             row.flow.graph = clean
             row.flow.version += 1
             row.flow.save()
-            changed = True
+            changed = bumped = True
+        if bumped:
+            row.version = int(row.version or 1) + 1
         if changed:
             row.save()
+        if bumped:
+            composites.snapshot(row)
     counts["updated" if changed else "unchanged"] += 1

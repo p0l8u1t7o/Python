@@ -7,6 +7,7 @@ GET    /vision/composite-tools/{id}               含 graph 與影響數
 PUT    /vision/composite-tools/{id}               部分更新（tools.edit；內建工具 409）
 DELETE /vision/composite-tools/{id}               仍被使用回 409 composite_in_use（details 列出流程與工具）
 GET    /vision/composite-tools/{id}/usage         影響清單
+GET    /vision/composite-tools/{id}/versions      版本清單；/{id}/versions/{v} 那一版的圖與介面；/{id}/diff?from_version=&to_version= 兩版差異（P5）
 GET    /vision/composite-tools/{id}/export        .tool.json（含巢狀依賴與固定影像）
 POST   /vision/composite-tools/{id}/duplicate     另存為我的工具 {key?, label?}
 """
@@ -77,7 +78,7 @@ def get_tool(request: HttpRequest, tool_id: int):
 def update_tool(request: HttpRequest, tool_id: int, payload: Body[dict]):
     p = require_feature(request, "tools.edit")
     row = composites.update(composites.get_tool(tool_id), payload, user=p.user)
-    audit.record(request, "tool.update", row, summary=f"{row.key} v{row.flow.version}")
+    audit.record(request, "tool.update", row, summary=f"{row.key} v{row.version}")
     return composites.out(row, graph=True, with_usage=True)
 
 
@@ -88,6 +89,30 @@ def delete_tool(request: HttpRequest, tool_id: int):
     audit.record(request, "tool.delete", row, summary=row.key)
     composites.delete(row)
     return 204, None
+
+
+@router.get("/composite-tools/{tool_id}/versions")
+def tool_versions(request: HttpRequest, tool_id: int):
+    """每一版的清單（最新在前）；實例的 `meta.tool_version` 對照這裡。"""
+    principal(request)
+    row = composites.get_tool(tool_id)
+    return {"version": int(row.version or 1), "items": composites.versions_of(row)}
+
+
+@router.get("/composite-tools/{tool_id}/versions/{version}")
+def tool_version(request: HttpRequest, tool_id: int, version: int):
+    principal(request)
+    row = composites.get_tool(tool_id)
+    snap = composites.snapshot_of(row, version)
+    return {"version": snap.version, "label": snap.label, "description": snap.description, "graph": snap.graph, "interface": snap.interface,
+            "saved_at": snap.saved_at.isoformat() if snap.saved_at else "", "saved_by": snap.saved_by.username if snap.saved_by_id else ""}
+
+
+@router.get("/composite-tools/{tool_id}/diff")
+def tool_diff(request: HttpRequest, tool_id: int, from_version: int, to_version: int | None = None):
+    """兩版之間變了什麼（省略 to_version＝目前最新版）：參數逐條、結構數量、介面多／少的埠與參數。"""
+    principal(request)
+    return composites.diff_versions(composites.get_tool(tool_id), from_version, to_version)
 
 
 @router.get("/composite-tools/{tool_id}/usage")

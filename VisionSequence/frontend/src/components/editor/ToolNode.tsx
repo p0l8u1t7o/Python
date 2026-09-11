@@ -158,6 +158,7 @@ function ToolNodeInner({ id, data, selected }: NodeProps) {
         </div>
         {dot ? <span className={`mt-1 size-2.5 shrink-0 rounded-full ${dot}`} title={status} /> : null}
         {!node.enabled ? <icons.PowerOff size={12} className="mt-1 shrink-0 opacity-70" aria-hidden /> : null}
+        {node.outdated ? <span className="mt-1 shrink-0 rounded bg-warning-soft px-1 text-[9px] font-semibold text-warning" title={t('editor.composite.versionBadge', { from: node.outdated.pinned, to: node.outdated.current })} data-testid="node-tool-outdated">v{node.outdated.pinned}</span> : null}
       </div>
       {node.problem ? <p className="px-3 pt-1 text-[10px] text-critical">{node.problem}</p> : null}
       {report?.message && status !== 'ok' ? (

@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 
 import { logActivity } from '@/lib/activity'
-import type { CompositeTool, CompositeUsage, EngineeringNote, NodeInterface } from './types'
+import type { CompositeDiff, CompositeTool, CompositeUsage, EngineeringNote, NodeInterface } from './types'
 
 export function useEngineeringNotes(filters: Record<string, string | number | undefined> = {}) {
   return useQuery({ queryKey: ['engineering-notes', filters], queryFn: () => api.get<{ items: EngineeringNote[]; total: number }>('/vision/notes', filters) })
@@ -1501,6 +1501,11 @@ export function useCompositeTool(id: number | null) {
 
 export function fetchCompositeUsage(id: number): Promise<CompositeUsage> {
   return api.get<CompositeUsage>(`/vision/composite-tools/${id}/usage`)
+}
+
+/** 兩版之間變了什麼（P5 版本鎖定的「查看差異」） */
+export function fetchCompositeDiff(id: number, from: number, to?: number): Promise<CompositeDiff> {
+  return api.get<CompositeDiff>(`/vision/composite-tools/${id}/diff?from_version=${from}${to ? `&to_version=${to}` : ''}`)
 }
 
 export function useCompositeToolMutations() {

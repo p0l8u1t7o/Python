@@ -1012,6 +1012,8 @@ export function routes(path: string, body?: unknown): unknown {
   if (/\/vision\/inspect\/\d+\/last-trial$/.test(path)) return { trial: null, saved: true }
   if (path === '/vision/composite-tools') return body ? { ...COMPOSITE_TOOL, ...(body as object), id: 8 } : { items: [COMPOSITE_TOOL] }
   if (/\/vision\/composite-tools\/\d+\/usage$/.test(path)) return { flows: [{ id: 1, name: '示範流程', count: 1 }], tools: [] }
+  if (/\/vision\/composite-tools\/\d+\/versions$/.test(path)) return { version: 2, items: [{ version: 2, label: 'Count holes', saved_at: '2026-01-02T00:00:00Z', saved_by: 'admin', current: true }, { version: 1, label: 'Count holes', saved_at: '2026-01-01T00:00:00Z', saved_by: 'admin', current: false }] }
+  if (/\/vision\/composite-tools\/\d+\/diff/.test(path)) return { from: 1, to: 2, summary: 'threshold 60 → 70', graph: { count: 1, params: [{ node: 'thr', param: 'threshold', before: 60, after: 70 }] }, interface: { inputs: { added: [], removed: [], renamed: [] }, outputs: { added: [], removed: [], renamed: [] }, params: { added: ['thr:offset'], removed: [], renamed: [] } }, empty: false }
   if (/\/vision\/composite-tools\/\d+$/.test(path)) return { ...COMPOSITE_TOOL, graph: { nodes: [], edges: [] } }
   if (path === '/vision/notes') return body ? { ...ENGINEERING_NOTE, ...(body as object), status: 'draft' } : { items: [ENGINEERING_NOTE], total: 1 }
   if (/^\/vision\/notes\/\d+/.test(path)) return { ...ENGINEERING_NOTE, ...(body as object ?? {}), status: path.endsWith('/confirm') ? 'confirmed' : path.endsWith('/retract') ? 'retracted' : 'draft' }

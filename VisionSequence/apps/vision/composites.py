@@ -82,6 +82,9 @@ class CompositeToolType:
         self.builtin = bool(row.builtin)
         self.flow_id = int(row.flow_id)
         self.updated_at = row.updated_at.isoformat() if row.updated_at else ""
+        #: 這個型別是哪一版（登錄表＝最新；`pinned_type()` 建的是舊版快照）
+        self.version_no = int(getattr(row, "version", 1) or 1)
+        self.pinned = False
         self.graph = graph
         self.interface = tools.node_interface({"interface": row.interface if isinstance(row.interface, dict) else {}})
         nodes = {str(n.get("id")): n for n in graph.get("nodes") or [] if isinstance(n, dict) and n.get("id")}
@@ -177,12 +180,82 @@ def _output_port(inner_tool, node: dict[str, Any] | None, port_key: str) -> tool
 
 _lock = threading.Lock()
 _cache: dict[str, CompositeToolType] | None = None
+#: (tool key, version) → 舊版快照建出來的型別；查不到快照存 None（退回最新）
+_pinned: dict[tuple[str, int], CompositeToolType | None] = {}
 
 
 def invalidate() -> None:
     global _cache
     with _lock:
         _cache = None
+        _pinned.clear()
+
+
+class _SnapshotRow:
+    """快照列包成 CompositeToolType 吃得下的樣子（id／key／分類沿用工具本身，圖與介面用那一版的）。"""
+
+    def __init__(self, row, snap) -> None:
+        self.id, self.key, self.label, self.description = row.id, row.key, snap.label or row.label, snap.description or row.description
+        self.category, self.icon, self.builtin, self.flow_id = row.category, row.icon, row.builtin, row.flow_id
+        self.updated_at, self.interface, self.version = snap.saved_at, snap.interface, snap.version
+
+
+def pinned_type(tool_key: str, version: int) -> CompositeToolType | None:
+    """某一版的工具型別：是最新版就回登錄表的；否則從快照建（沒有那一版的快照回 None，呼叫端退回最新）。"""
+    latest = registry().get(type_key(tool_key))
+    if latest is None or latest.version_no == version:
+        return latest
+    cache_key = (tool_key, int(version))
+    if cache_key in _pinned:
+        return _pinned[cache_key]
+    with _lock:
+        if cache_key in _pinned:
+            return _pinned[cache_key]
+        built: CompositeToolType | None = None
+        try:
+            from apps.vision.models import CompositeToolVersion
+
+            snap = CompositeToolVersion.objects.select_related("tool").filter(tool__key=tool_key, version=int(version)).first()
+            if snap is not None:
+                built = CompositeToolType(_SnapshotRow(snap.tool, snap), snap.graph or {"nodes": [], "edges": []}, _resolve_builtin)
+                built.pinned = True
+        except Exception:  # noqa: BLE001 - 快照壞掉不該讓流程整個不能跑；退回最新版並記 log
+            log.warning("複合工具 %s v%s 的快照建不起來", tool_key, version, exc_info=True)
+        _pinned[cache_key] = built
+        return built
+
+
+def _resolve_builtin(node: dict[str, Any] | None):
+    """快照內部只會有內建工具（巢狀只有兩層）。"""
+    try:
+        return tools.get(str((node or {}).get("type") or ""))
+    except tools.UnknownToolType:
+        return None
+
+
+def instance_version(node: dict[str, Any] | None) -> int | None:
+    """實例記的工具版本（`meta.tool_version`）；沒記＝跟最新。"""
+    meta = (node or {}).get("meta") if isinstance((node or {}).get("meta"), dict) else {}
+    value = meta.get("tool_version")
+    return int(value) if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
+
+
+def type_for_node(node: dict[str, Any]) -> CompositeToolType | None:
+    """實例節點 → 它該用的工具型別：記了版本就用那一版（內建工具一律最新），沒記或快照不在就最新。"""
+    ntype = str(node.get("type") or "")
+    if not is_composite(ntype):
+        return None
+    latest = registry().get(ntype)
+    if latest is None:
+        return None
+    version = instance_version(node)
+    if version is None or latest.builtin or version == latest.version_no:
+        return latest
+    pinned = pinned_type(latest.tool_key, version)
+    if pinned is None:
+        log.warning("複合工具 %s 沒有 v%s 的快照，實例 %s 改用最新版 v%s", latest.tool_key, version, node.get("id"), latest.version_no)
+        return latest
+    return pinned
 
 
 def registry() -> dict[str, CompositeToolType]:
@@ -263,10 +336,10 @@ def flatten(graph: dict[str, Any], *, depth: int = 0) -> tuple[dict[str, Any], d
         return graph, {}
     if depth >= MAX_DEPTH:
         raise FlattenError(f"Composite tools nest deeper than {MAX_DEPTH} levels", code="composite_too_deep")
-    reg = registry()
     out_nodes: list[dict[str, Any]] = []
     out_edges: list[dict[str, Any]] = []
     instances: dict[str, dict[str, Any]] = {}
+    inst_types: dict[str, CompositeToolType] = {}
     roots: dict[str, list[str]] = {}
     roi_owners: dict[str, list[str]] = {}
     for n in nodes:
@@ -274,9 +347,10 @@ def flatten(graph: dict[str, Any], *, depth: int = 0) -> tuple[dict[str, Any], d
         if not is_composite(ntype):
             out_nodes.append(n)
             continue
-        ct = reg.get(ntype)
+        ct = type_for_node(n)  # 版本鎖定：實例記了哪一版就展平哪一版
         if ct is None:
             raise FlattenError(f"Unknown composite tool '{ntype[len(PREFIX):]}'", code="unknown_composite", details={"node_id": str(n.get("id"))})
+        inst_types[str(n["id"])] = ct
         inner_graph, inner_instances = flatten(ct.graph, depth=depth + 1)
         inst = str(n["id"])
         prefix = f"{inst}{INSTANCE_SEP}"
@@ -320,6 +394,7 @@ def flatten(graph: dict[str, Any], *, depth: int = 0) -> tuple[dict[str, Any], d
         roi_owners[inst] = sorted({prefix + inner_id for inner_id, _ in ct.param_map.values() if any(p.kind == "roi" and p.key.startswith(f"{inner_id}{PORT_SEP}") for p in ct.params)})
         instances[inst] = {
             "tool": ct.tool_key,
+            "version": ct.version_no,
             "enabled": n.get("enabled") is not False,
             "inner": [prefix + inner_id for inner_id in by_id],
             "inputs": {ext_key: (prefix + inner_id, port_key) for ext_key, (inner_id, port_key) in ct.input_map.items()},
@@ -335,7 +410,7 @@ def flatten(graph: dict[str, Any], *, depth: int = 0) -> tuple[dict[str, Any], d
         s, t = str(e.get("source")), str(e.get("target"))
         edge = dict(e)
         if s in instances:
-            ct = reg[type_key(instances[s]["tool"])]
+            ct = inst_types[s]
             sh = str(e.get("source_handle") or (ct.outputs[0].key if ct.outputs else ""))
             if sh == tools.IMAGE_THRU:
                 # 直通影像＝送進第一個對外影像輸入的那張：把這條邊改接到那個上游；沒接影像就沒有東西可直通
@@ -648,8 +723,61 @@ def create(user, payload: dict[str, Any], *, builtin: bool = False):
         flow = Flow.objects.create(name=f"{FLOW_NAME_PREFIX}{key}", description=meta.get("description", ""), graph=graph, kind="tool",
                                    owner=user if getattr(user, "pk", None) else None, is_enabled=False)
         row = CompositeTool.objects.create(flow=flow, key=key, builtin=builtin, interface=interface, created_by=flow.owner, **meta)
+        snapshot(row, user=user)
     invalidate()
     return row
+
+
+def snapshot(row, *, user=None):
+    """把目前的 version 存成快照（同版重複呼叫不動）。"""
+    from apps.vision.models import CompositeToolVersion
+
+    snap, _created = CompositeToolVersion.objects.get_or_create(
+        tool=row, version=int(row.version or 1),
+        defaults={"graph": copy.deepcopy(row.flow.graph or {}), "interface": copy.deepcopy(row.interface or {}), "label": row.label,
+                  "description": row.description, "saved_by": user if getattr(user, "pk", None) else None},
+    )
+    return snap
+
+
+def versions_of(row) -> list[dict[str, Any]]:
+    from apps.vision.models import CompositeToolVersion
+
+    return [{"version": v.version, "label": v.label, "saved_at": v.saved_at.isoformat() if v.saved_at else "",
+             "saved_by": v.saved_by.username if v.saved_by_id else "", "current": v.version == row.version}
+            for v in CompositeToolVersion.objects.select_related("saved_by").filter(tool=row).order_by("-version")]
+
+
+def snapshot_of(row, version: int):
+    from apps.vision.models import CompositeToolVersion
+
+    snap = CompositeToolVersion.objects.filter(tool=row, version=int(version)).first()
+    if snap is None:
+        raise NotFound(f"Tool '{row.key}' has no version {version}", code="composite_version_not_found")
+    return snap
+
+
+def diff_versions(row, from_version: int, to_version: int | None = None) -> dict[str, Any]:
+    """兩版之間變了什麼：內部圖走 graphdiff（參數逐條、結構數量），介面列出多／少了哪些埠與參數。"""
+    from apps.vision import graphdiff
+
+    old = snapshot_of(row, from_version)
+    if to_version is None or int(to_version) == int(row.version):
+        new_graph, new_iface, to_version = row.flow.graph or {}, row.interface or {}, int(row.version)
+    else:
+        new = snapshot_of(row, to_version)
+        new_graph, new_iface = new.graph or {}, new.interface or {}
+    changes = graphdiff.diff(old.graph or {}, new_graph)
+    interface: dict[str, Any] = {}
+    for section in ("inputs", "outputs", "params"):
+        before = {str(s.get("key")): s for s in (old.interface or {}).get(section) or [] if isinstance(s, dict)}
+        after = {str(s.get("key")): s for s in new_iface.get(section) or [] if isinstance(s, dict)}
+        exposed_before = {k for k, s in before.items() if section == "params" or s.get("exposed") is True}
+        exposed_after = {k for k, s in after.items() if section == "params" or s.get("exposed") is True}
+        renamed = [k for k in exposed_before & exposed_after if str(before[k].get("alias") or "") != str(after[k].get("alias") or "")]
+        interface[section] = {"added": sorted(exposed_after - exposed_before), "removed": sorted(exposed_before - exposed_after), "renamed": sorted(renamed)}
+    return {"from": int(from_version), "to": int(to_version), "graph": changes, "summary": graphdiff.summarize(changes), "interface": interface,
+            "empty": not (changes.get("count") or any(v["added"] or v["removed"] or v["renamed"] for v in interface.values()))}
 
 
 def update(row, payload: dict[str, Any], *, user=None):
@@ -664,18 +792,25 @@ def update(row, payload: dict[str, Any], *, user=None):
     with transaction.atomic():
         for field_name, value in meta.items():
             setattr(row, field_name, value)
-        if interface is not None:
+        bumped = False
+        if interface is not None and interface != (row.interface or {}):
             row.interface = interface
+            bumped = True
         flow = row.flow
         if "description" in meta:
             flow.description = meta["description"]
         if graph is not None and graph != (flow.graph or {}):
             flow.graph = graph
             flow.version += 1
+            bumped = True
+        if bumped:
+            row.version = int(row.version or 1) + 1  # 內部圖或介面變了才算新版（改名稱／說明不算）
         flow.save()
         row.save()
         if graph is not None:
             versions.snapshot(flow, user=user)
+        if bumped:
+            snapshot(row, user=user)
     invalidate()
     return row
 
@@ -706,7 +841,7 @@ def out(row, *, graph: bool = False, with_usage: bool = False) -> dict[str, Any]
         "builtin": row.builtin, "flow_id": row.flow_id, "interface": row.interface or {},
         "created_by": row.created_by.username if row.created_by_id else "",
         "created_at": row.created_at.isoformat() if row.created_at else "", "updated_at": row.updated_at.isoformat() if row.updated_at else "",
-        "version": int(row.flow.version) if row.flow_id else 1,
+        "version": int(row.version or 1),
     }
     if graph:
         data["graph"] = row.flow.graph or {"nodes": [], "edges": []}
@@ -809,7 +944,7 @@ def import_dependencies(user, doc: dict[str, Any], *, replace: bool = False) -> 
 # ---------------------------------------------------------------------------
 # 封裝：一組步驟 → 工具內部圖＋介面＋實例（與前端 lib/composite.ts 的 encapsulateSelection 同一套規則）
 # ---------------------------------------------------------------------------
-def encapsulate(graph: dict[str, Any], node_ids: list[str], key: str, label: str, *, expose_params: bool = False) -> dict[str, Any]:
+def encapsulate(graph: dict[str, Any], node_ids: list[str], key: str, label: str, *, expose_params: bool = False, version: int | None = None) -> dict[str, Any]:
     """把 `node_ids` 那組步驟封裝成工具。回 {tool_graph, interface, instance, graph}：
 
     - 對外輸入＝從外面接進來的資料埠＋沒接線也沒畫區域的必填輸入；控制線與隱含埠（`_` 開頭）照原樣接到實例上
@@ -941,6 +1076,8 @@ def encapsulate(graph: dict[str, Any], node_ids: list[str], key: str, label: str
         "id": inst_id, "type": type_key(key), "label": label, "params": {},
         "position": {"x": round(sum(pos(n)[0] for n in inner) / len(inner)), "y": round(sum(pos(n)[1] for n in inner) / len(inner))},
     }
+    if version:
+        instance["meta"] = {"tool_version": int(version)}  # 版本鎖定：實例記放入時的版本
     if instance_aliases:
         instance[tools.INTERFACE_KEY] = {"outputs": instance_aliases}
 

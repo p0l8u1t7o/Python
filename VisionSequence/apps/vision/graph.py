@@ -110,6 +110,21 @@ def _validate_interface(node_id: str, tool: tools.ToolType, node: dict) -> None:
                 raise GraphError(f"Node '{node_id}' interface refers to unknown input port '{key}'", node_id=node_id, port=key)
 
 
+def _tool_for(node: dict[str, Any]) -> tools.ToolType:
+    """節點的工具型別：複合工具實例記了 `meta.tool_version` 就用那一版（P5 版本鎖定），其餘查登錄表。"""
+    from apps.vision import composites
+
+    node_type = str(node.get("type") or "")
+    if composites.is_composite(node_type):
+        meta = node.get("meta")
+        if isinstance(meta, dict) and "tool_version" in meta and composites.instance_version(node) is None:
+            raise GraphError(f"Node '{node.get('id')}' has an invalid tool_version", node_id=str(node.get("id") or ""), field="tool_version")
+        found = composites.type_for_node(node)
+        if found is not None:
+            return found
+    return tools.get(node_type)
+
+
 def _inspect_meta(node: dict[str, Any]) -> dict[str, Any] | None:
     meta = node.get("meta")
     if meta is None:
@@ -161,7 +176,7 @@ def validate_graph(graph: Any) -> dict:
         if node_type in LEGACY_TOOL_TYPES:
             node_type = node["type"] = LEGACY_TOOL_TYPES[node_type]
         if node_type not in DECORATION_TYPES:
-            tool = tools.get(node_type)  # 查無 → UnknownToolType（附可用 key）
+            tool = _tool_for(node)  # 查無 → UnknownToolType（附可用 key）；複合工具實例依 meta.tool_version 取那一版
             _validate_interface(node_id, tool, node)
         inspect = _inspect_meta(node)
         if inspect is not None:
@@ -178,7 +193,7 @@ def validate_graph(graph: Any) -> dict:
         node = seen[node_id]
         if node["type"] in DECORATION_TYPES:
             raise GraphError("A note cannot take part in the dataflow", node_id=node_id)
-        tool = tools.get(str(node["type"]))
+        tool = _tool_for(node)
         implicit = tools.implicit_input(key) if direction == "in" else tools.implicit_output(key)
         if implicit is not None:
             return implicit.type
@@ -226,8 +241,8 @@ def validate_graph(graph: Any) -> dict:
             continue
         s_handle = str(edge.get("source_handle") or "")
         t_handle = str(edge.get("target_handle") or "")
-        s_tool = tools.get(str(seen[source]["type"]))
-        t_tool = tools.get(str(seen[target]["type"]))
+        s_tool = _tool_for(seen[source])
+        t_tool = _tool_for(seen[target])
         if not s_handle:
             s_handle = s_tool.outputs[0].key if s_tool.outputs else ""
         if not t_handle:

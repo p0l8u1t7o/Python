@@ -2,6 +2,7 @@
  * graph JSON ⇄ React Flow 的映射與版面演算法。
  * payload（GraphNode）是編輯器自己那份真相；React Flow node.data 只是投影。
  */
+import { toolOutdated } from '@/lib/composite'
 import { MarkerType, type Edge, type Node } from '@xyflow/react'
 import { exposedParamKeys } from '@/lib/nodeInterface'
 
@@ -31,6 +32,8 @@ export interface ToolNodeData extends Record<string, unknown> {
   heat?: number
   running?: boolean
   problem?: string
+  /** 複合工具實例鎖的版本比工具目前的舊（P5）：卡片畫徽章、側欄給更新 */
+  outdated?: { pinned: number; current: number }
   /** 有 flow 邊連入 → 畫控制輸入菱形（其實一律畫，因為連線前不知道） */
 }
 
@@ -149,6 +152,7 @@ export function nodeDataFrom(payload: GraphNode, definition: ToolTypeDef | undef
     color: payload.color ?? '',
     params: payload.params ?? {},
     interface: payload.interface,
+    outdated: toolOutdated(payload, definition) ?? undefined,
   }
 }
 

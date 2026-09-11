@@ -983,6 +983,9 @@ const zhHans = {
       builtinReadOnly: '内置工具只读。请在工具库使用「另存副本」创建可编辑的版本。',
       previewHint: '试执行会把暂存图像送进每一个对外图像输入',
       noNesting: '复合工具里不能再放复合工具；只有流程与工具两层',
+      versionPinned: '工具版本 {{version}}', versionLatest: '最新', versionBuiltin: '内置工具一律执行最新版。',
+      versionOutdated: '此工具有新版（v{{from}} → v{{to}}）。更新前这一步仍执行 v{{from}}。',
+      versionUpdate: '更新到 v{{to}}', versionDiff: '查看差异', versionNoDiff: '参数与端口没有变动', versionBadge: '放入时是工具 v{{from}}，工具库现在是 v{{to}}',
     },
     ports: {
       title: '端口',
@@ -2540,6 +2543,7 @@ const zhHans = {
     exportHint: '下载成 .tool.json 文件（含嵌套的工具）',
     key: '键',
     category: '分类',
+    toolVersion: '版本',
     usedBy: '使用者',
     usedByHint: '{{flows}} 条流程、{{tools}} 个工具',
     updatedAt: '更新时间',

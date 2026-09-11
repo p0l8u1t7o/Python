@@ -549,7 +549,7 @@ def agent_save_tool(request: HttpRequest, payload: SaveToolIn):
     inner = [str(n.get("id")) for n in graph.get("nodes", []) if not actions.is_acquisition(n) and n.get("type") != "note"]
     if not inner:
         raise ValidationError("The flow has no inspection steps to encapsulate", code="empty_selection")
-    enc = composites.encapsulate(graph, inner, payload.key, payload.label.strip() or payload.key, expose_params=True)
+    enc = composites.encapsulate(graph, inner, payload.key, payload.label.strip() or payload.key, expose_params=True, version=1)
     name = payload.flow_name.strip() or payload.label.strip() or payload.key
     with transaction.atomic():
         row = composites.create(p.user, {"key": payload.key, "label": payload.label.strip() or payload.key, "description": payload.description,

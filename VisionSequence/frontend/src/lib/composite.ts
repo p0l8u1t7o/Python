@@ -7,7 +7,7 @@
 import { nextNodeId } from '@/components/editor/graphMapping'
 import { outputAliases } from './nodeInterface'
 import { FLOW_HANDLE } from './ports'
-import type { FlowGraph, GraphEdge, GraphNode, NodeInterface, ParamSpec, PortSpec, ToolParam, ToolPort, ToolTypeDef } from './types'
+import type { CompositeDiff, FlowGraph, GraphEdge, GraphNode, NodeInterface, ParamSpec, PortSpec, ToolParam, ToolPort, ToolTypeDef } from './types'
 
 export const COMPOSITE_PREFIX = 'composite:'
 export const COMPOSITE_KEY_PATTERN = /^[a-z][a-z0-9_]{1,63}$/
@@ -168,6 +168,8 @@ export function encapsulateSelection(graph: FlowGraph, selectedIds: string[], de
     type: `${COMPOSITE_PREFIX}${key}`,
     label,
     params: {},
+    //: 版本鎖定：新工具是 v1，實例記下來（工具之後改版，畫布會提示「有新版可用」）
+    meta: { tool_version: 1 },
     position: {
       x: Math.round(inner.reduce((sum, node) => sum + (node.position?.x ?? 0), 0) / inner.length),
       y: Math.round(inner.reduce((sum, node) => sum + (node.position?.y ?? 0), 0) / inner.length),
@@ -246,4 +248,29 @@ export function withParamOrder(iface: NodeInterface, keys: string[]): NodeInterf
 /** 對外參數依 order 排好。 */
 export function orderedParamSpecs(iface: NodeInterface): ParamSpec[] {
   return [...(iface.params ?? [])].sort((a, b) => (a.order ?? 1e9) - (b.order ?? 1e9))
+}
+
+/** 實例記的工具版本（`meta.tool_version`）；沒記＝跟最新 */
+export function instanceVersion(node: GraphNode): number | null {
+  const value = (node.meta as Record<string, unknown> | undefined)?.tool_version
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : null
+}
+
+/** 實例鎖的版本比工具目前的版本舊 → {pinned, current}；內建工具一律最新（不提示） */
+export function toolOutdated(node: GraphNode, def: ToolTypeDef | undefined): { pinned: number; current: number } | null {
+  const info = def?.composite
+  if (!info || info.builtin || typeof info.version !== 'number') return null
+  const pinned = instanceVersion(node)
+  return pinned !== null && pinned < info.version ? { pinned, current: info.version } : null
+}
+
+/** diff 端點的結果列成幾行（摘要＋介面增減） */
+export function compositeDiffLines(diff: CompositeDiff): string[] {
+  const lines = diff.summary ? [diff.summary] : []
+  for (const section of ['inputs', 'outputs', 'params'] as const) {
+    const part = diff.interface?.[section]
+    if (!part) continue
+    lines.push(...part.added.map((key) => `+ ${section} ${key}`), ...part.removed.map((key) => `- ${section} ${key}`), ...part.renamed.map((key) => `~ ${section} ${key}`))
+  }
+  return lines
 }

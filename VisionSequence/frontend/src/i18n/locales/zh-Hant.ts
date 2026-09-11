@@ -983,6 +983,9 @@ const zhHant = {
       builtinReadOnly: '內建工具唯讀。請在工具庫使用「另存複本」建立可編輯的版本。',
       previewHint: '試執行會把暫存影像送進每一個對外影像輸入',
       noNesting: '複合工具裡不能再放複合工具；只有流程與工具兩層',
+      versionPinned: '工具版本 {{version}}', versionLatest: '最新', versionBuiltin: '內建工具一律執行最新版。',
+      versionOutdated: '此工具有新版（v{{from}} → v{{to}}）。更新前這一步仍執行 v{{from}}。',
+      versionUpdate: '更新到 v{{to}}', versionDiff: '查看差異', versionNoDiff: '參數與埠沒有變動', versionBadge: '放入時是工具 v{{from}}，工具庫現在是 v{{to}}',
     },
     ports: {
       title: '埠',
@@ -2540,6 +2543,7 @@ const zhHant = {
     exportHint: '下載成 .tool.json 檔（含巢狀的工具）',
     key: '鍵',
     category: '分類',
+    toolVersion: '版本',
     usedBy: '使用者',
     usedByHint: '{{flows}} 條流程、{{tools}} 個工具',
     updatedAt: '更新時間',

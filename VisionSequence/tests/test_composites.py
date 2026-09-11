@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 
 import numpy as np
@@ -9,7 +10,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 
 from apps.accounts.models import AuthToken, UserPref
-from apps.core.errors import Conflict, ValidationError
+from apps.core.errors import Conflict, NotFound, ValidationError
 from apps.vision import composites, engine, serialize
 from apps.vision.graph import compile_graph, restrict_to, validate_graph
 from apps.vision.models import CompositeTool, Flow
@@ -404,3 +405,79 @@ class DeleteGuardTests(CompositeBase):
         with self.assertRaises(Conflict) as ctx:
             composites.delete(CompositeTool.objects.get(key="count_blobs"))
         self.assertEqual(ctx.exception.details["flows"][0]["name"], "Wrapper flow")
+
+
+class VersionLockTests(CompositeBase):
+    """P5：實例記 meta.tool_version，展平用那一版的快照；沒記＝跟最新。"""
+
+    def flow(self, pinned: int | None, **params):
+        node = n("count", "composite:count_blobs", **params)
+        if pinned is not None:
+            node["meta"] = {"tool_version": pinned}
+        return {"nodes": [n("src", "image_source", mode="source", source_id=1), node, n("out", "output", name="ok")],
+                "edges": [e("src", "count", "image", "gray:image"), e("count", "out", "blob:count", "value")]}
+
+    def test_create_and_update_snapshot_versions_and_instances_pin_them(self):
+        self.assertEqual(self.tool.version, 1)
+        self.assertEqual([v["version"] for v in composites.versions_of(self.tool)], [1])
+        pinned = validate_graph(self.flow(1))
+        loose = validate_graph(self.flow(None))
+        composites.update(self.tool, {"label": "Renamed"}, user=self.admin)  # 改名稱不算新版
+        self.assertEqual(self.tool.version, 1)
+        graph2 = copy.deepcopy(TOOL_GRAPH)
+        graph2["nodes"][1]["params"]["threshold"] = 200
+        composites.update(self.tool, {"graph": graph2}, user=self.admin)
+        self.assertEqual(self.tool.version, 2)
+        self.assertEqual([v["version"] for v in composites.versions_of(self.tool)], [2, 1])
+        flat_pinned, instances = composites.flatten(pinned)
+        flat_loose, _ = composites.flatten(loose)
+        self.assertEqual(next(x for x in flat_pinned["nodes"] if x["id"] == "count.thr")["params"]["threshold"], 128)
+        self.assertEqual(next(x for x in flat_loose["nodes"] if x["id"] == "count.thr")["params"]["threshold"], 200)
+        self.assertEqual(instances["count"]["version"], 1)
+        self.assertEqual(tools.catalogue()[0] and next(item for item in tools.catalogue() if item["key"] == "composite:count_blobs")["composite"]["version"], 2)
+        # 更新到最新＝改 meta 即可
+        updated = validate_graph({**pinned, "nodes": [{**x, "meta": {"tool_version": 2}} if x["id"] == "count" else x for x in pinned["nodes"]]})
+        flat_updated, _ = composites.flatten(updated)
+        self.assertEqual(next(x for x in flat_updated["nodes"] if x["id"] == "count.thr")["params"]["threshold"], 200)
+        # 快照不存在的版本：退回最新、不炸
+        flat_missing, _ = composites.flatten(validate_graph(self.flow(99)))
+        self.assertEqual(next(x for x in flat_missing["nodes"] if x["id"] == "count.thr")["params"]["threshold"], 200)
+        with self.assertRaises(ValidationError):
+            validate_graph(self.flow(0))
+        report = run_graph(pinned)
+        self.assertEqual(report.nodes["count"].status, "ok")
+
+    def test_pinned_instances_validate_against_their_own_interface(self):
+        pinned = validate_graph({**self.flow(1), "edges": [e("src", "count", "image", "gray:image"), e("count", "out", "blob:mask", "value")]})
+        iface2 = copy.deepcopy(TOOL_INTERFACE)
+        iface2["outputs"] = [o for o in iface2["outputs"] if o["key"] != "blob:mask"]
+        composites.update(self.tool, {"interface": iface2}, user=self.admin)
+        self.assertEqual(self.tool.version, 2)
+        validate_graph(copy.deepcopy(pinned))  # v1 還有 blob:mask
+        loose = copy.deepcopy(pinned)
+        loose["nodes"][1].pop("meta")
+        with self.assertRaises(ValidationError):
+            validate_graph(loose)
+        diff = composites.diff_versions(self.tool, 1)
+        self.assertEqual((diff["from"], diff["to"], diff["interface"]["outputs"]["removed"]), (1, 2, ["blob:mask"]))
+        self.assertFalse(diff["empty"])
+        with self.assertRaises(NotFound):
+            composites.snapshot_of(self.tool, 7)
+
+    def test_version_endpoints_and_encapsulate_pin(self):
+        token = AuthToken.issue(self.admin)
+        auth = {"HTTP_AUTHORIZATION": f"Bearer {token}"}
+        graph2 = copy.deepcopy(TOOL_GRAPH)
+        graph2["nodes"][1]["params"]["threshold"] = 60
+        res = self.client.put(f"/api/vision/composite-tools/{self.tool.id}", data=json.dumps({"graph": graph2}), content_type="application/json", **auth)
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertEqual(res.json()["version"], 2)
+        listed = self.client.get(f"/api/vision/composite-tools/{self.tool.id}/versions", **auth).json()
+        self.assertEqual((listed["version"], [v["version"] for v in listed["items"]], listed["items"][0]["current"]), (2, [2, 1], True))
+        snap = self.client.get(f"/api/vision/composite-tools/{self.tool.id}/versions/1", **auth).json()
+        self.assertEqual(snap["graph"]["nodes"][1]["params"]["threshold"], 128)
+        diff = self.client.get(f"/api/vision/composite-tools/{self.tool.id}/diff?from_version=1", **auth).json()
+        self.assertEqual(diff["summary"], "threshold 128 → 60")
+        self.assertEqual(self.client.get(f"/api/vision/composite-tools/{self.tool.id}/versions/9", **auth).status_code, 404)
+        enc = composites.encapsulate(validate_graph(self.flow(None)), ["count"], "wrap", "Wrap", version=1)
+        self.assertEqual(enc["instance"]["meta"], {"tool_version": 1})

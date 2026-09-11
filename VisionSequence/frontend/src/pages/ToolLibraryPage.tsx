@@ -110,6 +110,7 @@ export function ToolLibraryPage() {
               <THead>
                 <Th>{t('common.name')}</Th>
                 <Th className="max-lg:hidden">{t('tools.key')}</Th>
+                <Th className="max-lg:hidden">{t('tools.toolVersion')}</Th>
                 <Th className="max-lg:hidden">{t('tools.category')}</Th>
                 <Th align="right">{t('tools.usedBy')}</Th>
                 <Th className="max-xl:hidden">{t('tools.updatedAt')}</Th>
@@ -128,6 +129,7 @@ export function ToolLibraryPage() {
                       {tool.description ? <p className="mt-0.5 max-w-md truncate text-xs text-muted">{tool.description}</p> : null}
                     </Td>
                     <Td className="max-lg:hidden"><span className="font-mono text-xs">{tool.key}</span></Td>
+                    <Td className="max-lg:hidden"><span className="tabular-nums text-xs" data-testid="tool-version">v{tool.version}</span></Td>
                     <Td className="max-lg:hidden">{tool.category_label}</Td>
                     <Td align="right">
                       <span className="whitespace-nowrap tabular-nums" title={t('tools.usedByHint', { flows: tool.used_by_flows ?? 0, tools: tool.used_by_tools ?? 0 })}>

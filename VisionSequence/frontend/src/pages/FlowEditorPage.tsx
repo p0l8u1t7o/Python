@@ -765,6 +765,8 @@ function EditorInner({ flowId }: { flowId: number }) {
         continue_on_error: false,
         params: Object.fromEntries(def.params.filter((p) => p.default !== null && p.default !== undefined).map((p) => [p.key, p.default])),
         position,
+        // 版本鎖定（P5）：自建的複合工具記放入時的版本；內建工具一律跟最新
+        ...(def.composite && !def.composite.builtin ? { meta: { tool_version: def.composite.version } } : {}),
       }
       const graphBefore = graphFrom(nodesRef.current, edgesRef.current, payloads.current)
       const autoEdge = autoConnectOnInsert({ nodes: [...graphBefore.nodes, payload], edges: graphBefore.edges }, id, selectedId, defs)

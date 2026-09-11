@@ -10,7 +10,7 @@
 | 後端 | Django 5.1 + django-ninja + OpenCV／numpy／scipy（可選 onnxruntime、torch/ultralytics、anthropic） |
 | 前端 | React 19 + Vite + TypeScript + Tailwind v4 + @xyflow/react（React Flow）+ TanStack Query + i18next |
 | 執行 | 單一行程：uvicorn（HTTP + SSE）＋ TCP 介面同行程；資料流 DAG 引擎在執行緒池內跑，影像以 numpy 在記憶體傳遞 |
-| 規模 | 156 個內建工具、304 個 API 端點、38 個資料模型、26 個前端頁面（另 7 個整合子頁）、19 頁文件、後端約 1600 項＋前端約 320 項自動測試；擷取端桌面程式（vscapture，PySide6） |
+| 規模 | 156 個內建工具、304 個 API 端點、39 個資料模型、26 個前端頁面（另 7 個整合子頁）、19 頁文件、後端約 1600 項＋前端約 320 項自動測試；擷取端桌面程式（vscapture，PySide6） |
 
 ---
 
@@ -78,7 +78,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 - **位置修正**：工件位置會變的時候，把定位補正接到量測步驟的「位置修正」埠，那一步畫的區域就自己跟著工件走（不必在圖裡插跟隨節點）；整條流程都要跟就用「影像跟隨」把影像轉回教導時的姿態。定位沒找到時區域留在原地並留下警告，不會靜默量到空氣。
 - **除錯**：試執行後節點顯示耗時熱點（最慢紅）、右鍵「只跑到這裡」。
 - **埠介面**：每個步驟可勾選要畫在畫布上的輸入／輸出埠、拖曳排序、替輸出取發布名稱（工具頁的「埠」區）；已接線／預設／已發布／必填未接的埠預設顯示，其餘收在節點的「＋N」徽章後面，隱藏的必填未接輸入仍掛紅色徽章。
-- **複合工具與工具庫**（`/tools`）：框選步驟「封裝成工具」，宣告對外埠與對外參數（可標教導）後就是工具箱裡的一個工具，畫布上一個節點、參數在工具頁；執行時展平成內部步驟、報告摺回實例；直接引用不鎖版本（儲存前列影響清單）、只有流程與工具兩層（工具內不能再放複合工具）；工具箱「檢測任務」分類有 15 個由任務定義產生的內建複合工具（一種方式一個，唯讀、可另存複本）、`.tool.json` 匯出匯入、流程匯出內嵌依賴。
+- **複合工具與工具庫**（`/tools`）：框選步驟「封裝成工具」，宣告對外埠與對外參數（可標教導）後就是工具箱裡的一個工具，畫布上一個節點、參數在工具頁；執行時展平成內部步驟、報告摺回實例；版本鎖定（實例記 `meta.tool_version`、執行用那一版的快照、畫布提示「有新版可用」＋diff＋更新；儲存前列影響清單）、只有流程與工具兩層（工具內不能再放複合工具）；工具箱「檢測任務」分類有 15 個由任務定義產生的內建複合工具（一種方式一個，唯讀、可另存複本）、`.tool.json` 匯出匯入、流程匯出內嵌依賴。
 
 ### 內建工具（156 個，8 類）
 | 類別 | 工具 |
@@ -292,6 +292,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 | `Dashboard` | 運行介面版面（站台級、跨流程） |
 | `StationRules` | 站台接收規則（TCP 指令埠收到非指令的一行時比對） |
 | `CompositeTool` | 複合工具（工具庫）：key、名稱、分類、對外介面；內部圖在 `flow`（kind=tool），執行時展平 |
+| `CompositeToolVersion` | 複合工具的版本快照（圖＋介面）：實例以 `meta.tool_version` 鎖定執行哪一版；`/composite-tools/{id}/versions`、`/diff` 讀它 |
 | `RetentionSettings`／`VisionSettings` | 保存時限、執行策略／日誌等級／自動存（單列，`.env` 是出廠值） |
 
 graph JSON 格式與埠合約見 `docs/contract.html`；**不改 graph 格式、不把 `Flow.graph` 搬出資料庫**是紅線。
@@ -311,7 +312,7 @@ graph JSON 格式與埠合約見 `docs/contract.html`；**不改 graph 格式、
 | Golden | `/flows/{id}/golden`、`/baseline`、`/regress` |
 | 資源 | `/vision/sources`（含 `/kinds`、`/test` 儲存前測試擷取、`/preview`）、`/vision/assets`（含 `/from-image`、`/file`）、`/vision/groups`、`/vision/fs`、`/vision/images/{ref}` |
 | 工具目錄與容量 | `/vision/tool-types`（含複合工具）、`/vision/capacity` |
-| 工具庫 | `/vision/composite-tools`（CRUD、`/{id}/usage`、`/{id}/export`、`/{id}/duplicate`、`/import`） |
+| 工具庫 | `/vision/composite-tools`（CRUD、`/{id}/usage`、`/{id}/export`、`/{id}/duplicate`、`/import`、`/{id}/versions`、`/{id}/versions/{v}`、`/{id}/diff`） |
 | 深度學習 | `/vision/dl/projects`、`/samples`、`/split`、`/dataset-export|import`、`/versions`、`/train`、`/train/status`、`/devices`、`/settings`、`/trainers`、`/sam` |
 | AI 助手 | `/vision/agent/info`、`/settings`（＋`/test`、`/models`）、`/image`、`/clarify`、`/generate`、`/run`、`/save-tool`（產出封裝成複合工具＋流程）、`/refine`、`/edit`、`/tune`、`/autotune`、`/chat`、`/help/search`、`/jobs`（＋`/{id}`、`/cancel`、`/answer`）、`/sessions`（＋`/{id}`、`/restore`）、`/skills`、`/skills/custom/{key}`；`/flows/{id}/golden/autotune` |
 | 檢測任務 | `/vision/inspect/kinds`、`/inspect/read`、`/build`（預設放內建複合工具實例，`ctx.composite=false` 退回多步驟形式）、`/update`、`/remove`、`/evidence`、`/teach-pose`、`/inspect/{flow_id}/last-trial`（GET／PUT 上次試執行讀值） |

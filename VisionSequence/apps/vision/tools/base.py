@@ -713,7 +713,7 @@ def catalogue() -> list[dict[str, Any]]:
             "inputs": _with_default_primary([p.as_dict() for p in t.inputs] + [s.as_dict() for s in IMPLICIT_INPUTS if s.shows_on(t)], "in"),
             "outputs": _with_default_primary([p.as_dict() for p in t.outputs] + [s.as_dict() for s in IMPLICIT_OUTPUTS if s.shows_on(t)], "out"),
             # 複合工具多帶自己的 id／內部流程 id／是否內建：工具庫與「進入編輯」用（PRODUCT-DIRECTION v2 §3-5）
-            **({"composite": {"id": t.tool_id, "flow_id": t.flow_id, "builtin": t.builtin, "tool_key": t.tool_key}} if getattr(t, "source", "") == "composite" else {}),
+            **({"composite": {"id": t.tool_id, "flow_id": t.flow_id, "builtin": t.builtin, "tool_key": t.tool_key, "version": t.version_no}} if getattr(t, "source", "") == "composite" else {}),
         }
         for t in [*all_types(), *composites.all_types()]
     ]

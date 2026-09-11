@@ -2,7 +2,7 @@
  * 側欄（Inspector）：選取步驟的基本設定（名稱、備註、顏色、啟用、出錯時繼續）＋「開啟工具頁」。
  * 完整參數表單在工具頁（ToolPage）。
  */
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { SlidersHorizontal } from 'lucide-react'
@@ -14,11 +14,13 @@ import { useAuth } from '@/providers/AuthProvider'
 import { ImagesField } from '@/components/editor/ParamField'
 import { effectiveDefinition } from '@/components/editor/graphMapping'
 import { portSummary } from '@/components/editor/PortInterfaceEditor'
+import { compositeDiffLines, instanceVersion, toolOutdated } from '@/lib/composite'
+import { fetchCompositeDiff } from '@/lib/queries'
 import { nodeProblems } from '@/lib/graphValidation'
 import { useSources } from '@/lib/queries'
 import { localiseDataName } from '@/lib/catalogueLocale'
 import type { Language } from '@/i18n'
-import type { FlowGraph, GraphEdge, GraphNode, ToolTypeDef } from '@/lib/types'
+import type { CompositeDiff, FlowGraph, GraphEdge, GraphNode, ToolTypeDef } from '@/lib/types'
 
 const NODE_COLORS = ['#0f766e', '#1d4ed8', '#7c3aed', '#b45309', '#be123c', '#0891b2', '#4d7c0f', '#334155']
 
@@ -77,6 +79,7 @@ export function Inspector({ flowId, node, definition, edges, graph, defs, onChan
           <Checkbox label={t('editor.nodeEnabled')} hint={t('editor.nodeEnabledHint')} checked={node.enabled !== false} onChange={(enabled) => onChange({ enabled })} />
           <Checkbox label={t('editor.continueOnError')} hint={t('editor.continueOnErrorHint')} checked={node.continue_on_error === true} onChange={(continue_on_error) => onChange({ continue_on_error })} />
           <PortsSummary node={node} definition={definition} edges={edges} toolPage={toolPage} />
+          {definition?.composite ? <CompositeVersionCard node={node} definition={definition} onChange={onChange} /> : null}
 
           {problems.length ? (
             <p className="rounded-lg bg-warning-soft px-3 py-2 text-xs text-warning">{t('editor.problemsOnNode', { count: problems.length })}</p>
@@ -101,6 +104,33 @@ export function Inspector({ flowId, node, definition, edges, graph, defs, onChan
         <p className="mb-2 font-mono text-[11px] text-muted">id: {node.id}</p>
         <button type="button" onClick={onDelete} className="text-xs text-critical hover:underline">{t('editor.deleteNode')}</button>
       </div>
+    </div>
+  )
+}
+
+/** 複合工具實例的版本（P5 版本鎖定）：鎖在哪一版、有新版就給「查看差異」與「更新」；內建工具一律最新。 */
+function CompositeVersionCard({ node, definition, onChange }: { node: GraphNode; definition: ToolTypeDef; onChange: (patch: Partial<GraphNode>) => void }) {
+  const { t } = useTranslation()
+  const [diff, setDiff] = useState<CompositeDiff | null>(null)
+  const [loading, setLoading] = useState(false)
+  const info = definition.composite!
+  const pinned = instanceVersion(node)
+  const outdated = toolOutdated(node, definition)
+  if (info.builtin) return <p className="text-[11px] text-muted" data-testid="composite-version">{t('editor.composite.versionBuiltin')}</p>
+  const lines = diff ? compositeDiffLines(diff) : []
+  return (
+    <div className="space-y-1 rounded-md border border-line bg-surface p-2" data-testid="composite-version" data-outdated={outdated ? 'true' : 'false'}>
+      <p className="text-[11px] text-muted">{t('editor.composite.versionPinned', { version: pinned ?? info.version })}{!outdated ? ` · ${t('editor.composite.versionLatest')}` : ''}</p>
+      {outdated ? (
+        <>
+          <p className="text-[11px] text-warning">{t('editor.composite.versionOutdated', { from: outdated.pinned, to: outdated.current })}</p>
+          <div className="flex flex-wrap gap-1">
+            <Button size="xs" variant="primary" onClick={() => onChange({ meta: { ...((node.meta as Record<string, unknown> | undefined) ?? {}), tool_version: outdated.current } })} data-testid="composite-version-update">{t('editor.composite.versionUpdate', { to: outdated.current })}</Button>
+            <Button size="xs" loading={loading} onClick={() => { setLoading(true); fetchCompositeDiff(info.id, outdated.pinned, outdated.current).then(setDiff).finally(() => setLoading(false)) }} data-testid="composite-version-diff">{t('editor.composite.versionDiff')}</Button>
+          </div>
+          {diff ? <ul className="list-disc pl-4 text-[11px] text-muted" data-testid="composite-version-diff-list">{lines.length ? lines.map((line, i) => <li key={i} className="font-mono">{line}</li>) : <li>{t('editor.composite.versionNoDiff')}</li>}</ul> : null}
+        </>
+      ) : null}
     </div>
   )
 }
