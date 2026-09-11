@@ -224,7 +224,7 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
     if (roi) setRoiEditingKey(roi.key)
   }, [def, node, draft, flowId, nodeId])
 
-  const { confirm, dialog } = useConfirm()
+  const { confirm, choose, dialog } = useConfirm()
 
   /** 返回編輯器：本頁改過參數且未儲存 → confirm 後還原此步驟到進頁狀態（放棄編輯）。 */
   async function goBack() {
@@ -320,8 +320,14 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
   )
   useEffect(() => {
     if (blocker.state !== 'blocked') return
-    void confirm(t('editor.leaveUnsaved'), { title: t('editor.leaveTitle'), confirmLabel: t('editor.leaveAnyway') }).then((ok) => (ok ? blocker.proceed() : blocker.reset()))
-  }, [blocker, t, confirm])
+    void choose(t('editor.leaveUnsaved'), { title: t('editor.leaveTitle'), confirmLabel: t('editor.leaveAnyway'), saveLabel: t('editor.saveAndLeave') }).then(async (choice) => {
+      if (choice === 'cancel') return blocker.reset()
+      if (choice === 'save') {
+        try { await save() } catch { return blocker.reset() }
+      }
+      blocker.proceed()
+    })
+  }, [blocker, t, choose, save])
 
   // ---- 暫存影像 ----
   async function uploadScratch(file: File) {

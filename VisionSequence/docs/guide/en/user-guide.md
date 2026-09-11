@@ -4,10 +4,10 @@ This guide follows the sidebar from top to bottom: where each page is, what is o
 
 ## 1. Getting around {#shell}
 
-<figure class="shot"><img src="/docs/img/shell.jpg" alt="The application shell on the Dashboard"><figcaption><b>Dashboard</b> (sidebar › Dashboard, route <code>/</code>)
+<figure class="shot"><img src="/docs/img/shell.jpg" alt="The application shell on the Overview page"><figcaption><b>Overview</b> (sidebar › Overview, route <code>/</code>)
 <ol class="callouts">
 <li data-n="1">The <strong>sidebar</strong>, grouped by what you are doing: <strong>Inspection</strong> (flows, batch test, AI assistant), <strong>Teaching</strong> (station teach, calibration, deep-learning teaching) and <strong>Resources</strong> (source library, asset library), then External integration — which expands into its sub-pages — and the administration pages. Groups open and close with a click and remember their state; items your role cannot use are hidden, and a group disappears when none of its pages are available. "Collapse sidebar" at the bottom shrinks it to icons; on a phone it becomes a drawer behind the ☰ button.</li>
-<li data-n="2">The <strong>breadcrumb</strong> shows where you are (Dashboard › Flows › flow name) and each part is a link back.</li>
+<li data-n="2">The <strong>breadcrumb</strong> shows where you are (Overview › Flows › flow name) and each part is a link back.</li>
 <li data-n="3">The <strong>capacity</strong> indicator: how many of the engine's workers are busy and how many images are cached; click for details.</li>
 <li data-n="4">The <strong>user menu</strong>: who is signed in, change password, sign out. A green dot means the engine is free; when an integrator locks it a banner appears under the top bar (see <a href="#lock">15. The engine lock</a>).</li>
 <li data-n="5">The <strong>AI assistant</strong> button, available on every page (see <a href="#assistant">14. The global assistant</a>).</li>
@@ -173,9 +173,9 @@ Use **Grid** in the image viewer strip to switch the editor into grid view. Choo
 - **Changeover** is switching the active recipe on this page or through the API; an operator may do it, while changing a recipe's contents needs an engineer.
 - An operator sees this page read-only when the role lacks "On-site parameters and changeover"; the header says why.
 
-### 6-1. Station teach and custom groups {#station-teach}
+### 6-1. Station teach page and custom groups {#station-teach}
 
-The **Station teach** page under Teaching gathers every visible flow's on-site parameters in one list. Use the Flow, Tool and Search filters when a station runs several flows for different camera sides or fixtures. Each row shows the flow, the step, the tool and the parameter, so a value is never detached from the flow graph it will update.
+The **Station teach page** under Teaching gathers every visible flow's on-site parameters in one list. Use the Flow, Tool and Search filters when a station runs several flows for different camera sides or fixtures. Each row shows the flow, the step, the tool and the parameter, so a value is never detached from the flow graph it will update.
 
 Saving uses the same flow update path as the single-flow teach page: the page builds one graph patch per changed flow and sends `PATCH /api/vision/flows/{id}` for each flow. If one flow saves and another is rejected, the result panel lists each flow separately with success or failure instead of hiding the partial result. Operators can still change only parameters marked as on-site teach parameters; changing a non-teach parameter is rejected by the server.
 
@@ -205,7 +205,7 @@ Open an archived picture and press **Rerun this picture in the editor**: it beco
 
 ### 7-1. The operator board {#board}
 
-<figure class="shot"><img src="/docs/img/board.jpg" alt="The full-screen operator board"><figcaption><b>Operator board</b> (Dashboard › "Open the board", or the editor's Board settings, route <code>/board/:id</code>)
+<figure class="shot"><img src="/docs/img/board.jpg" alt="The full-screen operator board"><figcaption><b>Operator board</b> (Overview › "Open the board", or the editor's Board settings, route <code>/board/:id</code>)
 <ol class="callouts">
 <li data-n="1">The <strong>board title</strong> (the flow name unless you set one).</li>
 <li data-n="2">The <strong>verdict</strong> of the last part, large enough to read from across the line, with the verdict label when the flow gives one.</li>
@@ -219,13 +219,13 @@ Open an archived picture and press **Rerun this picture in the editor**: it beco
 
 Every part updates the board as it is inspected; the counts refresh every fifteen seconds. Building your own screen instead? One request, `GET /api/vision/flows/{id}/board`, returns exactly what this page shows, tolerance verdicts included ([Automation](/docs/automation.html#board)).
 
-### 7-2. Operation dashboards {#dashboard}
+### 7-2. Operator dashboards {#dashboard}
 
-The **Operation dashboards** page (`/dashboards`) lists the station dashboards that operators can open in kiosk mode. Each row shows the dashboard name, whether it is the default, the number of widgets, the last update time and the available actions. Operators can open a dashboard. Engineers can create a dashboard from an empty layout, the default layout or a built-in template, mark one dashboard as the default, copy one, delete one and open the visual layout designer.
+The **Operator dashboards** page (`/dashboards`) lists the station dashboards that operators can open in kiosk mode. Each row shows the dashboard name, whether it is the default, the number of widgets, the last update time and the available actions. Operators can open a dashboard. Engineers can create a dashboard from an empty layout, the default layout or a built-in template, mark one dashboard as the default, copy one, delete one and open the visual layout designer.
 
 #### Designing a layout {#dashboard-design}
 
-The **Dashboard designer** (`/dashboards/:id/design`) is the engineering workspace for changing an operation dashboard without editing JSON first. The left column is the widget catalogue, the centre canvas is a row and column grid, and the right column shows layout, widget and advanced settings. Change the row and column count at the top of the canvas, click a cell to select it, drag across neighbouring cells to merge them, use Split to return a merged cell to single grid cells, and drag widgets from the catalogue into any cell. Widgets already in a cell can be selected, moved to another cell, reordered, duplicated or deleted.
+The **Dashboard designer** (`/dashboards/:id/design`) is the engineering workspace for changing an operator dashboard without editing JSON first. The left column is the widget catalogue, the centre canvas is a row and column grid, and the right column shows layout, widget and advanced settings. Change the row and column count at the top of the canvas, click a cell to select it, drag across neighbouring cells to merge them, use Split to return a merged cell to single grid cells, and drag widgets from the catalogue into any cell. Widgets already in a cell can be selected, moved to another cell, reordered, duplicated or deleted.
 
 The properties panel builds the available controls from the dashboard widget contract. Boolean options use checkboxes, numeric options use bounded number fields, choices use selectors, colours use swatches, and list-shaped options such as table columns, tabs, rules and image wall items use compact row editors. Source settings let engineers choose whether a widget reads a flow output, variable, image, status, count, SPC series or device value. The selected flow controls the available output, variable and image keys when that information is known.
 
@@ -453,7 +453,7 @@ See [Automation](/docs/automation.html), [Modbus](/docs/modbus.html), [Capture c
 
 ## 16. The engine lock {#lock}
 
-<figure class="shot"><img src="/docs/img/lock-banner.jpg" alt="The lock banner on the Dashboard"><figcaption><b>Locked engine</b>
+<figure class="shot"><img src="/docs/img/lock-banner.jpg" alt="The lock banner on the Overview page"><figcaption><b>Locked engine</b>
 <ol class="callouts">
 <li data-n="1">The <strong>banner</strong> under the top bar: who holds the lock and why; an administrator or the holder can release it from here.</li>
 <li data-n="2">Everything that runs the engine — Run once, Preview, Continuous — is refused with error 423 while locked; editing and saving still work.</li>

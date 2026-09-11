@@ -1009,6 +1009,7 @@ export function routes(path: string, body?: unknown): unknown {
   if (path === '/vision/notes') return body ? { ...ENGINEERING_NOTE, ...(body as object), status: 'draft' } : { items: [ENGINEERING_NOTE], total: 1 }
   if (/^\/vision\/notes\/\d+/.test(path)) return { ...ENGINEERING_NOTE, ...(body as object ?? {}), status: path.endsWith('/confirm') ? 'confirmed' : path.endsWith('/retract') ? 'retracted' : 'draft' }
   if (path.startsWith('/vision/inspect/')) return inspectMock(path, body)
+  if (path === '/vision/flows/10') return { ...FLOW, id: 10, name: '空白流程', check_count: 0, graph: { nodes: [], edges: [] }, ...(body && typeof body === 'object' ? body : {}) }
   if (path === '/vision/flows/6') return { ...FLOW, id: 6, graph: INSPECT_GRAPH, ...(body && typeof body === 'object' ? body : {}) }
   if (path.startsWith('/auth/status')) return { setup_required: false }
   if (path.startsWith('/auth/me')) return ME

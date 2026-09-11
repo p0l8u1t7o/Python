@@ -72,7 +72,7 @@
    "route": "/",
    "id": "dashboard",
    "names": {
-    "en": "Dashboard",
+    "en": "Overview",
     "zh-Hant": "總覽",
     "zh-Hans": "总览"
    },
@@ -232,7 +232,7 @@
    "route": "/teach",
    "id": "station_teach",
    "names": {
-    "en": "Station teach",
+    "en": "Station teach page",
     "zh-Hant": "站台參數卡",
     "zh-Hans": "站台参数卡"
    },
@@ -281,7 +281,7 @@
    "route": "/dashboards",
    "id": "dashboards",
    "names": {
-    "en": "Operation dashboards",
+    "en": "Operator dashboards",
     "zh-Hant": "運行介面",
     "zh-Hans": "运行界面"
    },

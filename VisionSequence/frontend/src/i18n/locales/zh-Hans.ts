@@ -866,6 +866,8 @@ const zhHans = {
     sourcePreviewHint: '当前来源的预览；试执行即以此来源的影像执行',
     leaveTitle: '离开此页？',
     leaveAnyway: '放弃变更并离开',
+    saveAndLeave: '保存并离开',
+    emptyGuide: { title: '空画布——三步得到第一个结果', step1: '新增「图像来源」步骤并选来源（或上传临时图像）。', step2: '新增工具，从输出端口拖到下一步的输入端口；新工具会自动接到选中的步骤。', step3: '按「试执行」跑一次画布，看每一步的中间图像。', addTool: '新增工具', useTasks: '改用检测任务', manual: '打开手册' },
     noSourceBanner: '此流程尚未选择图像来源，试执行会失败', noSourcePick: '选择图像来源…', sourcePicked: '已设置图像来源（记得保存流程）', manageSources: '管理图像来源',
     captureOffline: '所选的采集端「{{name}}」目前离线，执行会失败；请确认采集端程序已连接。',
     title: '流程编辑器',

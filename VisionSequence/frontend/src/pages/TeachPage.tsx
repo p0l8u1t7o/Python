@@ -111,7 +111,7 @@ function TeachPageInner({ flowId }: { flowId: number }) {
   // ---- 配方（編輯對象） ----
   const recipeList = useMemo(() => recipes.data?.items ?? [], [recipes.data])
   const recipe = recipeId !== null ? recipeList.find((r) => r.id === recipeId) ?? null : null
-  const { confirm, dialog } = useConfirm()
+  const { confirm, choose, dialog } = useConfirm()
   const selectRecipe = useCallback(
     async (id: number | null) => {
       if (recipeDirty && !(await confirm(t('editor.leaveUnsaved'), { title: t('editor.leaveTitle'), confirmLabel: t('editor.leaveAnyway') }))) return
@@ -306,8 +306,14 @@ function TeachPageInner({ flowId }: { flowId: number }) {
   )
   useEffect(() => {
     if (blocker.state !== 'blocked') return
-    void confirm(t('editor.leaveUnsaved'), { title: t('editor.leaveTitle'), confirmLabel: t('editor.leaveAnyway') }).then((ok) => (ok ? blocker.proceed() : blocker.reset()))
-  }, [blocker, t, confirm])
+    void choose(t('editor.leaveUnsaved'), { title: t('editor.leaveTitle'), confirmLabel: t('editor.leaveAnyway'), saveLabel: t('editor.saveAndLeave') }).then(async (choice) => {
+      if (choice === 'cancel') return blocker.reset()
+      if (choice === 'save') {
+        try { await save() } catch { return blocker.reset() }
+      }
+      blocker.proceed()
+    })
+  }, [blocker, t, choose, save])
 
   // ---- 已教導 ----
   async function setCommissioned(value: boolean) {

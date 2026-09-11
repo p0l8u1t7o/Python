@@ -180,6 +180,19 @@ describe('pages render (smoke)', () => {
     localStorage.removeItem('vs.editorCollapsed.v1')
   })
 
+  it('FlowEditorPage shows the empty-canvas guide on a flow without steps', async () => {
+    // PM-REVIEW-R2 P3：建立進階流程後是白紙，引導卡帶三步驟與兩個入口
+    const { FlowEditorPage } = await import('@/pages/FlowEditorPage')
+    const { clearSession } = await import('@/lib/flowDraft')
+    clearSession(10)
+    renderDataPage(<FlowEditorPage />, '/flows/10', '/flows/:flowId')
+    const guide = await screen.findByTestId('empty-canvas-guide')
+    expect(within(guide).getByRole('link', { name: 'Use inspection tasks instead' })).toHaveAttribute('href', '/flows/10/inspect')
+    expect(within(guide).getByRole('link', { name: 'Open the manual' })).toHaveAttribute('href', '/help/user-guide#editor')
+    fireEvent.click(within(guide).getByTestId('empty-guide-add-tool'))
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+  })
+
   it('FlowEditorPage keeps run settings in the draft until Save', async () => {
     // Suggest5 第 1 點：間隔／逾時／並行度以前每改一下就 PATCH，描述卻要按儲存；現在一律隨儲存寫入
     const { FlowEditorPage } = await import('@/pages/FlowEditorPage')

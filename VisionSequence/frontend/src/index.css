@@ -369,7 +369,7 @@
 /* 三欄拖曳分隔線 */
 .vs-resizer { @apply shrink-0 bg-line transition-colors hover:bg-brand; }
 .vs-resizer-x { width: 4px; cursor: col-resize; }
-.vs-resizer-y { height: 4px; cursor: row-resize; }
+.vs-resizer-y { height: 6px; cursor: row-resize; }
 
 /* 邊上的資料流小點動畫用；overlay 畫布不吃事件 */
 .vs-edge-flowing { stroke-dasharray: 6 4; animation: vs-dash 0.8s linear infinite; }

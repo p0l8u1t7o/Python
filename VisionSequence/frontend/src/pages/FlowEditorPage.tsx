@@ -14,6 +14,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useBlocker, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
+  Panel,
   ReactFlowProvider,
   addEdge,
   useEdgesState,
@@ -102,11 +103,11 @@ interface SequenceRun extends PreviewSequenceState {
 function readLayout(): LayoutState {
   try {
     const raw = localStorage.getItem(LAYOUT_KEY)
-    if (raw) return { left: 190, right: 290, canvas: 0.42, ...(JSON.parse(raw) as Partial<LayoutState>) }
+    if (raw) return { left: 190, right: 290, canvas: 0.5, ...(JSON.parse(raw) as Partial<LayoutState>) }
   } catch {
     /* ignore */
   }
-  return { left: 190, right: 290, canvas: 0.42 }
+  return { left: 190, right: 290, canvas: 0.5 }
 }
 
 function isEdit(change: NodeChange | EdgeChange): boolean {
@@ -619,7 +620,9 @@ function EditorInner({ flowId }: { flowId: number }) {
   // ---- 離開攔截（到工具頁／參數卡不算離開：草稿會帶過去；其他路由如流程列表、別的流程都要問） ----
   const toolPagePrefix = `/flows/${flowId}/tools/`
   const teachPath = `/flows/${flowId}/teach`
-  const { confirm, dialog: confirmDialog } = useConfirm()
+  const { confirm, choose, dialog: confirmDialog } = useConfirm()
+  // save 在下面才定義；離開攔截的 effect 在上面，用 ref 拿最新的 save
+  const leaveSaveRef = useRef<(() => Promise<boolean>) | null>(null)
   const blocker = useBlocker(
     useCallback(
       ({ currentLocation, nextLocation }: { currentLocation: { pathname: string }; nextLocation: { pathname: string } }) =>
@@ -629,8 +632,15 @@ function EditorInner({ flowId }: { flowId: number }) {
   )
   useEffect(() => {
     if (blocker.state !== 'blocked') return
-    void confirm(t('editor.leaveUnsaved'), { title: t('editor.leaveTitle'), confirmLabel: t('editor.leaveAnyway') }).then((ok) => (ok ? blocker.proceed() : blocker.reset()))
-  }, [blocker, t, confirm])
+    void choose(t('editor.leaveUnsaved'), { title: t('editor.leaveTitle'), confirmLabel: t('editor.leaveAnyway'), saveLabel: t('editor.saveAndLeave') }).then(async (choice) => {
+      if (choice === 'cancel') return blocker.reset()
+      if (choice === 'save') {
+        const ok = await (leaveSaveRef.current?.() ?? Promise.resolve(false))
+        return ok ? blocker.proceed() : blocker.reset()
+      }
+      blocker.proceed()
+    })
+  }, [blocker, t, choose])
   useEffect(() => {
     if (!dirty) return
     const warn = (e: BeforeUnloadEvent) => {
@@ -975,6 +985,7 @@ function EditorInner({ flowId }: { flowId: number }) {
       return false
     }
   }, [readOnly, problemMap.size, patch, flowId, meta, currentGraph, toast, t, markSaved, showConflict, loadServerConflict])
+  leaveSaveRef.current = save
 
   const patchFlowSettings = useCallback(
     async (body: FlowPatch, onSaved?: () => void) => {
@@ -1824,7 +1835,26 @@ function EditorInner({ flowId }: { flowId: number }) {
               onPaneClick={() => { setSelectedId(null); setNodeMenu(null) }}
               onDragOver={onDragOver}
               onDrop={onDrop}
-            />
+            >
+              {displayView.nodes.length === 0 ? (
+                // 空畫布引導（PM-REVIEW-R2 P3）：建立進階流程後是一張白紙，說明頁在側欄最底層沒人會走到
+                <Panel position="top-center">
+                  <div className="mt-8 w-[380px] max-w-[90vw] rounded-xl border border-line bg-surface/95 p-4 text-sm shadow-lg backdrop-blur" data-testid="empty-canvas-guide">
+                    <p className="font-semibold">{t('editor.emptyGuide.title')}</p>
+                    <ol className="mt-2 list-decimal space-y-1 pl-5 text-xs text-muted">
+                      <li>{t('editor.emptyGuide.step1')}</li>
+                      <li>{t('editor.emptyGuide.step2')}</li>
+                      <li>{t('editor.emptyGuide.step3')}</li>
+                    </ol>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button size="sm" variant="primary" onClick={() => setPickerOpen(true)} data-testid="empty-guide-add-tool">{t('editor.emptyGuide.addTool')}</Button>
+                      <Link className="btn-secondary !h-8 !text-xs" to={`/flows/${flowId}/inspect`}>{t('editor.emptyGuide.useTasks')}</Link>
+                      <Link className="btn-secondary !h-8 !text-xs" to="/help/user-guide#editor">{t('editor.emptyGuide.manual')}</Link>
+                    </div>
+                  </div>
+                </Panel>
+              ) : null}
+            </FlowCanvas>
             {meta.description.trim() ? (
               // top-12：右上角已有選取／平移切換鈕，疊在同一個位置會把它蓋到只剩一小角
               <div className="absolute right-2 top-12 z-20 max-w-sm rounded-lg border border-line bg-surface/95 text-xs shadow-lg backdrop-blur" data-testid="flow-description-panel">

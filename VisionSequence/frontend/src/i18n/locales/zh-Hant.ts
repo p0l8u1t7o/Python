@@ -866,6 +866,8 @@ const zhHant = {
     sourcePreviewHint: '目前來源的預覽；試執行即以此來源的影像執行',
     leaveTitle: '離開此頁？',
     leaveAnyway: '放棄變更並離開',
+    saveAndLeave: '儲存並離開',
+    emptyGuide: { title: '空畫布——三步得到第一個結果', step1: '新增「影像來源」步驟並選來源（或上傳暫存影像）。', step2: '新增工具，從輸出埠拖到下一步的輸入埠；新工具會自動接到選取的步驟。', step3: '按「試執行」跑一次畫布，看每一步的中間影像。', addTool: '新增工具', useTasks: '改用檢測任務', manual: '開啟手冊' },
     noSourceBanner: '此流程尚未選擇影像來源，試執行會失敗', noSourcePick: '選擇影像來源…', sourcePicked: '已設定影像來源（記得儲存流程）', manageSources: '管理影像來源',
     captureOffline: '所選的擷取端「{{name}}」目前離線，執行會失敗；請確認擷取端程式已連線。',
     title: '流程編輯器',

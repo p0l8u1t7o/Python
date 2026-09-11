@@ -45,7 +45,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
   const upload = useScratchImage()
   const session = useFlowSession(flowId)
   const cachedRun = useRef(inspectionRunFor(flowId, session.previewRun))
-  const { confirm, dialog } = useConfirm()
+  const { confirm, choose, dialog } = useConfirm()
   const { showConflict, dialog: conflictDialog } = useSaveConflictDialog()
   const [list, setList] = useState<InspectList>(EMPTY_LIST)
   const [readError, setReadError] = useState<string | null>(null)
@@ -323,11 +323,15 @@ function InspectPageInner({ flowId }: { flowId: number }) {
   }, [dirty, pending, newKind, editorPath]))
   useEffect(() => {
     if (blocker.state !== 'blocked') return
-    void confirm(t('editor.leaveUnsaved'), { title: t('editor.leaveTitle'), confirmLabel: t('editor.leaveAnyway') }).then(async (ok) => {
-      if (!ok) return blocker.reset()
-      try { await flushEdits(); blocker.proceed() } catch { blocker.reset() }
+    void choose(t('editor.leaveUnsaved'), { title: t('editor.leaveTitle'), confirmLabel: t('editor.leaveAnyway'), saveLabel: t('editor.saveAndLeave') }).then(async (choice) => {
+      if (choice === 'cancel') return blocker.reset()
+      try {
+        await flushEdits()
+        if (choice === 'save') await save()
+        blocker.proceed()
+      } catch { blocker.reset() }
     })
-  }, [blocker, confirm, t])
+  }, [blocker, choose, t])
   useEffect(() => {
     const beforeUnload = (event: BeforeUnloadEvent) => { if (dirty) { event.preventDefault(); event.returnValue = '' } }
     window.addEventListener('beforeunload', beforeUnload)
@@ -432,8 +436,8 @@ function InspectPageInner({ flowId }: { flowId: number }) {
       <div className="max-h-40 overflow-y-auto py-2"><ImagesField label={t('inspect.fixedImages')} value={source.params?.images} readOnly={readOnly || busy} onChange={(value) => void action(() => changeNodeParam(source.id, 'images', value))} /></div>
     </details> : null}
     {(readError || operationError) ? <p role="alert" className="bg-critical-soft p-2 text-sm text-critical">{readError ?? operationError}</p> : null}
-    <div className="flex min-h-0 flex-1 flex-col overflow-auto md:flex-row md:overflow-hidden">
-      <aside className="w-full shrink-0 border-r border-line bg-surface p-3 md:w-56 md:overflow-y-auto" data-testid="inspect-tasks">
+    <div className="flex min-h-0 flex-1 flex-col overflow-auto md:flex-row md:overflow-x-auto md:overflow-y-hidden">
+      <aside className="w-full shrink-0 border-r border-line bg-surface p-3 md:w-44 md:overflow-y-auto lg:w-56" data-testid="inspect-tasks">
         {/* 新增／移除放在清單上方：使用者回報下拉式的新增不好找、移除藏在表單最底下 */}
         <div className="mb-3 flex gap-2">
           <Button size="sm" variant="primary" icon={<Plus size={14} />} disabled={readOnly || busy || wizard !== null} onClick={() => void action(openWizard)} data-testid="inspect-add">{t('inspect.add')}</Button>
@@ -449,7 +453,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
         })}</ul>
         {!list.tasks.length ? <div className="my-3 text-xs text-muted"><p>{list.loose.length ? t('inspect.advancedOnly') : t('inspect.noTasks')}</p>{list.loose.length ? <Link className="mt-2 block text-brand" to={editorPath}>{t('inspect.openAdvanced')}</Link> : null}</div> : null}
       </aside>
-      <section className="w-full shrink-0 space-y-4 overflow-y-auto border-r border-line bg-surface p-4 md:w-[340px] xl:w-[380px]" data-testid="inspect-form">
+      <section className="w-full shrink-0 space-y-4 overflow-y-auto border-r border-line bg-surface p-4 md:w-[300px] lg:w-[340px] xl:w-[380px]" data-testid="inspect-form">
         <FlowNotesLink flowId={flowId} />
         {wizard !== null ? <div className="space-y-4" data-testid="inspect-wizard">
             {/* 引導精靈：種類 → 區域 → 規格，每一步只看該步的欄位；步驟標籤可以來回點 */}
@@ -494,7 +498,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
           }} onChange={(value) => void action(() => changeNodeParam(node.id, param.key, value))} /></div>)}</section>)}</fieldset></details>
         </> : <p className="text-sm text-muted">{t('inspect.chooseTask')}</p>}
       </section>
-      <section className="flex min-h-[420px] min-w-0 flex-1 flex-col" data-testid="inspect-viewer">
+      <section className="flex min-h-[420px] min-w-0 flex-1 flex-col md:min-w-[480px]" data-testid="inspect-viewer">
         <div className="min-h-[300px] flex-1"><ImageViewer proposals={proposals} src={image?.ref ? imageUrl(image.ref, 1600) : null} imageWidth={image?.width ?? 0} imageHeight={image?.height ?? 0} overlays={reading?.overlays ?? []}
           roi={!image ? null : cropKey ? cropRegion : advancedRoi ? graph.nodes.find((node) => node.id === advancedRoi.nodeId)?.params?.[advancedRoi.key] as Region | null : activeRoi ? values[activeRoi.key] as Region | null : null} roiShapes={cropKey ? ['rect'] : advancedRoi?.shapes ?? activeRoi?.shapes}
           onRoiChange={image && !readOnly && !busy && (!task?.custom || Boolean(newKind)) ? cropKey ? setCropRegion : advancedRoi ? (region) => void action(() => changeNodeParam(advancedRoi.nodeId, advancedRoi.key, region)) : activeRoi ? (region) => changeField(activeRoi.key, region) : undefined : undefined}

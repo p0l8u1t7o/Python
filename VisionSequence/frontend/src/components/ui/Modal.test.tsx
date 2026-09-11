@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
-import { Modal } from './Modal'
+import { ConfirmDialog, Modal } from './Modal'
 
 function Host({ dirty = false, onClose = () => {} }: { dirty?: boolean; onClose?: () => void }) {
   const [open, setOpen] = useState(false)
@@ -20,6 +20,15 @@ function Host({ dirty = false, onClose = () => {} }: { dirty?: boolean; onClose?
 }
 
 describe('Modal', () => {
+  it('ConfirmDialog shows a third button only when extraLabel is given', () => {
+    const onExtra = vi.fn()
+    const { rerender } = render(<ConfirmDialog open onClose={() => {}} onConfirm={() => {}} title="Leave?" message="unsaved" confirmLabel="Discard" />)
+    expect(screen.queryByTestId('confirm-extra')).toBeNull()
+    rerender(<ConfirmDialog open onClose={() => {}} onConfirm={() => {}} title="Leave?" message="unsaved" confirmLabel="Discard" extraLabel="Save and leave" onExtra={onExtra} />)
+    fireEvent.click(screen.getByTestId('confirm-extra'))
+    expect(onExtra).toHaveBeenCalledTimes(1)
+  })
+
   it('labels the dialog, traps Tab inside and restores focus on close', async () => {
     render(<Host />)
     const trigger = screen.getByText('open')

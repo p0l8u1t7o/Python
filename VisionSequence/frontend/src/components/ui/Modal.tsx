@@ -119,7 +119,7 @@ export function Modal({ open, onClose, title, description, children, footer, siz
   )
 }
 
-export function ConfirmDialog({ open, onClose, onConfirm, title, message, confirmLabel, danger = false, loading = false }: { open: boolean; onClose: () => void; onConfirm: () => void; title: ReactNode; message: ReactNode; confirmLabel?: string; danger?: boolean; loading?: boolean }) {
+export function ConfirmDialog({ open, onClose, onConfirm, title, message, confirmLabel, danger = false, loading = false, extraLabel, onExtra }: { open: boolean; onClose: () => void; onConfirm: () => void; title: ReactNode; message: ReactNode; confirmLabel?: string; danger?: boolean; loading?: boolean; /** 第三顆鈕（例如「儲存並離開」），只在給了 extraLabel 時出現 */ extraLabel?: string; onExtra?: () => void }) {
   const { t } = useTranslation()
   return (
     <Modal
@@ -130,6 +130,7 @@ export function ConfirmDialog({ open, onClose, onConfirm, title, message, confir
       footer={
         <>
           <Button onClick={onClose} disabled={loading}>{t('common.cancel')}</Button>
+          {extraLabel && onExtra ? <Button variant="primary" onClick={onExtra} disabled={loading} data-testid="confirm-extra">{extraLabel}</Button> : null}
           <Button variant={danger ? 'danger' : 'primary'} onClick={onConfirm} loading={loading}>{confirmLabel ?? t('common.confirm')}</Button>
         </>
       }
