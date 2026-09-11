@@ -5,6 +5,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 
 import { logActivity } from '@/lib/activity'
+import type { EngineeringNote } from './types'
+
+export function useEngineeringNotes(filters: Record<string, string | number | undefined> = {}) {
+  return useQuery({ queryKey: ['engineering-notes', filters], queryFn: () => api.get<{ items: EngineeringNote[]; total: number }>('/vision/notes', filters) })
+}
 
 import { ApiError, api, request } from './api'
 import type { BoardConfig, BoardData } from './board'

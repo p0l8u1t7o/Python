@@ -373,6 +373,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
         <Link className="mt-4 block text-xs text-brand" to={editorPath}>{t('inspect.otherSteps', { count: list.loose.length })}</Link>
       </aside>
       <section className="w-full shrink-0 space-y-4 overflow-y-auto border-r border-line bg-surface p-4 md:w-[340px] xl:w-[380px]" data-testid="inspect-form">
+        <FlowNotesLink flowId={flowId} />
         {task?.custom && !newKind ? <div data-testid="inspect-custom"><p className="text-warning">{t('inspect.customHint')}</p>{task.reasons.map((reason, index) => <p key={index} className="mt-1 text-xs">{t(inspectionReasonKey(reason.code))}</p>)}<Link className="btn-secondary mt-3" to={inspectionAdvancedPath(flowId, graph, task)}>{t('inspect.openAdvanced')}</Link><Button className="mt-3" variant="danger" disabled={readOnly || busy} onClick={() => void action(deleteTask)}>{t('inspect.remove')}</Button></div> : kind ? <><h2 className="font-semibold">{kind.label}</h2><p className="text-xs text-muted">{kind.help_text}</p>
             <fieldset disabled={readOnly || busy} className="space-y-4">
               {kind.fields.filter((field) => inspectionFieldVisible(field, values)).map((field) => <div key={field.key} data-field={field.key}>
@@ -423,3 +424,4 @@ export function InspectPage() {
   const id = Number(flowId)
   return Number.isInteger(id) && id > 0 ? <InspectPageInner key={id} flowId={id} /> : null
 }
+import { FlowNotesLink } from '@/components/notes/FlowNotesLink'

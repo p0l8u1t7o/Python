@@ -11,6 +11,7 @@ import { ArrowRight, Bot, Brain, Camera, Check, ExternalLink, Eye, EyeOff, Histo
 
 import { AgentTimeline } from '@/components/agent/AgentTimeline'
 import { TaskListCard } from './TaskListCard'
+import { DecisionNotes } from '@/components/notes/DecisionNotes'
 import { draftProgress, ResumeCard, ResumeQuestions } from './ResumeCard'
 import { Badge, Button } from '@/components/ui'
 import { useAgentJob } from '@/lib/agentJob'
@@ -573,6 +574,7 @@ export function AssistantDock() {
           ) : (
           <div ref={listRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3 text-xs" data-testid="assistant-messages">
             {resume && <ResumeCard resume={resume} onContinue={continueSession} />}
+            <DecisionNotes key={sessionId ?? 'new'} decisions={workState.decisions} flowId={boundFlow} />
             {!!resumedQuestions.length && <ResumeQuestions questions={resumedQuestions} disabled={busy || boundFlow !== ctx.flowId} onAnswer={(text, id) => {
               if (busy || boundFlow !== ctx.flowId) return
               setResumedQuestions((old) => old.filter((q) => q.id !== id))

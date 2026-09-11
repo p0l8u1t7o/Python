@@ -1810,6 +1810,7 @@ function EditorInner({ flowId }: { flowId: number }) {
 
         {/* 右：側欄（設定 / 結果） */}
         <aside className="hidden shrink-0 flex-col border-l border-line bg-surface lg:flex" style={{ width: layout.right }} data-testid="inspector-pane">
+          <FlowNotesLink flowId={flowId} />
           <Tabs
             size="sm"
             value={rightTab}
@@ -1975,3 +1976,4 @@ export function FlowEditorPage() {
     </ReactFlowProvider>
   )
 }
+import { FlowNotesLink } from '@/components/notes/FlowNotesLink'

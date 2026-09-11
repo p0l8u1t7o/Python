@@ -144,9 +144,12 @@ def ids_in_graph(graph: dict[str, Any] | None) -> set[str]:
 
 def referenced_ids() -> set[str]:
     """所有流程、流程版本快照與自訂範本引用的 id（內建範本由 demo 現算）。"""
-    from apps.vision.models import Flow, FlowTemplate, FlowVersion
+    from apps.vision.models import EngineeringNote, Flow, FlowTemplate, FlowVersion
 
     out: set[str] = set()
+    # 工程證據即使撤回仍需保留，避免孤兒清理破壞追溯。
+    for images in EngineeringNote.objects.values_list("images", flat=True):
+        out.update(item["id"] for item in images if isinstance(item, dict) and isinstance(item.get("id"), str))
     for graph in Flow.objects.values_list("graph", flat=True):
         out |= ids_in_graph(graph)
     for graph in FlowVersion.objects.values_list("graph", flat=True):

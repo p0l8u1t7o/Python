@@ -28,6 +28,7 @@ export interface UiPage {
 const TRACE = { key: 'trace', label: 'integration.trace.title' }
 
 export const UI_PAGES: UiPage[] = [
+  { route: '/notes', id: 'notes', nav: 'nav.notes', help: '/help', actions: ['notes.create', 'notes.confirm', 'notes.retract'] },
   { route: '/flows/:flowId/inspect', id: 'inspect', title: 'inspect.title', help: '/flows/:id', actions: ['inspect.add', 'inspect.run', 'inspect.save', 'inspect.advancedFlow'] },
   { route: '/', id: 'dashboard', nav: 'nav.dashboard', help: '/', actions: ['dashboard.runOnce'] },
   { route: '/flows', id: 'flows', nav: 'nav.flows', help: '/flows', actions: ['flows.create', 'flows.export'] },

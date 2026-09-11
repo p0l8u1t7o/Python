@@ -1,5 +1,21 @@
 /** 简体中文（由 zh-Hant 以 OpenCC tw2sp 转换＋人工词汇微调产生；缺的 key 会退回繁中）。 */
 const zhHans = {
+  notes: {
+    title: '工程笔记', description: '站点共用的工程知识与决策。正式检测规格仍以流程为准。',
+    create: '新增草稿', edit: '编辑草稿', save: '保存草稿', saved: '已保存草稿', open: '打开笔记', saveDecision: '存为工程笔记', decisions: '工程决策',
+    noteTitle: '标题', body: '工程知识', project: '项目', part_number: '料号', flow: '流程', recipe: '配方', source: '图像来源', kind: '种类', status: '状态',
+    conditions: '适用条件', images: '证据图像', runs: '执行 ID', imagesHint: '最多 8 张图像。缓存图像可能过期。', runsHint: '每行一个执行 ID，最多 20 条。',
+    owner_name: '创建者', confirmed_by_name: '确认者', confirmed_at: '确认时间', applies_from_version: '起始流程版本', applies_to_version: '结束流程版本',
+    versionHint: '版本界限留空表示不限，范围包含起始与结束版本。',
+    confirm: '确认', retract: '撤回', replace: '创建替代笔记', supersedes: '替代', replacement: '由此笔记替代',
+    otherEngineer: '须由另一位工程师确认草稿，除非站点已启用自我确认。',
+    retractPrompt: '确定撤回此笔记？助手将停止引用，历史记录仍会保留。', replaceHint: '保存此草稿会立即替代笔记 #{{id}}，助手将停止检索旧笔记。',
+    forFlow: '此流程的笔记 ({{count}})', search: '搜索笔记', empty: '暂无符合筛选条件的工程笔记。', select: '选择笔记以查看证据与历史。',
+    previous: '上一页', next: '下一页', total: '{{count}} 条笔记', imageGone: '图像已无法使用，请上传固定图像以保存证据。', invalidJson: '请输入有效的条件 JSON。',
+    conditionName: '条件', conditionValue: '值', addCondition: '新增条件', remove: '移除', invalidConditions: '每项条件须有不重复的名称。', all: '全部',
+    kinds: { decision: '决策', lesson: '经验', constraint: '限制', lighting: '打光', calibration: '标定', tolerance_rationale: '公差依据', known_issue: '已知问题' },
+    statuses: { draft: '草稿', confirmed: '已确认', superseded: '已替代', retracted: '已撤回' },
+  },
   evidence: {
     group: '样本分组', groupFilter: '按样本分组筛选', allGroups: '所有分组', tune: '调参组', accept: '验收组',
     acceptEvery: '每 N 张保留一张验收 (0 = 不保留)', noAcceptance: '没有独立验收', failureReason: '失败原因',
@@ -274,6 +290,7 @@ const zhHans = {
     tagline: '机器视觉流程平台',
   },
   nav: {
+    notes: '工程笔记',
     inspect: '图像检测',
     teach: '图像教导',
     stationTeach: '站台参数卡',

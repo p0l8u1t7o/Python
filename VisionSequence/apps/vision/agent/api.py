@@ -599,6 +599,10 @@ def start_agent_job(request: HttpRequest, payload: JobIn):
     state = service.build_state(payload.task, images, _regions(payload.regions), payload.prompt, answers=payload.answers, labels=labels,
                                 graph=graph, instruction=payload.instruction, runs=runs, owner=principal(request).user, extra_summary=extra_summary,
                                 groups=None if from_runs else payload.groups)
+    # 在呼叫者執行緒擷取工程知識，代理提示不用從文字猜流程身分。
+    from apps.vision import notes as engineering_notes
+    state.flow_id = payload.flow_id or (chat.flow_id if chat else None) or (_bset.flow_id if batch_run_id else None)
+    state.engineering_notes = engineering_notes.prompt(state.flow_id) if state.owner else ""
     budget = loop.Budget(max_turns=max(1, min(40, payload.max_turns)), max_trials=max(1, min(30, payload.max_trials)), deadline_s=max(10.0, min(900.0, payload.deadline_s)))
     job_question_ids = set()
     def record_progress(out):

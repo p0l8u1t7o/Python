@@ -7,6 +7,37 @@
  ],
  "pages": [
   {
+   "route": "/notes",
+   "id": "notes",
+   "names": {
+    "en": "Engineering notes",
+    "zh-Hant": "工程筆記",
+    "zh-Hans": "工程笔记"
+   },
+   "summary": {
+    "en": "Definitions and how-to",
+    "zh-Hant": "名詞定義與操作說明",
+    "zh-Hans": "名词定义与操作说明"
+   },
+   "actions": [
+    {
+     "en": "New draft",
+     "zh-Hant": "新增草稿",
+     "zh-Hans": "新增草稿"
+    },
+    {
+     "en": "Confirm",
+     "zh-Hant": "確認",
+     "zh-Hans": "确认"
+    },
+    {
+     "en": "Retract",
+     "zh-Hant": "撤回",
+     "zh-Hans": "撤回"
+    }
+   ]
+  },
+  {
    "route": "/flows/:flowId/inspect",
    "id": "inspect",
    "names": {

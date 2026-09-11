@@ -75,6 +75,8 @@ def initial_text(state: actions.AgentState) -> str:
     lines.append(skills.focus_text(focus, state.owner))
     if state.examples:
         lines.append(state.examples)
+    if state.engineering_notes:
+        lines.append(state.engineering_notes)
     lines.append("請先呼叫 get_state 確認狀態，再依「代理工作方式」進行；完成時呼叫 finish。")
     return "\n".join(lines)
 

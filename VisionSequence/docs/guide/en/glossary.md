@@ -250,3 +250,10 @@ The zh-Hant locale follows this table, and the zh-Hans translation is derived fr
 | 接上、拉正、掛 | 連接、校正、套用 |  |
 
 Example prompts written for the AI assistant may stay colloquial; everything else in the interface, the help page and these documents follows the table.
+## Engineering note {#engineering-note}
+
+An engineering note is shared knowledge about decisions, lessons, lighting, calibration, constraints, tolerance rationale or known issues. Inspection specifications still come from the flow. Notes may link a project, part number, flow, recipe, image source, evidence images and runs, with applicable conditions and an inclusive flow-version range. Empty version bounds mean no limit.
+
+Any signed-in user can read notes. Flow editors can create and edit drafts. Self-confirmation is allowed by default for single-engineer stations; stations that require two-person review can disable it, so another engineer must confirm. Confirmed content is preserved: create a replacement to revise it. Creating a replacement immediately supersedes the old note, even while the replacement is a draft. Retraction preserves history but removes the note from assistant searches.
+
+The assistant uses at most five confirmed notes for the current flow and related part numbers, filtered against the current flow version. Related part numbers come from that flow's applicable confirmed notes. Conditions must still be checked. The assistant and the conversation's decisions list can create drafts, but the assistant cannot confirm them. Fixed evidence images are retained; cached image references may expire.

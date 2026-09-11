@@ -51,6 +51,37 @@ class Flow(models.Model):
         return self.name
 
 
+class EngineeringNote(models.Model):
+    """站台共用的工程知識；正式檢測規格仍以流程圖為準。"""
+
+    KINDS = ("decision", "lesson", "constraint", "lighting", "calibration", "tolerance_rationale", "known_issue")
+    STATUSES = ("draft", "confirmed", "superseded", "retracted")
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="engineering_notes")
+    project = models.CharField(max_length=200, blank=True, default="")
+    part_number = models.CharField(max_length=120, blank=True, default="", db_index=True)
+    flow = models.ForeignKey("Flow", null=True, blank=True, on_delete=models.SET_NULL, related_name="engineering_notes")
+    recipe = models.ForeignKey("FlowRecipe", null=True, blank=True, on_delete=models.SET_NULL, related_name="engineering_notes")
+    source = models.ForeignKey("ImageSource", null=True, blank=True, on_delete=models.SET_NULL, related_name="engineering_notes")
+    kind = models.CharField(max_length=24, choices=[(v, v) for v in KINDS], default="decision")
+    title = models.CharField(max_length=200)
+    body = models.TextField()
+    conditions = models.JSONField(default=dict, blank=True)
+    applies_from_version = models.PositiveIntegerField(null=True, blank=True)
+    applies_to_version = models.PositiveIntegerField(null=True, blank=True)
+    status = models.CharField(max_length=16, choices=[(v, v) for v in STATUSES], default="draft", db_index=True)
+    confirmed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="confirmed_engineering_notes")
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    supersedes = models.OneToOneField("self", null=True, blank=True, on_delete=models.SET_NULL, related_name="replacement")
+    images = models.JSONField(default=list, blank=True)
+    runs = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at", "-id"]
+        constraints = [models.CheckConstraint(condition=models.Q(applies_from_version__isnull=True) | models.Q(applies_to_version__isnull=True) | models.Q(applies_from_version__lte=models.F("applies_to_version")), name="note_version_range")]
+
+
 class FlowVariable(models.Model):
     """流程／站台變數的落地副本——記憶體是正本（apps/vision/variables.py），這裡只為了重開機不丟。flow=NULL 是站台範圍。"""
 

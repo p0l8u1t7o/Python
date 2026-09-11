@@ -65,6 +65,7 @@ from apps.vision.api_precision import router as precision_router  # noqa: E402
 from apps.vision.api_spc import router as spc_router  # noqa: E402
 from apps.vision.api_fixed import router as fixed_router  # noqa: E402
 from apps.vision.api_inspect import router as inspect_router  # noqa: E402
+from apps.vision.api_notes import router as notes_router  # noqa: E402
 from apps.vision.api_settings import router as settings_router  # noqa: E402
 from apps.vision.api_teach import router as teach_router  # noqa: E402
 from apps.vision.api_variables import router as variables_router  # noqa: E402
@@ -90,6 +91,7 @@ api.add_router("/vision", precision_router)
 api.add_router("/vision", spc_router)
 api.add_router("/vision", fixed_router)
 api.add_router("/vision", inspect_router)
+api.add_router("/vision", notes_router)
 api.add_router("/vision", settings_router)
 api.add_router("/vision", teach_router)
 api.add_router("/vision", recipes_router)

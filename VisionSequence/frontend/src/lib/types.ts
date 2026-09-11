@@ -1472,3 +1472,31 @@ export interface QueueStatus {
   oldest_age_ms: number
   dropped: number
 }
+export interface EngineeringNote {
+  id: number
+  owner: number | null
+  owner_name: string
+  project: string
+  part_number: string
+  flow: number | null
+  flow_name: string
+  recipe: number | null
+  source: number | null
+  kind: 'decision' | 'lesson' | 'constraint' | 'lighting' | 'calibration' | 'tolerance_rationale' | 'known_issue'
+  title: string
+  body: string
+  conditions: Record<string, unknown>
+  applies_from_version: number | null
+  applies_to_version: number | null
+  status: 'draft' | 'confirmed' | 'superseded' | 'retracted'
+  confirmed_by: number | null
+  confirmed_by_name: string
+  confirmed_at: string | null
+  supersedes: number | null
+  replacement: number | null
+  images: (string | FixedImageDesc)[]
+  runs: string[]
+  created_at: string
+  updated_at: string
+  can_confirm: boolean
+}

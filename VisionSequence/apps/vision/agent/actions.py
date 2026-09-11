@@ -59,6 +59,8 @@ class AgentState:
     pictures: int = 0
     groups: list[str] = field(default_factory=list)
     lessons: dict[str, Any] = field(default_factory=dict)
+    flow_id: int | None = None
+    engineering_notes: str = ""
 
     def step(self, kind: str, title: str, detail: str = "", **extra: Any) -> None:
         self.steps.append({"n": len(self.steps) + 1, "kind": kind, "title": title[:200], "detail": detail[:600], "at": time.time(), **extra})
@@ -534,7 +536,25 @@ def h_finish(state: AgentState, args: dict[str, Any]) -> dict[str, Any]:
 _REGION_SCHEMA = {"type": "object", "description": "標準 ROI dict（rect: x,y,w,h；circle: cx,cy,r；annulus: cx,cy,r_inner,r_outer；rotated_rect: cx,cy,w,h,angle）",
                   "properties": {"shape": {"type": "string"}}, "required": ["shape"]}
 
+def h_propose_note(state: AgentState, args: dict[str, Any]) -> dict[str, Any]:
+    """代理只能提出草稿；權限每次重新核對，不接受狀態或確認者。"""
+    from apps.accounts.security import Principal
+    from apps.core.errors import ValidationError
+    from apps.vision import notes
+
+    values = dict(args)
+    if set(values) - {"title", "body", "kind", "project", "part_number", "flow"}:
+        raise ValidationError("Draft proposals only accept title, body, kind, project, part number and flow")
+    if "flow" not in values and state.flow_id:
+        values["flow"] = state.flow_id
+    row = notes.create(Principal(kind="user", user=state.owner), values)
+    return {"id": row.pk, "status": row.status, "title": row.title, "url": f"/notes?note={row.pk}"}
+
+
 ACTIONS: list[ActionSpec] = [
+    ActionSpec("propose_note", "Propose an engineering note draft for human review. This never confirms a note or changes inspection specifications.",
+               _obj({"title": {"type": "string"}, "body": {"type": "string"}, "kind": {"type": "string", "enum": ["decision", "lesson", "constraint", "lighting", "calibration", "tolerance_rationale", "known_issue"]},
+                     "project": {"type": "string"}, "part_number": {"type": "string"}, "flow": {"type": "integer"}}, ["title", "body"]), h_propose_note),
     ActionSpec("get_state", "取得目前狀態：需求、指令、ROI、影像特徵摘要、期望標記、目前流程與最近試跑結果。開始時先呼叫。", _obj({}), h_get_state),
     ActionSpec("list_tools", "列出所有可用工具型別（一行一個）。", _obj({}), h_list_tools),
     ActionSpec("get_tool_skill", "讀取某個工具的完整技能（參數表、埠、使用要領）。", _obj({"key": {"type": "string", "description": "工具型別，例如 blob"}}, ["key"]), h_get_tool_skill),

@@ -35,6 +35,12 @@ function renderDataPage(ui: React.ReactElement, route: string, path: string) {
 }
 
 describe('pages render (smoke)', () => {
+  it('NotesPage renders shared notes and their detail', async () => {
+    const { NotesPage } = await import('@/pages/NotesPage')
+    renderPage(<NotesPage />, { route: '/notes?note=1' })
+    expect(await screen.findByText('A diffuser reduces reflections near the rim.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Confirm' })).toBeInTheDocument()
+  })
   it('shows task proposals from the assistant in inspect context', async () => {
     const { AssistantDock } = await import('@/components/assistant/AssistantDock')
     const { api } = await import('@/lib/api')

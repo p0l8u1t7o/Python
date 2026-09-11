@@ -253,7 +253,24 @@ def h_camera_optics(_principal: Any, args: dict[str, Any]) -> dict[str, Any]:
     return optics.solve(**args)
 
 
+def h_search_notes(p: Any, args: dict[str, Any]) -> dict[str, Any]:
+    """助手只查已確認筆記；流程查詢共用版本與料號篩選。"""
+    from apps.vision import notes
+
+    notes.authorize(p)
+    if args.get("flow_id"):
+        rows = notes.for_flow(int(args["flow_id"]), q=str(args.get("query") or ""), part_number=str(args.get("part_number") or ""))
+    else:
+        rows = notes.listing(status="confirmed", part_number=args.get("part_number", ""), q=args.get("query", ""))[:5]
+    return {"items": [{"id": r.pk, "title": r.title, "body": r.body[:1500], "conditions": r.conditions,
+                       "flow": r.flow_id, "recipe": r.recipe_id, "source": r.source_id, "part_number": r.part_number, "status": r.status,
+                       "applies_from_version": r.applies_from_version, "applies_to_version": r.applies_to_version}
+                      for r in rows]}
+
+
 LOOKUPS: list[Lookup] = [
+    Lookup("search_notes", "Search confirmed engineering knowledge. With flow_id, include related part numbers and filter by the current flow version. Notes are reference knowledge, not inspection specifications.",
+           _obj({"flow_id": {"type": "integer"}, "part_number": {"type": "string"}, "query": {"type": "string"}}), h_search_notes),
     Lookup("list_flows", "List the inspection flows with version, node count, recipes, continuous state, statistics and the last run. Optional name filter.", _obj({"query": {"type": "string"}}), h_list_flows),
     Lookup("get_flow", "One flow in detail: its steps (id, type, label, enabled, scalar params), recipes, statistics and the last three runs.", _obj({"flow_id": {"type": "integer"}}, ["flow_id"]), h_get_flow),
     Lookup("get_run", "One run's report by run_id: status, error, outputs and every node's status and message.", _obj({"run_id": {"type": "string"}}, ["run_id"]), h_get_run, feature="flows.run"),

@@ -51,10 +51,21 @@ class LookupTests(TestCase):
     def test_specs_and_unknown(self):
         names = [s["name"] for s in lookup.specs()]
         self.assertIn("list_flows", names)
+        self.assertIn("search_notes", names)
         self.assertTrue(all(set(s) == {"name", "description", "input_schema"} for s in lookup.specs()))
         out = lookup.dispatch(self.admin_p, "nope", {})
         self.assertIn("No lookup", out["error"])
         self.assertIn("list_flows", out["available"])
+
+    def test_search_notes_only_confirmed(self):
+        from apps.vision import notes
+
+        draft = notes.create(self.admin_p, {"title": "Draft lighting", "body": "Unreviewed", "flow": self.flow.pk})
+        self.assertEqual(lookup.dispatch(self.op_p, "search_notes", {"flow_id": self.flow.pk})["items"], [])
+        reviewer = User.objects.create_user("reviewer", is_staff=True)
+        notes.transition(Principal(kind="user", user=reviewer), draft.pk, "confirm")
+        self.assertEqual(lookup.dispatch(self.op_p, "search_notes", {"flow_id": self.flow.pk})["items"][0]["id"], draft.pk)
+        self.assertIn("error", lookup.dispatch(None, "search_notes", {}))
 
     def test_flows_and_runs(self):
         out = lookup.dispatch(self.admin_p, "list_flows", {"query": "檢測"})

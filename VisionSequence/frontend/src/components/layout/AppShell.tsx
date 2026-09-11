@@ -33,6 +33,7 @@ const NAV: NavNode[] = [
   {
     key: 'inspect', icon: ScanSearch, children: [
       { to: '/flows', key: 'flows', icon: Workflow, end: false },
+      { to: '/notes', key: 'notes', icon: Library, end: false },
       { to: '/dashboards', key: 'dashboards', icon: LayoutDashboard, end: false },
       { to: '/batch', key: 'batch', icon: FlaskConical, end: false, feature: 'batch' },
       { to: '/agent', key: 'agent', icon: Sparkles, end: false, feature: 'agent' },

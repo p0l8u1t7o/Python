@@ -1,5 +1,21 @@
 /** 繁體中文（預設語言）。key 以功能分組；en.ts 缺的 key 會退回這裡。 */
 const zhHant = {
+  notes: {
+    title: '工程筆記', description: '站台共用的工程知識與決策。正式檢測規格仍以流程為準。',
+    create: '新增草稿', edit: '編輯草稿', save: '儲存草稿', saved: '已儲存草稿', open: '開啟筆記', saveDecision: '存為工程筆記', decisions: '工程決策',
+    noteTitle: '標題', body: '工程知識', project: '專案', part_number: '料號', flow: '流程', recipe: '配方', source: '影像來源', kind: '種類', status: '狀態',
+    conditions: '適用條件', images: '證據影像', runs: '執行 ID', imagesHint: '最多 8 張影像。快取影像可能過期。', runsHint: '每行一個執行 ID，最多 20 筆。',
+    owner_name: '建立者', confirmed_by_name: '確認者', confirmed_at: '確認時間', applies_from_version: '起始流程版本', applies_to_version: '結束流程版本',
+    versionHint: '版本界限留空表示不限，範圍包含起始與結束版本。',
+    confirm: '確認', retract: '撤回', replace: '建立取代筆記', supersedes: '取代', replacement: '由此筆記取代',
+    otherEngineer: '須由另一位工程師確認草稿，除非站台已啟用自我確認。',
+    retractPrompt: '確定撤回此筆記？助手將停止引用，歷史記錄仍會保留。', replaceHint: '儲存此草稿會立即取代筆記 #{{id}}，助手將停止檢索舊筆記。',
+    forFlow: '此流程的筆記 ({{count}})', search: '搜尋筆記', empty: '尚無符合篩選條件的工程筆記。', select: '選擇筆記以檢閱證據與歷史。',
+    previous: '上一頁', next: '下一頁', total: '{{count}} 則筆記', imageGone: '影像已無法使用，請上傳固定影像以保存證據。', invalidJson: '請輸入有效的條件 JSON。',
+    conditionName: '條件', conditionValue: '值', addCondition: '新增條件', remove: '移除', invalidConditions: '每項條件須有不重複的名稱。', all: '全部',
+    kinds: { decision: '決策', lesson: '經驗', constraint: '限制', lighting: '打光', calibration: '標定', tolerance_rationale: '公差依據', known_issue: '已知問題' },
+    statuses: { draft: '草稿', confirmed: '已確認', superseded: '已取代', retracted: '已撤回' },
+  },
   evidence: {
     group: '樣本分組', groupFilter: '依樣本分組篩選', allGroups: '所有分組', tune: '調參組', accept: '驗收組',
     acceptEvery: '每 N 張保留一張驗收 (0 = 不保留)', noAcceptance: '沒有獨立驗收', failureReason: '失敗原因',
@@ -274,6 +290,7 @@ const zhHant = {
     tagline: '機器視覺流程平台',
   },
   nav: {
+    notes: '工程筆記',
     inspect: '影像檢測',
     teach: '影像教導',
     stationTeach: '站台參數卡',

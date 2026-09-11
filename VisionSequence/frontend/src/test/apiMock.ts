@@ -1004,6 +1004,8 @@ export const DASHBOARD_DATA = {
 }
 
 export function routes(path: string, body?: unknown): unknown {
+  if (path === '/vision/notes') return body ? { ...ENGINEERING_NOTE, ...(body as object), status: 'draft' } : { items: [ENGINEERING_NOTE], total: 1 }
+  if (/^\/vision\/notes\/\d+/.test(path)) return { ...ENGINEERING_NOTE, ...(body as object ?? {}), status: path.endsWith('/confirm') ? 'confirmed' : path.endsWith('/retract') ? 'retracted' : 'draft' }
   if (path.startsWith('/vision/inspect/')) return inspectMock(path, body)
   if (path === '/vision/flows/6') return { ...FLOW, id: 6, graph: INSPECT_GRAPH, ...(body && typeof body === 'object' ? body : {}) }
   if (path.startsWith('/auth/status')) return { setup_required: false }
@@ -1208,3 +1210,6 @@ export function installApiMock() {
     }
   })
 }
+export const ENGINEERING_NOTE = { id: 1, title: 'Diffuse light for polished cups', body: 'A diffuser reduces reflections near the rim.', project: 'Cup inspection', part_number: 'CUP-01', flow: 1, flow_name: 'Cup inspection', recipe: null, source: null,
+  kind: 'lighting', status: 'draft', owner: 2, owner_name: 'engineer', confirmed_by: null, confirmed_by_name: '', confirmed_at: null, supersedes: null, replacement: null,
+  conditions: { material: 'Polished steel' }, applies_from_version: 1, applies_to_version: null, images: [], runs: [], created_at: '2026-09-11T00:00:00Z', updated_at: '2026-09-11T00:00:00Z', can_confirm: true }

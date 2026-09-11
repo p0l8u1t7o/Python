@@ -113,6 +113,7 @@ HELP_SYSTEM = """You are the documentation assistant for VisionSequence, a machi
 
 #: 中英對照：docs 是英文，中文提問先把詞彙補成英文再檢索（來源＝docs/guide/en/glossary.md 的對照表）。
 BILINGUAL = {
+    "工程筆記": "engineering note", "工程笔记": "engineering note",
     "影像座標系": "image coordinate system pixel origin top left", "物理座標系": "physical coordinate system world millimetres",
     "世界座標": "world physical coordinate millimetres", "座標系": "coordinate system image physical",
     "左手座標系": "left handed coordinate system handedness", "右手座標系": "right handed coordinate system handedness",
@@ -727,6 +728,8 @@ def answer(question: str, settings: providers.AgentSettings, *, context: dict[st
     kind_label = CONTEXT_LABELS.get(str(ctx.get("kind") or ""), "")
     hits = search(question, extra_terms=f"{kind_label} {_error_terms(ctx, question)}", lang=situation.norm_lang((context or {}).get("lang")))
     facts = notes.facts_text(user)
+    from apps.vision import notes as engineering_notes
+    engineering = engineering_notes.prompt(ctx.get("flow_id")) if user is not None else ""
     remembered = notes.recall(user, question)
     sections = _optics_section(question) + _context_sections(ctx) + [s for s, _ in hits]
     seen: set[tuple[str, str, str]] = set()
@@ -739,6 +742,8 @@ def answer(question: str, settings: providers.AgentSettings, *, context: dict[st
     if providers.available(settings):
         try:
             where = situation.describe(ctx, principal=principal, lock=lock)
+            if engineering:
+                where += "\n" + engineering
             if facts:
                 where = (where + "\n" if where else "") + "Things the user asked you to remember:\n" + facts
             if screenshot:

@@ -1,5 +1,21 @@
 /** English. Partial: anything missing falls back to zh-Hant. */
 const en = {
+  notes: {
+    title: 'Engineering notes', description: 'Shared engineering knowledge and decisions. Inspection specifications remain in the flow.',
+    create: 'New draft', edit: 'Edit draft', save: 'Save draft', saved: 'Draft saved', open: 'Open note', saveDecision: 'Save as engineering note', decisions: 'Engineering decisions',
+    noteTitle: 'Title', body: 'Engineering knowledge', project: 'Project', part_number: 'Part number', flow: 'Flow', recipe: 'Recipe', source: 'Image source', kind: 'Kind', status: 'Status',
+    conditions: 'Applicable conditions', images: 'Evidence images', runs: 'Run IDs', imagesHint: 'Up to 8 images. Cached images may expire.', runsHint: 'One run ID per line, up to 20.',
+    owner_name: 'Created by', confirmed_by_name: 'Confirmed by', confirmed_at: 'Confirmed at', applies_from_version: 'From flow version', applies_to_version: 'Through flow version',
+    versionHint: 'Leave a version bound empty for no limit. Bounds include both endpoints.',
+    confirm: 'Confirm', retract: 'Retract', replace: 'Create replacement', supersedes: 'Replaces', replacement: 'Replaced by',
+    otherEngineer: 'Another engineer must confirm this draft unless self-confirmation is enabled for this station.',
+    retractPrompt: 'Retract this note? The assistant will stop using it. Its history will be preserved.', replaceHint: 'Saving this draft immediately supersedes note #{{id}}. It will stop appearing in assistant searches.',
+    forFlow: 'Notes for this flow ({{count}})', search: 'Search notes', empty: 'No engineering notes match these filters.', select: 'Select a note to review its evidence and history.',
+    previous: 'Previous', next: 'Next', total: '{{count}} notes', imageGone: 'Image unavailable. Upload a fixed image to retain evidence.', invalidJson: 'Enter valid JSON for the conditions.',
+    conditionName: 'Condition', conditionValue: 'Value', addCondition: 'Add condition', remove: 'Remove', invalidConditions: 'Each condition needs a unique name.', all: 'All',
+    kinds: { decision: 'Decision', lesson: 'Lesson', constraint: 'Constraint', lighting: 'Lighting', calibration: 'Calibration', tolerance_rationale: 'Tolerance rationale', known_issue: 'Known issue' },
+    statuses: { draft: 'Draft', confirmed: 'Confirmed', superseded: 'Superseded', retracted: 'Retracted' },
+  },
   evidence: {
     group: 'Sample group', groupFilter: 'Filter by sample group', allGroups: 'All groups', tune: 'Tune group', accept: 'Acceptance group',
     acceptEvery: 'Keep every Nth image for acceptance (0 = none)', noAcceptance: 'No independent acceptance', failureReason: 'Failure reason',
@@ -7,6 +23,7 @@ const en = {
   },
   app: { name: 'VisionSequence', tagline: 'Machine vision flow platform' },
   nav: {
+    notes: 'Engineering notes',
     inspect: 'Inspection',
     teach: 'Teaching',
     resources: 'Resources',
