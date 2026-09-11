@@ -19,6 +19,7 @@ from apps.vision import stattpl
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
 from apps.vision.tools.builtin.detect import ROI_SHAPES, _hanning, analyze_blobs
 from apps.vision.tools.builtin.locate import to_gray
+from apps.vision.tools.messages import Msg
 from apps.vision.tools.roi import crop, region_overlay
 
 DIRECTION_OPTIONS = [
@@ -74,11 +75,12 @@ class DefectStatTool(Tool):
         region = ctx.roi()
         c = crop(gray, region)
         if c.image.size == 0:
-            raise ToolError("The region falls outside the image")
+            raise ToolError(Msg.of("defect_stat.outside", "The region falls outside the image"))
         sub = np.ascontiguousarray(c.image)
         mean = model["mean"]
         if sub.shape != mean.shape:
-            raise ToolError(f"The region is {sub.shape[1]}×{sub.shape[0]} but the statistical template was built on {mean.shape[1]}×{mean.shape[0]}; draw the same region the template was built with")
+            raise ToolError(Msg.of("defect_stat.size_mismatch", "The region is {w}×{h} but the statistical template was built on {tw}×{th}; draw the same region the template was built with",
+                                    w=sub.shape[1], h=sub.shape[0], tw=mean.shape[1], th=mean.shape[0]))
         align = ctx.param("align", "phase")
         dx = dy = 0.0
         resp = 0.0
@@ -140,7 +142,8 @@ class DefectStatTool(Tool):
             outputs={"count": count, "total_area": float(sum(d["area"] for d in defects)), "max_sigma": round(max_sigma, 2),
                      "defect_mask": full_mask, "deviation": full_dev, "regions": defects},
             overlays=overlays, branch="defect" if count else "ok", status="ng" if count else "ok",
-            message=f"{count} defects, max {max_sigma:.1f}σ" + (f", aligned dx={dx:.1f} dy={dy:.1f}" if align == "phase" else ""),
+            message=(Msg.of("defect_stat.aligned", "{count} defects, max {max_sigma:.1f}σ, aligned dx={dx:.1f} dy={dy:.1f}", count=count, max_sigma=max_sigma, dx=dx, dy=dy)
+                     if align == "phase" else Msg.of("defect_stat.done", "{count} defects, max {max_sigma:.1f}σ", count=count, max_sigma=max_sigma)),
             detail={"dx": round(dx, 2), "dy": round(dy, 2), "response": round(resp, 4), "samples": int(model.get("n", 0))},
         )
 

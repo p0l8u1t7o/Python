@@ -16,6 +16,7 @@ import cv2
 import numpy as np
 
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
+from apps.vision.tools.messages import Msg
 from apps.vision.tools.roi import crop, region_overlay
 
 ROI_SHAPES = ["rect", "rotated_rect"]
@@ -84,7 +85,7 @@ class _YoloTool(Tool):
             if asset_id:
                 path = ctx.asset_path(str(asset_id))
                 if not path:
-                    raise ToolError(f"Model asset {asset_id} not found")
+                    raise ToolError(Msg.of("ai_tool.model_missing", "Model asset {asset_id} not found", asset_id=asset_id))
                 model = yolo_runtime.load(path, task=self.task)
             else:
                 name = str(ctx.param("model_name") or "").strip() or stock_model(self.task, str(ctx.param("model_size") or "n"))
@@ -93,7 +94,7 @@ class _YoloTool(Tool):
             raise ToolError(str(exc)) from None
         task = yolo_runtime.task_of(model)
         if task and task not in (self.accepted_tasks or (self.task,)):
-            raise ToolError(f"The model does {task} but this tool needs {self.task}; use the matching AI tool")
+            raise ToolError(Msg.of("ai_tool.task_mismatch", "The model does {task} but this tool needs {needed}; use the matching AI tool", task=task, needed=self.task))
         return model
 
     def _predict(self, ctx: ToolContext, model: Any, image: np.ndarray, **extra: Any):
@@ -138,7 +139,7 @@ class _YoloTool(Tool):
         region = ctx.roi()
         c = crop(image, region, upright=upright) if upright else crop(image, region)
         if c.image.size == 0:
-            raise ToolError("The region falls outside the image")
+            raise ToolError(Msg.of("ai_tool.bad_region", "The region falls outside the image"))
         return region, c, np.ascontiguousarray(c.image)
 
     @staticmethod
@@ -261,7 +262,8 @@ class YoloDetectTool(_YoloTool):
         count = len(dets)
         branch, status = self._verdict(ctx, count)
         return Result(outputs={"detections": dets, "count": count, "matches": dets, "labels": [d["label"] for d in dets]}, overlays=overlays,
-                      branch=branch, status=status, message=f"{count} objects ({device}{', ' + note if note else ''})")
+                      branch=branch, status=status, message=(Msg.of("ai_detect.objects_note", "{count} objects ({device}, {note})", count=count, device=device, note=note) if note
+                               else Msg.of("ai_detect.objects", "{count} objects ({device})", count=count, device=device)))
 
 
 class YoloSegmentTool(_YoloTool):
@@ -359,7 +361,8 @@ class YoloSegmentTool(_YoloTool):
         count = len(matches)
         branch, status = self._verdict(ctx, count)
         return Result(outputs={"count": count, "matches": matches, "mask": union, "contours": [np.array(p).reshape(-1, 1, 2) for p in contour_list], "labels": [m["label"] for m in matches], "centroids": centroids},
-                      overlays=overlays, branch=branch, status=status, message=f"{count} instances ({device}{', ' + note if note else ''})")
+                      overlays=overlays, branch=branch, status=status, message=(Msg.of("ai_segment.instances_note", "{count} instances ({device}, {note})", count=count, device=device, note=note) if note
+                               else Msg.of("ai_segment.instances", "{count} instances ({device})", count=count, device=device)))
 
 
 class YoloClassifyTool(_YoloTool):
@@ -386,7 +389,7 @@ class YoloClassifyTool(_YoloTool):
         names = yolo_runtime.names_of(model)
         probs = getattr(result, "probs", None) if result is not None else None
         if probs is None:
-            raise ToolError("The model has no classification output (is it a classifier?)")
+            raise ToolError(Msg.of("ai_classify.no_probs", "The model has no classification output (is it a classifier?)"))
         k = ctx.integer("top_k", 3)
         idx = [int(i) for i in probs.top5[:k]]
         scores = [round(float(v), 4) for v in probs.top5conf[:k]]
@@ -398,7 +401,8 @@ class YoloClassifyTool(_YoloTool):
         overlays: list[dict[str, Any]] = [region_overlay(region, label="roi")] if region else []
         overlays.append({"kind": "text", "x": float(ax) + 4, "y": float(ay) + 18, "text": f"{best['label']} {best['score']:.2f}", "color": GREEN if ok else "#ef4444"})
         return Result(outputs={"label": best["label"], "score": best["score"], "index": best["index"], "top": top}, overlays=overlays,
-                      branch="pass" if ok else "fail", status="ok" if ok else "ng", message=f"{best['label']} {best['score']:.2f} ({device}{', ' + note if note else ''})")
+                      branch="pass" if ok else "fail", status="ok" if ok else "ng", message=(Msg.of("ai_classify.result_note", "{label} {score:.2f} ({device}, {note})", label=best['label'], score=best['score'], device=device, note=note) if note
+                               else Msg.of("ai_classify.result", "{label} {score:.2f} ({device})", label=best['label'], score=best['score'], device=device)))
 
 
 class YoloPoseTool(_YoloTool):
@@ -449,7 +453,8 @@ class YoloPoseTool(_YoloTool):
         count = len(dets)
         branch, status = self._verdict(ctx, count)
         return Result(outputs={"count": count, "matches": dets, "keypoints": keypoints, "labels": [d["label"] for d in dets]}, overlays=overlays,
-                      branch=branch, status=status, message=f"{count} objects ({device}{', ' + note if note else ''})")
+                      branch=branch, status=status, message=(Msg.of("ai_pose.objects_note", "{count} objects ({device}, {note})", count=count, device=device, note=note) if note
+                               else Msg.of("ai_pose.objects", "{count} objects ({device})", count=count, device=device)))
 
 
 class YoloObbTool(_YoloTool):
@@ -497,7 +502,8 @@ class YoloObbTool(_YoloTool):
         count = len(matches)
         branch, status = self._verdict(ctx, count)
         return Result(outputs={"count": count, "matches": matches, "contours": [np.array(p, dtype=np.float32).reshape(-1, 1, 2) for p in polys], "labels": [m["label"] for m in matches]},
-                      overlays=overlays, branch=branch, status=status, message=f"{count} objects ({device}{', ' + note if note else ''})")
+                      overlays=overlays, branch=branch, status=status, message=(Msg.of("ai_obb.objects_note", "{count} objects ({device}, {note})", count=count, device=device, note=note) if note
+                               else Msg.of("ai_obb.objects", "{count} objects ({device})", count=count, device=device)))
 
 
 TOOLS = [YoloDetectTool(), YoloSegmentTool(), YoloClassifyTool(), YoloPoseTool(), YoloObbTool()]

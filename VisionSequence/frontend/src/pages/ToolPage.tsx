@@ -37,6 +37,8 @@ import { isImageRef, type GraphNode, type NodeAnalysis, type Region, type ToolTy
 import { isLockHolder, useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
 import { firstImageOutput, inputImage, sourceRefOf } from './FlowEditorPage'
+import i18next from '@/i18n'
+import { nodeMessage } from '@/lib/toolMessages'
 
 // 500 ms 可把滑桿連續拖曳收斂到最後一次, 同時維持調參時的即時感。
 const AUTO_PREVIEW_DEBOUNCE_MS = 500
@@ -537,7 +539,7 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
             </div>
           </div>
           {report?.message && status !== 'ok' ? (
-            <p className={`border-t border-line px-3 py-1.5 text-xs ${status === 'error' ? 'bg-critical-soft text-critical' : 'bg-warning-soft text-warning'}`} data-testid="tool-message">{report.message}</p>
+            <p className={`border-t border-line px-3 py-1.5 text-xs ${status === 'error' ? 'bg-critical-soft text-critical' : 'bg-warning-soft text-warning'}`} data-testid="tool-message">{nodeMessage(report, i18next.language)}</p>
           ) : null}
           {/* 下：參考資訊（直方圖／統計／series 橫向排列） */}
           <div className="max-h-[34%] min-h-40 shrink-0 overflow-y-auto border-t border-line bg-surface p-3 text-sm" data-testid="tool-reference">
@@ -554,7 +556,7 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
           ) : (
             <p className="mb-3 text-xs text-muted">{t('editor.result.noResult')}</p>
           )}
-          {report?.message ? <p className={`mb-3 rounded-lg px-3 py-2 text-xs ${status === 'error' ? 'bg-critical-soft text-critical' : status === 'ng' ? 'bg-warning-soft text-warning' : 'bg-surface-muted text-content'}`}>{report.message}</p> : null}
+          {report?.message ? <p className={`mb-3 rounded-lg px-3 py-2 text-xs ${status === 'error' ? 'bg-critical-soft text-critical' : status === 'ng' ? 'bg-warning-soft text-warning' : 'bg-surface-muted text-content'}`}>{nodeMessage(report, i18next.language)}</p> : null}
 
           {analysis?.input?.histogram ? (
             <div className="mb-3 space-y-1">

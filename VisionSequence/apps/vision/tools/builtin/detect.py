@@ -13,6 +13,7 @@ import numpy as np
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
 from apps.vision.tools.builtin.locate import reference_image, to_gray
 from apps.vision.tools.hist import masked_hist, otsu_from_hist
+from apps.vision.tools.messages import Msg
 from apps.vision.tools.roi import crop, region_overlay
 
 ROI_SHAPES = ["rect", "rotated_rect", "circle", "ellipse", "annulus", "polygon"]
@@ -286,6 +287,14 @@ def _parse_classes(text: Any) -> dict[int, str]:
     return classes
 
 
+def _blob_message(count: int, blobs: list[dict[str, Any]], sort_by: str) -> Msg:
+    """blob 的一行摘要（英文與改寫前逐字相同）。"""
+    if blobs:
+        largest = blobs[0]["area"] if sort_by == "area" else max(b["area"] for b in blobs)
+        return Msg.of("blob.found", "{count} blobs, max {area:.0f}px²", count=count, area=largest)
+    return Msg.of("blob.none", "{count} blobs", count=count)
+
+
 class BlobTool(Tool):
     key = "blob"
     label = "Blob analysis"
@@ -336,7 +345,7 @@ class BlobTool(Tool):
         region = ctx.roi()
         c = crop(gray, region)
         if c.image.size == 0:
-            raise ToolError("The region falls outside the image")
+            raise ToolError(Msg.of("blob.outside", "The region falls outside the image"))
         polarity = ctx.param("polarity", "bright")
         sub = np.ascontiguousarray(c.image)
         method = str(ctx.param("threshold_method", "otsu"))
@@ -419,7 +428,7 @@ class BlobTool(Tool):
                 "detected": detected, "valid": valid,
             },
             overlays=overlays, branch="found" if count else "not_found", status=status,
-            message=f"{count} blobs" + (f", max {blobs[0]['area'] if sort_by == 'area' else max(b['area'] for b in blobs):.0f}px²" if blobs else ""),
+            message=_blob_message(count, blobs, sort_by),
         )
 
 
@@ -454,16 +463,16 @@ class BlobLabelTool(Tool):
             if labels.shape[2] == 1:
                 labels = labels[:, :, 0]
             else:
-                raise ToolError("The labels input must be single-channel")
+                raise ToolError(Msg.of("blob_label.not_single_channel", "The labels input must be single-channel"))
         if not np.issubdtype(labels.dtype, np.integer):
             rounded = np.rint(labels)
             if not np.allclose(labels, rounded, equal_nan=False):
-                raise ToolError("The labels input must contain integer class ids")
+                raise ToolError(Msg.of("blob_label.not_integer", "The labels input must contain integer class ids"))
             labels = rounded.astype(np.int32)
         region = ctx.roi()
         c = crop(labels, region)
         if c.image.size == 0:
-            raise ToolError("The region falls outside the label map")
+            raise ToolError(Msg.of("blob_label.outside", "The region falls outside the label map"))
         sub = np.ascontiguousarray(c.image)
         ignore = ctx.integer("ignore_label", 0)
         classes = _parse_classes(ctx.param("classes", ""))
@@ -507,7 +516,7 @@ class BlobLabelTool(Tool):
         for i, b in enumerate(blobs):
             overlays.append({"kind": "point", "x": b["cx"], "y": b["cy"], "color": "#f59e0b", "label": f"#{i + 1} {b['label']}"})
         return Result(outputs={"blobs": blobs, "counts": counts, "count": count, "contours": full_contours},
-                      overlays=overlays, branch="ok" if ok else "ng", status="ok" if ok else "ng", message=f"{count} labelled blobs")
+                      overlays=overlays, branch="ok" if ok else "ng", status="ok" if ok else "ng", message=Msg.of("blob_label.done", "{count} labelled blobs", count=count))
 
 
 _HANNING: dict[tuple[int, int], np.ndarray] = {}
@@ -560,7 +569,7 @@ def _align(image: np.ndarray, template: np.ndarray, method: str, template_f32: n
         try:
             _, warp = cv2.findTransformECC(image, template, warp, cv2.MOTION_EUCLIDEAN, criteria, None, 5)
         except cv2.error as exc:
-            raise ToolError(f"ECC alignment failed: {str(exc).splitlines()[-1][:120]}") from None
+            raise ToolError(Msg.of("detect.ecc_failed", "ECC alignment failed: {reason}", reason=str(exc).splitlines()[-1][:120])) from None
         aligned = cv2.warpAffine(template, warp, (image.shape[1], image.shape[0]), flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP, borderMode=cv2.BORDER_REPLICATE)
         return aligned, {"dx": float(warp[0, 2]), "dy": float(warp[1, 2]), "dtheta": float(math.degrees(math.atan2(warp[1, 0], warp[0, 0])))}
     return template, {}
@@ -599,7 +608,7 @@ class DefectDiffTool(Tool):
         region = ctx.roi()
         c = crop(gray, region)
         if c.image.size == 0:
-            raise ToolError("The region falls outside the image")
+            raise ToolError(Msg.of("defect_diff.outside", "The region falls outside the image"))
         sub = np.ascontiguousarray(c.image)
         k = ctx.integer("blur", 3)
         if k >= 3:
@@ -653,7 +662,8 @@ class DefectDiffTool(Tool):
         return Result(
             outputs={"defects": defects, "count": count, "total_area": float(sum(d["area"] for d in defects)), "defect_mask": full_mask, "diff": full_diff},
             overlays=overlays, branch="defect" if count else "ok", status="ng" if count else "ok",
-            message=f"{count} defects" + (f", aligned dx={info.get('dx', 0):.1f} dy={info.get('dy', 0):.1f}" if info else ""),
+            message=(Msg.of("defect_diff.aligned", "{count} defects, aligned dx={dx:.1f} dy={dy:.1f}", count=count, dx=info.get("dx", 0), dy=info.get("dy", 0))
+                     if info else Msg.of("defect_diff.done", "{count} defects", count=count)),
             detail=info,
         )
 
@@ -683,6 +693,16 @@ def _zxing_codes(sub: np.ndarray, types: str, c: Any) -> list[dict[str, Any]] | 
     return out
 
 
+def _barcode_message(texts: list[str], matched: bool, expected: str) -> Msg:
+    """讀碼的一行摘要（英文與改寫前逐字相同）。"""
+    if not texts:
+        return Msg.of("barcode.none", "No code decoded")
+    codes = ", ".join(t[:30] for t in texts)
+    if matched:
+        return Msg.of("barcode.found", "{n}: {codes}", n=len(texts), codes=codes)
+    return Msg.of("barcode.unexpected", "{n}: {codes} (expected {expected})", n=len(texts), codes=codes, expected=expected)
+
+
 class BarcodeTool(Tool):
     key = "barcode"
     label = "Barcode / QR"
@@ -705,7 +725,7 @@ class BarcodeTool(Tool):
         region = ctx.roi()
         c = crop(image, region)
         if c.image.size == 0:
-            raise ToolError("The region falls outside the image")
+            raise ToolError(Msg.of("barcode.outside", "The region falls outside the image"))
         sub = np.ascontiguousarray(c.image)
         types = ctx.param("types", "all")
         codes: list[dict[str, Any]] = _zxing_codes(sub, types, c)
@@ -746,7 +766,7 @@ class BarcodeTool(Tool):
         return Result(
             outputs={"texts": texts, "count": len(texts), "first": texts[0] if texts else "", "codes": codes},
             overlays=overlays, branch="found" if matched else "not_found", status="ok" if matched else "ng",
-            message=(f"{len(texts)}: {', '.join(t[:30] for t in texts)}" if texts else "No code decoded") + ("" if matched or not texts else f" (expected {expected})"),
+            message=_barcode_message(texts, matched, expected),
         )
 
 
@@ -780,10 +800,10 @@ class TextPresenceTool(Tool):
         gray = to_gray(ctx.require_image())
         region = ctx.roi()
         if region is None:
-            raise ToolError("No region is set")
+            raise ToolError(Msg.of("text_presence.no_region", "No region is set"))
         c = crop(gray, region)
         if c.image.size == 0:
-            raise ToolError("The region falls outside the image")
+            raise ToolError(Msg.of("text_presence.outside", "The region falls outside the image"))
         b = max(3, ctx.integer("block", 31)) | 1
         flag = cv2.THRESH_BINARY_INV if ctx.param("polarity", "dark") == "dark" else cv2.THRESH_BINARY
         mask = cv2.adaptiveThreshold(np.ascontiguousarray(c.image), 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, flag, b, ctx.number("c", 10))
@@ -802,17 +822,18 @@ class TextPresenceTool(Tool):
             status = "ok" if valid and present == (expected == "present") else "ng"
         return Result(outputs={"ratio": ratio, "is_present": present, "mask": full, "detected": present, "valid": valid},
                       overlays=[region_overlay(region, color="#22c55e" if present else "#ef4444", label=f"{ratio * 100:.1f}%")],
-                      branch="present" if present else "absent", status=status, message=f"Stroke ratio {ratio * 100:.1f}% → {'present' if present else 'absent'}")
+                      branch="present" if present else "absent", status=status, message=(Msg.of("text_presence.present", "Stroke ratio {ratio:.1f}% → present", ratio=ratio * 100) if present
+                               else Msg.of("text_presence.absent", "Stroke ratio {ratio:.1f}% → absent", ratio=ratio * 100)))
 
 
 def _hex_to_bgr(value: str) -> tuple[int, int, int]:
     s = str(value or "").strip().lstrip("#")
     if len(s) != 6:
-        raise ToolError(f"Malformed colour: {value!r}")
+        raise ToolError(Msg.of("detect.bad_colour", "Malformed colour: {value!r}", value=value))
     try:
         r, g, b = int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16)
     except ValueError:
-        raise ToolError(f"Malformed colour: {value!r}") from None
+        raise ToolError(Msg.of("detect.bad_colour", "Malformed colour: {value!r}", value=value)) from None
     return b, g, r
 
 
@@ -838,7 +859,7 @@ class ColorCheckTool(Tool):
         region = ctx.roi()
         c = crop(image, region)
         if c.image.size == 0:
-            raise ToolError("The region falls outside the image")
+            raise ToolError(Msg.of("color_check.outside", "The region falls outside the image"))
         mean = cv2.mean(np.ascontiguousarray(c.image), mask=c.mask)[:3]
         mean_bgr = np.array(mean, dtype=np.float32)
         target = np.array(_hex_to_bgr(ctx.param("color", "#ff0000")), dtype=np.float32)
@@ -857,7 +878,8 @@ class ColorCheckTool(Tool):
         overlays = [region_overlay(region, color="#22c55e" if match else "#ef4444", label=f"{mean_hex} d={distance:.1f}")] if region else []
         return Result(
             outputs={"distance": distance, "is_match": match, "mean_hex": mean_hex, "mean_bgr": [round(float(v), 1) for v in mean], "mean_hsv": [round(float(v), 1) for v in mean_hsv]},
-            overlays=overlays, branch="match" if match else "mismatch", status="ok" if match else "ng", message=f"Mean {mean_hex}, distance {distance:.1f} → {'match' if match else 'no match'}",
+            overlays=overlays, branch="match" if match else "mismatch", status="ok" if match else "ng", message=(Msg.of("color_check.match", "Mean {mean}, distance {distance:.1f} → match", mean=mean_hex, distance=distance) if match
+                     else Msg.of("color_check.no_match", "Mean {mean}, distance {distance:.1f} → no match", mean=mean_hex, distance=distance)),
         )
 
 
@@ -882,7 +904,7 @@ class EdgeDensityTool(Tool):
         region = ctx.roi()
         c = crop(gray, region)
         if c.image.size == 0:
-            raise ToolError("The region falls outside the image")
+            raise ToolError(Msg.of("edge_density.outside", "The region falls outside the image"))
         sub = np.ascontiguousarray(c.image)
         k = ctx.integer("blur", 3)
         if k >= 3:
@@ -899,7 +921,7 @@ class EdgeDensityTool(Tool):
         full[c.y0 : c.y0 + edges.shape[0], c.x0 : c.x0 + edges.shape[1]] = edges
         overlays = [region_overlay(region, color="#22c55e" if ok else "#ef4444", label=f"{ratio * 100:.2f}%")] if region else []
         return Result(outputs={"ratio": ratio, "edge_pixels": n, "edges": full}, overlays=overlays,
-                      branch="ok" if ok else "ng", status="ok" if ok else "ng", message=f"Edge ratio {ratio * 100:.2f}%")
+                      branch="ok" if ok else "ng", status="ok" if ok else "ng", message=Msg.of("edge_density.done", "Edge ratio {ratio:.2f}%", ratio=ratio * 100))
 
 
 class PixelCountTool(Tool):
@@ -922,7 +944,7 @@ class PixelCountTool(Tool):
         region = ctx.roi()
         c = crop(gray, region)
         if c.image.size == 0:
-            raise ToolError("The region falls outside the image")
+            raise ToolError(Msg.of("pixel_count.outside", "The region falls outside the image"))
         fg = c.image >= ctx.number("threshold", 128)
         total = c.image.size
         if c.mask is not None:
@@ -934,7 +956,7 @@ class PixelCountTool(Tool):
         ok = n >= lo and (hi <= 0 or n <= hi)
         overlays = [region_overlay(region, color="#22c55e" if ok else "#ef4444", label=f"{n}px")] if region else []
         return Result(outputs={"count": n, "ratio": ratio, "total": total}, overlays=overlays,
-                      branch="ok" if ok else "ng", status="ok" if ok else "ng", message=f"{n} px ({ratio * 100:.2f}%)")
+                      branch="ok" if ok else "ng", status="ok" if ok else "ng", message=Msg.of("pixel_count.done", "{n} px ({ratio:.2f}%)", n=n, ratio=ratio * 100))
 
 
 TOOLS = [BlobTool(), BlobLabelTool(), DefectDiffTool(), BarcodeTool(), TextPresenceTool(), ColorCheckTool(), EdgeDensityTool(), PixelCountTool()]

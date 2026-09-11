@@ -17,6 +17,7 @@ from typing import Any
 import cv2
 import numpy as np
 
+from apps.vision.tools.messages import Msg
 from apps.vision import calib
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
 from apps.vision.tools.physical import CALIBRATION_PARAM, world_outputs
@@ -42,7 +43,7 @@ def reference_image(ctx: ToolContext, port: str, key: str, *, gray: bool = True)
             return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         return np.ascontiguousarray(img)
     if not ctx.param(key):
-        raise ToolError(f"Connect a picture to '{port}' or choose an asset for '{key}'")
+        raise ToolError(Msg.of("locate.no_reference", "Connect a picture to '{port}' or choose an asset for '{key}'", port=port, key=key))
     return read_asset_image(ctx, key, gray=gray)
 
 
@@ -53,14 +54,14 @@ def read_asset_image(ctx: ToolContext, key: str, *, gray: bool = True) -> np.nda
     """
     asset_id = ctx.param(key)
     if not asset_id:
-        raise ToolError(f"No asset is set for '{key}'")
+        raise ToolError(Msg.of("locate.asset_not_set", "No asset is set for '{key}'", key=key))
     path = ctx.asset_path(str(asset_id))
     if not path:
-        raise ToolError(f"Asset {asset_id} not found")
+        raise ToolError(Msg.of("locate.asset_missing", "Asset {asset_id} not found", asset_id=asset_id))
     try:
         st = os.stat(path)
     except OSError as exc:
-        raise ToolError(f"Could not read the asset: {exc}") from None
+        raise ToolError(Msg.of("locate.asset_unreadable", "Could not read the asset: {error}", error=exc)) from None
     cache_key = (path, gray)
     with _ASSET_LOCK:
         hit = _ASSET_CACHE.get(cache_key)
@@ -70,10 +71,10 @@ def read_asset_image(ctx: ToolContext, key: str, *, gray: bool = True) -> np.nda
     try:
         buf = np.fromfile(path, dtype=np.uint8)
     except OSError as exc:
-        raise ToolError(f"Could not read the asset: {exc}") from None
+        raise ToolError(Msg.of("locate.asset_unreadable", "Could not read the asset: {error}", error=exc)) from None
     image = cv2.imdecode(buf, cv2.IMREAD_GRAYSCALE if gray else cv2.IMREAD_COLOR)
     if image is None or image.size == 0:
-        raise ToolError(f"Asset {asset_id} is not a decodable image")
+        raise ToolError(Msg.of("locate.asset_not_image", "Asset {asset_id} is not a decodable image", asset_id=asset_id))
     with _ASSET_LOCK:
         _ASSET_CACHE[cache_key] = (st.st_mtime, st.st_size, image)
         _ASSET_CACHE.move_to_end(cache_key)
@@ -584,7 +585,7 @@ class TemplateMatchTool(Tool):
         c = crop(image, region, upright=True)
         search = np.ascontiguousarray(c.image)
         if search.size == 0:
-            raise ToolError("The search region falls outside the image")
+            raise ToolError(Msg.of("template_match.outside", "The search region falls outside the image"))
 
         threshold = float(np.clip(ctx.number("threshold", 0.7), 0, 1))
         max_n = max(1, ctx.integer("max_matches", 1))
@@ -613,7 +614,8 @@ class TemplateMatchTool(Tool):
             th, tw = tpl.shape[:2]
             if search.shape[0] < th or search.shape[1] < tw:
                 if len(templates) == 1:
-                    raise ToolError(f"The search region {search.shape[1]}×{search.shape[0]} is smaller than the template {tw}×{th}")
+                    raise ToolError(Msg.of("template_match.too_small", "The search region {sw}×{sh} is smaller than the template {tw}×{th}",
+                                                  sw=search.shape[1], sh=search.shape[0], tw=tw, th=th))
                 continue
             for x, y, score, angle, rw, rh in _search_template(
                 search, tpl, threshold=max(0.0, threshold - .25) if ctx.flag("refine_rotation") else threshold, max_n=max_n, angles=angles,
@@ -654,7 +656,6 @@ class TemplateMatchTool(Tool):
             overlays.append({"kind": "point", "x": m["cx"], "y": m["cy"], "color": "#22c55e"})
         best = max(matches, key=lambda m: m["score"]) if matches else None
         counts = [{"label": label, "count": sum(1 for m in matches if m["label"] == label)} for label, _ in templates] if len(templates) > 1 else []
-        note = ", gave up on time" if timed_out else ""
         detected = bool(matches)
         valid = not ctx.fixture_missing
         expected = str(ctx.param("expected", "any"))
@@ -672,8 +673,20 @@ class TemplateMatchTool(Tool):
             overlays=overlays,
             branch="found" if matches else "not_found",
             status=status,
-            message=f"{len(matches)} matches" + (f", best {best['score']:.3f} @ ({best['cx']:.1f}, {best['cy']:.1f})" if best else "") + note,
+            message=_match_message(matches, best, timed_out),
         )
+
+
+def _match_message(matches: list[dict[str, Any]], best: dict[str, Any] | None, timed_out: bool) -> Msg:
+    """範本比對的一行摘要（英文與改寫前逐字相同）。"""
+    if best:
+        if timed_out:
+            return Msg.of("template_match.found_timeout", "{n} matches, best {score:.3f} @ ({x:.1f}, {y:.1f}), gave up on time",
+                          n=len(matches), score=best["score"], x=best["cx"], y=best["cy"])
+        return Msg.of("template_match.found", "{n} matches, best {score:.3f} @ ({x:.1f}, {y:.1f})", n=len(matches), score=best["score"], x=best["cx"], y=best["cy"])
+    if timed_out:
+        return Msg.of("template_match.none_timeout", "{n} matches, gave up on time", n=len(matches))
+    return Msg.of("template_match.none", "{n} matches", n=len(matches))
 
 
 def _refine_rigid_pose(search: np.ndarray, tpl: np.ndarray, x: float, y: float, score: float, angle: float) -> tuple[float, float, float, float]:
@@ -710,7 +723,7 @@ def _templates(ctx: ToolContext) -> list[tuple[str, np.ndarray]]:
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img
         out.append((str(item.get("name") or item["id"])[:40], np.ascontiguousarray(gray)))
     if not out:
-        raise ToolError("Choose a template image, connect one, or add some under More templates")
+        raise ToolError(Msg.of("template_match.no_template", "Choose a template image, connect one, or add some under More templates"))
     scale_x, scale_y = ctx.number("scale_x", 1.0), ctx.number("scale_y", 1.0)
     if abs(scale_x - 1.0) > 1e-6 or abs(scale_y - 1.0) > 1e-6:
         out = [(label, _scaled(tpl, scale_x, scale_y)) for label, tpl in out]
@@ -850,11 +863,11 @@ def _current_pose(ctx: ToolContext) -> tuple[float, float, float]:
     if a is None or b is None:
         if "matches" in ctx.inputs or "a" in ctx.inputs or "b" in ctx.inputs:
             return math.nan, math.nan, 0.0  # 上游有接、只是這次沒找到：讓工具回 ng，不是 raise
-        raise ToolError("No current position: wire matches, or a/b as X/Y")
+        raise ToolError(Msg.of("locate.no_pose", "No current position: wire matches, or a/b as X/Y"))
     try:
         return float(a), float(b), float(cc or 0)
     except (TypeError, ValueError):
-        raise ToolError("a, b and c must be numbers") from None
+        raise ToolError(Msg.of("locate.pose_not_number", "a, b and c must be numbers")) from None
 
 
 class ShapeAlignTool(Tool):
@@ -884,7 +897,7 @@ class ShapeAlignTool(Tool):
         if not all(np.isfinite([x, y])):
             # 找不到東西回 ng、不 raise（工具規則）：下游 ROI 跟隨拿到 None 會把區域留在原地
             return Result(outputs={"dx": None, "dy": None, "dtheta": None, "transform": None}, status="ng",
-                          message="No current position: the locate step found nothing")
+                          message=Msg.of("shape_align.not_found", "No current position: the locate step found nothing"))
         rx, ry, ra = ctx.number("ref_x"), ctx.number("ref_y"), ctx.number("ref_angle")
         dx, dy = x - rx, y - ry
         dtheta = (angle - ra) if ctx.flag("use_angle", True) else 0.0
@@ -896,7 +909,7 @@ class ShapeAlignTool(Tool):
             {"kind": "line", "x1": rx, "y1": ry, "x2": x, "y2": y, "color": "#f59e0b", "width": 2},
         ]
         return Result(outputs={"dx": dx, "dy": dy, "dtheta": dtheta, "transform": transform}, overlays=overlays,
-                      message=f"dx={dx:.2f} dy={dy:.2f} dθ={dtheta:.2f}°")
+                      message=Msg.of("shape_align.found", "dx={dx:.2f} dy={dy:.2f} dθ={dtheta:.2f}°", dx=dx, dy=dy, dtheta=dtheta))
 
 
 class FixtureRoiTool(Tool):
@@ -914,18 +927,18 @@ class FixtureRoiTool(Tool):
     def execute(self, ctx: ToolContext) -> Result:
         region = ctx.params.get("roi")
         if not isinstance(region, dict) or not region.get("shape"):
-            raise ToolError("No region is set")
+            raise ToolError(Msg.of("fixture_roi.no_region", "No region is set"))
         t = ctx.inputs.get("transform")
         if t is None and "transform" in ctx.inputs:
             # 定位補正這次沒找到（回 None）：區域留在原地、標 ng，下游量測照跑但整次 run 是 NG
             return Result(outputs={"region": region}, overlays=[region_overlay(region, color="#ef4444", label="not moved")], status="ng",
-                          message="No transform (the locate step found nothing); region left in place")
+                          message=Msg.of("fixture_roi.no_transform", "No transform (the locate step found nothing); region left in place"))
         if not isinstance(t, dict):
-            raise ToolError("The transform input must come from a locate-offset step")
+            raise ToolError(Msg.of("fixture_roi.bad_transform", "The transform input must come from a locate-offset step"))
         try:
             dx, dy, dtheta = float(t.get("dx", 0)), float(t.get("dy", 0)), float(t.get("dtheta", 0))
         except (TypeError, ValueError):
-            raise ToolError("The transform values are not numbers") from None
+            raise ToolError(Msg.of("fixture_roi.not_number", "The transform values are not numbers")) from None
         pivot = t.get("pivot")
         pivot_t = (float(pivot[0]), float(pivot[1])) if isinstance(pivot, (list, tuple)) and len(pivot) == 2 else region_center(region)
         moved = transform_region(region, dx, dy, dtheta, pivot=pivot_t)
@@ -934,7 +947,7 @@ class FixtureRoiTool(Tool):
         moved_ov["dash"] = False
         moved_ov["width"] = 2
         overlays.append(moved_ov)
-        return Result(outputs={"region": moved}, overlays=overlays, message=f"dx={dx:.1f} dy={dy:.1f} dθ={dtheta:.1f}°")
+        return Result(outputs={"region": moved}, overlays=overlays, message=Msg.of("fixture_roi.moved", "dx={dx:.1f} dy={dy:.1f} dθ={dtheta:.1f}°", dx=dx, dy=dy, dtheta=dtheta))
 
 
 class ImageFixtureTool(Tool):
@@ -969,14 +982,14 @@ class ImageFixtureTool(Tool):
         if t is None:
             # 定位這次沒找到：影像原樣傳下去、標 ng（下游照跑，整次 run 是 NG）
             return Result(outputs={"image": image, "dx": 0.0, "dy": 0.0, "dtheta": 0.0}, status="ng",
-                          message="No transform (the locate step found nothing); picture left as it is")
+                          message=Msg.of("image_fixture.no_transform", "No transform (the locate step found nothing); picture left as it is"))
         if not isinstance(t, dict):
-            raise ToolError("The transform input must come from a locate-offset step")
+            raise ToolError(Msg.of("image_fixture.bad_transform", "The transform input must come from a locate-offset step"))
         try:
             dx, dy = float(t.get("dx", 0) or 0), float(t.get("dy", 0) or 0)
             dtheta = float(t.get("dtheta", 0) or 0)
         except (TypeError, ValueError):
-            raise ToolError("The transform values are not numbers") from None
+            raise ToolError(Msg.of("image_fixture.not_number", "The transform values are not numbers")) from None
         pivot = t.get("pivot")
         at = (float(pivot[0]), float(pivot[1])) if isinstance(pivot, (list, tuple)) and len(pivot) == 2 else (image.shape[1] / 2, image.shape[0] / 2)
         matrix = inverse_matrix(dx, dy, dtheta, at)
@@ -987,7 +1000,7 @@ class ImageFixtureTool(Tool):
         out = cv2.warpAffine(image, matrix, (image.shape[1], image.shape[0]), flags=flags, borderMode=border, borderValue=value)
         return Result(
             outputs={"image": out, "dx": dx, "dy": dy, "dtheta": dtheta},
-            message=f"back by dx={dx:.1f} dy={dy:.1f} dθ={dtheta:.1f}°",
+            message=Msg.of("image_fixture.done", "back by dx={dx:.1f} dy={dy:.1f} dθ={dtheta:.1f}°", dx=dx, dy=dy, dtheta=dtheta),
         )
 
 
@@ -1014,9 +1027,9 @@ def _finite_points(value: Any, name: str) -> np.ndarray:
     try:
         points = np.asarray(value, dtype=np.float64).reshape(-1, 2)
     except (TypeError, ValueError, OverflowError):
-        raise ToolError(f"{name} must be [x, y] points") from None
+        raise ToolError(Msg.of("map_points.bad_points", "{name} must be [x, y] points", name=name)) from None
     if len(points) == 0 or not np.isfinite(points).all():
-        raise ToolError(f"{name} must contain finite [x, y] points")
+        raise ToolError(Msg.of("map_points.points_not_finite", "{name} must contain finite [x, y] points", name=name))
     return points
 
 
@@ -1026,9 +1039,9 @@ def _match_point(match: dict[str, Any], index: int) -> tuple[float, float, str, 
     try:
         x, y = float(match[x_key]), float(match[y_key])
     except (KeyError, TypeError, ValueError, OverflowError):
-        raise ToolError(f"matches[{index}] must contain cx/cy or x/y") from None
+        raise ToolError(Msg.of("map_points.match_no_xy", "matches[{index}] must contain cx/cy or x/y", index=index)) from None
     if not np.isfinite([x, y]).all():
-        raise ToolError(f"matches[{index}] must contain finite coordinates")
+        raise ToolError(Msg.of("map_points.match_not_finite", "matches[{index}] must contain finite coordinates", index=index))
     return x, y, x_key, y_key
 
 
@@ -1065,13 +1078,13 @@ class MapPointsTool(Tool):
             raise ToolError(str(exc)) from None
         mapping = payload.get("mapping")
         if not mapping:
-            raise ToolError("The selected calibration has no mapping block; create a camera mapping calibration first")
+            raise ToolError(Msg.of("map_points.no_mapping", "The selected calibration has no mapping block; create a camera mapping calibration first"))
         matrix = np.asarray(mapping["matrix"], dtype=np.float64)
         direction = str(ctx.param("direction", "forward"))
         if direction == "inverse":
             matrix = np.linalg.inv(matrix)
         elif direction != "forward":
-            raise ToolError("direction must be forward or inverse")
+            raise ToolError(Msg.of("map_points.bad_direction", "direction must be forward or inverse"))
 
         outputs: dict[str, Any] = {"count": 0}
         overlays: list[dict[str, Any]] = []
@@ -1085,12 +1098,12 @@ class MapPointsTool(Tool):
         if ctx.inputs.get("matches") is not None:
             raw = ctx.inputs["matches"]
             if not isinstance(raw, list) or not raw:
-                raise ToolError("matches must be a non-empty list")
+                raise ToolError(Msg.of("map_points.matches_empty", "matches must be a non-empty list"))
             coords = []
             keys = []
             for i, item in enumerate(raw):
                 if not isinstance(item, dict):
-                    raise ToolError(f"matches[{i}] must be an object")
+                    raise ToolError(Msg.of("map_points.match_not_object", "matches[{index}] must be an object", index=i))
                 x, y, x_key, y_key = _match_point(item, i)
                 coords.append([x, y])
                 keys.append((x_key, y_key))
@@ -1111,17 +1124,17 @@ class MapPointsTool(Tool):
             try:
                 x, y = float(ctx.inputs["x"]), float(ctx.inputs["y"])
             except (KeyError, TypeError, ValueError, OverflowError):
-                raise ToolError("x and y must both be finite numbers") from None
+                raise ToolError(Msg.of("map_points.xy_not_number", "x and y must both be finite numbers")) from None
             if not np.isfinite([x, y]).all():
-                raise ToolError("x and y must both be finite numbers")
+                raise ToolError(Msg.of("map_points.xy_not_number", "x and y must both be finite numbers"))
             mx, my = calib.apply(matrix, [[x, y]])[0]
             outputs["x"], outputs["y"] = float(mx), float(my)
             overlays.append({"kind": "point", "x": float(mx), "y": float(my), "color": "#22c55e", "label": "mapped"})
             total += 1
         if total == 0:
-            raise ToolError("Wire points, matches, or x/y into map_points")
+            raise ToolError(Msg.of("map_points.no_input", "Wire points, matches, or x/y into map_points"))
         outputs["count"] = total
-        return Result(outputs=outputs, overlays=overlays, message=f"Mapped {total} point(s)")
+        return Result(outputs=outputs, overlays=overlays, message=Msg.of("map_points.mapped", "Mapped {total} point(s)", total=total))
 
 
 # ---------------------------------------------------------------------------
@@ -1162,7 +1175,7 @@ class FindCircleTool(Tool):
         image = to_gray(ctx.require_image())
         region = ctx.roi()
         if region is None:
-            raise ToolError("No region is set")
+            raise ToolError(Msg.of("find_circle.no_region", "No region is set"))
         shape = region.get("shape")
         cx, cy = region_center(region)
         a0 = a1 = None
@@ -1178,9 +1191,9 @@ class FindCircleTool(Tool):
             x0, y0, x1, y1 = extent(region)
             r_in, r_out = 0.0, min(x1 - x0, y1 - y0) / 2
         else:
-            raise ToolError(f"Find circle does not support a {shape} region")
+            raise ToolError(Msg.of("find_circle.bad_shape", "Find circle does not support a {shape} region", shape=shape))
         if r_out - r_in < 3:
-            raise ToolError("The region radius is too small")
+            raise ToolError(Msg.of("find_circle.radius_too_small", "The region radius is too small"))
         num_rays = max(6, ctx.integer("num_rays", 36))
         polarity = ctx.param("polarity", "any")
         thr = ctx.number("edge_threshold", 20)
@@ -1196,7 +1209,7 @@ class FindCircleTool(Tool):
         nan = float("nan")
         if len(arr) < 3:
             return Result(outputs={"cx": nan, "cy": nan, "r": nan, "diameter": nan, "points": arr.round(2).tolist(), "score": 0.0, "circle": None},
-                          overlays=overlays, branch="not_found", status="ng", message=f"Too few edge points ({len(arr)})")
+                          overlays=overlays, branch="not_found", status="ng", message=Msg.of("find_circle.too_few", "Too few edge points ({n})", n=len(arr)))
         circle, inliers = fit_circle_points(arr, use_ransac, tol)
         # 重掃精修：ROI 中心偏離圓心時掃描線斜切邊緣；改從擬合圓心再掃一次，掃描線與邊緣垂直。
         if circle is not None and ctx.flag("refine", True) and math.hypot(circle[0] - cx, circle[1] - cy) > 0.5:
@@ -1207,7 +1220,7 @@ class FindCircleTool(Tool):
                     arr, circle, inliers = arr2, circle2, inliers2
         if circle is None:
             return Result(outputs={"cx": nan, "cy": nan, "r": nan, "diameter": nan, "points": arr.round(2).tolist(), "score": 0.0, "circle": None},
-                          overlays=overlays, branch="not_found", status="ng", message="Fit failed")
+                          overlays=overlays, branch="not_found", status="ng", message=Msg.of("find_circle.fit_failed", "Fit failed"))
         fcx, fcy, fr = circle
         diameter = 2 * fr
         resid = np.abs(np.hypot(arr[:, 0] - fcx, arr[:, 1] - fcy) - fr)
@@ -1224,7 +1237,8 @@ class FindCircleTool(Tool):
                      "circle": {"cx": round(float(fcx), 4), "cy": round(float(fcy), 4), "r": round(float(fr), 4)},
                      **world_outputs(ctx, points={("cx", "cy"): (fcx, fcy)}, lengths={"r": (fr, (fcx, fcy)), "diameter": (diameter, (fcx, fcy))})},
             overlays=overlays, branch="found",
-            message=f"Centre ({fcx:.1f}, {fcy:.1f}) r={fr:.1f}, {int(inliers.sum())}/{num_rays} points, residual {float(resid[inliers].mean()):.2f}px",
+            message=Msg.of("find_circle.found", "Centre ({cx:.1f}, {cy:.1f}) r={r:.1f}, {inliers}/{rays} points, residual {residual:.2f}px",
+                           cx=fcx, cy=fcy, r=fr, inliers=int(inliers.sum()), rays=num_rays, residual=float(resid[inliers].mean())),
             detail={"rms": float(np.sqrt((resid[inliers] ** 2).mean()))},
         )
 
@@ -1241,9 +1255,9 @@ def _as_rotated_rect(region: dict[str, Any]) -> dict[str, Any]:
         # 組合區域：矩形類工具用它的外框（挖除項不擴大外框）
         x0, y0, x1, y1 = extent(region)
         if x1 - x0 < 1 or y1 - y0 < 1:
-            raise ToolError("The combined region is empty")
+            raise ToolError(Msg.of("locate.region_empty", "The combined region is empty"))
         return {"shape": "rotated_rect", "cx": (x0 + x1) / 2, "cy": (y0 + y1) / 2, "w": x1 - x0, "h": y1 - y0, "angle": 0.0}
-    raise ToolError(f"This tool needs a rectangle or rotated rectangle, got {region.get('shape')}")
+    raise ToolError(Msg.of("locate.region_not_rect", "This tool needs a rectangle or rotated rectangle, got {shape}", shape=region.get("shape")))
 
 
 def pick_pair(edges: list[tuple[float, float]], mode: str, pair_polarity: str, expected: float) -> tuple[tuple[float, float], tuple[float, float]] | None:
@@ -1350,7 +1364,7 @@ def line_geometry(x1: float, y1: float, x2: float, y2: float, count: int) -> tup
     p2 = np.array([float(x2), float(y2)])
     length = float(np.hypot(*(p2 - p1)))
     if length < 1e-6:
-        raise ToolError("The line is too short to place calipers on")
+        raise ToolError(Msg.of("locate.line_too_short", "The line is too short to place calipers on"))
     n = max(1, int(count))
     t = np.linspace(0.0, 1.0, n) if n > 1 else np.array([0.5])
     centers = p1[None, :] + t[:, None] * (p2 - p1)[None, :]
@@ -1437,7 +1451,7 @@ def caliper_series(
     rows = max(1, int(round(float(height))))
     if n * rows >= 32767:
         if rows >= 32767:
-            raise ToolError("The caliper width exceeds the supported sampling size")
+            raise ToolError(Msg.of("locate.caliper_too_wide", "The caliper width exceeds the supported sampling size"))
         # remap 的輸出列數有上限；沿卡尺分批不改剖面平均或缺陷序列的順序。
         batch = 32766 // rows
         combined: list[CaliperHit] = []
@@ -1625,14 +1639,14 @@ class PathExtractTool(Tool):
         overlays: list[dict[str, Any]] = [reference_overlay] if reference_overlay else []
         blank = {"points": [], "angles": [], "offsets": [], "widths": [], "missing": [], "count": 0, "length": round(length, 6)}
         if length <= 1e-9 or len(centers) == 0:
-            return Result(outputs=blank, overlays=overlays, branch="not_found", status="ng", message="The path is too short to sample")
+            return Result(outputs=blank, overlays=overlays, branch="not_found", status="ng", message=Msg.of("path_extract.too_short", "The path is too short to sample"))
         angles = _tangent_angles(tangent)
         sample_points = centers.round(3).tolist()
         overlays.append({"kind": "points", "points": sample_points, "color": "#38bdf8"})
         if path_mode != "edge_search":
             return Result(
                 outputs={**blank, "points": sample_points, "angles": angles, "count": len(sample_points)},
-                overlays=overlays, branch="ok", message=f"{len(sample_points)} samples over {length:.2f}px",
+                overlays=overlays, branch="ok", message=Msg.of("path_extract.samples", "{n} samples over {length:.2f}px", n=len(sample_points), length=length),
             )
 
         image = to_gray(ctx.require_image())
@@ -1665,7 +1679,7 @@ class PathExtractTool(Tool):
                 "count": len(found_points), "length": round(length, 6),
             },
             overlays=overlays, branch="ok" if ok else "not_found", status="ok" if ok else "ng",
-            message=f"{len(found_points)}/{len(hits)} edge points over {length:.2f}px",
+            message=Msg.of("path_extract.edges", "{found}/{total} edge points over {length:.2f}px", found=len(found_points), total=len(hits), length=length),
         )
 
 
@@ -1775,7 +1789,7 @@ class FindRectangleTool(Tool):
         image = to_gray(ctx.require_image())
         region = ctx.roi()
         if region is None:
-            raise ToolError("No region is set")
+            raise ToolError(Msg.of("find_rectangle.no_region", "No region is set"))
         rect = _as_rotated_rect(region)
         corners = rect_corners(rect)
         depth = float(ctx.number("search", 0.4))
@@ -1795,10 +1809,10 @@ class FindRectangleTool(Tool):
             points = np.asarray(hit_points(hits), dtype=np.float64)
             if len(points) < 2:
                 return Result(outputs=blank, overlays=overlays, branch="not_found", status="ng",
-                              message=f"Side {i + 1} has too few edge points ({len(points)})")
+                              message=Msg.of("find_rectangle.side_too_few", "Side {side} has too few edge points ({n})", side=i + 1, n=len(points)))
             fitted = fit_points_line(points, ransac=ctx.flag("ransac", True), tol=ctx.number("ransac_tol", 2))
             if fitted is None:
-                return Result(outputs=blank, overlays=overlays, branch="not_found", status="ng", message=f"Side {i + 1} could not be fitted")
+                return Result(outputs=blank, overlays=overlays, branch="not_found", status="ng", message=Msg.of("find_rectangle.side_no_fit", "Side {side} could not be fitted", side=i + 1))
             fits.append(fitted[:4])
             edge_points += points.round(2).tolist()
         found_corners: list[list[float]] = []
@@ -1807,7 +1821,7 @@ class FindRectangleTool(Tool):
             point = intersect_fits(fits[i - 1], fits[i])
             if point is None:
                 return Result(outputs=blank, overlays=overlays, branch="not_found", status="ng",
-                              message="Two of the edges came out parallel, so there is no corner")
+                              message=Msg.of("find_rectangle.parallel", "Two of the edges came out parallel, so there is no corner"))
             found_corners.append([round(point[0], 3), round(point[1], 3)])
         pts = np.asarray(found_corners, dtype=np.float64)
         cx, cy = float(pts[:, 0].mean()), float(pts[:, 1].mean())
@@ -1829,7 +1843,8 @@ class FindRectangleTool(Tool):
                                      lengths={"width": (round(width, 3), (cx, cy)), "height": (round(height_px, 3), (cx, cy))},
                                      angles={"angle": (round(angle, 3), (cx, cy))})},
             overlays=overlays, branch="found",
-            message=f"{width:.2f}×{height_px:.2f} at ({cx:.1f}, {cy:.1f}), {angle:.2f}°",
+            message=Msg.of("find_rectangle.found", "{width:.2f}×{height:.2f} at ({cx:.1f}, {cy:.1f}), {angle:.2f}°",
+                           width=width, height=height_px, cx=cx, cy=cy, angle=angle),
         )
 
 
@@ -1882,7 +1897,7 @@ class FindQuadrilateralTool(Tool):
         for key in ("a", "b", "c", "d"):
             line = _as_line(ctx.inputs.get(key))
             if line is None:
-                raise ToolError(f"Edge {key.upper()} is missing — wire four lines in, in order round the part")
+                raise ToolError(Msg.of("find_quadrilateral.edge_missing", "Edge {edge} is missing — wire four lines in, in order round the part", edge=key.upper()))
             lines.append(line)
         blank = {"corners": [], "cx": float("nan"), "cy": float("nan"), "sides": [], "diagonals": [], "area": float("nan")}
         corners: list[list[float]] = []
@@ -1891,7 +1906,7 @@ class FindQuadrilateralTool(Tool):
             point = intersect_fits((x2 - x1, y2 - y1, x1, y1), (x4 - x3, y4 - y3, x3, y3))
             if point is None:
                 return Result(outputs=blank, branch="not_found", status="ng",
-                              message=f"Edges {i + 1} and {(i + 1) % 4 + 1} are parallel, so they have no corner")
+                              message=Msg.of("find_quadrilateral.parallel", "Edges {a} and {b} are parallel, so they have no corner", a=i + 1, b=(i + 1) % 4 + 1))
             corners.append([round(point[0], 3), round(point[1], 3)])
         pts = np.asarray(corners, dtype=np.float64)
         sides = [round(float(np.hypot(*(pts[(i + 1) % 4] - pts[i]))), 3) for i in range(4)]
@@ -1903,7 +1918,7 @@ class FindQuadrilateralTool(Tool):
                      "diagonals": diagonals, "area": round(area, 3)},
             overlays=[{"kind": "polygon", "points": corners, "color": "#22c55e", "width": 2},
                       {"kind": "point", "x": cx, "y": cy, "color": "#f59e0b", "label": "centre"}],
-            branch="found", message=f"sides {', '.join(f'{s:.1f}' for s in sides)}",
+            branch="found", message=Msg.of("find_quadrilateral.found", "sides {sides}", sides=", ".join(f"{s:.1f}" for s in sides)),
         )
 
 
@@ -1956,7 +1971,7 @@ class FindParallelLinesTool(Tool):
         image = to_gray(ctx.require_image())
         region = ctx.roi()
         if region is None:
-            raise ToolError("No region is set")
+            raise ToolError(Msg.of("find_parallel_lines.no_region", "No region is set"))
         rect = _as_rotated_rect(region)
         horizontal = float(rect["w"]) >= float(rect["h"])
         along = float(rect["w"]) if horizontal else float(rect["h"])
@@ -1981,11 +1996,11 @@ class FindParallelLinesTool(Tool):
         second = np.asarray(hit_points(hits, second=True), dtype=np.float64)
         if len(first) < 2:
             return Result(outputs=blank, overlays=overlays, branch="not_found", status="ng",
-                          message=f"Only {len(first)} of {count} calipers found a pair of edges")
+                          message=Msg.of("find_parallel_lines.too_few", "Only {found} of {count} calipers found a pair of edges", found=len(first), count=count))
         ransac, tol = ctx.flag("ransac", True), ctx.number("ransac_tol", 2)
         fit_a, fit_b = fit_points_line(first, ransac=ransac, tol=tol), fit_points_line(second, ransac=ransac, tol=tol)
         if fit_a is None or fit_b is None:
-            return Result(outputs=blank, overlays=overlays, branch="not_found", status="ng", message="The edges could not be fitted")
+            return Result(outputs=blank, overlays=overlays, branch="not_found", status="ng", message=Msg.of("find_parallel_lines.no_fit", "The edges could not be fitted"))
         line_a, line_b = line_span(fit_a[:4], first), line_span(fit_b[:4], second)
         middle = np.vstack([(first + second) / 2])
         fit_c = fit_points_line(middle, ransac=ransac, tol=tol)
@@ -2010,7 +2025,8 @@ class FindParallelLinesTool(Tool):
                                                    for key, fn in (("distance", np.mean), ("min_distance", np.min), ("max_distance", np.max))},
                                      angles={"angle": (round(angle, 3), tuple(middle.mean(axis=0)))})},
             overlays=overlays, branch="found",
-            message=f"width {float(np.mean(widths)):.2f}px ({np.min(widths):.2f}–{np.max(widths):.2f}), {len(widths)}/{count} calipers",
+            message=Msg.of("find_parallel_lines.found", "width {mean:.2f}px ({lo:.2f}–{hi:.2f}), {n}/{count} calipers",
+                           mean=float(np.mean(widths)), lo=np.min(widths), hi=np.max(widths), n=len(widths), count=count),
         )
 
 
@@ -2048,10 +2064,10 @@ class FindLinesMultiTool(Tool):
         image = to_gray(ctx.require_image())
         region = ctx.roi()
         if region is None:
-            raise ToolError("No region is set")
+            raise ToolError(Msg.of("find_lines_multi.no_region", "No region is set"))
         area = crop(image, region)
         if area.image.size == 0:
-            raise ToolError("The region falls outside the image")
+            raise ToolError(Msg.of("find_lines_multi.outside", "The region falls outside the image"))
         threshold = ctx.number("edge_threshold", 60)
         edges = cv2.Canny(area.image, max(1.0, threshold / 2), threshold)
         if area.mask is not None:
@@ -2063,7 +2079,7 @@ class FindLinesMultiTool(Tool):
         min_points = ctx.integer("min_points", 30)
         if len(points) < min_points:
             return Result(outputs=blank, overlays=overlays, branch="not_found", status="ng",
-                          message=f"Only {len(points)} edge points in the region")
+                          message=Msg.of("find_lines_multi.too_few", "Only {n} edge points in the region", n=len(points)))
         wanted_angle, angle_tol = ctx.number("angle_filter", 0), ctx.number("angle_tolerance", 0)
         min_length, tol = ctx.number("min_length", 20), ctx.number("tolerance", 2)
         remaining = points
@@ -2092,7 +2108,7 @@ class FindLinesMultiTool(Tool):
             lines.append(span)
             angles.append(round(angle, 3))
         if not lines:
-            return Result(outputs=blank, overlays=overlays, branch="not_found", status="ng", message="No line was long or solid enough")
+            return Result(outputs=blank, overlays=overlays, branch="not_found", status="ng", message=Msg.of("find_lines_multi.none", "No line was long or solid enough"))
         for i, line in enumerate(lines):
             overlays.append({"kind": "line", "x1": line["x1"], "y1": line["y1"], "x2": line["x2"], "y2": line["y2"],
                              "color": "#22c55e", "width": 2, "label": f"{i + 1}: {line['angle']:.1f}°"})
@@ -2100,7 +2116,7 @@ class FindLinesMultiTool(Tool):
             outputs={"count": len(lines), "lines": lines, "angles": angles, "first": lines[0],
                      "points": points[:2000].round(2).tolist()},
             overlays=overlays, branch="found",
-            message=f"{len(lines)} lines: " + ", ".join(f"{a:.1f}°" for a in angles[:6]),
+            message=Msg.of("find_lines_multi.found", "{n} lines: {angles}", n=len(lines), angles=", ".join(f"{a:.1f}°" for a in angles[:6])),
         )
 
 
@@ -2140,7 +2156,7 @@ class FindCirclesMatrixTool(Tool):
         image = to_gray(ctx.require_image())
         region = ctx.roi()
         if region is None:
-            raise ToolError("No region is set")
+            raise ToolError(Msg.of("find_circles_matrix.no_region", "No region is set"))
         rect = _as_rotated_rect(region)
         rows, cols = ctx.integer("rows", 3), ctx.integer("cols", 3)
         corners = rect_corners(rect)
@@ -2187,7 +2203,8 @@ class FindCirclesMatrixTool(Tool):
                      "mean_radius": round(mean_radius, 4) if radii else float("nan"),
                      "pitch_x": round(pitch_x, 3), "pitch_y": round(pitch_y, 3)},
             overlays=overlays, branch="found" if not missing else "not_found", status="ok" if not missing else "ng",
-            message=f"{len(centers)}/{expected} circles, r {mean_radius:.2f}" if radii else f"0/{expected} circles",
+            message=(Msg.of("find_circles_matrix.found", "{found}/{expected} circles, r {r:.2f}", found=len(centers), expected=expected, r=mean_radius)
+                     if radii else Msg.of("find_circles_matrix.none", "0/{expected} circles", expected=expected)),
         )
 
 
@@ -2228,11 +2245,11 @@ class FindLineTool(Tool):
         image = to_gray(ctx.require_image())
         region = ctx.roi()
         if region is None:
-            raise ToolError("No region is set")
+            raise ToolError(Msg.of("find_line.no_region", "No region is set"))
         rr = _as_rotated_rect(region)
         c = crop(image, rr, upright=True)
         if c.image.size == 0 or min(c.image.shape[:2]) < 3:
-            raise ToolError("The region is too small or falls outside the image")
+            raise ToolError(Msg.of("find_line.too_small", "The region is too small or falls outside the image"))
         pts_local, horizontal = caliper_points(
             c.image, ctx.integer("num_calipers", 20), ctx.param("polarity", "any"),
             ctx.number("edge_threshold", 20), ctx.param("direction", "strongest"), ctx.integer("smoothing", 3),
@@ -2240,7 +2257,7 @@ class FindLineTool(Tool):
         overlays = [region_overlay(region, label="roi")]
         nan_out = {k: float("nan") for k in ("x1", "y1", "x2", "y2", "angle", "rho", "theta")}
         if len(pts_local) < 2:
-            return Result(outputs={**nan_out, "line": None, "points": [], "coverage": 0.0}, overlays=overlays, branch="not_found", status="ng", message=f"Too few edge points ({len(pts_local)})")
+            return Result(outputs={**nan_out, "line": None, "points": [], "coverage": 0.0}, overlays=overlays, branch="not_found", status="ng", message=Msg.of("find_line.too_few", "Too few edge points ({n})", n=len(pts_local)))
         full = c.points_to_full(np.asarray([(p[0], p[1]) for p in pts_local]))
         inliers = np.ones(len(full), dtype=bool)
         if ctx.flag("ransac", True) and len(full) >= 3:
@@ -2287,7 +2304,8 @@ class FindLineTool(Tool):
                      **world_outputs(ctx, points={("x1", "y1"): (x1, y1), ("x2", "y2"): (x2, y2)},
                                      angles={"angle": (angle, ((x1 + x2) / 2, (y1 + y2) / 2))})},
             overlays=overlays, branch="found",
-            message=f"Angle {angle:.2f}°, {int(inliers.sum())}/{len(full)} points, residual {float(dist[inliers].mean()):.2f}px",
+            message=Msg.of("find_line.found", "Angle {angle:.2f}°, {inliers}/{n} points, residual {residual:.2f}px",
+                           angle=angle, inliers=int(inliers.sum()), n=len(full), residual=float(dist[inliers].mean())),
         )
 
 
@@ -2318,7 +2336,7 @@ class HoughCirclesTool(Tool):
         region = ctx.roi()
         c = crop(image, region)
         if c.image.size == 0:
-            raise ToolError("The region falls outside the image")
+            raise ToolError(Msg.of("hough_circles.outside", "The region falls outside the image"))
         sub = np.ascontiguousarray(c.image)
         k = ctx.integer("blur", 5)
         if k >= 3:
@@ -2335,7 +2353,7 @@ class HoughCirclesTool(Tool):
                 circles.append({"cx": round(fx, 2), "cy": round(fy, 2), "r": round(float(r), 2)})
                 overlays.append({"kind": "circle", "cx": fx, "cy": fy, "r": float(r), "color": "#22c55e", "width": 2})
         return Result(outputs={"circles": circles, "count": len(circles)}, overlays=overlays,
-                      branch="found" if circles else "not_found", status="ok" if circles else "ng", message=f"{len(circles)} circles")
+                      branch="found" if circles else "not_found", status="ok" if circles else "ng", message=Msg.of("hough_circles.found", "{n} circles", n=len(circles)))
 
 
 class HoughLinesTool(Tool):
@@ -2361,7 +2379,7 @@ class HoughLinesTool(Tool):
         region = ctx.roi()
         c = crop(image, region)
         if c.image.size == 0:
-            raise ToolError("The region falls outside the image")
+            raise ToolError(Msg.of("hough_lines.outside", "The region falls outside the image"))
         edges = cv2.Canny(np.ascontiguousarray(c.image), ctx.number("canny_low", 50), ctx.number("canny_high", 150))
         if c.mask is not None:
             edges = cv2.bitwise_and(edges, c.mask)
@@ -2379,7 +2397,7 @@ class HoughLinesTool(Tool):
                 lines.append({"x1": x1, "y1": y1, "x2": x2, "y2": y2, "length": round(float(lengths[i]), 2), "angle": round(ang, 2)})
                 overlays.append({"kind": "line", "x1": x1, "y1": y1, "x2": x2, "y2": y2, "color": "#22c55e", "width": 2})
         return Result(outputs={"lines": lines, "count": len(lines)}, overlays=overlays,
-                      branch="found" if lines else "not_found", status="ok" if lines else "ng", message=f"{len(lines)} segments")
+                      branch="found" if lines else "not_found", status="ok" if lines else "ng", message=Msg.of("hough_lines.found", "{n} segments", n=len(lines)))
 
 
 __all__ = ["Crop", "to_gray", "read_asset_image", "clear_asset_cache", "find_edges_1d", "find_edges_rows", "pick_edge", "caliper_points", "sector_thetas", "radial_edge_points", "polyline_geometry", "fit_circle_kasa", "fit_circle_lsq", "fit_circle_ransac", "fit_circle_points", "fit_line_ransac", "POLARITY_OPTIONS"]

@@ -21,6 +21,7 @@ import numpy as np
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
 from apps.vision.tools.builtin.detect import _binarize
 from apps.vision.tools.builtin.locate import read_asset_image, to_gray
+from apps.vision.tools.messages import Msg
 from apps.vision.tools.roi import crop, extent, mask_for, region_overlay
 
 MODE_OPTIONS = [
@@ -196,7 +197,7 @@ class ContourFindTool(Tool):
         region = ctx.roi()
         c = crop(gray, region)
         if c.image.size == 0:
-            raise ToolError("The region falls outside the image")
+            raise ToolError(Msg.of("contour_find.outside", "The region falls outside the image"))
         mask = _binarize(np.ascontiguousarray(c.image), ctx.param("threshold_method", "otsu"), ctx.number("threshold", 128), ctx.param("polarity", "bright"), c.mask)
         if c.mask is not None:
             mask = cv2.bitwise_and(mask, c.mask)
@@ -228,7 +229,7 @@ class ContourFindTool(Tool):
                      "centers": centers, "first_cx": centers[0][0] if centers else float("nan"), "first_cy": centers[0][1] if centers else float("nan"),
                      "mask": mask},
             overlays=overlays, branch="found" if contours else "not_found", status="ok" if contours else "ng",
-            message=f"{len(contours)} contours",
+            message=Msg.of("contour_find.done", "{n} contours", n=len(contours)),
         )
 
 
@@ -320,7 +321,7 @@ class ContourFilterTool(Tool):
             outputs={"contours": out, "count": count, "rejected": rejected, "areas": areas, "first_area": areas[0] if areas else 0.0,
                      "centers": centers, "first_cx": centers[0][0] if centers else float("nan"), "first_cy": centers[0][1] if centers else float("nan")},
             overlays=overlays, branch="found" if count else "not_found", status="ok" if count >= ctx.integer("min_count", 1) else "ng",
-            message=f"{count} kept, {rejected} rejected",
+            message=Msg.of("contour_filter.done", "{count} kept, {rejected} rejected", count=count, rejected=rejected),
         )
 
 
@@ -359,7 +360,7 @@ class ContourGeometryTool(Tool):
 
     def execute(self, ctx: ToolContext) -> Result:
         if ctx.inputs.get("contours") is None:
-            raise ToolError("Wire contours into contour_geometry (contour_find.contours or contour_filter.contours)")
+            raise ToolError(Msg.of("contour_geometry.no_contours", "Wire contours into contour_geometry (contour_find.contours or contour_filter.contours)"))
         contours = _as_contours(ctx.inputs.get("contours"))[: ctx.integer("max_contours", 200)]
         depth = ctx.number("defect_depth", 3)
         rows = [describe(cnt, depth) for cnt in contours]
@@ -393,7 +394,9 @@ class ContourGeometryTool(Tool):
                 "total_defects": total_defects, "max_defect_depth": max_depth,
             },
             overlays=overlays, status="ok",
-            message=(f"{len(rows)} contours, first A={first['area']:.0f} P={first['perimeter']:.1f} conv={first['convexity']:.3f}, {total_defects} defects" if first else "no contours"),
+            message=(Msg.of("contour_geometry.done", "{n} contours, first A={area:.0f} P={perimeter:.1f} conv={convexity:.3f}, {defects} defects",
+                            n=len(rows), area=first["area"], perimeter=first["perimeter"], convexity=first["convexity"], defects=total_defects)
+                     if first else Msg.of("contour_geometry.none", "no contours")),
         )
 
 
@@ -410,13 +413,13 @@ def template_contour(ctx: ToolContext) -> np.ndarray:
         tpl = cv2.cvtColor(pic, cv2.COLOR_BGR2GRAY) if pic.ndim == 3 else pic
     else:
         if not ctx.param("template"):
-            raise ToolError("Connect a reference contour or a template picture, or choose a template image asset")
+            raise ToolError(Msg.of("contours.no_template", "Connect a reference contour or a template picture, or choose a template image asset"))
         tpl = read_asset_image(ctx, "template", gray=True)
     mask = _binarize(np.ascontiguousarray(tpl), ctx.param("template_threshold", "otsu"), ctx.number("threshold", 128), ctx.param("polarity", "bright"), None)
     found, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     found = [c for c in found if len(c) >= 4]
     if not found:
-        raise ToolError("No shape was found in the template image")
+        raise ToolError(Msg.of("contours.template_empty", "No shape was found in the template image"))
     return max(found, key=cv2.contourArea)
 
 
@@ -478,7 +481,8 @@ class ContourMatchTool(Tool):
                      "matched": [contours[i] for i in matched_idx], "best": [contours[best_index]] if best_index >= 0 else [],
                      "first_distance": clean[0] if clean else float("nan")},
             overlays=overlays, branch="match" if matched_idx else "no_match", status="ok" if count >= ctx.integer("min_matches", 1) else "ng",
-            message=f"best {best:.4f}, {count} of {len(contours)} match" if contours else "no contours",
+            message=(Msg.of("contour_match.done", "best {best:.4f}, {count} of {total} match", best=best, count=count, total=len(contours))
+                     if contours else Msg.of("contour_match.none", "no contours")),
         )
 
 

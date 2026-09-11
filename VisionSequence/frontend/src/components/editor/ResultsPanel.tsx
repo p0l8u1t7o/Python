@@ -6,6 +6,8 @@ import { TriangleAlert } from 'lucide-react'
 import { Button, DetailRow, Select, StatusBadge, Tile } from '@/components/ui'
 import { calculateSpanTiming } from '@/lib/spanTiming'
 import { isImageRef, type GraphEdge, type GraphNode, type NodeReport, type RunReport } from '@/lib/types'
+import i18next from '@/i18n'
+import { nodeMessage } from '@/lib/toolMessages'
 
 /** run 裡第一個失敗的步驟（沒有就看 run.error）。 */
 export function firstFailure(run: RunReport | null, order: string[]): { nodeId: string | null; message: string } | null {
@@ -13,7 +15,7 @@ export function firstFailure(run: RunReport | null, order: string[]): { nodeId: 
   const ids = [...order, ...Object.keys(run.nodes).filter((id) => !order.includes(id))]
   for (const id of ids) {
     const report = run.nodes[id]
-    if (report?.status === 'error') return { nodeId: id, message: report.message || run.error || '' }
+    if (report?.status === 'error') return { nodeId: id, message: nodeMessage(report, i18next.language) || run.error || '' }
   }
   if (run.status === 'failed' && run.error) return { nodeId: null, message: run.error }
   return null
@@ -93,7 +95,7 @@ export function NodeResult({ report, run }: { report: NodeReport | undefined; ru
         {report.branch ? <DetailRow label={t('editor.result.branch')} mono>{report.branch}</DetailRow> : null}
         <DetailRow label={t('editor.result.overlays')}>{(report.overlays ?? []).length}</DetailRow>
       </dl>
-      {report.message ? <p className={`rounded-lg px-3 py-2 text-xs ${report.status === 'error' ? 'bg-critical-soft text-critical' : report.status === 'ng' ? 'bg-warning-soft text-warning' : 'bg-surface-muted text-content'}`}>{report.message}</p> : null}
+      {report.message ? <p className={`rounded-lg px-3 py-2 text-xs ${report.status === 'error' ? 'bg-critical-soft text-critical' : report.status === 'ng' ? 'bg-warning-soft text-warning' : 'bg-surface-muted text-content'}`}>{nodeMessage(report, i18next.language)}</p> : null}
       <div>
         <p className="label">{t('editor.result.outputs')}</p>
         <table className="w-full text-xs">

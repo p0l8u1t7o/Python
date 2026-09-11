@@ -35,6 +35,7 @@ from apps.vision.tools.builtin.locate import (
     polyline_geometry,
     to_gray,
 )
+from apps.vision.tools.messages import Msg
 from apps.vision.tools.roi import apply_transform, crop, region_overlay
 
 #: 缺陷種類（產品表面用得到的字）。
@@ -118,7 +119,7 @@ def _reference_model(ctx: ToolContext, roi: dict[str, Any] | None) -> tuple[dict
     image_id = first.get("id") if isinstance(first, dict) else ""
     image = fixed_images.load(str(image_id or ""))
     if image is None:
-        raise ToolError("The reference picture is missing; add it again")
+        raise ToolError(Msg.of("edge_defect.reference_missing", "The reference picture is missing; add it again"))
     model, _points = teach_contour_model(image, roi=roi, simplify=ctx.number("teach_simplify", 2.0))
     return model, True
 
@@ -161,7 +162,7 @@ def _reference(ctx: ToolContext, image: np.ndarray) -> tuple[str, tuple, dict[st
         return "line", ends, {"kind": "line", **{k: ends[i] for i, k in enumerate(("x1", "y1", "x2", "y2"))}, "color": "#38bdf8", "dash": True}
     region = ctx.roi()
     if region is None:
-        raise ToolError("Draw a region along the edge, or wire a line or a circle in from a locate step")
+        raise ToolError(Msg.of("edge_defect.no_reference", "Draw a region along the edge, or wire a line or a circle in from a locate step"))
     shape = str(region.get("shape") or "")
     if shape in ("circle", "annulus"):
         cx, cy = float(region["cx"]), float(region["cy"])
@@ -186,7 +187,7 @@ def _reference(ctx: ToolContext, image: np.ndarray) -> tuple[str, tuple, dict[st
         half = length / 2
         ends = (cx - ux * half, cy - uy * half, cx + ux * half, cy + uy * half)
         return "line", ends, region_overlay(region, label="reference")
-    raise ToolError("The region has to be a rectangle (a straight edge) or a circle (a round edge)")
+    raise ToolError(Msg.of("edge_defect.bad_shape", "The region has to be a rectangle (a straight edge) or a circle (a round edge)"))
 
 
 class EdgeDefectTool(Tool):
@@ -279,7 +280,7 @@ class EdgeDefectTool(Tool):
                 # 封閉直線的終點代表下一圈起點，不重複取樣；保留週期向量供跨縫幾何解包。
                 period = np.asarray(geometry[2:4], dtype=float) - np.asarray(geometry[:2], dtype=float)
                 if np.linalg.norm(period) < 1:
-                    raise ToolError("A closed sequence needs a reference line at least 1 px long")
+                    raise ToolError(Msg.of("edge_defect.closed_too_short", "A closed sequence needs a reference line at least 1 px long"))
                 centers, scan, tangent, positions = (v[:-1] for v in line_geometry(*geometry, count + 1))
                 wrap = True
             else:
@@ -345,8 +346,8 @@ class EdgeDefectTool(Tool):
                 "image": image,
             },
             overlays=overlays, branch="defect" if bad else "ok", status="ng" if bad else "ok",
-            message=(f"{len(items)} faults, worst {worst:.2f}px over {longest:.1f}px"
-                     if items else f"clean ({int(found.sum())}/{len(hits)} calipers found the edge)"),
+            message=(Msg.of("edge_defect.faults", "{n} faults, worst {worst:.2f}px over {longest:.1f}px", n=len(items), worst=worst, longest=longest)
+                     if items else Msg.of("edge_defect.clean", "clean ({found}/{total} calipers found the edge)", found=int(found.sum()), total=len(hits))),
         )
 
     # -- 內部 ---------------------------------------------------------------
@@ -500,6 +501,17 @@ class EdgeDefectTool(Tool):
         return items
 
 
+def _model_message(auto_taught: bool, items: list[dict[str, Any]], worst: float, found: int, total: int) -> Msg:
+    """edge_model_defect 的一行摘要（英文與改寫前逐字相同）。"""
+    if auto_taught:
+        if items:
+            return Msg.of("edge_model_defect.auto_faults", "auto-taught contour, {n} faults, worst {worst:.2f}px", n=len(items), worst=worst)
+        return Msg.of("edge_model_defect.auto_clean", "auto-taught contour, clean ({found}/{total} calipers found the edge)", found=found, total=total)
+    if items:
+        return Msg.of("edge_model_defect.faults", "{n} faults, worst {worst:.2f}px", n=len(items), worst=worst)
+    return Msg.of("edge_model_defect.clean", "clean ({found}/{total} calipers found the edge)", found=found, total=total)
+
+
 class EdgeModelDefectTool(Tool):
     key = "edge_model_defect"
     label = "Edge model defects"
@@ -583,7 +595,7 @@ class EdgeModelDefectTool(Tool):
                 outputs={"count": 0, "defects": [], "max_deviation": 0.0, "points": [], "deviations": [], "missing": [], "image": image},
                 overlays=[],
                 branch="defect", status="ng",
-                message="No contour model is set, and no reference picture could teach one",
+                message=Msg.of("edge_model_defect.no_model", "No contour model is set, and no reference picture could teach one"),
             )
         points = model["points"]
         closed = bool(model.get("closed", True))
@@ -602,7 +614,7 @@ class EdgeModelDefectTool(Tool):
             return Result(
                 outputs={"count": 0, "defects": [], "max_deviation": 0.0, "points": [], "deviations": [], "missing": [], "image": image},
                 overlays=[region_overlay(region, label="model")],
-                branch="defect", status="ng", message="The contour model is too short to sample",
+                branch="defect", status="ng", message=Msg.of("edge_model_defect.too_short", "The contour model is too short to sample"),
             )
         pair = str(ctx.param("mode", "single")) == "pair"
         hits = caliper_series(
@@ -643,7 +655,6 @@ class EdgeModelDefectTool(Tool):
                     "color": _COLORS.get(item["type"], "#ef4444"), "width": 2, "label": item["type"],
                 })
         worst = max((abs(i["max_deviation"] or 0.0) for i in items), default=0.0)
-        note = "auto-taught contour, " if auto_taught else ""
         return Result(
             outputs={
                 "count": len(items), "defects": items, "max_deviation": round(float(worst), 4),
@@ -652,8 +663,7 @@ class EdgeModelDefectTool(Tool):
                 "missing": missing, "image": image,
             },
             overlays=overlays, branch="defect" if bad else "ok", status="ng" if bad else "ok",
-            message=(f"{note}{len(items)} faults, worst {worst:.2f}px"
-                     if items else f"{note}clean ({int(found.sum())}/{len(hits)} calipers found the edge)"),
+            message=_model_message(auto_taught, items, worst, int(found.sum()), len(hits)),
             detail={"model": {"image_size": model.get("image_size"), "closed": closed, "points": len(points)}, "auto_taught": auto_taught},
         )
 

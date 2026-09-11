@@ -14,6 +14,7 @@ import numpy as np
 from apps.vision import fixed_images
 from apps.vision.dl import anomaly
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
+from apps.vision.tools.messages import Msg
 from apps.vision.tools.roi import crop
 
 
@@ -26,7 +27,7 @@ def _grid(sess, image, size):
         feats, (h, w) = anomaly.extract(sess, image, size)
         return feats.reshape(h, w, -1)
     except Exception:  # noqa: BLE001 - 模型檔不相容或裝置推論失敗時，不外露底層技術訊息。
-        raise ToolError("The feature model could not process this picture; check the installed pack and device setting") from None
+        raise ToolError(Msg.of("register.extract_failed", "The feature model could not process this picture; check the installed pack and device setting")) from None
 
 
 def _reference(sess, image, size, kh, kw, angle, identity=None):
@@ -84,12 +85,12 @@ def _iou(a, b):
 def _images(ctx, key):
     items = ctx.param(key) or []
     if not isinstance(items, list):
-        raise ToolError("Choose a list of registered pictures")
+        raise ToolError(Msg.of("register.not_a_list", "Choose a list of registered pictures"))
     out = []
     for item in items:
         image = fixed_images.load(str(item.get('id', ''))) if isinstance(item, dict) else None
         if image is None:
-            raise ToolError("A registered picture is missing; add it again")
+            raise ToolError(Msg.of("register.picture_missing", "A registered picture is missing; add it again"))
         out.append((str(item.get('name') or item['id']), image))
     return out
 
@@ -100,11 +101,11 @@ def _classes(ctx, positives):
     text = str(ctx.param('class_limits') or '').strip()
     active = bool(names or text or any(':' in label for label, _ in positives))
     if len(names) != len(set(names)) or any(':' in name or ',' in name for name in names):
-        raise ToolError("Use unique class names without colons or commas")
+        raise ToolError(Msg.of("register.bad_class_names", "Use unique class names without colons or commas"))
     mapped = [(label.split(':', 1)[0].strip() if ':' in label else 'default', image) for label, image in positives]
     for label, _ in mapped:
         if not label or (names and label not in names):
-            raise ToolError("Each registered picture must name a listed class")
+            raise ToolError(Msg.of("register.unlisted_class", "Each registered picture must name a listed class"))
     classes = names or list(dict.fromkeys(label for label, _ in mapped))
     limits = {}
     for line in text.splitlines():
@@ -117,7 +118,7 @@ def _classes(ctx, positives):
             if label not in classes or label in limits or not 0 <= lo <= hi:
                 raise ValueError
         except (ValueError, TypeError):
-            raise ToolError("Enter each listed class once as class:minimum,maximum with nonnegative ordered counts") from None
+            raise ToolError(Msg.of("register.bad_class_limits", "Enter each listed class once as class:minimum,maximum with nonnegative ordered counts")) from None
         limits[label] = (lo, hi)
     return mapped if active else positives, classes, limits, active
 
@@ -164,27 +165,27 @@ class RegisterDetect(Tool):
             if param.kind in ("number", "range"):
                 value = ctx.number(param.key, param.default)
                 if not math.isfinite(value) or (param.minimum is not None and value < param.minimum) or (param.maximum is not None and value > param.maximum):
-                    raise ToolError(f"{param.label} is outside the allowed range")
+                    raise ToolError(Msg.of("register_detect.out_of_range", "{label} is outside the allowed range", label=param.label))
         positives, negatives = _images(ctx, "registrations"), _images(ctx, "negatives")
         if not positives:
-            raise ToolError("Add at least one registered picture")
+            raise ToolError(Msg.of("register_detect.no_registrations", "Add at least one registered picture"))
         positives, classes, limits, multiclass = _classes(ctx, positives)
         path = str(ctx.param("backbone_path") or anomaly.backbone_path())
         if not os.path.isfile(path):
-            raise ToolError("The feature model for registration detection is not installed: install the deep learning pack")
+            raise ToolError(Msg.of("register_detect.model_not_installed", "The feature model for registration detection is not installed: install the deep learning pack"))
         try:
             scales = list(dict.fromkeys(float(s.strip()) for s in str(ctx.param("scales", "1.0")).split(',')))
             if not scales or len(scales) > 32 or any(not math.isfinite(s) or s <= 0 for s in scales):
                 raise ValueError
         except (ValueError, TypeError):
-            raise ToolError("Enter up to 32 positive sizes separated by commas") from None
+            raise ToolError(Msg.of("register_detect.bad_scales", "Enter up to 32 positive sizes separated by commas")) from None
         mode = ctx.param("mode", "detect")
         if mode not in ("detect", "count", "presence"):
-            raise ToolError("Choose a valid detection mode")
+            raise ToolError(Msg.of("register_detect.bad_mode", "Choose a valid detection mode"))
         if ctx.param("expected", "present") not in ("present", "absent"):
-            raise ToolError("Choose an expected state")
+            raise ToolError(Msg.of("register_detect.bad_expected", "Choose an expected state"))
         if ctx.number("min_count", 1) > ctx.number("max_count_ok", 50):
-            raise ToolError("The accepted count range is reversed")
+            raise ToolError(Msg.of("register_detect.count_range_reversed", "The accepted count range is reversed"))
         region = ctx.roi()
         c = crop(ctx.require_image(), region, upright=True)
         found = []
@@ -197,7 +198,7 @@ class RegisterDetect(Tool):
                 scene = _grid(sess, c.image, size)
                 found = self._search(ctx, c, region, sess, scene, size, positives, negatives, scales)
             except anomaly.AnomalyError:
-                raise ToolError("The feature model could not be loaded; check the deep learning pack and device setting") from None
+                raise ToolError(Msg.of("register_detect.model_load_failed", "The feature model could not be loaded; check the deep learning pack and device setting")) from None
         kept = []
         for match in sorted(found, key=lambda m: -m['score']):
             if all(_iou(match, other) <= ctx.number("nms_overlap", 0.3) for other in kept):
@@ -216,7 +217,7 @@ class RegisterDetect(Tool):
         branch = ("found" if present else "not_found") if mode == "detect" else ("ok" if accepted else "ng")
         best = kept[0] if kept else {}
         overlays = [{"kind": "rect", "x": m['x'], "y": m['y'], "w": m['w'], "h": m['h'], "angle": m['angle'], "color": "#22c55e", "width": 2, "label": f"{m['label']} {m['score']:.2f}"} for m in kept]
-        return Result(outputs={"matches": kept, "count": count, "counts": counts, "present": present, "best_score": best.get('score', 0.0), "best_x": best.get('cx', float('nan')), "best_y": best.get('cy', float('nan'))}, overlays=overlays, branch=branch, status="ok" if accepted else "ng", message=f"{count} matches")
+        return Result(outputs={"matches": kept, "count": count, "counts": counts, "present": present, "best_score": best.get('score', 0.0), "best_x": best.get('cx', float('nan')), "best_y": best.get('cy', float('nan'))}, overlays=overlays, branch=branch, status="ok" if accepted else "ng", message=Msg.of("register_detect.matches", "{count} matches", count=count))
 
     def _search(self, ctx, c, region, sess, scene, size, positives, negatives, scales):
         found = []
@@ -226,7 +227,7 @@ class RegisterDetect(Tool):
         sy, sx = height / scene.shape[0], width / scene.shape[1]
         span, step = abs(ctx.number("angle_range", 0)), ctx.number("angle_step", 0)
         if span > 180 or (span and step > 0 and 2 * span / step > 720):
-            raise ToolError("Use an angle range up to 180 degrees and at most 721 angles")
+            raise ToolError(Msg.of("register_detect.bad_angles", "Use an angle range up to 180 degrees and at most 721 angles"))
         angles = sorted(set([0.0] + (np.arange(-span, span + 1e-6, step).tolist() if span and step > 0 else [])))
         for index, (label, image) in enumerate(positives):
             for scale in scales:
@@ -349,30 +350,30 @@ class RegisterSegment(Tool):
             if param.kind in ('number', 'range'):
                 value = ctx.number(param.key, param.default)
                 if not math.isfinite(value) or value < param.minimum or (param.maximum is not None and value > param.maximum):
-                    raise ToolError(f"{param.label} is outside the allowed range")
+                    raise ToolError(Msg.of("register_segment.out_of_range", "{label} is outside the allowed range", label=param.label))
         mode = ctx.param('mode', 'presence')
         if mode not in ('presence', 'area_range'):
-            raise ToolError("Choose a valid segmentation mode")
+            raise ToolError(Msg.of("register_segment.bad_mode", "Choose a valid segmentation mode"))
         if ctx.number('min_area_total', 0) > ctx.number('max_area_total', 1000000000):
-            raise ToolError("The accepted area range is reversed")
+            raise ToolError(Msg.of("register_segment.area_range_reversed", "The accepted area range is reversed"))
         positives, negatives = _images(ctx, 'registrations'), _images(ctx, 'negatives')
         pictures = {name: image for name, image in positives}
         if len(pictures) != len(positives):
-            raise ToolError("Use unique registered picture names")
+            raise ToolError(Msg.of("register_segment.duplicate_names", "Use unique registered picture names"))
         targets = [(name, image) for name, image in positives if not name.endswith('#mask')]
         if not targets:
-            raise ToolError("Add at least one registered target picture")
+            raise ToolError(Msg.of("register_segment.no_targets", "Add at least one registered target picture"))
         if any(name.endswith('#mask') and name[:-5] not in pictures for name in pictures):
-            raise ToolError("Each mask must have a matching target picture")
+            raise ToolError(Msg.of("register_segment.orphan_mask", "Each mask must have a matching target picture"))
         source = ctx.require_image()
         c = crop(source, ctx.roi(), upright=True)
         path = str(ctx.param('backbone_path') or anomaly.backbone_path())
         if not os.path.isfile(path):
-            raise ToolError("The feature model for registration segmentation is not installed: install the deep learning pack")
+            raise ToolError(Msg.of("register_segment.model_not_installed", "The feature model for registration segmentation is not installed: install the deep learning pack"))
         try:
             sess = anomaly.session_for(path, path=path, device=str(ctx.param('device', 'auto')))
         except anomaly.AnomalyError:
-            raise ToolError("The feature model could not be loaded; check the deep learning pack and device setting") from None
+            raise ToolError(Msg.of("register_segment.model_load_failed", "The feature model could not be loaded; check the deep learning pack and device setting")) from None
         declared = sess.get_inputs()[0].shape[-1]
         size = declared if isinstance(declared, int) else 320
         foreground, background = [], []
@@ -384,11 +385,11 @@ class RegisterSegment(Tool):
                 selected = np.ones(grid.shape[:2], bool)
             else:
                 if mask.shape[:2] != image.shape[:2]:
-                    raise ToolError("A registration mask must match its target picture size")
+                    raise ToolError(Msg.of("register_segment.mask_size", "A registration mask must match its target picture size"))
                 binary = np.any(mask != 0, axis=2) if mask.ndim == 3 else mask != 0
                 selected = cv2.resize(binary.astype(np.float32), (grid.shape[1], grid.shape[0]), interpolation=cv2.INTER_AREA) >= 0.5
             if not selected.any():
-                raise ToolError("Each target mask must include foreground patches")
+                raise ToolError(Msg.of("register_segment.empty_mask", "Each target mask must include foreground patches"))
             foreground.append(grid[selected])
             if (~selected).any():
                 background.append(grid[~selected])
@@ -432,7 +433,7 @@ class RegisterSegment(Tool):
         present = bool(regions)
         accepted = present if mode == 'presence' else ctx.number('min_area_total', 0) <= area <= ctx.number('max_area_total', 1000000000)
         return Result(outputs={'mask': mask, 'regions': regions, 'area': area, 'count': len(regions), 'present': present},
-                      overlays=overlays, status='ok' if accepted else 'ng', branch='ok' if accepted else 'ng', message=f"{len(regions)} regions, area {area} px")
+                      overlays=overlays, status='ok' if accepted else 'ng', branch='ok' if accepted else 'ng', message=Msg.of("register_segment.regions", "{count} regions, area {area} px", count=len(regions), area=area))
 
 
 TOOLS = [RegisterDetect(), RegisterSegment()]

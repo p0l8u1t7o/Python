@@ -14,6 +14,7 @@ from apps.vision.tools.builtin.lists import _sort_matches
 from apps.vision.tools.builtin.locate import fit_circle_lsq, to_gray
 from apps.vision.tools.builtin.preprocess import _local_thresholds
 from apps.vision.tools.hist import otsu_from_hist
+from apps.vision.tools.messages import Msg
 from apps.vision.tools.roi import crop
 
 
@@ -105,23 +106,23 @@ class CharDetectTool(Tool):
         method, polarity = str(ctx.param("method", "otsu")), str(ctx.param("polarity", "dark_on_light"))
         classifier, order = str(ctx.param("classifier", "none")), str(ctx.param("order", "reading"))
         if method not in {"otsu", "sauvola", "fixed"} or polarity not in {"dark_on_light", "light_on_dark"}:
-            raise ToolError("Select a valid threshold method and character polarity")
+            raise ToolError(Msg.of("char_detect.bad_threshold", "Select a valid threshold method and character polarity"))
         if classifier not in {"none", "templates"} or order not in {"reading", "arc", "none"}:
-            raise ToolError("Select a valid classification and order")
+            raise ToolError(Msg.of("char_detect.bad_order", "Select a valid classification and order"))
         expected = str(ctx.param("expected_text", ""))
         if expected and classifier == "none":
-            raise ToolError("Expected text requires character samples")
+            raise ToolError(Msg.of("char_detect.expected_needs_samples", "Expected text requires character samples"))
         limits = [(ctx.number(a, low), ctx.number(b, high)) for a, b, low, high in (
             ("height_min", "height_max", 8, 200), ("aspect_min", "aspect_max", 0.1, 2), ("area_min", "area_max", 10, 40000))]
         if any(low <= 0 or high < low for low, high in limits):
-            raise ToolError("Character limits must be positive and maximum must be at least minimum")
+            raise ToolError(Msg.of("char_detect.bad_limits", "Character limits must be positive and maximum must be at least minimum"))
         window = min(255, max(3, ctx.integer("window", 31))) | 1
         args = (method, polarity, ctx.number("threshold", 127), window, ctx.number("k", 0.2))
         samples = []
         if classifier == "templates":
             refs = ctx.param("templates") or []
             if not isinstance(refs, list) or not refs:
-                raise ToolError("Add character sample pictures before classification")
+                raise ToolError(Msg.of("char_detect.no_samples", "Add character sample pictures before classification"))
             for ref in refs:
                 name = str(ref.get("name", "")) if isinstance(ref, dict) else ""
                 try:
@@ -129,12 +130,12 @@ class CharDetectTool(Tool):
                 except fixed_images.FixedImageError:
                     sample = None
                 if sample is None:
-                    raise ToolError(f"Character sample '{name}' is missing; add it again")
+                    raise ToolError(Msg.of("char_detect.sample_missing", "Character sample '{name}' is missing; add it again", name=name))
                 if not name:
-                    raise ToolError("Character samples need a filename starting with their label")
+                    raise ToolError(Msg.of("char_detect.sample_no_label", "Character samples need a filename starting with their label"))
                 tile = _tile(_binary(sample, *args))
                 if not tile.any():
-                    raise ToolError(f"Character sample '{name}' contains no foreground")
+                    raise ToolError(Msg.of("char_detect.sample_empty", "Character sample '{name}' contains no foreground", name=name))
                 samples.append((name[0], tile))
         c = crop(image, ctx.roi())
         chars = []
@@ -182,7 +183,8 @@ class CharDetectTool(Tool):
         return Result(outputs={"chars": chars, "text": text, "count": len(chars)},
                       overlays=[{"kind": "polygon", "points": ch["polygon"], "color": "#ef4444" if bad else "#22c55e", "label": ch["label"]} for ch in chars],
                       status="ng" if bad or not chars else "ok", branch="not_found" if not chars else "ng" if bad else "ok",
-                      message="No characters found" if not chars else f"{len(chars)} characters: {text}")
+                      message=Msg.of("char_detect.none", "No characters found") if not chars
+                      else Msg.of("char_detect.found", "{count} characters: {text}", count=len(chars), text=text))
 
 
 TOOLS = [CharDetectTool()]

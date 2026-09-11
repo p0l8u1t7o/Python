@@ -6,6 +6,7 @@ import math
 from typing import Any
 
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
+from apps.vision.tools.messages import Msg
 
 LINE_MODE_OPTIONS = [
     {"value": "none", "label": "None"},
@@ -20,13 +21,13 @@ def _detections(ctx: ToolContext) -> list[dict[str, Any]]:
     if raw is None:
         raw = ctx.inputs.get("boxes")
     if raw is None:
-        raise ToolError("Connect matches or boxes")
+        raise ToolError(Msg.of("track.need_detections", "Connect matches or boxes"))
     if not isinstance(raw, list):
-        raise ToolError("Matches or boxes must be a list")
+        raise ToolError(Msg.of("track.not_list", "Matches or boxes must be a list"))
     out: list[dict[str, Any]] = []
     for i, item in enumerate(raw):
         if not isinstance(item, dict):
-            raise ToolError(f"Detection {i} is not an object")
+            raise ToolError(Msg.of("track.detection_not_object", "Detection {i} is not an object", i=i))
         box = dict(item)
         try:
             if "cx" in box and "cy" in box:
@@ -44,7 +45,7 @@ def _detections(ctx: ToolContext) -> list[dict[str, Any]]:
             else:
                 raise TypeError
         except (TypeError, ValueError):
-            raise ToolError(f"Detection {i} must have cx/cy, x/y/w/h, or bbox") from None
+            raise ToolError(Msg.of("track.detection_no_box", "Detection {i} must have cx/cy, x/y/w/h, or bbox", i=i)) from None
         det = dict(box)
         centroid = box.get("centroid")
         if isinstance(centroid, (list, tuple)) and len(centroid) >= 2:
@@ -113,7 +114,7 @@ def _line(ctx: ToolContext) -> tuple[float, float, float, float] | None:
             return float(raw[0][0]), float(raw[0][1]), float(raw[1][0]), float(raw[1][1])
     except (KeyError, TypeError, ValueError, IndexError):
         pass
-    raise ToolError("Count line must be two points")
+    raise ToolError(Msg.of("track.bad_count_line", "Count line must be two points"))
 
 
 def _side(line: tuple[float, float, float, float], cx: float, cy: float) -> float:
@@ -339,7 +340,7 @@ class TrackObjectsTool(Tool):
                 "count_in": count_in, "count_out": count_out,
             },
             overlays=overlays, branch="ok" if tracks_out else "not_found", status="ok" if tracks_out else "ng",
-            message=f"{len(tracks_out)} tracks, {new_count} new, {lost_count} lost",
+            message=Msg.of("track_objects.done", "{tracks} tracks, {new} new, {lost} lost", tracks=len(tracks_out), new=new_count, lost=lost_count),
         )
 
 

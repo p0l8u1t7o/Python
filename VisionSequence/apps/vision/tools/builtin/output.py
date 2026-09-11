@@ -16,6 +16,16 @@ from django.conf import settings
 from apps.comm.writers import CommError, get_writer, parse_address
 from apps.vision.capture.hub import CaptureError
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, normalize_output_value
+from apps.vision.tools.messages import Msg
+
+
+def _clip(text: str, limit: int) -> str:
+    """過長的訊息照舊截斷英文，但保留代碼與參數。"""
+    if len(text) <= limit:
+        return text
+    if isinstance(text, Msg):
+        return Msg(str(text)[:limit], text.code, text.args)
+    return text[:limit]
 
 
 class JudgeTool(Tool):
@@ -40,7 +50,7 @@ class JudgeTool(Tool):
         if mode == "by_input":
             value = ctx.inputs.get("value")
             if value is None:
-                raise ToolError("No boolean input; connect one or use a fixed verdict")
+                raise ToolError(Msg.of("judge.no_input", "No boolean input; connect one or use a fixed verdict"))
             verdict = "ok" if bool(value) else "ng"
         else:
             verdict = mode
@@ -55,7 +65,8 @@ class JudgeTool(Tool):
         return Result(
             outputs={"verdict": verdict.upper()},
             status="ng" if verdict == "ng" else "ok",
-            message=f"{verdict.upper()}" + (f" ({label})" if label else ""),
+            message=(Msg.of("judge.verdict_label", "{verdict} ({label})", verdict=verdict.upper(), label=label) if label
+                     else Msg.of("judge.verdict", "{verdict}", verdict=verdict.upper())),
             context={"_judge": merged, "_outputs": outputs},
         )
 
@@ -79,7 +90,7 @@ class OutputValueTool(Tool):
         value = normalize_output_value(value, ctx.integer("decimals", 3))
         outputs = dict(ctx.context.get("_outputs") or {})
         outputs[name] = value
-        return Result(message=f"{name} = {value!r}"[:200], context={"_outputs": outputs})
+        return Result(message=_clip(Msg.of("output.value", "{name} = {value!r}", name=name, value=value), 200), context={"_outputs": outputs})
 
 
 class SaveImageTool(Tool):
@@ -113,14 +124,14 @@ class SaveImageTool(Tool):
         if ctx.flag("only_ng") or condition == "ng":
             condition = "ng"
         if condition in ("ok", "ng") and judge != condition:
-            return Result(outputs={"path": ""}, message="OK, not saved")
+            return Result(outputs={"path": ""}, message=Msg.of("save_image.skipped", "OK, not saved"))
         folder = str(ctx.param("folder") or os.path.join(str(settings.DATA_DIR), "saved", str(ctx.flow_id)))
         if ctx.flag("split_by_judge", True):
             folder = os.path.join(folder, judge.upper())
         try:
             name = fill_template(str(ctx.param("filename", "{date}-{time}-{run_id:.8}") or "{date}-{time}-{run_id:.8}"), ctx, missing="blank")
         except (ValueError, TypeError, IndexError) as exc:
-            raise ToolError(f"The filename could not be filled in: {exc}") from None
+            raise ToolError(Msg.of("save_image.filename_failed", "The filename could not be filled in: {error}", error=exc)) from None
         prefix = str(ctx.param("prefix", "") or "")
         from apps.vision import fileout
 
@@ -132,9 +143,10 @@ class SaveImageTool(Tool):
             when=ctx.moment,
         )
         if ctx.sandboxed():
-            return Result(outputs={"path": str(path)}, message=f"Would save {path}")
+            return Result(outputs={"path": str(path)}, message=Msg.of("save_image.would_save", "Would save {path}", path=path))
         queued = fileout.submit(fileout.ImageJob(path=path, image=image, fmt=str(ctx.param("format", "png") or "png").lower(), quality=ctx.integer("jpeg_quality", 85)))
-        return Result(outputs={"path": str(path)}, message=(f"Queued {path}" if queued else "Dropped: file output queue is full"), detail={"queued": queued})
+        return Result(outputs={"path": str(path)}, message=(Msg.of("save_image.queued", "Queued {path}", path=path) if queued
+                                                     else Msg.of("save_image.dropped", "Dropped: file output queue is full")), detail={"queued": queued})
 
 
 class WriteLogTool(Tool):
@@ -164,21 +176,21 @@ class WriteLogTool(Tool):
     def execute(self, ctx: ToolContext) -> Result:
         fmt = str(ctx.param("format", "csv") or "csv").lower()
         if fmt not in ("csv", "txt"):
-            raise ToolError("Format must be csv or txt")
+            raise ToolError(Msg.of("write_log.bad_format", "Format must be csv or txt"))
         fields = _field_lines(str(ctx.param("fields", "") or ""))
         if not fields:
-            raise ToolError("Write at least one field")
+            raise ToolError(Msg.of("write_log.no_fields", "Write at least one field"))
         encoding = str(ctx.param("encoding", "utf-8") or "utf-8")
         try:
             codecs.lookup(encoding)
         except LookupError:
-            raise ToolError(f"Unknown encoding '{encoding}'") from None
+            raise ToolError(Msg.of("write_log.bad_encoding", "Unknown encoding '{encoding}'", encoding=encoding)) from None
         try:
             values = format_values(ctx)
             row = [_field_value(field, values) for field in fields]
             filename = fill_template(str(ctx.param("filename", "{station}_{date}") or "{station}_{date}"), ctx, missing="blank")
         except (ValueError, TypeError, IndexError) as exc:
-            raise ToolError(f"The log row could not be filled in: {exc}") from None
+            raise ToolError(Msg.of("write_log.fill_failed", "The log row could not be filled in: {error}", error=exc)) from None
         from apps.vision import fileout
 
         try:
@@ -187,7 +199,7 @@ class WriteLogTool(Tool):
             raise ToolError(str(exc)) from None
         path = fileout.text_path(folder, filename, fmt, daily_folder=ctx.flag("daily_folder", True), when=ctx.moment)
         if ctx.sandboxed():
-            return Result(outputs={"path": str(path), "queued": False}, message=f"Would write {path}")
+            return Result(outputs={"path": str(path), "queued": False}, message=Msg.of("write_log.would_write", "Would write {path}", path=path))
         job = fileout.TextJob(
             path=path,
             fmt=fmt,
@@ -199,7 +211,9 @@ class WriteLogTool(Tool):
             encoding=encoding,
         )
         queued = fileout.submit(job)
-        return Result(outputs={"path": str(path), "queued": queued}, message=(f"Queued {path}" if queued else "Dropped: file output queue is full"), detail={"queued": queued})
+        return Result(outputs={"path": str(path), "queued": queued},
+                      message=(Msg.of("write_log.queued", "Queued {path}", path=path) if queued
+                               else Msg.of("write_log.dropped", "Dropped: file output queue is full")), detail={"queued": queued})
 
 
 class DrawResultTool(Tool):
@@ -239,9 +253,9 @@ class DrawResultTool(Tool):
 def _comm_failed(ctx: ToolContext, required: bool, reason: str, outputs: dict[str, Any], detail: dict[str, Any]) -> Result:
     detail = {**detail, "error": reason}
     if required:
-        return Result(status="error", outputs=outputs, message=reason[:500], detail=detail)
+        return Result(status="error", outputs=outputs, message=_clip(reason, 500), detail=detail)
     ctx.log(f"Output failed (degraded): {reason}", level="warning")
-    return Result(outputs=outputs, message=f"Output failed (degraded): {reason}"[:500], detail=detail)
+    return Result(outputs=outputs, message=_clip(Msg.of("output.comm_degraded", "Output failed (degraded): {reason}", reason=reason), 500), detail=detail)
 
 
 class SetLightTool(Tool):
@@ -277,13 +291,13 @@ class SetLightTool(Tool):
         detail: dict[str, Any] = {"connection": name, "channel": channel, "value": value, "mode": mode}
         writer = get_writer(name)
         if writer is None:
-            return _comm_failed(ctx, required, f"Connection '{name}' is not open or does not exist", {"ok": False}, detail)
+            return _comm_failed(ctx, required, Msg.of("set_light.not_open", "Connection '{name}' is not open or does not exist", name=name), {"ok": False}, detail)
         value_max = getattr(writer, "value_max", None)
         if value_max is not None and (value < 0 or value > int(value_max)):
-            return _comm_failed(ctx, required, f"Light value {value} is outside 0..{int(value_max)}", {"ok": False}, detail)
+            return _comm_failed(ctx, required, Msg.of("set_light.out_of_range", "Light value {value} is outside 0..{value_max}", value=value, value_max=int(value_max)), {"ok": False}, detail)
         send = getattr(writer, "set_light", None)
         if send is None:
-            return _comm_failed(ctx, required, f"Connection '{name}' cannot control light channels", {"ok": False}, detail)
+            return _comm_failed(ctx, required, Msg.of("set_light.no_light", "Connection '{name}' cannot control light channels", name=name), {"ok": False}, detail)
         try:
             out = send(channel, value, mode, timeout=timeout)
         except CommError as exc:
@@ -291,7 +305,7 @@ class SetLightTool(Tool):
         except Exception as exc:  # noqa: BLE001 - 外掛 writer 的未預期例外也要走降級
             return _comm_failed(ctx, required, f"{type(exc).__name__}: {exc}", {"ok": False}, detail)
         detail["result"] = out
-        return Result(outputs={"ok": True}, message=f"Set light channel {channel}", detail=detail)
+        return Result(outputs={"ok": True}, message=Msg.of("set_light.done", "Set light channel {channel}", channel=channel), detail=detail)
 
 
 class _PulseScheduler:
@@ -385,7 +399,7 @@ class IoOutputTool(Tool):
         detail: dict[str, Any] = {"connection": name, "address": address, "judge": judge, "active": active, "pulse_ms": pulse_ms}
         writer = get_writer(name)
         if writer is None:
-            return _comm_failed(ctx, required, f"Connection '{name}' is not open or does not exist", {"ok": False, "active": active}, detail)
+            return _comm_failed(ctx, required, Msg.of("io_output.not_open", "Connection '{name}' is not open or does not exist", name=name), {"ok": False, "active": active}, detail)
         try:
             result = _write_output(writer, address, active, timeout)
         except CommError as exc:
@@ -396,7 +410,9 @@ class IoOutputTool(Tool):
         if pulse_ms > 0 and active:
             _PULSES.schedule(pulse_ms / 1000.0, _write_output, writer, address, not active, timeout)
             detail["pulse_scheduled"] = True
-        return Result(outputs={"ok": True, "active": active}, message=f"Output {'pulse' if pulse_ms > 0 and active else 'level'} {address}", detail=detail)
+        message = (Msg.of("io_output.pulse", "Output pulse {address}", address=address) if pulse_ms > 0 and active
+                   else Msg.of("io_output.level", "Output level {address}", address=address))
+        return Result(outputs={"ok": True, "active": active}, message=message, detail=detail)
 
 
 class CameraIoTool(Tool):
@@ -438,7 +454,8 @@ class CameraIoTool(Tool):
 
         grabber, reason = capture_grabber_for_source(source_id)
         if grabber is None:
-            msg = f"Image source {source_id} is not a capture camera" if reason == "not_capture" else f"Capture camera {source_id} is not available: {reason}"
+            msg = (Msg.of("camera_io.not_capture", "Image source {source} is not a capture camera", source=source_id) if reason == "not_capture"
+                   else Msg.of("camera_io.unavailable", "Capture camera {source} is not available: {reason}", source=source_id, reason=reason))
             return _comm_failed(ctx, required, msg, {"ok": False, "active": active}, detail)
         try:
             result = grabber.command("line_out", {"line": line, "level": active, "pulse_ms": pulse_ms}, timeout=timeout)
@@ -446,8 +463,12 @@ class CameraIoTool(Tool):
             return _comm_failed(ctx, required, str(exc), {"ok": False, "active": active}, detail)
         detail["result"] = result
         if not result.get("ok"):
-            return _comm_failed(ctx, required, str(result.get("message") or result.get("errors") or "Camera output failed"), {"ok": False, "active": active}, detail)
-        return Result(outputs={"ok": True, "active": active}, message=f"Camera output {'pulse' if pulse_ms > 0 else 'level'} {line}", detail=detail)
+            failure = result.get("message") or result.get("errors")
+            reason_text = str(failure) if failure else Msg.of("camera_io.failed", "Camera output failed")
+            return _comm_failed(ctx, required, reason_text, {"ok": False, "active": active}, detail)
+        message = (Msg.of("camera_io.pulse", "Camera output pulse {line}", line=line) if pulse_ms > 0
+                   else Msg.of("camera_io.level", "Camera output level {line}", line=line))
+        return Result(outputs={"ok": True, "active": active}, message=message, detail=detail)
 
 
 class CameraSetTool(Tool):
@@ -481,7 +502,8 @@ class CameraSetTool(Tool):
 
         grabber, reason = capture_grabber_for_source(source_id)
         if grabber is None:
-            msg = f"Image source {source_id} is not a capture camera" if reason == "not_capture" else f"Capture camera {source_id} is not available: {reason}"
+            msg = (Msg.of("camera_set.not_capture", "Image source {source} is not a capture camera", source=source_id) if reason == "not_capture"
+                   else Msg.of("camera_set.unavailable", "Capture camera {source} is not available: {reason}", source=source_id, reason=reason))
             return _camera_set_unavailable(ctx, required, msg, detail)
         values = _parse_camera_values(str(ctx.param("values", "") or ""))
         user_set = str(ctx.param("user_set", "none") or "none").lower()
@@ -508,7 +530,8 @@ class CameraSetTool(Tool):
         return Result(
             status="ok" if ok else "ng",
             outputs={"ok": ok, "applied": applied, "errors": errors},
-            message="Camera settings applied" if ok else "Camera settings partially failed",
+            message=(Msg.of("camera_set.applied", "Camera settings applied") if ok
+                     else Msg.of("camera_set.partial", "Camera settings partially failed")),
             detail=detail,
         )
 
@@ -517,7 +540,7 @@ def _camera_set_unavailable(ctx: ToolContext, required: bool, reason: str, detai
     if required:
         raise ToolError(reason)
     ctx.log(f"Camera settings failed (degraded): {reason}", level="warning")
-    return Result(status="ok", outputs={"ok": False, "applied": {}, "errors": {"connection": reason}}, message=f"Camera settings failed (degraded): {reason}"[:500], detail=detail)
+    return Result(status="ok", outputs={"ok": False, "applied": {}, "errors": {"connection": reason}}, message=_clip(Msg.of("camera_set.degraded", "Camera settings failed (degraded): {reason}", reason=reason), 500), detail=detail)
 
 
 def _parse_camera_values(text: str) -> dict[str, Any]:
@@ -527,11 +550,11 @@ def _parse_camera_values(text: str) -> dict[str, Any]:
         if not line or line.startswith("#"):
             continue
         if "=" not in line:
-            raise ToolError(f"Line {lineno} must be name=value")
+            raise ToolError(Msg.of("camera_set.line_no_equals", "Line {lineno} must be name=value", lineno=lineno))
         name, value = line.split("=", 1)
         name = name.strip()
         if not name:
-            raise ToolError(f"Line {lineno} has no name")
+            raise ToolError(Msg.of("camera_set.line_no_name", "Line {lineno} has no name", lineno=lineno))
         values[name] = _parse_camera_value(value.strip())
     return values
 
@@ -690,16 +713,17 @@ class FormatTextTool(Tool):
             return self._execute_items(ctx)
         template = str(ctx.param("template", "") or "")
         if not template.strip():
-            raise ToolError("Write the layout of the line, for example {judge},{value}")
+            raise ToolError(Msg.of("format_text.no_layout", "Write the layout of the line, for example {example}", example="{judge},{value}"))
         template = _unescape(template)
         missing = str(ctx.param("missing", "blank"))
         seen: list[str] = []
         try:
             text = fill_template(template, ctx, missing=missing, seen=seen)
         except (ValueError, TypeError, IndexError) as exc:
-            raise ToolError(f"The layout could not be filled in: {exc}") from None
+            raise ToolError(Msg.of("format_text.fill_failed", "The layout could not be filled in: {error}", error=exc)) from None
         if missing == "fail" and seen:
-            raise ToolError(f"No value for {', '.join(sorted(set(seen))[:5])}; run the step that produces it first")
+            raise ToolError(Msg.of("format_text.missing_values", "No value for {names}; run the step that produces it first",
+                                   names=", ".join(sorted(set(seen))[:5])))
         text += {"lf": "\n", "crlf": "\r\n", "cr": "\r"}.get(str(ctx.param("ending", "none")), "")
         name = str(ctx.param("name", "text") or "text")
         outputs = dict(ctx.context.get("_outputs") or {})
@@ -707,7 +731,7 @@ class FormatTextTool(Tool):
         result_outputs = {"text": text, "lines": [text] if text else []}
         result_outputs[name] = text
         return Result(outputs=result_outputs, context={"_outputs": outputs},
-                      message=repr(text)[1:-1][:200] if text else "(empty)")
+                      message=repr(text)[1:-1][:200] if text else Msg.of("format_text.empty", "(empty)"))
 
     def _values(self, ctx: ToolContext) -> dict[str, Any]:
         """能填進樣板的名字：具名輸出 → 觸發帶進來的引數 → 這一步的輸入 a~d。後者優先。"""
@@ -716,10 +740,10 @@ class FormatTextTool(Tool):
     def _execute_items(self, ctx: ToolContext) -> Result:
         items = ctx.inputs.get("items")
         if not isinstance(items, list):
-            raise ToolError("Items must be a list")
+            raise ToolError(Msg.of("format_text.items_not_list", "Items must be a list"))
         template = _unescape(str(ctx.param("each_template", "") or ""))
         if not template.strip():
-            raise ToolError("Write the item layout, for example {index},{label}")
+            raise ToolError(Msg.of("format_text.no_item_layout", "Write the item layout, for example {example}", example="{index},{label}"))
         missing = str(ctx.param("missing", "blank"))
         base_values = format_values(ctx)
         lines: list[str] = []
@@ -738,9 +762,10 @@ class FormatTextTool(Tool):
             try:
                 lines.append(template.format_map(_Fill(values, missing, seen)))
             except (ValueError, TypeError, IndexError, KeyError) as exc:
-                raise ToolError(f"The item layout could not be filled in: {exc}") from None
+                raise ToolError(Msg.of("format_text.item_fill_failed", "The item layout could not be filled in: {error}", error=exc)) from None
         if missing == "fail" and seen:
-            raise ToolError(f"No value for {', '.join(sorted(set(seen))[:5])}; run the step that produces it first")
+            raise ToolError(Msg.of("format_text.missing_values", "No value for {names}; run the step that produces it first",
+                                   names=", ".join(sorted(set(seen))[:5])))
         text = _unescape(str(ctx.param("join", "\\n") or "")).join(lines)
         text += {"lf": "\n", "crlf": "\r\n", "cr": "\r"}.get(str(ctx.param("ending", "none")), "")
         name = str(ctx.param("name", "text") or "text")
@@ -750,7 +775,7 @@ class FormatTextTool(Tool):
             outputs[name] = text
             result_outputs[name] = text
         return Result(outputs=result_outputs, context={"_outputs": outputs},
-                      message=repr(text)[1:-1][:200] if text else "(empty)")
+                      message=repr(text)[1:-1][:200] if text else Msg.of("format_text.empty", "(empty)"))
 
 
 def _unescape(text: str) -> str:

@@ -23,6 +23,7 @@ from typing import Any, Callable, Protocol
 import numpy as np
 
 from apps.core.errors import ValidationError
+from apps.vision.tools.messages import Msg
 
 # 埠的資料型別。any 可接任何型別；flow 是控制分支。
 PORT_TYPES = (
@@ -135,7 +136,9 @@ def apply_reject(ctx: "ToolContext", ok: bool, message: str) -> tuple[str, str, 
     label = str(ctx.param("ng_label", "") or "").strip()
     context = None
     if label:
-        message = f"{message} ({label})"
+        # 帶代碼的訊息保留代碼，標籤放進參數 ng_label（前端組好中文句子後再接上），英文照舊
+        text = f"{message} ({label})"
+        message = Msg(text, message.code, {**message.args, "ng_label": label}) if isinstance(message, Msg) and message.code else text
         outputs = dict(ctx.context.get("_outputs") or {})
         outputs.setdefault("judge_label", label)
         context = {"_outputs": outputs}
@@ -329,7 +332,7 @@ class ToolContext:
     def require_image(self, key: str = "image") -> np.ndarray:
         image = self.image(key)
         if image is None:
-            raise ToolError(f"Input port '{key}' has no image")
+            raise ToolError(Msg.of("base.input_no_image", "Input port '{key}' has no image", key=key))
         return image
 
     # -- 流程變數（apps/vision/variables.py）：跨執行、跨流程的狀態 ----------------------------------

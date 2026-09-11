@@ -16,6 +16,7 @@ import numpy as np
 from apps.vision import shapemodel
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
 from apps.vision.tools.builtin.locate import to_gray
+from apps.vision.tools.messages import Msg
 from apps.vision.tools.roi import crop, region_overlay
 
 POLARITY_OPTIONS = [
@@ -155,14 +156,14 @@ class ShapeMatchTool(Tool):
         angle_extent = ctx.number("angle_extent", 360)
         scale_min, scale_max = ctx.number("scale_min", 1.0), ctx.number("scale_max", 1.0)
         if angle_extent <= 0:
-            raise ToolError("Angle extent must be positive")
+            raise ToolError(Msg.of("shape_match.bad_angle_extent", "Angle extent must be positive"))
         if scale_min <= 0 or scale_min > scale_max:
-            raise ToolError("Scale min must be positive and not larger than scale max")
+            raise ToolError(Msg.of("shape_match.bad_scale", "Scale min must be positive and not larger than scale max"))
         gray = to_gray(ctx.require_image())
         region = ctx.roi()
         c = crop(gray, region)
         if c.image.size == 0:
-            raise ToolError("The region falls outside the image")
+            raise ToolError(Msg.of("shape_match.outside", "The region falls outside the image"))
         search = np.ascontiguousarray(c.image)
         if c.mask is not None:
             # 多邊形搜尋區：遮罩外填 0（沒有邊緣＝不計分）
@@ -199,7 +200,9 @@ class ShapeMatchTool(Tool):
                      "best_x": best["cx"] if best else nan, "best_y": best["cy"] if best else nan, "best_angle": best["angle"] if best else 0.0,
                      "best_scale": best["scale"] if best else 1.0, "best_score": best["score"] if best else 0.0},
             overlays=overlays, branch="found" if matches else "not_found", status="ok" if matches else "ng",
-            message=(f"{len(matches)} matches, best {best['score']:.3f} @ ({best['cx']:.1f}, {best['cy']:.1f}) {best['angle']:.1f}°" if best else "not found"),
+            message=(Msg.of("shape_match.found", "{n} matches, best {score:.3f} @ ({x:.1f}, {y:.1f}) {angle:.1f}°",
+                            n=len(matches), score=best["score"], x=best["cx"], y=best["cy"], angle=best["angle"])
+                     if best else Msg.of("shape_match.none", "not found")),
             detail={k: v for k, v in info.items() if k != "per_level"} | {"per_level": info.get("per_level", [])},
         )
 

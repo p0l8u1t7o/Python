@@ -118,7 +118,7 @@ class _Session:
                 # 並標 nodes_trimmed 讓前端別拿它蓋掉同一個 run 的完整版。
                 run = dict(payload["run"])
                 run["nodes"] = {
-                    k: {**NODE_REPORT_DEFAULTS, **{kk: vv for kk, vv in v.items() if kk in ("status", "duration_ms", "message", "branch", "overlay_on")}}
+                    k: {**NODE_REPORT_DEFAULTS, **{kk: vv for kk, vv in v.items() if kk in ("status", "duration_ms", "message", "message_code", "message_args", "branch", "overlay_on")}}
                     for k, v in run["nodes"].items()
                 }
                 run["nodes_trimmed"] = True

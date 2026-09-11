@@ -522,7 +522,7 @@ function InspectPageInner({ flowId }: { flowId: number }) {
           <p className="text-sm font-semibold">{t(`inspect.status.${status}`)}</p>
           <p title={reading?.value == null ? undefined : `${String(reading.value)} ${readingUnit}`} className={`font-mono text-2xl ${stale ? 'text-muted line-through' : ''}`}>{inspectionValue(reading)} {inspectionValue(reading) !== '—' ? readingUnit : ''}</p>
           {stale && !newKind ? <p className="text-xs text-muted">{t('inspect.staleHint')}</p> : null}
-          {reading?.reason ? <p className="text-xs text-muted">{reading.reason}</p> : null}
+          {reading?.reason ? <p className="text-xs text-muted">{localiseMessage(reading.reason, reading.reason_code, reading.reason_args, i18next.language)}</p> : null}
           {task?.kind === 'locate_part' && !newKind ? <p className="text-xs text-muted" data-testid="inspect-teach-hint">{t('inspect.teachHint')}</p> : null}
           {task?.kind === 'locate_part' && reading?.verdict === 'pass' && !stale && !newKind ? <Button disabled={!run?.id || readOnly || preview.isPending} onClick={() => void action(teachPose)} data-testid="inspect-teach-pose">{t('inspect.teachPose')}</Button> : null}
           {cropKey ? <div className="space-y-2" data-testid="inspect-crop-mode">
@@ -552,3 +552,5 @@ export function InspectPage() {
   return Number.isInteger(id) && id > 0 ? <InspectPageInner key={id} flowId={id} /> : null
 }
 import { FlowNotesLink } from '@/components/notes/FlowNotesLink'
+import i18next from '@/i18n'
+import { localiseMessage } from '@/lib/toolMessages'

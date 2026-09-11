@@ -12,8 +12,18 @@ import numpy as np
 
 from apps.comm.writers import CommError, coerce, get_writer
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext
+from apps.vision.tools.messages import Msg
 
 _MISSING = object()
+
+
+def _clip(text: str, limit: int) -> str:
+    """過長的訊息照舊截斷英文，但保留代碼與參數。"""
+    if len(text) <= limit:
+        return text
+    if isinstance(text, Msg):
+        return Msg(str(text)[:limit], text.code, text.args)
+    return text[:limit]
 
 
 def _scalar(value: Any) -> Any:
@@ -125,10 +135,10 @@ class WriteModbusTool(Tool):
 
         writer = get_writer(name)
         if writer is None:
-            return self._failed(ctx, on_error, f"Connection '{name}' is not open (missing, disabled, or not pre-loaded)", detail)
+            return self._failed(ctx, on_error, Msg.of("write_modbus.not_open", "Connection '{name}' is not open (missing, disabled, or not pre-loaded)", name=name), detail)
         if not payload:
             ctx.log("Nothing in the mapping table can be written", level="warning", missing=missing)
-            return Result(outputs={"written": 0, "ok": True}, message="Nothing to write", detail=detail)
+            return Result(outputs={"written": 0, "ok": True}, message=Msg.of("write_modbus.nothing", "Nothing to write"), detail=detail)
         try:
             result = writer.write(payload, timeout=timeout)
         except CommError as exc:
@@ -139,15 +149,15 @@ class WriteModbusTool(Tool):
         detail["result"] = {k: v for k, v in result.items() if k != "values"}
         if missing:
             ctx.log(f"{len(missing)} sources were not found and were skipped", level="warning", missing=missing)
-        return Result(outputs={"written": written, "ok": True}, message=f"Wrote {written} values to {name}", detail=detail)
+        return Result(outputs={"written": written, "ok": True}, message=Msg.of("write_modbus.wrote", "Wrote {written} values to {name}", written=written, name=name), detail=detail)
 
     @staticmethod
     def _failed(ctx: ToolContext, on_error: str, reason: str, detail: dict[str, Any]) -> Result:
         detail = {**detail, "error": reason}
         if on_error == "fail":
-            return Result(outputs={"written": 0, "ok": False}, status="error", message=f"Write failed: {reason}"[:500], detail=detail)
+            return Result(outputs={"written": 0, "ok": False}, status="error", message=_clip(Msg.of("write_modbus.failed", "Write failed: {reason}", reason=reason), 500), detail=detail)
         ctx.log(f"Write failed (degraded): {reason}", level="warning")
-        return Result(outputs={"written": 0, "ok": False}, status="ok", message=f"Write failed (degraded): {reason}"[:500], detail=detail)
+        return Result(outputs={"written": 0, "ok": False}, status="ok", message=_clip(Msg.of("write_modbus.degraded", "Write failed (degraded): {reason}", reason=reason), 500), detail=detail)
 
 
 class ReadModbusTool(Tool):
@@ -190,11 +200,11 @@ class ReadModbusTool(Tool):
         addresses = [str(item["address"]).strip() for item in items]
         detail: dict[str, Any] = {"connection": name, "addresses": addresses}
         if not addresses:
-            return Result(outputs={"values": [], "value": 0.0, "ok": True}, message="The read mapping has no addresses", detail=detail)
+            return Result(outputs={"values": [], "value": 0.0, "ok": True}, message=Msg.of("read_modbus.no_addresses", "The read mapping has no addresses"), detail=detail)
 
         writer = get_writer(name)
         if writer is None:
-            return self._read_failed(ctx, on_error, f"Connection '{name}' is not open (missing, disabled, or not pre-loaded)", detail)
+            return self._read_failed(ctx, on_error, Msg.of("read_modbus.not_open", "Connection '{name}' is not open (missing, disabled, or not pre-loaded)", name=name), detail)
         try:
             raw = writer.read(addresses)
         except CommError as exc:
@@ -229,9 +239,9 @@ class ReadModbusTool(Tool):
     def _read_failed(ctx: ToolContext, on_error: str, reason: str, detail: dict[str, Any]) -> Result:
         detail = {**detail, "error": reason}
         if on_error == "fail":
-            return Result(outputs={"values": [], "value": 0.0, "ok": False}, status="error", message=f"Read failed: {reason}"[:500], detail=detail)
+            return Result(outputs={"values": [], "value": 0.0, "ok": False}, status="error", message=_clip(Msg.of("read_modbus.failed", "Read failed: {reason}", reason=reason), 500), detail=detail)
         ctx.log(f"Read failed (degraded): {reason}", level="warning")
-        return Result(outputs={"values": [], "value": 0.0, "ok": False}, status="ok", message=f"Read failed (degraded): {reason}"[:500], detail=detail)
+        return Result(outputs={"values": [], "value": 0.0, "ok": False}, status="ok", message=_clip(Msg.of("read_modbus.degraded", "Read failed (degraded): {reason}", reason=reason), 500), detail=detail)
 
 
 
@@ -268,7 +278,7 @@ class SendImageTool(Tool):
         image = ctx.require_image()
         judge = ctx.context.get("_judge")
         if ctx.flag("only_ng") and str(judge or "ok").lower() != "ng":
-            return Result(outputs={"sent": False, "bytes": 0}, message="OK, not sent")
+            return Result(outputs={"sent": False, "bytes": 0}, message=Msg.of("send_image.skipped", "OK, not sent"))
         name = str(ctx.param("connection") or "")
         writer = get_writer(name)
         on_error = str(ctx.param("on_error") or "warn")
@@ -276,13 +286,13 @@ class SendImageTool(Tool):
         def degrade(reason: str) -> Result:
             if on_error == "fail":
                 return Result(status="error", outputs={"sent": False, "bytes": 0}, message=reason, detail={"error": reason})
-            return Result(outputs={"sent": False, "bytes": 0}, message=f"Send skipped (degraded): {reason}", detail={"error": reason})
+            return Result(outputs={"sent": False, "bytes": 0}, message=Msg.of("send_image.degraded", "Send skipped (degraded): {reason}", reason=reason), detail={"error": reason})
 
         if writer is None:
-            return degrade(f"Connection '{name}' is not open or does not exist")
+            return degrade(Msg.of("send_image.not_open", "Connection '{name}' is not open or does not exist", name=name))
         send = getattr(writer, "send_image", None)
         if send is None:
-            return degrade(f"Connection '{name}' ({writer.kind}) cannot carry images; use a TCP image connection")
+            return degrade(Msg.of("send_image.no_images", "Connection '{name}' ({kind}) cannot carry images; use a TCP image connection", name=name, kind=writer.kind))
         header: dict[str, Any] = {"run_id": ctx.run_id, "flow_id": ctx.flow_id, "node": ctx.node.get("id", "")}
         if ctx.param("name"):
             header["name"] = str(ctx.param("name"))
@@ -296,6 +306,7 @@ class SendImageTool(Tool):
             out = send(image, header, encoding=str(ctx.param("encoding") or "") or None, quality=int(ctx.param("quality") or 85), timeout=timeout)
         except CommError as exc:
             return degrade(str(exc))
-        return Result(outputs={"sent": True, "bytes": out["bytes"]}, message=f"Sent {out['bytes'] / 1024:.1f} KB ({out['encoding']} {out['width']}x{out['height']})", detail=out)
+        return Result(outputs={"sent": True, "bytes": out["bytes"]}, message=Msg.of("send_image.sent", "Sent {kb:.1f} KB ({encoding} {width}x{height})",
+                                    kb=out["bytes"] / 1024, encoding=out["encoding"], width=out["width"], height=out["height"]), detail=out)
 
 TOOLS = [WriteModbusTool(), ReadModbusTool(), SendImageTool()]

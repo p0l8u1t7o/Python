@@ -550,10 +550,12 @@ def fold_report(report, instances: dict[str, dict[str, Any]]) -> None:
         if not inner:
             continue
         status = max((r.status for r in inner), key=lambda s: _STATUS_RANK.get(s, 0))
-        message = next((r.message for r in inner if r.status == status and r.message), "")
+        src = next((r for r in inner if r.status == status and r.message), None)
+        message = src.message if src else ""
+        code, args = (src.message_code, dict(src.message_args)) if src else ("", {})
         if info.get("enabled") is False:
             # 停用的實例：內部單進單出的節點會直通（狀態 ok），但整個工具算被跳過
-            status, message = "skipped", "disabled"
+            status, message, code, args = "skipped", "disabled", "engine.disabled", {}
         outputs: dict[str, Any] = {}
         branch: str | None = None
         for ext_key, (inner_id, port_key, port_type) in info["outputs"].items():
@@ -568,7 +570,7 @@ def fold_report(report, instances: dict[str, dict[str, Any]]) -> None:
         overlays = [o for r in inner for o in r.overlays]
         overlay_on = next((r.overlay_on for r in inner if r.overlay_on), None)
         report.nodes[inst] = NodeReport(
-            status=status, duration_ms=sum(r.duration_ms for r in inner), message=message, branch=branch, outputs=outputs,
+            status=status, duration_ms=sum(r.duration_ms for r in inner), message=message, message_code=code, message_args=args, branch=branch, outputs=outputs,
             overlays=overlays, overlay_on=overlay_on, detail={"composite": info["tool"], "steps": list(info["inner"])},
         )
 

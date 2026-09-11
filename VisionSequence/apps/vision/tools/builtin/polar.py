@@ -24,6 +24,7 @@ import numpy as np
 
 from apps.vision.tools import accel
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError
+from apps.vision.tools.messages import Msg
 from apps.vision.tools.roi import region_overlay
 
 ANGLE_STEP_OPTIONS = [
@@ -76,7 +77,7 @@ def geometry_from_region(region: dict[str, Any]) -> tuple[float, float, float, f
         if a0 is None or a1 is None:
             a0 = a1 = None
         return float(region["cx"]), float(region["cy"]), float(region["r_inner"]), float(region["r_outer"]), (None if a0 is None else float(a0)), (None if a1 is None else float(a1))
-    raise ToolError(f"Polar unwrap needs a circle or annulus region, got '{shape}'")
+    raise ToolError(Msg.of("polar.bad_shape", "Polar unwrap needs a circle or annulus region, got '{shape}'", shape=shape))
 
 
 def mapping_dict(cx: float, cy: float, r_inner: float, r_outer: float, *, a0: float | None, a1: float | None,
@@ -200,14 +201,14 @@ class PolarUnwrapTool(Tool):
         image = ctx.require_image()
         region = ctx.roi()
         if region is None:
-            raise ToolError("No ring is set")
+            raise ToolError(Msg.of("polar_unwrap.no_ring", "No ring is set"))
         cx, cy, r_inner, r_outer, a0, a1 = geometry_from_region(region)
         if r_outer - r_inner < 1:
-            raise ToolError("The ring must be at least 1 px wide")
+            raise ToolError(Msg.of("polar_unwrap.too_thin", "The ring must be at least 1 px wide"))
         m = mapping_dict(cx, cy, r_inner, r_outer, a0=a0, a1=a1, start_angle=ctx.number("start_angle", 0), direction=ctx.param("direction", "ccw"),
                          step_deg=step_degrees(ctx.param("angle_step", "auto"), r_outer), radial_step=ctx.number("radial_step", 1))
         if m["width"] * m["height"] > 50_000_000:
-            raise ToolError("The unwrapped strip would be too large; use a coarser angle or radial step")
+            raise ToolError(Msg.of("polar_unwrap.too_large", "The unwrapped strip would be too large; use a coarser angle or radial step"))
         interpolation = str(ctx.param("interpolation", "linear"))
         out = unwrap(image, m, interpolation)
         t = math.radians(m["start_angle"])
@@ -219,7 +220,7 @@ class PolarUnwrapTool(Tool):
         return Result(
             outputs={"image": out, "mapping": m, "cx": cx, "cy": cy, "r_inner": r_inner, "r_outer": r_outer, "step_deg": m["step_deg"]},
             overlays=overlays,
-            message=f"{m['width']}×{m['height']}, {m['step_deg']:.3f}°/px, {m['direction']}",
+            message=Msg.of("polar_unwrap.done", "{w}×{h}, {step:.3f}°/px, {direction}", w=m["width"], h=m["height"], step=m["step_deg"], direction=m["direction"]),
         )
 
 
@@ -254,12 +255,12 @@ def _mapping_from_ctx(ctx: ToolContext) -> dict[str, Any]:
     for k in ("cx", "cy", "r_inner"):
         v = ctx.inputs.get(k)
         if v is None:
-            raise ToolError("Connect the mapping output of Polar unwrap, or the centre and inner radius numbers")
+            raise ToolError(Msg.of("polar_restore.no_mapping", "Connect the mapping output of Polar unwrap, or the centre and inner radius numbers"))
         values[k] = float(v)
     r_outer = ctx.inputs.get("r_outer")
     r_outer = float(r_outer) if r_outer is not None else ctx.number("r_outer", 0)
     if r_outer <= values["r_inner"]:
-        raise ToolError("The outer radius must be larger than the inner radius")
+        raise ToolError(Msg.of("polar_restore.bad_radius", "The outer radius must be larger than the inner radius"))
     return mapping_dict(values["cx"], values["cy"], values["r_inner"], r_outer, a0=None, a1=None, start_angle=ctx.number("start_angle", 0),
                         direction=ctx.param("direction", "ccw"), step_deg=step_degrees(ctx.param("angle_step", "auto"), r_outer), radial_step=ctx.number("radial_step", 1))
 
@@ -326,7 +327,8 @@ class PolarRestoreTool(Tool):
             outputs={"points": restored_pts.tolist(), "contours": restored_contours, "count": count,
                      "first_x": first_x, "first_y": first_y, "first_angle": first_angle, "first_radius": first_radius},
             overlays=overlays,
-            message=f"{len(restored_pts)} points, {len(restored_contours)} contours restored" if count else "nothing to restore",
+            message=(Msg.of("polar_restore.restored", "{points} points, {contours} contours restored", points=len(restored_pts), contours=len(restored_contours)) if count
+                     else Msg.of("polar_restore.nothing", "nothing to restore")),
         )
 
 

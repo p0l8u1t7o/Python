@@ -273,6 +273,8 @@ export interface InspectReading {
   value: unknown
   unit: string
   reason: string
+  reason_code?: string
+  reason_args?: Record<string, string>
   overlays: Overlay[]
   node_id: string
 }
@@ -491,6 +493,9 @@ export interface NodeReport {
   status: NodeStatus
   duration_ms: number
   message: string
+  /** 訊息代碼與已格式化的參數（後端 Msg）；lib/toolMessages.ts 依介面語言組句子 */
+  message_code?: string
+  message_args?: Record<string, string>
   branch: string | null
   outputs: Record<string, unknown>
   overlays: Overlay[]

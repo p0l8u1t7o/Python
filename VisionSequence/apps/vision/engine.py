@@ -23,6 +23,7 @@ from typing import Any, Callable
 
 import numpy as np
 
+from apps.vision.tools.messages import Msg, parts as message_parts
 from apps.vision.graph import DECORATION_TYPES, CompiledGraph, CompiledNode
 from apps.vision.images import store
 from apps.vision.tools import base as tools_base
@@ -42,14 +43,23 @@ class NodeReport:
     overlay_on: str | None = None
     detail: dict[str, Any] = field(default_factory=dict)
     logs: list[dict[str, Any]] = field(default_factory=list)
+    #: 訊息代碼與顯示參數（tools/messages.py 的 Msg）；前端依介面語言組句子，沒有代碼就顯示英文 message
+    message_code: str = ""
+    message_args: dict[str, str] = field(default_factory=dict)
 
 
 #: 節點報告對外的完整形狀。落地的 FlowRun 只留 status／duration_ms／message，SSE 對不要輸出的訂閱者也會瘦身；
 #: 讀回或瘦身時都要用這份補齊，否則前端拿到少一半鍵的 NodeReport（`outputs[...]`／`Object.entries(outputs)` 會炸）。
 NODE_REPORT_DEFAULTS: dict[str, Any] = {
-    "status": "ok", "duration_ms": 0.0, "message": "", "branch": None,
+    "status": "ok", "duration_ms": 0.0, "message": "", "message_code": "", "message_args": {}, "branch": None,
     "outputs": {}, "overlays": [], "overlay_on": None, "detail": {}, "logs": [],
 }
+
+
+def _set_message(node_report: NodeReport, message: Any) -> None:
+    """節點訊息一律存成普通字串；Msg 的代碼與參數另外放（不讓 Msg 物件流進 JSON 與資料庫）。"""
+    node_report.message = str(message or "")
+    node_report.message_code, node_report.message_args = message_parts(message)
 
 
 @dataclass
@@ -92,6 +102,8 @@ class RunReport:
                     "status": r.status,
                     "duration_ms": round(r.duration_ms, 3),
                     "message": r.message,
+                    "message_code": r.message_code,
+                    "message_args": r.message_args,
                     "branch": r.branch,
                     "outputs": r.outputs if include_node_outputs else {},
                     "overlays": r.overlays if include_node_outputs else [],
@@ -237,7 +249,7 @@ def execute(
 
         if deadline is not None and time.perf_counter() > deadline:
             node_report.status = "error"
-            node_report.message = "the run timed out"
+            _set_message(node_report, Msg.of("engine.timeout", "the run timed out"))
             report.nodes[node_id] = node_report
             status_of[node_id] = "error"
             any_error = True
@@ -252,7 +264,7 @@ def execute(
             )
             if not taken:
                 node_report.status = "skipped"
-                node_report.message = "branch not selected"
+                _set_message(node_report, Msg.of("engine.branch_not_selected", "branch not selected"))
                 report.nodes[node_id] = node_report
                 status_of[node_id] = "skipped"
                 continue
@@ -268,7 +280,12 @@ def execute(
                 if st in ("ok", "ng"):
                     values.append(outputs.get((src, sport)))
                 elif port.required:
-                    blocked = f"upstream '{src}' {st or "not executed"}"
+                    if st == "skipped":
+                        blocked = Msg.of("engine.upstream_skipped", "upstream '{node}' skipped", node=src)
+                    elif st == "error":
+                        blocked = Msg.of("engine.upstream_error", "upstream '{node}' error", node=src)
+                    else:
+                        blocked = Msg.of("engine.upstream_not_run", "upstream '{node}' not executed", node=src)
             if port.multiple:
                 inputs[port.key] = values
             else:
@@ -276,7 +293,7 @@ def execute(
             if port.required and not sources and port.type != "flow":
                 # 未連線的必填輸入：來源工具可以自己抓（例如 image_source），其他標錯。
                 if not getattr(cn.tool, "allows_unconnected", False):
-                    blocked = blocked or f"input port '{port.key}' is not connected"
+                    blocked = blocked or Msg.of("engine.input_unconnected", "input port '{port}' is not connected", port=port.key)
         # 參數訂閱：`param:<key>` 的上游值疊在節點參數之上（工具照常用 ctx.param()）
         bound: dict[str, Any] = {}
         bad_params: list[str] = []
@@ -315,7 +332,7 @@ def execute(
                 break
         if blocked:
             node_report.status = "skipped"
-            node_report.message = blocked
+            _set_message(node_report, blocked)
             report.nodes[node_id] = node_report
             status_of[node_id] = "skipped"
             continue
@@ -327,11 +344,11 @@ def execute(
                 for k, v in passthrough.items():
                     outputs[(node_id, k)] = v
                 node_report.status = "ok"
-                node_report.message = "disabled (pass-through)"
+                _set_message(node_report, Msg.of("engine.disabled_passthrough", "disabled (pass-through)"))
                 status_of[node_id] = "ok"
             else:
                 node_report.status = "skipped"
-                node_report.message = "disabled"
+                _set_message(node_report, Msg.of("engine.disabled", "disabled"))
                 status_of[node_id] = "skipped"
             report.nodes[node_id] = node_report
             continue
@@ -366,14 +383,15 @@ def execute(
             if not isinstance(result, Result):
                 raise ToolError(f"Tool '{cn.type}' returned no Result")
         except ToolError as exc:
-            result = Result(status="error", message=str(exc)[:500])
+            first = exc.args[0] if exc.args else ""
+            result = Result(status="error", message=first if isinstance(first, Msg) else str(exc)[:500])
         except Exception as exc:  # noqa: BLE001
             log.exception("工具 %s (%s) 例外", cn.type, node_id)
             result = Result(status="error", message=f"{type(exc).__name__}: {exc}"[:500], detail={"trace": traceback.format_exc()[-2000:]} if preview else {})
 
         node_report.duration_ms = (time.perf_counter() - nt0) * 1000
         node_report.status = result.status if result.status in ("ok", "ng", "error") else "ok"
-        node_report.message = result.message
+        _set_message(node_report, result.message)
         node_report.branch = result.branch
         node_report.logs = logs
         node_report.detail = _jsonable(result.detail)

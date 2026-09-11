@@ -13,6 +13,7 @@ from apps.vision import calib
 from apps.vision.tools import accel
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
 from apps.vision.tools.builtin.preprocess import read_calibration, to_gray
+from apps.vision.tools.messages import Msg
 
 PREPROCESS_OPTIONS = [
     {"value": "none", "label": "None"},
@@ -143,7 +144,7 @@ def measure_matches(
     """對每個 match 的分割面估視差；回傳複製後的 match，不改上游資料。"""
     global _WLS_WARNED
     if left_image.shape[:2] != right_image.shape[:2]:
-        raise ToolError("Left and right images must be the same size")
+        raise ToolError(Msg.of("stereo.size_mismatch", "Left and right images must be the same size"))
     h, w = left_image.shape[:2]
     rect = calib.stereo_rectify(payload, (w, h))
     if rect.get("rectified"):
@@ -284,7 +285,7 @@ class StereoDepthTool(Tool):
         right = ctx.require_image("image_right")
         raw = ctx.inputs.get("matches")
         if not isinstance(raw, list):
-            raise ToolError("Connect matches from segmentation, detection or tracking")
+            raise ToolError(Msg.of("stereo_depth.need_matches", "Connect matches from segmentation, detection or tracking"))
         payload = read_calibration(ctx)
         try:
             measured = measure_matches(
@@ -329,7 +330,9 @@ class StereoDepthTool(Tool):
             overlays=overlays,
             branch="ok" if good else "ng",
             status="ok" if good else "ng",
-            message=f"{len(good)}/{len(measured)} depths" + ("; no height reference" if warnings and not (payload.get("stereo") or {}).get("z_ref") else ""),
+            message=(Msg.of("stereo_depth.no_reference", "{good}/{total} depths; no height reference", good=len(good), total=len(measured))
+                     if warnings and not (payload.get("stereo") or {}).get("z_ref")
+                     else Msg.of("stereo_depth.done", "{good}/{total} depths", good=len(good), total=len(measured))),
             detail={"warnings": warnings} if warnings else {},
         )
 

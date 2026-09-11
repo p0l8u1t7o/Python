@@ -447,7 +447,7 @@ class PersistedRunTests(TransactionTestCase):
         for report in (row, one):
             self.assertTrue(report["nodes"])
             for node_id, node in report["nodes"].items():
-                self.assertEqual(sorted(node), sorted(["status", "duration_ms", "message", "branch", "outputs", "overlays", "overlay_on", "detail", "logs"]), node_id)
+                self.assertEqual(sorted(node), sorted(["status", "duration_ms", "message", "message_code", "message_args", "branch", "outputs", "overlays", "overlay_on", "detail", "logs"]), node_id)
                 self.assertIsInstance(node["outputs"], dict)
                 self.assertIsInstance(node["overlays"], list)
             self.assertIsInstance(report["outputs"], dict)

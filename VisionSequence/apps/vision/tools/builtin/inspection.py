@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
+from apps.vision.tools.messages import Msg
 
 
 class InspectionSummaryTool(Tool):
@@ -30,7 +31,7 @@ class InspectionSummaryTool(Tool):
         passed = sum(1 for v in values if v)
         missing = max(0, expected - received)
         ok = received >= expected and passed == received
-        message = f"Received {received}/{expected}, {received - passed} failed"
+        message = Msg.of("inspection_summary.done", "Received {received}/{expected}, {failed} failed", received=received, expected=expected, failed=received - passed)
         return Result(
             outputs={"received": received, "passed": passed, "missing": missing},
             branch="ok" if ok else "ng",
@@ -112,9 +113,9 @@ class DefectsToGeometryTool(Tool):
     def execute(self, ctx: ToolContext) -> Result:
         defects = ctx.inputs.get("defects")
         if defects is None:
-            raise ToolError("Connect the defects input")
+            raise ToolError(Msg.of("defects_to_geometry.need_defects", "Connect the defects input"))
         if not isinstance(defects, list):
-            raise ToolError("Defects must be a list")
+            raise ToolError(Msg.of("defects_to_geometry.not_list", "Defects must be a list"))
         mode = str(ctx.param("output", "centres"))
         points: list[list[float]] = []
         contours: list[np.ndarray] = []
@@ -157,7 +158,7 @@ class DefectsToGeometryTool(Tool):
         if contours:
             overlays.append({"kind": "contours", "contours": [c.reshape(-1, 2).tolist() for c in contours], "color": "#22c55e", "width": 1})
         count = len(defects) - skipped
-        return Result(outputs={"points": points, "contours": contours, "count": count}, overlays=overlays, message=f"{count} defects converted")
+        return Result(outputs={"points": points, "contours": contours, "count": count}, overlays=overlays, message=Msg.of("defects_to_geometry.done", "{count} defects converted", count=count))
 
 
 TOOLS = [InspectionSummaryTool(), DefectsToGeometryTool()]

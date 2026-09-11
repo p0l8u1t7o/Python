@@ -10,6 +10,7 @@ import numpy as np
 from apps.vision.dl import anomaly
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
 from apps.vision.tools.builtin.detect import ROI_SHAPES, analyze_blobs
+from apps.vision.tools.messages import Msg
 from apps.vision.tools.roi import crop, region_overlay
 
 DEVICE_OPTIONS = [{"value": "auto", "label": "Auto (GPU when available)"}, {"value": "cpu", "label": "CPU"}, {"value": "cuda", "label": "CUDA"}]
@@ -44,10 +45,10 @@ class DlAnomalyTool(Tool):
     def execute(self, ctx: ToolContext) -> Result:
         asset_id = ctx.param("model")
         if not asset_id:
-            raise ToolError("No anomaly model is set")
+            raise ToolError(Msg.of("dl_anomaly.no_model", "No anomaly model is set"))
         path = ctx.asset_path(str(asset_id))
         if not path:
-            raise ToolError(f"Asset {asset_id} not found")
+            raise ToolError(Msg.of("dl_anomaly.model_missing", "Asset {asset_id} not found", asset_id=asset_id))
         try:
             model = anomaly.load(path)
             sess = anomaly.backbone_session(model, path, str(ctx.param("device", "auto")))
@@ -57,7 +58,7 @@ class DlAnomalyTool(Tool):
         region = ctx.roi()
         c = crop(image, region, upright=True)
         if c.image.size == 0 or min(c.image.shape[:2]) < 8:
-            raise ToolError("The region falls outside the image or is too small")
+            raise ToolError(Msg.of("dl_anomaly.bad_region", "The region falls outside the image or is too small"))
         sub = np.ascontiguousarray(c.image)
         try:
             smap, max_score = anomaly.infer(model, sess, sub, sub.shape[:2])
@@ -65,7 +66,7 @@ class DlAnomalyTool(Tool):
             raise ToolError(str(exc)) from None
         threshold = ctx.number("threshold", 0) or float(model["meta"].get("threshold", 0) or 0)
         if threshold <= 0:
-            raise ToolError("The model has no automatic threshold; set one on the tool")
+            raise ToolError(Msg.of("dl_anomaly.no_threshold", "The model has no automatic threshold; set one on the tool"))
         mask = cv2.compare(smap, float(threshold), cv2.CMP_GT)
         if c.mask is not None:
             cv2.bitwise_and(mask, c.mask, dst=mask)
@@ -103,7 +104,7 @@ class DlAnomalyTool(Tool):
             outputs={"score": round(max_score, 4), "count": count, "total_area": float(sum(r["area"] for r in regions)), "score_map": full_heat, "mask": full_mask,
                      "regions": regions, "threshold_used": round(float(threshold), 4)},
             overlays=overlays, branch="defect" if count else "ok", status="ng" if count else "ok",
-            message=f"score {max_score:.2f} vs {threshold:.2f}, {count} regions",
+            message=Msg.of("dl_anomaly.result", "score {score:.2f} vs {threshold:.2f}, {count} regions", score=max_score, threshold=threshold, count=count),
             detail={"threshold": round(float(threshold), 4), "bank": int(len(model["bank"])), "input_size": int(model["meta"].get("input_size", 320))},
         )
 

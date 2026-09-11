@@ -36,7 +36,8 @@ class StreamLimitTests(TestCase):
     def test_trimmed_run_keeps_node_shape(self):
         # outputs=0 的訂閱者拿到的 run 要瘦身（沒有 outputs／overlays／detail），但每個鍵都在且標 nodes_trimmed，
         # 否則瘦身版經全域串流進了前端快取，編輯器一開 `outputs[...]` 就炸（Temp/Issue 流程工具編輯出錯）。
-        node = {"status": "ok", "duration_ms": 1.5, "message": "m", "branch": None, "overlay_on": "image",
+        node = {"status": "ok", "duration_ms": 1.5, "message": "m", "message_code": "blob.found", "message_args": {"n": "2"},
+                "branch": None, "overlay_on": "image",
                 "outputs": {"image": {"ref": "r:1:image", "width": 4, "height": 3}}, "overlays": [{"kind": "point"}],
                 "detail": {"_input_ref": "x"}, "logs": [{"level": "info", "message": "hi"}]}
         event = {"type": "run_finished", "flow_id": 7, "run": {"id": "r", "nodes": {"n": node}, "outputs": {}}}
@@ -54,6 +55,9 @@ class StreamLimitTests(TestCase):
         self.assertEqual(lean["nodes"]["n"]["overlays"], [])
         self.assertEqual(lean["nodes"]["n"]["overlay_on"], "image")
         self.assertEqual(lean["nodes"]["n"]["duration_ms"], 1.5)
+        # 訊息代碼與參數很小，瘦身版也要帶著，中文介面的即時畫面才翻得出來
+        self.assertEqual(lean["nodes"]["n"]["message_code"], "blob.found")
+        self.assertEqual(lean["nodes"]["n"]["message_args"], {"n": "2"})
         full = data_of(list(stream._Session(0, 7, True, 1.0).frames([event])))["run"]
         self.assertNotIn("nodes_trimmed", full)
         self.assertEqual(full["nodes"]["n"]["outputs"]["image"]["ref"], "r:1:image")

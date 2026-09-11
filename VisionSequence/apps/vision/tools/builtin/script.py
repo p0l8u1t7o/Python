@@ -27,6 +27,7 @@ import numpy as np
 
 from apps.vision import scripts as approval
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
+from apps.vision.tools.messages import Msg
 from apps.vision.tools.roi import Crop, crop, region_overlay
 
 SCRIPT_FILENAME = "<python_script>"
@@ -87,18 +88,20 @@ def check_ast(tree: ast.AST) -> None:
     """靜態檢查：dunder、危險內建、非白名單 import。"""
     for node in ast.walk(tree):
         if isinstance(node, ast.Name) and node.id.startswith("__"):
-            raise ToolError(f"The script may not use '{node.id}'")
+            raise ToolError(Msg.of("python_script.forbidden_name", "The script may not use '{name}'", name=node.id))
         if isinstance(node, ast.Attribute) and node.attr.startswith("__"):
-            raise ToolError(f"The script may not access '{node.attr}'")
+            raise ToolError(Msg.of("python_script.forbidden_attr", "The script may not access '{name}'", name=node.attr))
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in FORBIDDEN_CALLS:
-            raise ToolError(f"The script may not call {node.func.id}()")
+            raise ToolError(Msg.of("python_script.forbidden_call", "The script may not call {name}()", name=node.func.id))
         if isinstance(node, ast.Import):
             for alias in node.names:
                 if alias.name.split(".")[0] not in ALLOWED_MODULES:
-                    raise ToolError(f"The script may not import '{alias.name}' (allowed: {', '.join(sorted(ALLOWED_MODULES))})")
+                    raise ToolError(Msg.of("python_script.forbidden_import", "The script may not import '{name}' (allowed: {allowed})",
+                                          name=alias.name, allowed=", ".join(sorted(ALLOWED_MODULES))))
         if isinstance(node, ast.ImportFrom):
             if node.level or not node.module or node.module.split(".")[0] not in ALLOWED_MODULES:
-                raise ToolError(f"The script may not import '{node.module or '.'}' (allowed: {', '.join(sorted(ALLOWED_MODULES))})")
+                raise ToolError(Msg.of("python_script.forbidden_import", "The script may not import '{name}' (allowed: {allowed})",
+                                      name=node.module or ".", allowed=", ".join(sorted(ALLOWED_MODULES))))
 
 
 #: 編譯＋執行過的模組命名空間快取：hash → namespace（含 run）。最多 64 段。
@@ -117,16 +120,16 @@ def _namespace(code: str) -> dict[str, Any]:
     try:
         tree = ast.parse(source, filename=SCRIPT_FILENAME, mode="exec")
     except SyntaxError as exc:
-        raise ToolError(f"Script syntax error on line {exc.lineno or '?'}: {exc.msg}") from None
+        raise ToolError(Msg.of("python_script.syntax_error", "Script syntax error on line {line}: {error}", line=exc.lineno or "?", error=exc.msg)) from None
     check_ast(tree)
     compiled = compile(tree, SCRIPT_FILENAME, "exec")
     ns: dict[str, Any] = {"__builtins__": _safe_builtins(), "__name__": "python_script", "np": np, "cv2": cv2, "math": math}
     try:
         exec(compiled, ns)  # noqa: S102 - 受限命名空間，只定義 run 與模組層級輔助
     except Exception as exc:  # noqa: BLE001
-        raise ToolError(_describe(exc, "while loading the script")) from None
+        raise ToolError(_describe(exc, loading=True)) from None
     if not callable(ns.get("run")):
-        raise ToolError("The script must define def run(ctx)")
+        raise ToolError(Msg.of("python_script.no_run", "The script must define def run(ctx)"))
     with _NS_LOCK:
         _NAMESPACES[h] = ns
         while len(_NAMESPACES) > 64:
@@ -134,14 +137,18 @@ def _namespace(code: str) -> dict[str, Any]:
     return ns
 
 
-def _describe(exc: BaseException, prefix: str = "") -> str:
-    """把例外翻成「第 N 行：Error: 訊息」，行號取使用者程式碼的最後一個 frame。"""
+def _describe(exc: BaseException, loading: bool = False) -> Msg:
+    """把例外翻成「第 N 行：Error: 訊息」，行號取使用者程式碼的最後一個 frame；沒有行號時標「載入時」或「腳本」。"""
     lineno = None
     for frame in traceback.extract_tb(exc.__traceback__):
         if frame.filename == SCRIPT_FILENAME:
             lineno = frame.lineno
-    where = f"line {lineno}" if lineno else prefix or "script"
-    return f"{where}：{exc.__class__.__name__}: {str(exc)[:200]}"
+    kind, text = exc.__class__.__name__, str(exc)[:200]
+    if lineno:
+        return Msg.of("python_script.error_line", "line {line}：{kind}: {error}", line=lineno, kind=kind, error=text)
+    if loading:
+        return Msg.of("python_script.error_loading", "while loading the script：{kind}: {error}", kind=kind, error=text)
+    return Msg.of("python_script.error", "script：{kind}: {error}", kind=kind, error=text)
 
 
 def _watchdog(deadline: float):
@@ -209,7 +216,8 @@ def _normalize_result(value: Any) -> dict[str, Any]:
         return {"value": value}
     if isinstance(value, str):
         return {"text": value}
-    raise ToolError(f"run() returned an unsupported type {type(value).__name__}: return a dict (value, result, text, data, image…)")
+    raise ToolError(Msg.of("python_script.unsupported_return", "run() returned an unsupported type {type}: return a dict (value, result, text, data, image…)",
+                          type=type(value).__name__))
 
 
 class PythonScriptTool(Tool):
@@ -240,10 +248,10 @@ class PythonScriptTool(Tool):
     def execute(self, ctx: ToolContext) -> Result:
         code = str(ctx.param("code", TEMPLATE) or "")
         if not code.strip():
-            raise ToolError("The script is empty: define def run(ctx)")
+            raise ToolError(Msg.of("python_script.empty", "The script is empty: define def run(ctx)"))
         # 內建範本視為已核准（插入工具就能試執行）；其餘先看管理員試執行旗標（不碰 DB），再查核准清單（記憶體集合）
         if approval.code_hash(code) != TEMPLATE_HASH and not ctx.context.get(approval.ADMIN_CONTEXT_KEY) and not approval.is_approved(code):
-            raise ToolError("This script has not been approved: an administrator must save the flow in the editor before it can run")
+            raise ToolError(Msg.of("python_script.not_approved", "This script has not been approved: an administrator must save the flow in the editor before it can run"))
         ns = _namespace(code)
         image = ctx.image()
         region = ctx.roi()
@@ -257,7 +265,8 @@ class PythonScriptTool(Tool):
         try:
             raw = ns["run"](sctx)
         except ScriptTimeout:
-            raise ToolError(f"The script was aborted after {ctx.number('max_ms', 5000):g} ms (a pure-Python loop taking too long?)") from None
+            raise ToolError(Msg.of("python_script.timeout", "The script was aborted after {ms:g} ms (a pure-Python loop taking too long?)",
+                                  ms=ctx.number("max_ms", 5000))) from None
         except ToolError:
             raise
         except Exception as exc:  # noqa: BLE001 - 使用者程式碼的任何錯誤都翻成節點錯誤
@@ -273,7 +282,7 @@ class PythonScriptTool(Tool):
             try:
                 outputs["value"] = float(out["value"])
             except (TypeError, ValueError):
-                raise ToolError(f"value must be a number, got {type(out['value']).__name__}") from None
+                raise ToolError(Msg.of("python_script.value_not_number", "value must be a number, got {type}", type=type(out["value"]).__name__)) from None
         if "result" in out:
             outputs["result"] = bool(out["result"])
         if "text" in out and out["text"] is not None:
@@ -283,7 +292,7 @@ class PythonScriptTool(Tool):
         if out.get("image") is not None:
             img = out["image"]
             if not isinstance(img, np.ndarray) or img.ndim not in (2, 3):
-                raise ToolError("image must be a 2-D (grayscale) or 3-D (BGR) numpy array")
+                raise ToolError(Msg.of("python_script.bad_image", "image must be a 2-D (grayscale) or 3-D (BGR) numpy array"))
             if img.dtype != np.uint8:
                 img = np.clip(img, 0, 255).astype(np.uint8)
             if image is not None and np.shares_memory(img, image):
@@ -291,19 +300,22 @@ class PythonScriptTool(Tool):
             outputs["image"] = np.ascontiguousarray(img)
         status = str(out.get("status") or ("ok" if outputs["result"] or "result" not in out else "ng"))
         if status not in ("ok", "ng"):
-            raise ToolError(f"status must be ok or ng, got {status!r}")
+            raise ToolError(Msg.of("python_script.bad_status", "status must be ok or ng, got {status!r}", status=status))
         branch = str(out.get("branch") or ("pass" if status == "ok" else "fail"))
         if branch not in ("pass", "fail"):
-            raise ToolError(f"branch must be pass or fail, got {branch!r}")
+            raise ToolError(Msg.of("python_script.bad_branch", "branch must be pass or fail, got {branch!r}", branch=branch))
         overlays: list[dict[str, Any]] = [region_overlay(region, label="script")] if region else []
         extra = out.get("overlays")
         if extra is not None:
             if not isinstance(extra, (list, tuple)) or not all(isinstance(o, dict) and o.get("kind") for o in extra):
-                raise ToolError("overlays must be [{kind: rect|circle|line|point|points|polygon|polyline|text|contours, …}, …]")
+                raise ToolError(Msg.of("python_script.bad_overlays", "overlays must be [{{kind: rect|circle|line|point|points|polygon|polyline|text|contours, …}}, …]"))
             overlays += [dict(o) for o in extra]
-        message = str(out.get("message") or "")[:200]
+        message = str(out.get("message") or "")[:200]  # 腳本自己給的訊息原樣保留
         if not message:
-            message = f"value={outputs['value']:.4g}" if math.isfinite(outputs["value"]) else ("result=" + str(outputs["result"]))
+            if math.isfinite(outputs["value"]):
+                message = Msg.of("python_script.value", "value={value:.4g}", value=outputs["value"])
+            else:
+                message = Msg.of("python_script.result", "result={result}", result=outputs["result"])
         return Result(outputs=outputs, overlays=overlays, branch=branch, status=status, message=message)
 
 

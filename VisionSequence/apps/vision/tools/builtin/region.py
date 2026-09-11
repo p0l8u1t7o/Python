@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError
+from apps.vision.tools.messages import Msg
 from apps.vision.tools.roi import composite, region_overlay, region_overlays
 
 MODE_OPTIONS = [
@@ -55,7 +56,7 @@ class RegionFromShapeTool(Tool):
     def execute(self, ctx: ToolContext) -> Result:
         region = ctx.roi("roi")  # ctx.roi 會套上位置修正（接了 _transform 時形狀跟著工件走）
         if not isinstance(region, dict) or not region.get("shape"):
-            raise ToolError("No shape is drawn")
+            raise ToolError(Msg.of("region_from_shape.no_shape", "No shape is drawn"))
         return Result(outputs={"region": dict(region), **_geometry_of(region)},
                       overlays=[region_overlay(region, label="region")], message=str(region.get("shape")))
 
@@ -105,7 +106,7 @@ class RegionCombineTool(Tool):
         others = _regions(ctx.inputs.get("regions"))
         if not (isinstance(base, dict) and base.get("shape")):
             if not others:
-                raise ToolError("Draw a base region or connect at least one region")
+                raise ToolError(Msg.of("region_combine.no_region", "Draw a base region or connect at least one region"))
             base, others = others[0], others[1:]
         mode = str(ctx.param("mode", "subtract"))
         if mode not in ("subtract", "union", "intersect"):
@@ -117,7 +118,7 @@ class RegionCombineTool(Tool):
         combined["width"] = 2
         overlays.append(combined)
         return Result(outputs={"region": region, "count": len(others) + 1}, overlays=overlays,
-                      message=f"{mode}: {len(others)} region(s) on the base")
+                      message=Msg.of("region_combine.done", "{mode}: {n} region(s) on the base", mode=mode, n=len(others)))
 
 
 TOOLS = [RegionFromShapeTool(), RegionCombineTool()]

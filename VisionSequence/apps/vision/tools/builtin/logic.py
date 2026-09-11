@@ -12,6 +12,7 @@ import operator
 from typing import Any
 
 from apps.vision.tools.base import MAX_CASES, Param, Port, Result, Tool, ToolContext, ToolError, apply_reject, flow_out, reject_params
+from apps.vision.tools.messages import Msg
 
 _OPS = {
     "gt": operator.gt, "ge": operator.ge, "lt": operator.lt, "le": operator.le,
@@ -39,11 +40,11 @@ class CompareNumberTool(Tool):
     def execute(self, ctx: ToolContext) -> Result:
         value = ctx.inputs.get("value")
         if value is None:
-            raise ToolError("No value on the input")
+            raise ToolError(Msg.of("if_number.no_value", "No value on the input"))
         try:
             v = float(value)
         except (TypeError, ValueError):
-            raise ToolError(f"The input is not a number: {value!r}") from None
+            raise ToolError(Msg.of("if_number.not_number", "The input is not a number: {value!r}", value=value)) from None
         op = ctx.param("operator", "gt")
         threshold = ctx.number("threshold")
         tol = ctx.number("tolerance")
@@ -53,7 +54,7 @@ class CompareNumberTool(Tool):
             ok = abs(v - threshold) > tol
         else:
             ok = _OPS[op](v, threshold)
-        message = f"{v:g} {_OP_LABEL[op]} {threshold:g} → {ok}"
+        message = Msg.of("if_number.compare", "{value:g} {op} {threshold:g} → {ok}", value=v, op=_OP_LABEL[op], threshold=threshold, ok=ok)
         status, message, context = apply_reject(ctx, ok, message)
         return Result(
             outputs={"result": ok},
@@ -83,10 +84,10 @@ class CompareRangeTool(Tool):
         try:
             v = float(value)
         except (TypeError, ValueError):
-            raise ToolError(f"The input is not a number: {value!r}") from None
+            raise ToolError(Msg.of("in_range.not_number", "The input is not a number: {value!r}", value=value)) from None
         low, high = ctx.number("low"), ctx.number("high")
         ok = low <= v <= high
-        message = f"{v:g} ∈ [{low:g}, {high:g}] → {ok}"
+        message = Msg.of("in_range.check", "{value:g} ∈ [{low:g}, {high:g}] → {ok}", value=v, low=low, high=high, ok=ok)
         status, message, context = apply_reject(ctx, ok, message)
         return Result(outputs={"result": ok}, branch="inside" if ok else "outside",
                       status=status, message=message, context=context)
@@ -112,11 +113,11 @@ class BoolLogicTool(Tool):
     def execute(self, ctx: ToolContext) -> Result:
         values = [bool(v) for v in (ctx.inputs.get("values") or []) if v is not None]
         if not values:
-            raise ToolError("No boolean input is connected")
+            raise ToolError(Msg.of("bool_logic.no_input", "No boolean input is connected"))
         mode = ctx.param("mode", "and")
         base = all(values) if mode in ("and", "nand") else any(values)
         ok = (not base) if mode in ("nand", "nor") else base
-        return Result(outputs={"result": ok}, branch="true" if ok else "false", message=f"{mode}({values}) → {ok}")
+        return Result(outputs={"result": ok}, branch="true" if ok else "false", message=Msg.of("bool_logic.result", "{mode}({values}) → {ok}", mode=mode, values=values, ok=ok))
 
 
 # -- 安全的公式求值 -----------------------------------------------------------
@@ -146,7 +147,7 @@ def safe_eval(expr: str, names: dict[str, Any]) -> Any:
                 return names[node.id]
             if node.id in _FUNCS:
                 return _FUNCS[node.id]
-            raise ToolError(f"Unknown name '{node.id}' in the expression")
+            raise ToolError(Msg.of("formula.unknown_name", "Unknown name '{name}' in the expression", name=node.id))
         if isinstance(node, ast.BinOp) and type(node.op) in _ALLOWED_BIN:
             return _ALLOWED_BIN[type(node.op)](ev(node.left), ev(node.right))
         if isinstance(node, ast.UnaryOp):
@@ -175,7 +176,7 @@ def safe_eval(expr: str, names: dict[str, Any]) -> Any:
             return ev(node.value)[ev(node.slice)]
         if isinstance(node, (ast.List, ast.Tuple)):
             return [ev(e) for e in node.elts]
-        raise ToolError(f"Unsupported syntax in the expression: {type(node).__name__}")
+        raise ToolError(Msg.of("formula.unsupported_syntax", "Unsupported syntax in the expression: {syntax}", syntax=type(node).__name__))
 
     return ev(tree)
 
@@ -198,16 +199,16 @@ class FormulaTool(Tool):
     def execute(self, ctx: ToolContext) -> Result:
         expr = str(ctx.param("expression", "")).strip()
         if not expr:
-            raise ToolError("The expression is empty")
+            raise ToolError(Msg.of("formula.empty", "The expression is empty"))
         names = {k: ctx.inputs.get(k) for k in ("a", "b", "c", "d")}
         try:
             value = safe_eval(expr, names)
         except ToolError:
             raise
         except Exception as exc:  # noqa: BLE001
-            raise ToolError(f"Expression error: {exc}") from None
+            raise ToolError(Msg.of("formula.error", "Expression error: {error}", error=exc)) from None
         number = float(value) if isinstance(value, (int, float, bool)) else float("nan")
-        return Result(outputs={"value": number, "result": bool(value)}, message=f"{expr} = {value!r}"[:200])
+        return Result(outputs={"value": number, "result": bool(value)}, message=_clip(Msg.of("formula.result", "{expr} = {value!r}", expr=expr, value=value), 200))
 
 
 class CounterTool(Tool):
@@ -225,7 +226,7 @@ class CounterTool(Tool):
             n = len(items)  # type: ignore[arg-type]
         except TypeError:
             n = 0 if items is None else 1
-        return Result(outputs={"count": n}, message=f"{n} items")
+        return Result(outputs={"count": n}, message=Msg.of("count_list.count", "{n} items", n=n))
 
 
 
@@ -273,7 +274,8 @@ class VariableGetTool(Tool):
                 number = float("nan")
         text = "" if value is None else (value if isinstance(value, str) else str(value))
         return Result(outputs={"value": value, "number": number, "text": text, "found": found},
-                      message=f"{name} = {text[:80]}" + ("" if found else " (default)"))
+                      message=(Msg.of("variable_get.value", "{name} = {text}", name=name, text=text[:80]) if found
+                               else Msg.of("variable_get.default", "{name} = {text} (default)", name=name, text=text[:80])))
 
 
 class VariableSetTool(Tool):
@@ -308,14 +310,14 @@ class VariableSetTool(Tool):
         if value is None and mode == "add":
             value = 1  # 沒接輸入的「加」就是計數
         if value is None:
-            raise ToolError("Wire a value in")
+            raise ToolError(Msg.of("variable_set.no_value", "Wire a value in"))
         try:
             if mode in ("add", "max", "min"):
                 current = ctx.variable(name, None, scope)
                 try:
                     incoming = float(value)
                 except (TypeError, ValueError):
-                    raise ToolError(f"'{mode}' needs a number, got {value!r}") from None
+                    raise ToolError(Msg.of("variable_set.not_number", "'{mode}' needs a number, got {value!r}", mode=mode, value=value)) from None
                 try:
                     base = float(current) if current is not None else None
                 except (TypeError, ValueError):
@@ -338,8 +340,9 @@ class VariableSetTool(Tool):
         except _vars.VariableError as exc:
             raise ToolError(str(exc)) from None
         shown = stored if not isinstance(stored, np.ndarray) else f"image {stored.shape[1]}x{stored.shape[0]}"
-        note = " (trial: not kept)" if ctx.sandboxed() else ""
-        return Result(outputs={"value": stored, "previous": previous}, message=f"{name} = {str(shown)[:80]}{note}")
+        message = (Msg.of("variable_set.stored_trial", "{name} = {value} (trial: not kept)", name=name, value=str(shown)[:80]) if ctx.sandboxed()
+                   else Msg.of("variable_set.stored", "{name} = {value}", name=name, value=str(shown)[:80]))
+        return Result(outputs={"value": stored, "previous": previous}, message=message)
 
 
 _MISSING = object()
@@ -379,10 +382,10 @@ class SwitchTool(Tool):
     def execute(self, ctx: ToolContext) -> Result:
         value = ctx.inputs.get("value")
         if value is None:
-            raise ToolError("No value on the input")
+            raise ToolError(Msg.of("switch.no_value", "No value on the input"))
         cases = [ln.strip() for ln in str(ctx.param("cases", "") or "").splitlines() if ln.strip()][:MAX_CASES]
         if not cases:
-            raise ToolError("List the cases, one per line")
+            raise ToolError(Msg.of("switch.no_cases", "List the cases, one per line"))
         mode = str(ctx.param("match", "exact"))
         index = match_case(value, cases, mode, case_sensitive=ctx.flag("case_sensitive"))
         branch = f"case_{index}" if index else "default"
@@ -390,7 +393,8 @@ class SwitchTool(Tool):
         return Result(
             outputs={"index": index, "matched": bool(index), "value": value},
             branch=branch,
-            message=f"{shown[:40]} -> {cases[index - 1] if index else 'default'}",
+            message=(Msg.of("switch.case", "{value} -> {case}", value=shown[:40], case=cases[index - 1]) if index
+                     else Msg.of("switch.default", "{value} -> default", value=shown[:40])),
         )
 
 
@@ -427,14 +431,15 @@ class StringMatchTool(Tool):
     def execute(self, ctx: ToolContext) -> Result:
         value = ctx.inputs.get("text")
         if value is None:
-            raise ToolError("Connect the text to check")
+            raise ToolError(Msg.of("string_match.no_text", "Connect the text to check"))
         entries = [ln.strip() for ln in str(ctx.param("list", "") or "").splitlines() if ln.strip()]
         if not entries:
-            raise ToolError("List the values to check against, one per line")
+            raise ToolError(Msg.of("string_match.no_list", "List the values to check against, one per line"))
         text = _plain_text(value)
         index = match_case(text, entries, str(ctx.param("match", "exact")), case_sensitive=ctx.flag("case_sensitive"))
         found = bool(index) != ctx.flag("invert")
-        message = f"'{text[:40]}' {'matches' if index else 'matches nothing'}{' — ' + entries[index - 1] if index else ''}"
+        message = (Msg.of("string_match.matches", "'{text}' matches — {entry}", text=text[:40], entry=entries[index - 1]) if index
+                   else Msg.of("string_match.no_match", "'{text}' matches nothing", text=text[:40]))
         status, message, context = apply_reject(ctx, found, message)
         return Result(
             outputs={"found": found, "index": index, "matched": entries[index - 1] if index else "", "text": text},
@@ -443,6 +448,15 @@ class StringMatchTool(Tool):
             message=message,
             context=context,
         )
+
+
+def _clip(text: str, limit: int) -> str:
+    """過長的訊息照舊截斷英文，但保留代碼與參數。"""
+    if len(text) <= limit:
+        return text
+    if isinstance(text, Msg):
+        return Msg(str(text)[:limit], text.code, text.args)
+    return text[:limit]
 
 
 def _plain_text(value: Any) -> str:
@@ -546,10 +560,10 @@ class ParseMessageTool(Tool):
 
         payload = ctx.inputs.get("text")
         if payload is None:
-            raise ToolError("Connect the text to split (a barcode, an OCR reading or a value)")
+            raise ToolError(Msg.of("parse_message.no_text", "Connect the text to split (a barcode, an OCR reading or a value)"))
         lines = [ln.strip() for ln in str(ctx.param("fields", "") or "").splitlines() if ln.strip()]
         if not lines:
-            raise ToolError("List the fields, one per line, for example lot or slot:int")
+            raise ToolError(Msg.of("parse_message.no_fields", "List the fields, one per line, for example lot or slot:int"))
         mode = str(ctx.param("mode", "delimiter"))
         try:
             spec = protocol.Spec(
@@ -583,7 +597,7 @@ class ParseMessageTool(Tool):
             outputs={"fields": items, "count": len(found), "first": first, **values},
             branch="matched" if ok else "not_matched",
             context=context,
-            message=f"{len(found)}/{len(values)}: {summary}"[:200],
+            message=_clip(Msg.of("parse_message.summary", "{found}/{total}: {summary}", found=len(found), total=len(values), summary=summary), 200),
         )
 
 
@@ -600,7 +614,7 @@ def _field_from_line(line: str, order: int) -> Any:
         try:
             scale = float(raw)
         except ValueError:
-            raise ToolError(f"'{line}': the multiplier after * is not a number") from None
+            raise ToolError(Msg.of("parse_message.bad_multiplier", "'{line}': the multiplier after * is not a number", line=line)) from None
     parts = [p.strip() for p in text.split(":")]
     name = parts[0]
     kind = parts[1].lower() if len(parts) > 1 and parts[1] else "string"
@@ -612,18 +626,18 @@ def _field_from_line(line: str, order: int) -> Any:
         try:
             start, end = int(a), int(b)
         except ValueError:
-            raise ToolError(f"'{line}': the byte range should look like 0-3") from None
+            raise ToolError(Msg.of("parse_message.bad_range", "'{line}': the byte range should look like 0-3", line=line)) from None
     elif where:
         try:
             index = int(where)
         except ValueError:
-            raise ToolError(f"'{line}': the position should be a number counting from 0") from None
+            raise ToolError(Msg.of("parse_message.bad_position", "'{line}': the position should be a number counting from 0", line=line)) from None
     else:
         index = order
     try:
         return protocol.Field(name=name, type=kind, index=index, start=start, end=end, order=byte_order, scale=scale)
     except protocol.ProtocolError as exc:
-        raise ToolError(f"'{line}': {exc}") from None
+        raise ToolError(Msg.of("parse_message.bad_field", "'{line}': {error}", line=line, error=exc)) from None
 
 
 TOOLS = [CompareNumberTool(), CompareRangeTool(), BoolLogicTool(), FormulaTool(), CounterTool(), VariableGetTool(), VariableSetTool(), ParseMessageTool(), SwitchTool(), StringMatchTool()]

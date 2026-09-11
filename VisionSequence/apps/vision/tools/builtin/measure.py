@@ -8,6 +8,7 @@ from typing import Any
 import cv2
 import numpy as np
 
+from apps.vision.tools.messages import Msg
 from apps.vision import calib
 from apps.vision.tools import accel, defects
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
@@ -123,7 +124,7 @@ def _rect_long_profile(image: np.ndarray, region: dict[str, Any]) -> tuple[np.nd
     rr = _as_rotated_rect(region)
     c = crop(image, rr, upright=True)
     if c.image.size == 0 or min(c.image.shape[:2]) < 2:
-        raise ToolError("The region is too small or falls outside the image")
+        raise ToolError(Msg.of("measure.region_too_small", "The region is too small or falls outside the image"))
     h, w = c.image.shape[:2]
     horizontal = w >= h
     # cv2.reduce 以 double 累加再除，與舊版 CaliperTool 完全同一路徑。
@@ -237,7 +238,7 @@ class CaliperTool(Tool):
         image = to_gray(ctx.require_image())
         region = ctx.roi()
         if region is None:
-            raise ToolError("No region is set")
+            raise ToolError(Msg.of("caliper.no_region", "No region is set"))
         profile, c, horizontal = _rect_long_profile(image, region)
         h, w = c.image.shape[:2]
         edges = find_edges_1d(profile, ctx.param("polarity", "any"), ctx.number("edge_threshold", 20), ctx.integer("smoothing", 3))
@@ -247,7 +248,7 @@ class CaliperTool(Tool):
         if len(edges) < 2:
             return Result(outputs={"width": nan, "edge1_x": nan, "edge1_y": nan, "edge2_x": nan, "edge2_y": nan,
                                    "edges": [], "profile": prof_list},
-                          overlays=overlays, status="ng", message=f"Fewer than two edges ({len(edges)})")
+                          overlays=overlays, status="ng", message=Msg.of("caliper.too_few_edges", "Fewer than two edges ({n})", n=len(edges)))
         sort_by = str(ctx.param("sort_by", "score"))
         max_results = max(1, ctx.integer("max_results", 1))
         expected_position = ctx.number("expected_position", 0)
@@ -271,7 +272,7 @@ class CaliperTool(Tool):
         if not pairs:
             return Result(outputs={"width": nan, "edge1_x": nan, "edge1_y": nan, "edge2_x": nan, "edge2_y": nan,
                                    "edges": [], "profile": prof_list},
-                          overlays=overlays, status="ng", message="No edge pair matches the polarity")
+                          overlays=overlays, status="ng", message=Msg.of("caliper.no_pair", "No edge pair matches the polarity"))
         mid = (h if horizontal else w) / 2
 
         def candidate(pair: tuple[tuple[float, float], tuple[float, float]]) -> dict[str, Any]:
@@ -338,7 +339,7 @@ class CaliperTool(Tool):
                      "edges": [{k: v for k, v in item.items() if not k.startswith("_")} for item in candidates], "profile": prof_list,
                      **world_outputs(ctx, points={("edge1_x", "edge1_y"): e1, ("edge2_x", "edge2_y"): e2},
                                      lengths={"width": (width, ((e1[0] + e2[0]) / 2, (e1[1] + e2[1]) / 2))})},
-            overlays=overlays, message=f"Width {width:.2f}px ({len(edges)} edges)",
+            overlays=overlays, message=Msg.of("caliper.width", "Width {width:.2f}px ({n} edges)", width=width, n=len(edges)),
         )
 
 
@@ -380,7 +381,7 @@ class PeakSearchTool(Tool):
         image = to_gray(ctx.require_image())
         region = ctx.roi()
         if region is None:
-            raise ToolError("No region is set")
+            raise ToolError(Msg.of("peak_search.no_region", "No region is set"))
         profile, c, horizontal = _rect_long_profile(image, region)
         h, w = c.image.shape[:2]
         mid = (h if horizontal else w) / 2.0
@@ -424,7 +425,7 @@ class PeakSearchTool(Tool):
                 overlays=overlays,
                 status="ng",
                 branch="not_found",
-                message="No peaks found",
+                message=Msg.of("peak_search.not_found", "No peaks found"),
             )
         first = out[0]
         return Result(
@@ -432,7 +433,7 @@ class PeakSearchTool(Tool):
                      "first_position": first["position"], "profile": np.round(profile, 1).tolist()},
             overlays=overlays,
             branch="found",
-            message=f"{len(out)} peaks",
+            message=Msg.of("peak_search.found", "{n} peaks", n=len(out)),
         )
 
 
@@ -474,16 +475,16 @@ class DistanceTool(Tool):
         # 有幾何輸入但本次未找到時，保留 NG 語意，勿把下游量測變成執行錯誤。
         if any(key in ctx.inputs and ctx.inputs[key] is None and any(ctx.inputs.get(f"{key}{axis}") is None for axis in ("x", "y")) for key in ("a", "b")):
             return Result(outputs={"distance": float("nan"), "distance_world": float("nan"), "dx": float("nan"), "dy": float("nan")},
-                          status="ng", message="The upstream step found no geometry")
+                          status="ng", message=Msg.of("distance.no_geometry", "The upstream step found no geometry"))
         shape_a, shape_b = _as_line(raw_a) or _as_circle(raw_a), _as_line(raw_b) or _as_circle(raw_b)
         if shape_a is not None or shape_b is not None:
             return _shape_distance(raw_a, raw_b, mode, ctx)
         a = _point(raw_a, (ctx.inputs.get("ax"), ctx.inputs.get("ay")))
         b = _point(raw_b, (ctx.inputs.get("bx"), ctx.inputs.get("by")))
         if a is None or b is None:
-            raise ToolError("Two points are needed: wire a/b, or ax, ay, bx, by")
+            raise ToolError(Msg.of("distance.need_points", "Two points are needed: wire a/b, or ax, ay, bx, by"))
         if not all(np.isfinite([*a, *b])):
-            return Result(outputs={"distance": float("nan"), "dx": float("nan"), "dy": float("nan")}, status="ng", message="The input point is not valid (the upstream step may have found nothing)")
+            return Result(outputs={"distance": float("nan"), "dx": float("nan"), "dy": float("nan")}, status="ng", message=Msg.of("distance.invalid_point", "The input point is not valid (the upstream step may have found nothing)"))
         dx, dy = b[0] - a[0], b[1] - a[1]
         d = abs(dx) if mode == "dx" else abs(dy) if mode == "dy" else math.hypot(dx, dy)
         overlays = [
@@ -492,7 +493,7 @@ class DistanceTool(Tool):
             {"kind": "line", "x1": a[0], "y1": a[1], "x2": b[0], "y2": b[1], "color": "#f59e0b", "width": 2, "label": f"{d:.2f}px"},
         ]
         return Result(outputs={"distance": d, "dx": dx, "dy": dy,
-                               **world_outputs(ctx, lengths={"distance": (d, ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2))})}, overlays=overlays, message=f"{d:.2f}px")
+                               **world_outputs(ctx, lengths={"distance": (d, ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2))})}, overlays=overlays, message=Msg.of("distance.result", "{d:.2f}px", d=d))
 
 
 def _shape_distance(raw_a: Any, raw_b: Any, mode: str, ctx: ToolContext) -> Result:
@@ -542,7 +543,7 @@ def _shape_distance(raw_a: Any, raw_b: Any, mode: str, ctx: ToolContext) -> Resu
     elif b_line and a_point:
         pa, pb = a_point, point_to_line(a_point, b_line)[:2]
     else:
-        raise ToolError("Wire a point, a line {x1,y1,x2,y2} or a circle {cx,cy,r} into both A and B")
+        raise ToolError(Msg.of("distance.need_shapes", "Wire a point, a line {{x1,y1,x2,y2}} or a circle {{cx,cy,r}} into both A and B"))
 
     dx, dy = pb[0] - pa[0], pb[1] - pa[1]
     d = abs(dx) if mode == "dx" else abs(dy) if mode == "dy" else math.hypot(dx, dy)
@@ -552,7 +553,7 @@ def _shape_distance(raw_a: Any, raw_b: Any, mode: str, ctx: ToolContext) -> Resu
         {"kind": "point", "x": pb[0], "y": pb[1], "color": "#38bdf8", "label": "B"},
     ]
     return Result(outputs={"distance": d, "dx": dx, "dy": dy,
-                           **world_outputs(ctx, lengths={"distance": (d, ((pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2))})}, overlays=overlays, message=f"{d:.2f}px")
+                           **world_outputs(ctx, lengths={"distance": (d, ((pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2))})}, overlays=overlays, message=Msg.of("distance.result", "{d:.2f}px", d=d))
 
 
 class AngleTool(Tool):
@@ -582,9 +583,9 @@ class AngleTool(Tool):
         la = _line(i.get("a")) or _line([i.get("ax1"), i.get("ay1"), i.get("ax2"), i.get("ay2")])
         lb = _line(i.get("b")) or _line([i.get("bx1"), i.get("by1"), i.get("bx2"), i.get("by2")])
         if la is None or lb is None:
-            raise ToolError("Two lines are needed: wire a/b, or eight endpoint numbers")
+            raise ToolError(Msg.of("angle.need_lines", "Two lines are needed: wire a/b, or eight endpoint numbers"))
         if not all(np.isfinite([*la, *lb])):
-            return Result(outputs={"angle_deg": float("nan"), "angle_a": float("nan"), "angle_b": float("nan")}, status="ng", message="The input line is not valid")
+            return Result(outputs={"angle_deg": float("nan"), "angle_a": float("nan"), "angle_b": float("nan")}, status="ng", message=Msg.of("angle.invalid_line", "The input line is not valid"))
         aa = math.degrees(math.atan2(la[3] - la[1], la[2] - la[0]))
         ab = math.degrees(math.atan2(lb[3] - lb[1], lb[2] - lb[0]))
         diff = (ab - aa + 180) % 360 - 180
@@ -600,7 +601,7 @@ class AngleTool(Tool):
             {"kind": "line", "x1": la[0], "y1": la[1], "x2": la[2], "y2": la[3], "color": "#38bdf8", "width": 2, "label": "A"},
             {"kind": "line", "x1": lb[0], "y1": lb[1], "x2": lb[2], "y2": lb[3], "color": "#f59e0b", "width": 2, "label": f"B  {ang:.2f}°"},
         ]
-        return Result(outputs={"angle_deg": ang, "angle_a": aa, "angle_b": ab}, overlays=overlays, message=f"{ang:.2f}°")
+        return Result(outputs={"angle_deg": ang, "angle_a": aa, "angle_b": ab}, overlays=overlays, message=Msg.of("angle.result", "{ang:.2f}°", ang=ang))
 
 
 def _roi_hist(ctx: ToolContext) -> tuple[np.ndarray, dict[str, Any] | None]:
@@ -613,12 +614,12 @@ def _roi_hist(ctx: ToolContext) -> tuple[np.ndarray, dict[str, Any] | None]:
     region = ctx.roi()
     c = crop(image, region)
     if c.image.size == 0:
-        raise ToolError("The region falls outside the image")
+        raise ToolError(Msg.of("measure.region_outside", "The region falls outside the image"))
     sub = c.image if c.image.dtype == np.uint8 else np.clip(c.image, 0, 255).astype(np.uint8)
     mask = c.mask if c.mask is None else np.ascontiguousarray(c.mask)
     hist = cv2.calcHist([np.ascontiguousarray(sub)], [0], mask, [256], [0, 256]).reshape(-1).astype(np.float64)
     if hist.sum() <= 0:
-        raise ToolError("The region has no pixels")
+        raise ToolError(Msg.of("measure.region_empty", "The region has no pixels"))
     return hist, region
 
 
@@ -651,7 +652,7 @@ class IntensityTool(Tool):
         outputs = _hist_stats(hist)
         mean, std = outputs["mean"], outputs["std"]
         overlays = [region_overlay(region, label=f"mean {mean:.1f}")] if region else []
-        return Result(outputs=outputs, overlays=overlays, message=f"Mean {mean:.1f} ± {std:.1f}")
+        return Result(outputs=outputs, overlays=overlays, message=Msg.of("intensity.result", "Mean {mean:.1f} ± {std:.1f}", mean=mean, std=std))
 
 
 class CalibrationTool(Tool):
@@ -680,18 +681,18 @@ class CalibrationTool(Tool):
         if mode == "known_distance":
             px = ctx.number("px_distance", 0)
             if px <= 0:
-                raise ToolError("The pixel distance must be greater than 0")
+                raise ToolError(Msg.of("calibration.bad_px_distance", "The pixel distance must be greater than 0"))
             k = ctx.number("real_mm", 0) / px
         elif mode == "asset":
             payload = read_calibration(ctx)
             world = payload.get("world")
             if not world:
-                raise ToolError("That calibration has no scale yet: add a board, a known distance or robot points to it")
+                raise ToolError(Msg.of("calibration.no_scale", "That calibration has no scale yet: add a board, a known distance or robot points to it"))
             k = float(world.get("mm_per_px") or 0)
         else:
             k = ctx.number("pixel_size_mm", 0)
         if k <= 0:
-            raise ToolError("The scale must be greater than 0")
+            raise ToolError(Msg.of("calibration.bad_scale", "The scale must be greater than 0"))
         power = 2 if str(ctx.param("power", "1")) == "2" else 1
         value = ctx.inputs.get("value")
         mm = float("nan")
@@ -699,15 +700,15 @@ class CalibrationTool(Tool):
             try:
                 mm = float(value) * (k**power)
             except (TypeError, ValueError):
-                raise ToolError(f"The input is not a number: {value!r}") from None
+                raise ToolError(Msg.of("calibration.not_number", "The input is not a number: {value!r}", value=value)) from None
         pts = ctx.inputs.get("points")
         pts_mm: list[list[float]] = []
         if pts is not None:
             arr = np.asarray(pts, dtype=np.float64).reshape(-1, 2) * k
             pts_mm = arr.tolist()
         if value is None and pts is None:
-            raise ToolError("No input: wire value or points")
-        return Result(outputs={"mm": mm, "scale": k, "points_mm": pts_mm}, message=(f"{mm:.4f} mm" if value is not None else f"k={k:.5f}"))
+            raise ToolError(Msg.of("calibration.no_input", "No input: wire value or points"))
+        return Result(outputs={"mm": mm, "scale": k, "points_mm": pts_mm}, message=(Msg.of("calibration.mm", "{mm:.4f} mm", mm=mm) if value is not None else Msg.of("calibration.scale", "k={k:.5f}", k=k)))
 
 
 class HistogramTool(Tool):
@@ -731,7 +732,7 @@ class HistogramTool(Tool):
         if ctx.flag("normalize"):
             hist = hist / max(1.0, hist.sum())
         overlays = [region_overlay(region, label=f"peak {peak}")] if region else []
-        return Result(outputs={"histogram": hist.tolist(), "peak": peak, "peak_count": peak_count, "otsu": float(otsu)}, overlays=overlays, message=f"Peak {peak}, Otsu {otsu:g}")
+        return Result(outputs={"histogram": hist.tolist(), "peak": peak, "peak_count": peak_count, "otsu": float(otsu)}, overlays=overlays, message=Msg.of("histogram.result", "Peak {peak}, Otsu {otsu:g}", peak=peak, otsu=otsu))
 
 
 SHARPNESS_METHODS = [
@@ -797,7 +798,7 @@ def _lag_covariance(delta: np.ndarray, dx: int, dy: int, mask: np.ndarray | None
 def _sharpness_score(gray: np.ndarray, mask: np.ndarray | None, method: str, normalize: bool) -> float:
     mean, contrast, count = _masked_stats(gray, mask)
     if count < 9:
-        raise ToolError("The region has too few pixels")
+        raise ToolError(Msg.of("measure.too_few_pixels", "The region has too few pixels"))
     src = np.ascontiguousarray(gray)
     if method == "laplacian":
         response = cv2.Laplacian(src, cv2.CV_16S, ksize=3)
@@ -819,7 +820,7 @@ def _sharpness_score(gray: np.ndarray, mask: np.ndarray | None, method: str, nor
         raw = max(0.0, lag1 - lag2)
         scale = 2.0 * contrast if normalize else 1.0
     else:
-        raise ToolError("Unknown sharpness method")
+        raise ToolError(Msg.of("measure.unknown_sharpness_method", "Unknown sharpness method"))
     if normalize:
         return raw / max(scale, 1e-6)
     return raw
@@ -858,7 +859,7 @@ class SharpnessTool(Tool):
         region = ctx.roi()
         c = crop(image, region)
         if c.image.size == 0:
-            raise ToolError("The region falls outside the image")
+            raise ToolError(Msg.of("sharpness.region_outside", "The region falls outside the image"))
         method = str(ctx.param("method", "laplacian"))
         normalize = ctx.flag("normalize", True)
         score = _sharpness_score(c.image, c.mask, method, normalize)
@@ -868,9 +869,10 @@ class SharpnessTool(Tool):
         ok = (min_score <= 0 or score >= min_score) and (max_score <= 0 or score <= max_score)
         label = f"sharpness {score:.3g}"
         overlay = region_overlay(region, label=label) if region else {"kind": "rect", "x": 0, "y": 0, "w": image.shape[1], "h": image.shape[0], "color": "#38bdf8", "width": 1, "dash": True, "label": label}
-        message = f"Score {score:.4g}"
         if noise is not None:
-            message += f", noise {noise:.3g}"
+            message = Msg.of("sharpness.score_noise", "Score {score:.4g}, noise {noise:.3g}", score=score, noise=noise)
+        else:
+            message = Msg.of("sharpness.score", "Score {score:.4g}", score=score)
         return Result(
             outputs={"score": score, "noise": noise, "method": method},
             overlays=[overlay],
@@ -921,19 +923,19 @@ def _region_edge_points(ctx: ToolContext, image: np.ndarray, region: dict[str, A
             if origin is None:
                 polarity = "any"
         if r_out - r_in < 3:
-            raise ToolError("The region radius is too small")
+            raise ToolError(Msg.of("measure.radius_too_small", "The region radius is too small"))
         pts_out = radial_edge_points(image, cx, cy, r_in, r_out, num, polarity, thr, sel, smoothing, mask=mask, mask_offset=off, a0=a0, a1=a1)
         return np.asarray(pts_out, dtype=np.float64).reshape(-1, 2)
     if shape in ("rect", "rotated_rect"):
         rr = _as_rotated_rect(region)
         c = crop(image, rr, upright=True)
         if c.image.size == 0 or min(c.image.shape[:2]) < 3:
-            raise ToolError("The region is too small or falls outside the image")
+            raise ToolError(Msg.of("measure.region_too_small", "The region is too small or falls outside the image"))
         pts_local, _ = caliper_points(c.image, num, polarity, thr, sel, smoothing)
         if not pts_local:
             return np.zeros((0, 2), dtype=np.float64)
         return c.points_to_full(np.asarray([(p[0], p[1]) for p in pts_local]))
-    raise ToolError(f"A {shape} region is not supported")
+    raise ToolError(Msg.of("measure.shape_unsupported", "A {shape} region is not supported", shape=shape))
 
 
 _RADIAL_SHAPES = ("circle", "annulus", "polygon", "composite")
@@ -1006,13 +1008,13 @@ class FitArcTool(Tool):
         image = to_gray(ctx.require_image())
         region = ctx.roi()
         if region is None:
-            raise ToolError("No region is set")
+            raise ToolError(Msg.of("fit_arc.no_region", "No region is set"))
         pts = _region_edge_points(ctx, image, region)
         overlays = [region_overlay(region, label="arc roi")]
         nan = float("nan")
         ng = {"radius": nan, "cx": nan, "cy": nan, "residual_rms": nan, "points": pts.round(2).tolist(), "start_angle": nan, "end_angle": nan, "circle": None}
         if len(pts) < 3:
-            return Result(outputs=ng, overlays=overlays, status="ng", message=f"Too few edge points ({len(pts)})")
+            return Result(outputs=ng, overlays=overlays, status="ng", message=Msg.of("fit_arc.too_few_points", "Too few edge points ({n})", n=len(pts)))
         use_ransac, tol = ctx.flag("ransac", True), ctx.number("ransac_tol", 2)
         circle, inliers = fit_circle_points(pts, use_ransac, tol)
         if circle is not None:
@@ -1022,7 +1024,7 @@ class FitArcTool(Tool):
                 if circle2 is not None and int(inliers2.sum()) >= max(3, int(0.5 * inliers.sum())):
                     pts, circle, inliers = pts2, circle2, inliers2
         if circle is None:
-            return Result(outputs=ng, overlays=overlays, status="ng", message="Fit failed")
+            return Result(outputs=ng, overlays=overlays, status="ng", message=Msg.of("fit_arc.fit_failed", "Fit failed"))
         ng["points"] = pts.round(2).tolist()
         cx, cy, r = circle
         good = pts[inliers]
@@ -1033,7 +1035,7 @@ class FitArcTool(Tool):
         sagitta = r - math.sqrt(max(0.0, r * r - (span / 2.0) ** 2))
         if not math.isfinite(r) or sagitta < 1.5:
             overlays.append({"kind": "points", "points": pts.round(2).tolist(), "color": "#ef4444"})
-            return Result(outputs=ng, overlays=overlays, status="ng", message=f"Arc fit is degenerate (R={r:.0f}px over a {span:.0f}px chord bulges only {sagitta:.2f}px); the edge points are nearly straight")
+            return Result(outputs=ng, overlays=overlays, status="ng", message=Msg.of("fit_arc.degenerate", "Arc fit is degenerate (R={r:.0f}px over a {span:.0f}px chord bulges only {sagitta:.2f}px); the edge points are nearly straight", r=r, span=span, sagitta=sagitta))
         resid = np.hypot(good[:, 0] - cx, good[:, 1] - cy) - r
         rms = float(np.sqrt((resid**2).mean())) if len(good) else nan
         start, end = _arc_span(np.degrees(np.arctan2(good[:, 1] - cy, good[:, 0] - cx)))
@@ -1049,7 +1051,8 @@ class FitArcTool(Tool):
                      "circle": {"cx": round(float(cx), 4), "cy": round(float(cy), 4), "r": round(float(r), 4)},
                      **world_outputs(ctx, points={("cx", "cy"): (cx, cy)}, lengths={"radius": (r, (cx, cy))},
                                      angles={"start_angle": (start, (cx, cy)), "end_angle": (end, (cx, cy))})},
-            overlays=overlays, message=f"R={r:.2f}px centre ({cx:.1f}, {cy:.1f}), {int(inliers.sum())}/{len(pts)} points, RMS {rms:.2f}px, {start:.0f}°→{end:.0f}°",
+            overlays=overlays, message=Msg.of("fit_arc.result", "R={r:.2f}px centre ({cx:.1f}, {cy:.1f}), {used}/{n} points, RMS {rms:.2f}px, {start:.0f}°→{end:.0f}°",
+                                           r=r, cx=cx, cy=cy, used=int(inliers.sum()), n=len(pts), rms=rms, start=start, end=end),
         )
 
 
@@ -1087,13 +1090,13 @@ class FitEllipseTool(Tool):
         image = to_gray(ctx.require_image())
         region = ctx.roi()
         if region is None:
-            raise ToolError("No region is set")
+            raise ToolError(Msg.of("fit_ellipse.no_region", "No region is set"))
         pts = _region_edge_points(ctx, image, region)
         overlays = [region_overlay(region, label="ellipse roi")]
         nan = float("nan")
         ng = {"cx": nan, "cy": nan, "a": nan, "b": nan, "angle": nan, "roundness": nan, "residual_rms": nan, "points": pts.round(2).tolist()}
         if len(pts) < 5:
-            return Result(outputs=ng, overlays=overlays, status="ng", message=f"Too few edge points ({len(pts)}; an ellipse needs at least 5)")
+            return Result(outputs=ng, overlays=overlays, status="ng", message=Msg.of("fit_ellipse.too_few_points", "Too few edge points ({n}; an ellipse needs at least 5)", n=len(pts)))
         fitted = _fit_ellipse(pts)
         if fitted is not None:
             pts2 = _refined_points(ctx, image, region, (fitted[0], fitted[1]))
@@ -1102,7 +1105,7 @@ class FitEllipseTool(Tool):
                 if fitted2 is not None:
                     pts, fitted = pts2, fitted2
         if fitted is None:
-            return Result(outputs=ng, overlays=overlays, status="ng", message="Fit failed")
+            return Result(outputs=ng, overlays=overlays, status="ng", message=Msg.of("fit_ellipse.fit_failed", "Fit failed"))
         ng["points"] = pts.round(2).tolist()
         cx, cy, w, h, ang = fitted
         # fitEllipse 的 angle 是 w 軸方向；長半軸取兩者較大者，角度跟著調整。
@@ -1129,7 +1132,8 @@ class FitEllipseTool(Tool):
         ]
         return Result(
             outputs={"cx": float(cx), "cy": float(cy), "a": float(a), "b": float(b), "angle": angle, "roundness": roundness, "residual_rms": rms, "points": pts.round(2).tolist()},
-            overlays=overlays, message=f"a={a:.2f} b={b:.2f} roundness {roundness:.3f}, {len(pts)} points, RMS {rms:.2f}px",
+            overlays=overlays, message=Msg.of("fit_ellipse.result", "a={a:.2f} b={b:.2f} roundness {roundness:.3f}, {n} points, RMS {rms:.2f}px",
+                                           a=a, b=b, roundness=roundness, n=len(pts), rms=rms),
         )
 
 
@@ -1160,7 +1164,7 @@ def _as_wall_rect(region: dict[str, Any], band: float) -> dict[str, Any]:
         x1, y1, x2, y2 = float(region["x1"]), float(region["y1"]), float(region["x2"]), float(region["y2"])
         length = math.hypot(x2 - x1, y2 - y1)
         if length < 3:
-            raise ToolError("The segment is too short")
+            raise ToolError(Msg.of("measure.segment_too_short", "The segment is too short"))
         return {"shape": "rotated_rect", "cx": (x1 + x2) / 2, "cy": (y1 + y2) / 2, "w": length, "h": max(3.0, band), "angle": math.degrees(math.atan2(y2 - y1, x2 - x1))}
     return _as_rotated_rect(region)
 
@@ -1191,11 +1195,11 @@ class WallThicknessTool(Tool):
         image = to_gray(ctx.require_image())
         region = ctx.roi()
         if region is None:
-            raise ToolError("No region is set")
+            raise ToolError(Msg.of("wall_thickness.no_region", "No region is set"))
         rr = _as_wall_rect(region, ctx.number("band", 10))
         c = crop(image, rr, upright=True)
         if c.image.size == 0 or min(c.image.shape[:2]) < 3:
-            raise ToolError("The region is too small or falls outside the image")
+            raise ToolError(Msg.of("wall_thickness.region_too_small", "The region is too small or falls outside the image"))
         profiles, centers, horizontal = _band_profiles(c.image, ctx.integer("num_calipers", 10), along_long=region.get("shape") == "line")
         polarity = ctx.param("polarity", "any")
         thr = ctx.number("edge_threshold", 20)
@@ -1225,7 +1229,7 @@ class WallThicknessTool(Tool):
         nan = float("nan")
         if not thick:
             return Result(outputs={"thickness": nan, "min": nan, "max": nan, "mean": nan, "std": nan, "count": 0, "profile": [], "pairs": []},
-                          overlays=overlays, status="ng", message="No edge pair was found")
+                          overlays=overlays, status="ng", message=Msg.of("wall_thickness.no_pair", "No edge pair was found"))
         arr = np.asarray(thick)
         for (x1, y1), (x2, y2) in pairs:
             overlays.append({"kind": "line", "x1": x1, "y1": y1, "x2": x2, "y2": y2, "color": "#22c55e", "width": 2})
@@ -1236,7 +1240,8 @@ class WallThicknessTool(Tool):
         return Result(
             outputs={"thickness": mean, "min": float(arr.min()), "max": float(arr.max()), "mean": mean, "std": float(arr.std()), "count": len(thick),
                      "profile": [round(t, 2) for t in thick], "pairs": pairs},
-            overlays=overlays, message=f"Wall thickness {mean:.2f}px (min {arr.min():.2f} / max {arr.max():.2f}, {len(thick)}/{len(centers)} calipers)",
+            overlays=overlays, message=Msg.of("wall_thickness.result", "Wall thickness {mean:.2f}px (min {low:.2f} / max {high:.2f}, {n}/{total} calipers)",
+                                           mean=mean, low=arr.min(), high=arr.max(), n=len(thick), total=len(centers)),
         )
 
 
@@ -1287,11 +1292,11 @@ class ConcentricityTool(Tool):
         a = _circle(i.get("a"), (i.get("ax"), i.get("ay"), i.get("ar")))
         b = _circle(i.get("b"), (i.get("bx"), i.get("by"), i.get("br")))
         if a is None or b is None:
-            raise ToolError("Two circles are needed: wire a/b, or ax, ay, (ar), bx, by, (br)")
+            raise ToolError(Msg.of("concentricity.need_circles", "Two circles are needed: wire a/b, or ax, ay, (ar), bx, by, (br)"))
         nan = float("nan")
         if not all(np.isfinite([a[0], a[1], b[0], b[1]])):
             return Result(outputs={"deviation": nan, "dx": nan, "dy": nan, "concentricity": nan, "verdict": "ng", "in_spec": False},
-                          branch="ng", status="ng", message="The input circle is not valid (the upstream step may have found nothing)")
+                          branch="ng", status="ng", message=Msg.of("concentricity.invalid_circle", "The input circle is not valid (the upstream step may have found nothing)"))
         dx, dy = b[0] - a[0], b[1] - a[1]
         dev = math.hypot(dx, dy)
         max_dev = ctx.number("max_deviation", 5)
@@ -1307,7 +1312,8 @@ class ConcentricityTool(Tool):
         return Result(
             outputs={"deviation": dev, "dx": dx, "dy": dy, "concentricity": 2 * dev, "verdict": "ok" if ok else "ng", "in_spec": ok},
             overlays=overlays, branch="ok" if ok else "ng", status="ok" if ok else "ng",
-            message=f"Centre offset {dev:.2f}px (dx {dx:.2f}, dy {dy:.2f}) {'≤' if ok else '>'} {max_dev:g}",
+            message=(Msg.of("concentricity.pass", "Centre offset {dev:.2f}px (dx {dx:.2f}, dy {dy:.2f}) ≤ {max_dev:g}", dev=dev, dx=dx, dy=dy, max_dev=max_dev) if ok
+                     else Msg.of("concentricity.fail", "Centre offset {dev:.2f}px (dx {dx:.2f}, dy {dy:.2f}) > {max_dev:g}", dev=dev, dx=dx, dy=dy, max_dev=max_dev)),
         )
 
 
@@ -1322,7 +1328,7 @@ def _edge_trend_reference(ctx: ToolContext) -> tuple[str, tuple, dict[str, Any] 
         return "arc", circle, {"kind": "circle", "cx": circle[0], "cy": circle[1], "r": circle[2], "color": "#38bdf8", "dash": True}
     region = ctx.roi()
     if region is None:
-        raise ToolError("Draw a region along the edge, or wire a line or a circle in from a locate step")
+        raise ToolError(Msg.of("edge_trend.no_reference", "Draw a region along the edge, or wire a line or a circle in from a locate step"))
     shape = str(region.get("shape") or "")
     if shape in ("circle", "annulus"):
         cx, cy = float(region["cx"]), float(region["cy"])
@@ -1345,7 +1351,7 @@ def _edge_trend_reference(ctx: ToolContext) -> tuple[str, tuple, dict[str, Any] 
         half = length / 2.0
         line = (cx - ux * half, cy - uy * half, cx + ux * half, cy + uy * half)
         return "line", line, region_overlay(region, label="trend")
-    raise ToolError("The region has to be a rectangle, circle or annulus")
+    raise ToolError(Msg.of("edge_trend.bad_shape", "The region has to be a rectangle, circle or annulus"))
 
 
 def _edge_trend_baseline(ctx: ToolContext, hits: list[CaliperHit], series: np.ndarray, kind: str, wrap: bool) -> np.ndarray:
@@ -1491,8 +1497,9 @@ class EdgeTrendTool(Tool):
                 **{k: (_round_float(v, 4) if np.isfinite(v) else nan) for k, v in stats.items()},
             },
             overlays=overlays, branch="ok" if ok else "ng", status="ok" if ok else "ng",
-            message=(f"trend {stats['mean']:.2f}±{stats['std']:.2f}px, max {worst:.2f}px ({len(missing)} missing)"
-                     if len(finite) else f"no edge trend ({len(missing)} missing)"),
+            message=(Msg.of("edge_trend.result", "trend {mean:.2f}±{std:.2f}px, max {worst:.2f}px ({missing} missing)",
+                            mean=stats["mean"], std=stats["std"], worst=worst, missing=len(missing))
+                     if len(finite) else Msg.of("edge_trend.no_trend", "no edge trend ({missing} missing)", missing=len(missing))),
             detail={"baseline": ctx.param("baseline", "fit"), "found": int(sum(h.found for h in hits)), "total": len(hits)},
         )
 
@@ -1532,11 +1539,11 @@ class ChamferAngleTool(Tool):
         image = to_gray(ctx.require_image())
         region = ctx.roi()
         if region is None:
-            raise ToolError("No region is set")
+            raise ToolError(Msg.of("chamfer_angle.no_region", "No region is set"))
         rr = _as_rotated_rect(region)
         c = crop(image, rr, upright=True)
         if c.image.size == 0 or min(c.image.shape[:2]) < 3:
-            raise ToolError("The region is too small or falls outside the image")
+            raise ToolError(Msg.of("chamfer_angle.region_too_small", "The region is too small or falls outside the image"))
         pts_local, _ = caliper_points(c.image, ctx.integer("num_calipers", 40), ctx.param("polarity", "any"),
                                       ctx.number("edge_threshold", 20), ctx.param("direction", "first"), ctx.integer("smoothing", 3))
         overlays = [region_overlay(region, label="chamfer")]
@@ -1545,21 +1552,21 @@ class ChamferAngleTool(Tool):
         pts = c.points_to_full(np.asarray([(p[0], p[1]) for p in pts_local])) if pts_local else np.zeros((0, 2))
         min_pts = max(2, ctx.integer("min_points", 3))
         if len(pts) < 2 + min_pts:
-            return Result(outputs={**ng_out, "points": pts.round(2).tolist()}, overlays=overlays, status="ng", message=f"Too few edge points ({len(pts)})")
+            return Result(outputs={**ng_out, "points": pts.round(2).tolist()}, overlays=overlays, status="ng", message=Msg.of("chamfer_angle.too_few_points", "Too few edge points ({n})", n=len(pts)))
         tol = ctx.number("ransac_tol", 1.5)
         first = fit_line_ransac(pts, tol=tol, iterations=300)
         if first is None:
-            return Result(outputs={**ng_out, "points": pts.round(2).tolist()}, overlays=overlays, status="ng", message="Fitting the first line failed")
+            return Result(outputs={**ng_out, "points": pts.round(2).tolist()}, overlays=overlays, status="ng", message=Msg.of("chamfer_angle.first_fit_failed", "Fitting the first line failed"))
         (vx1, vy1, x01, y01), inl1 = first
         rest = pts[~inl1]
         if len(rest) < min_pts:
-            return Result(outputs={**ng_out, "points": pts.round(2).tolist()}, overlays=overlays, status="ng", message=f"{len(rest)} points remain after removing the main edge; no chamfer was found")
+            return Result(outputs={**ng_out, "points": pts.round(2).tolist()}, overlays=overlays, status="ng", message=Msg.of("chamfer_angle.no_chamfer", "{n} points remain after removing the main edge; no chamfer was found", n=len(rest)))
         second = fit_line_ransac(rest, tol=tol, iterations=300, seed=1)
         if second is None:
-            return Result(outputs={**ng_out, "points": pts.round(2).tolist()}, overlays=overlays, status="ng", message="Fitting the second line failed")
+            return Result(outputs={**ng_out, "points": pts.round(2).tolist()}, overlays=overlays, status="ng", message=Msg.of("chamfer_angle.second_fit_failed", "Fitting the second line failed"))
         (vx2, vy2, x02, y02), inl2 = second
         if int(inl2.sum()) < min_pts:
-            return Result(outputs={**ng_out, "points": pts.round(2).tolist()}, overlays=overlays, status="ng", message=f"Too few inliers on the chamfer ({int(inl2.sum())})")
+            return Result(outputs={**ng_out, "points": pts.round(2).tolist()}, overlays=overlays, status="ng", message=Msg.of("chamfer_angle.too_few_inliers", "Too few inliers on the chamfer ({n})", n=int(inl2.sum())))
         line1 = _line_from_fit(vx1, vy1, x01, y01, pts[inl1])
         line2 = _line_from_fit(vx2, vy2, x02, y02, rest[inl2])
         diff = abs((line2["angle"] - line1["angle"] + 180) % 360 - 180) % 180
@@ -1585,13 +1592,15 @@ class ChamferAngleTool(Tool):
         if far:
             return Result(
                 outputs={**ng_out, "line1": line1, "line2": line2, "points": pts.round(2).tolist()}, overlays=overlays, status="ng",
-                message=f"The two fitted edges are nearly parallel (intersection {float(np.hypot(ix - centre[0], iy - centre[1])):.0f} px away); check the direction and threshold",
+                message=Msg.of("chamfer_angle.parallel", "The two fitted edges are nearly parallel (intersection {dist:.0f} px away); check the direction and threshold",
+                               dist=float(np.hypot(ix - centre[0], iy - centre[1]))),
             )
         if np.isfinite(ix):
             overlays.append({"kind": "point", "x": ix, "y": iy, "color": "#f59e0b"})
         return Result(
             outputs={"angle_deg": angle, "length": line2["length"], "line1": line1, "line2": line2, "ix": ix, "iy": iy, "points": pts.round(2).tolist()},
-            overlays=overlays, message=f"Chamfer {angle:.2f}°, length {line2['length']:.1f}px ({int(inl1.sum())} points on the main edge, {int(inl2.sum())} on the chamfer)",
+            overlays=overlays, message=Msg.of("chamfer_angle.result", "Chamfer {angle:.2f}°, length {length:.1f}px ({main} points on the main edge, {chamfer} on the chamfer)",
+                                           angle=angle, length=line2["length"], main=int(inl1.sum()), chamfer=int(inl2.sum())),
         )
 
 
@@ -1621,7 +1630,7 @@ class ToleranceJudgeTool(Tool):
         try:
             v = float(raw) if raw is not None else float("nan")
         except (TypeError, ValueError):
-            raise ToolError(f"The input is not a number: {raw!r}") from None
+            raise ToolError(Msg.of("tolerance_judge.not_number", "The input is not a number: {raw!r}", raw=raw)) from None
         nominal = ctx.number("nominal", 0)
         upper = nominal + ctx.number("upper_tol", 0.1)
         lower = nominal + ctx.number("lower_tol", -0.1)
@@ -1638,7 +1647,7 @@ class ToleranceJudgeTool(Tool):
         tolerances = [t for t in (outputs.get("tolerances") or []) if isinstance(t, dict) and t.get("name") != name]
         outputs["tolerances"] = tolerances + [entry]
         verdict = "pass" if ok else "fail"
-        msg = f"The measurement is invalid ({raw!r}) -> FAIL"
+        text = Msg.of("tolerance_judge.invalid", "The measurement is invalid ({raw!r}) -> FAIL", raw=raw)
         if valid:
             # 比最小非零公差多留一位；接近界限時再增加精度，避免顯示相等卻判失敗。
             tolerances = [abs(ctx.number(key, default)) for key, default in (("upper_tol", .1), ("lower_tol", -.1))]
@@ -1650,10 +1659,12 @@ class ToleranceJudgeTool(Tool):
                 if all((float(measured) < float(bound), float(measured) > float(bound)) == (v < actual, v > actual)
                        for bound, actual in ((low, lower), (high, upper))):
                     break
-            msg = f"{measured}{unit} deviation {format(deviation, '+' + spec)} ({low} to {high}) -> {verdict.upper()}"
+            values = {"measured": measured, "unit": unit, "deviation": format(deviation, "+" + spec), "low": low, "high": high}
+            text = (Msg.of("tolerance_judge.pass", "{measured}{unit} deviation {deviation} ({low} to {high}) -> PASS", **values) if ok
+                    else Msg.of("tolerance_judge.fail", "{measured}{unit} deviation {deviation} ({low} to {high}) -> FAIL", **values))
         return Result(
             outputs={"verdict": verdict, "deviation": deviation, "in_spec": ok, "nominal": nominal, "upper": upper, "lower": lower, "spec_source": source},
-            branch=verdict, status="ok" if ok else "ng", message=msg, context={"_outputs": outputs},
+            branch=verdict, status="ok" if ok else "ng", message=text, context={"_outputs": outputs},
         )
 
 
@@ -1681,20 +1692,20 @@ class LineProfileTool(Tool):
         gray = image if image.ndim == 2 else cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         region = ctx.roi()
         if not region:
-            raise ToolError("A line or polyline ROI is required")
+            raise ToolError(Msg.of("line_profile.need_line", "A line or polyline ROI is required"))
         if region.get("shape") == "line":
             pts = [[float(region["x1"]), float(region["y1"])], [float(region["x2"]), float(region["y2"])]]
         elif region.get("shape") in ("polyline", "polygon"):
             pts = [[float(x), float(y)] for x, y in (region.get("points") or [])]
         else:
-            raise ToolError(f"Line profile does not support a '{region.get('shape')}' ROI")
+            raise ToolError(Msg.of("line_profile.bad_shape", "Line profile does not support a '{shape}' ROI", shape=region.get("shape")))
         if len(pts) < 2:
-            raise ToolError("At least two points are needed")
+            raise ToolError(Msg.of("line_profile.too_few_points", "At least two points are needed"))
         seg = np.diff(np.asarray(pts, dtype=np.float64), axis=0)
         seg_len = np.hypot(seg[:, 0], seg[:, 1])
         total = float(seg_len.sum())
         if total < 1:
-            raise ToolError("The line has zero length")
+            raise ToolError(Msg.of("line_profile.zero_length", "The line has zero length"))
         n = ctx.integer("samples", 0) or int(round(total))
         n = max(2, min(10000, n))
         # 沿折線等距取樣（雙線性）
@@ -1713,7 +1724,7 @@ class LineProfileTool(Tool):
             "length": round(total, 2),
         }
         overlays = [region_overlay(region, label=f"profile n={n}")]
-        return Result(outputs=stats, overlays=overlays, message=f"{n} points, mean {stats['mean']:.1f}")
+        return Result(outputs=stats, overlays=overlays, message=Msg.of("line_profile.result", "{n} points, mean {mean:.1f}", n=n, mean=stats["mean"]))
 
 
 class ColorStatsTool(Tool):
@@ -1737,11 +1748,11 @@ class ColorStatsTool(Tool):
         region = ctx.roi()
         c = crop(image, region)
         if c.image.size == 0:
-            raise ToolError("The region falls outside the image")
+            raise ToolError(Msg.of("color_stats.region_outside", "The region falls outside the image"))
         mask = c.mask if c.mask is not None else np.full(c.image.shape[:2], 255, np.uint8)
         sel = c.image[mask > 0]
         if not len(sel):
-            raise ToolError("The region has no pixels")
+            raise ToolError(Msg.of("color_stats.region_empty", "The region has no pixels"))
         mean_bgr = sel.reshape(-1, 3).mean(axis=0)
         hsv = cv2.cvtColor(c.image, cv2.COLOR_BGR2HSV)
         hsel = hsv[mask > 0].reshape(-1, 3).astype(np.float32)
@@ -1755,7 +1766,7 @@ class ColorStatsTool(Tool):
             "hex": "#%02x%02x%02x" % (int(mean_bgr[2]), int(mean_bgr[1]), int(mean_bgr[0])),
         }
         overlays = [region_overlay(region, label=outputs["hex"])] if region else []
-        return Result(outputs=outputs, overlays=overlays, message=f"{outputs['hex']} H{outputs['mean_h']:.0f}")
+        return Result(outputs=outputs, overlays=overlays, message=Msg.of("color_stats.result", "{hex} H{hue:.0f}", hex=outputs["hex"], hue=outputs["mean_h"]))
 
 
 def _as_line(value: Any) -> tuple[float, float, float, float] | None:
@@ -1806,7 +1817,7 @@ def _unit(line: tuple[float, float, float, float]) -> tuple[float, float]:
     dx, dy = x2 - x1, y2 - y1
     length = math.hypot(dx, dy)
     if length < 1e-9:
-        raise ToolError("The line's two ends are the same point")
+        raise ToolError(Msg.of("measure.line_degenerate", "The line's two ends are the same point"))
     return dx / length, dy / length
 
 
@@ -1834,7 +1845,7 @@ def perpendicular_bisector(a: tuple[float, float], b: tuple[float, float]) -> di
     """兩點的中垂線。"""
     dx, dy = b[0] - a[0], b[1] - a[1]
     if math.hypot(dx, dy) < 1e-9:
-        raise ToolError("The two points are the same")
+        raise ToolError(Msg.of("measure.same_points", "The two points are the same"))
     return perpendicular_line((a[0], a[1], b[0], b[1]), ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2))
 
 
@@ -1853,7 +1864,7 @@ def bisector_line(la: tuple[float, float, float, float], lb: tuple[float, float,
     dx, dy = ua[0] + sign * ub[0], ua[1] + sign * ub[1]
     length = math.hypot(dx, dy)
     if length < 1e-9:
-        raise ToolError("The two lines have no bisector")
+        raise ToolError(Msg.of("measure.no_bisector", "The two lines have no bisector"))
     return line_through(point[0], point[1], dx / length, dy / length)
 
 
@@ -1864,7 +1875,7 @@ def median_line(la: tuple[float, float, float, float], lb: tuple[float, float, f
     dx, dy = ua[0] + sign * ub[0], ua[1] + sign * ub[1]
     length = math.hypot(dx, dy)
     if length < 1e-9:
-        raise ToolError("The two lines point in opposite directions")
+        raise ToolError(Msg.of("measure.opposite_lines", "The two lines point in opposite directions"))
     mx = (la[0] + la[2] + lb[0] + lb[2]) / 4
     my = (la[1] + la[3] + lb[1] + lb[3]) / 4
     return line_through(mx, my, dx / length, dy / length)
@@ -1889,7 +1900,7 @@ def circle_from_three(a: tuple[float, float], b: tuple[float, float], c: tuple[f
     cx, cy = c
     d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by))
     if abs(d) < 1e-9:
-        raise ToolError("The three points are on one line, so no circle passes through them")
+        raise ToolError(Msg.of("measure.collinear", "The three points are on one line, so no circle passes through them"))
     ux = ((ax * ax + ay * ay) * (by - cy) + (bx * bx + by * by) * (cy - ay) + (cx * cx + cy * cy) * (ay - by)) / d
     uy = ((ax * ax + ay * ay) * (cx - bx) + (bx * bx + by * by) * (ax - cx) + (cx * cx + cy * cy) * (bx - ax)) / d
     return {"cx": round(ux, 4), "cy": round(uy, 4), "r": round(math.hypot(ax - ux, ay - uy), 4)}
@@ -1918,11 +1929,11 @@ def offset_points(points: Any, dx: float, dy: float) -> list[list[float]]:
 def offset_matches(matches: Any, dx: float, dy: float) -> list[dict[str, Any]]:
     """複製比對結果並平移常見座標欄位。"""
     if not isinstance(matches, list):
-        raise ToolError("Matches must be a list")
+        raise ToolError(Msg.of("measure.matches_not_list", "Matches must be a list"))
     shifted: list[dict[str, Any]] = []
     for item in matches:
         if not isinstance(item, dict):
-            raise ToolError("Each match must be a dictionary")
+            raise ToolError(Msg.of("measure.match_not_dict", "Each match must be a dictionary"))
         m = dict(item)
         for x_key, y_key in (("x", "y"), ("cx", "cy"), ("x1", "y1"), ("x2", "y2")):
             if x_key in m and y_key in m:
@@ -1941,7 +1952,7 @@ def point_to_line(point: tuple[float, float], line: tuple[float, float, float, f
     dx, dy = x2 - x1, y2 - y1
     norm = dx * dx + dy * dy
     if norm < 1e-9:
-        raise ToolError("The line's two ends are the same point")
+        raise ToolError(Msg.of("measure.line_degenerate", "The line's two ends are the same point"))
     t = ((point[0] - x1) * dx + (point[1] - y1) * dy) / norm
     px, py = x1 + t * dx, y1 + t * dy
     return px, py, math.hypot(point[0] - px, point[1] - py)
@@ -2057,34 +2068,34 @@ class GeometryTool(Tool):
                 first = points[0] if points else [0.0, 0.0]
                 return Result(outputs={**blank, "points": points, "matches": [], "count": len(points), "x": first[0], "y": first[1]},
                               overlays=[{"kind": "points", "points": points, "color": "#22c55e"}] if points else [],
-                              message=f"{len(points)} points offset ({dx:g}, {dy:g})")
+                              message=Msg.of("geometry.offset_points", "{n} points offset ({dx:g}, {dy:g})", n=len(points), dx=dx, dy=dy))
             if ctx.inputs.get("matches") is not None:
                 matches = offset_matches(ctx.inputs.get("matches"), dx, dy)
                 best = matches[0] if matches else {}
                 x = float(best.get("cx", best.get("x", 0.0)) or 0.0)
                 y = float(best.get("cy", best.get("y", 0.0)) or 0.0)
                 return Result(outputs={**blank, "points": [], "matches": matches, "count": len(matches), "x": x, "y": y},
-                              message=f"{len(matches)} matches offset ({dx:g}, {dy:g})")
+                              message=Msg.of("geometry.offset_matches", "{n} matches offset ({dx:g}, {dy:g})", n=len(matches), dx=dx, dy=dy))
             return Result(status="ng", outputs={**blank, "points": [], "matches": [], "count": 0},
-                          message="Wire points or matches to offset")
+                          message=Msg.of("geometry.need_offset_input", "Wire points or matches to offset"))
 
         if mode == "intersect":
             la, lb = _need_line(a, "A"), _need_line(b, "B")
             point = intersect_lines(la, lb)
             if point is None:
-                return Result(status="ng", message="The lines are parallel and never meet", outputs=blank)
+                return Result(status="ng", message=Msg.of("geometry.parallel", "The lines are parallel and never meet"), outputs=blank)
             angle = abs(line_angle(la) - line_angle(lb))
             angle = min(angle, 180 - angle)
             return Result(outputs={**blank, "x": round(point[0], 2), "y": round(point[1], 2), "angle": round(angle, 3)},
                           overlays=[{"kind": "point", "x": point[0], "y": point[1], "label": "Intersection"}],
-                          message=f"({point[0]:.1f}, {point[1]:.1f}), {angle:.2f}°")
+                          message=Msg.of("geometry.intersection", "({x:.1f}, {y:.1f}), {angle:.2f}°", x=point[0], y=point[1], angle=angle))
 
         if mode == "midpoint":
             pa, pb = _need_point(a, "A"), _need_point(b, "B")
             mx, my = (pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2
             d = math.hypot(pb[0] - pa[0], pb[1] - pa[1])
             return Result(outputs={**blank, "x": round(mx, 2), "y": round(my, 2), "distance": round(d, 2)},
-                          overlays=[{"kind": "point", "x": mx, "y": my, "label": "midpoint"}], message=f"({mx:.1f}, {my:.1f})")
+                          overlays=[{"kind": "point", "x": mx, "y": my, "label": "midpoint"}], message=Msg.of("geometry.point", "({x:.1f}, {y:.1f})", x=mx, y=my))
 
         if mode == "line_2pts":
             pa, pb = _need_point(a, "A"), _need_point(b, "B")
@@ -2092,13 +2103,13 @@ class GeometryTool(Tool):
             angle = line_angle((pa[0], pa[1], pb[0], pb[1]))
             return Result(outputs={**blank, "line": line, "angle": round(angle, 3), "x": round((pa[0] + pb[0]) / 2, 2), "y": round((pa[1] + pb[1]) / 2, 2),
                                    "distance": round(math.hypot(pb[0] - pa[0], pb[1] - pa[1]), 2)},
-                          overlays=[{"kind": "line", **line, "label": f"{angle:.1f}°"}], message=f"{angle:.2f}°")
+                          overlays=[{"kind": "line", **line, "label": f"{angle:.1f}°"}], message=Msg.of("geometry.angle", "{angle:.2f}°", angle=angle))
 
         if mode in ("parallel", "perpendicular"):
             la = _need_line(a, "A")
             through = _as_point(b)
             if mode == "perpendicular" and through is None:
-                raise ToolError("Wire the point the line has to pass through into B")
+                raise ToolError(Msg.of("geometry.need_point_b", "Wire the point the line has to pass through into B"))
             line = (parallel_line(la, through=through, offset=ctx.number("offset"))
                     if mode == "parallel" else perpendicular_line(la, through))
             return _line_result(line, blank)
@@ -2116,7 +2127,7 @@ class GeometryTool(Tool):
             circle = circle_from_three(_need_point(a, "A"), _need_point(b, "B"), _need_point(c, "C"))
             return Result(outputs={**blank, "circle": circle, "x": circle["cx"], "y": circle["cy"], "distance": circle["r"]},
                           overlays=[{"kind": "circle", "cx": circle["cx"], "cy": circle["cy"], "r": circle["r"], "label": f"r={circle['r']:.2f}"}],
-                          message=f"({circle['cx']:.1f}, {circle['cy']:.1f}) r={circle['r']:.2f}")
+                          message=Msg.of("geometry.circle", "({cx:.1f}, {cy:.1f}) r={r:.2f}", cx=circle["cx"], cy=circle["cy"], r=circle["r"]))
 
         if mode == "rotate":
             pa = _need_point(a, "A")
@@ -2127,31 +2138,32 @@ class GeometryTool(Tool):
                                    "distance": round(math.hypot(x - pivot[0], y - pivot[1]), 3)},
                           overlays=[{"kind": "point", "x": pivot[0], "y": pivot[1], "color": "#38bdf8", "label": "pivot"},
                                     {"kind": "point", "x": x, "y": y, "label": f"{degrees:.1f}°"}],
-                          message=f"({x:.1f}, {y:.1f})")
+                          message=Msg.of("geometry.point", "({x:.1f}, {y:.1f})", x=x, y=y))
 
         # point_line / project：a=點、b=線（接反了也行）
         pa, lb = _as_point(a), _as_line(b)
         if not pa and _as_point(b) and _as_line(a):
             pa, lb = _as_point(b), _as_line(a)
         if not pa or not lb:
-            raise ToolError("A point and a line are needed")
+            raise ToolError(Msg.of("geometry.need_point_line", "A point and a line are needed"))
         px, py, d = point_to_line(pa, lb)
         overlays = [{"kind": "line", "x1": pa[0], "y1": pa[1], "x2": px, "y2": py, "label": f"{d:.1f}px"}]
         return Result(outputs={**blank, "x": round(px, 2), "y": round(py, 2), "distance": round(d, 2)}, overlays=overlays,
-                      message=f"Perpendicular distance {d:.2f}px" if mode == "point_line" else f"projection ({px:.1f}, {py:.1f})")
+                      message=(Msg.of("geometry.point_line", "Perpendicular distance {d:.2f}px", d=d) if mode == "point_line"
+                               else Msg.of("geometry.projection", "projection ({x:.1f}, {y:.1f})", x=px, y=py)))
 
 
 def _need_line(value: Any, which: str) -> tuple[float, float, float, float]:
     line = _as_line(value)
     if line is None:
-        raise ToolError(f"Input {which} has to be a line {{x1,y1,x2,y2}} — wire it from find-line or the line output of another geometry step")
+        raise ToolError(Msg.of("geometry.need_line", "Input {which} has to be a line {{x1,y1,x2,y2}} — wire it from find-line or the line output of another geometry step", which=which))
     return line
 
 
 def _need_point(value: Any, which: str) -> tuple[float, float]:
     point = _as_point(value)
     if point is None:
-        raise ToolError(f"Input {which} has to be a point [x, y] — wire it from find-circle, caliper or a blob centre")
+        raise ToolError(Msg.of("geometry.need_point", "Input {which} has to be a point [x, y] — wire it from find-circle, caliper or a blob centre", which=which))
     return point
 
 
@@ -2161,7 +2173,7 @@ def _line_result(line: dict[str, float], blank: dict[str, Any]) -> Result:
         outputs={**blank, "line": line, "angle": round(angle, 3),
                  "x": round((line["x1"] + line["x2"]) / 2, 2), "y": round((line["y1"] + line["y2"]) / 2, 2)},
         overlays=[{"kind": "line", **line, "color": "#22c55e", "label": f"{angle:.1f}°"}],
-        message=f"{angle:.2f}°",
+        message=Msg.of("geometry.angle", "{angle:.2f}°", angle=angle),
     )
 
 
@@ -2199,14 +2211,14 @@ class PointsMergeTool(Tool):
             points = seen
         if not points:
             return Result(status="ng", outputs={"points": [], "count": 0, "cx": float("nan"), "cy": float("nan")},
-                          message="No points came in (the steps above may have found nothing)")
+                          message=Msg.of("points_merge.empty", "No points came in (the steps above may have found nothing)"))
         cx = sum(p[0] for p in points) / len(points)
         cy = sum(p[1] for p in points) / len(points)
         return Result(
             outputs={"points": points, "count": len(points), "cx": round(cx, 3), "cy": round(cy, 3)},
             overlays=[{"kind": "points", "points": points, "color": "#22c55e"},
                       {"kind": "point", "x": cx, "y": cy, "color": "#f59e0b", "label": "centre"}],
-            message=f"{len(points)} points, centre ({cx:.1f}, {cy:.1f})",
+            message=Msg.of("points_merge.result", "{n} points, centre ({cx:.1f}, {cy:.1f})", n=len(points), cx=cx, cy=cy),
         )
 
 
@@ -2237,7 +2249,7 @@ def _frame_matrix(frame: Any) -> np.ndarray:
         if not np.isfinite([x, y, angle, scale]).all() or scale <= 0:
             raise ValueError
     except (KeyError, TypeError, ValueError, OverflowError):
-        raise ToolError("A coordinate frame needs a finite origin, angle and positive scale") from None
+        raise ToolError(Msg.of("measure.bad_frame", "A coordinate frame needs a finite origin, angle and positive scale")) from None
     rad = math.radians(angle)
     c, s = math.cos(rad) / scale, math.sin(rad) / scale
     return np.array([[c, s, -c * x - s * y], [-s, c, s * x - c * y], [0, 0, 1]], dtype=np.float64)
@@ -2303,7 +2315,7 @@ class CoordinateTool(Tool):
             if not math.isfinite(angle):
                 raise ValueError
         except (TypeError, ValueError, OverflowError):
-            return Result(status="ng", branch="not_found", message="No valid origin and X axis were provided",
+            return Result(status="ng", branch="not_found", message=Msg.of("coordinate.not_found", "No valid origin and X axis were provided"),
                           outputs={"frame": None, "origin_x": None, "origin_y": None, "angle": None})
         x, y = origin
         rad = math.radians(angle)
@@ -2313,7 +2325,7 @@ class CoordinateTool(Tool):
                       overlays=[{"kind": "point", "x": x, "y": y, "label": "Origin", "color": "#f59e0b"},
                                 {"kind": "line", "x1": x, "y1": y, "x2": x + c, "y2": y + s, "label": "X", "color": "#ef4444"},
                                 {"kind": "line", "x1": x, "y1": y, "x2": x - s, "y2": y + c, "label": "Y", "color": "#22c55e"}],
-                      message=f"Origin ({x:.3f}, {y:.3f}), X axis {angle:.3f}°")
+                      message=Msg.of("coordinate.result", "Origin ({x:.3f}, {y:.3f}), X axis {angle:.3f}°", x=x, y=y, angle=angle))
 
 
 class ToWorldTool(Tool):
@@ -2350,7 +2362,7 @@ class ToWorldTool(Tool):
     def execute(self, ctx: ToolContext) -> Result:
         mode = ctx.param("mode", "to_world")
         if mode not in ("to_world", "to_pixel"):
-            raise ToolError("Direction must be to_world or to_pixel")
+            raise ToolError(Msg.of("to_world.bad_direction", "Direction must be to_world or to_pixel"))
         reverse = mode == "to_pixel"
         world: dict[str, Any] = {}
         matrix = np.eye(3)
@@ -2360,19 +2372,19 @@ class ToWorldTool(Tool):
             # 保留既有 world 優先行為，機構專用資產則使用 robot。
             world = payload.get("world") or payload.get("robot")
             if not world:
-                raise ToolError("That calibration only corrects the lens: add a board, a known distance or robot points to get coordinates")
+                raise ToolError(Msg.of("to_world.lens_only", "That calibration only corrects the lens: add a board, a known distance or robot points to get coordinates"))
             matrix = np.asarray(world["matrix"], dtype=np.float64)
             unit = payload.get("unit", "mm")
         frame = ctx.inputs.get("frame")
         if "frame" in ctx.inputs and frame is None:
-            return Result(status="ng", message="The coordinate frame is unavailable")
+            return Result(status="ng", message=Msg.of("to_world.no_frame", "The coordinate frame is unavailable"))
         if frame is not None:
             matrix = matrix @ _frame_matrix(frame)
         if reverse:
             try:
                 matrix = np.linalg.inv(matrix)
             except np.linalg.LinAlgError:
-                raise ToolError("The coordinate mapping is not invertible") from None
+                raise ToolError(Msg.of("to_world.not_invertible", "The coordinate mapping is not invertible")) from None
             unit = "px"
         digits = max(0, min(6, ctx.integer("decimals", 3)))
 
@@ -2385,11 +2397,11 @@ class ToWorldTool(Tool):
             try:
                 pts = [[float(px_x), float(px_y)]]
             except (TypeError, ValueError):
-                raise ToolError("x and y must be numbers") from None
+                raise ToolError(Msg.of("to_world.not_numbers", "x and y must be numbers")) from None
         if pts is None and value is None and angle_in is None:
-            raise ToolError("No input: wire points (or x and y), a pixel length or an angle")
+            raise ToolError(Msg.of("to_world.no_input", "No input: wire points (or x and y), a pixel length or an angle"))
         if pts is None and frame is None and not ctx.param("calibration") and not reverse:
-            raise ToolError("No calibration is selected: wire a coordinate frame or select a calibration to convert a length or angle")
+            raise ToolError(Msg.of("to_world.no_calibration", "No calibration is selected: wire a coordinate frame or select a calibration to convert a length or angle"))
 
         outputs: dict[str, Any] = {"scale": float(world.get("mm_per_px") or 0)}
         if frame is not None or reverse or not ctx.param("calibration"):
@@ -2414,7 +2426,7 @@ class ToWorldTool(Tool):
             try:
                 px_len = float(value)
             except (TypeError, ValueError):
-                raise ToolError(f"The pixel length is not a number: {value!r}") from None
+                raise ToolError(Msg.of("to_world.length_not_number", "The pixel length is not a number: {value!r}", value=value)) from None
             at = centre if centre is not None else _image_centre(ctx)
             outputs["length"] = px_len * calib.scale_at(matrix, at)
             parts.append(f"{outputs['length']:.{digits}f} {unit}")
@@ -2422,11 +2434,12 @@ class ToWorldTool(Tool):
             try:
                 deg = float(angle_in)
             except (TypeError, ValueError):
-                raise ToolError(f"The angle is not a number: {angle_in!r}") from None
+                raise ToolError(Msg.of("to_world.angle_not_number", "The angle is not a number: {angle!r}", angle=angle_in)) from None
             at = centre if centre is not None else _image_centre(ctx)
             outputs["angle"] = calib.angle_to_world(matrix, deg, at)
             parts.append(f"{outputs['angle']:.2f}°")
-        return Result(outputs=outputs, overlays=overlays, message=" · ".join(parts) or "no values")
+        return Result(outputs=outputs, overlays=overlays, message=(Msg.of("to_world.values", "{values}", values=" · ".join(parts)) if parts
+                                                                   else Msg.of("to_world.no_values", "no values")))
 
 
 def _image_centre(ctx: ToolContext) -> tuple[float, float]:

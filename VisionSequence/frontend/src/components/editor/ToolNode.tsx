@@ -16,6 +16,8 @@ import { outputAliases } from '@/lib/nodeInterface'
 import { connectedHandles, portLayout } from '@/lib/portLayout'
 import type { GraphEdge, ToolPort } from '@/lib/types'
 import type { ToolNodeData } from './graphMapping'
+import i18next from '@/i18n'
+import { nodeMessage } from '@/lib/toolMessages'
 
 export function iconFor(name: string | undefined): icons.LucideIcon {
   return (name && (icons as unknown as Record<string, icons.LucideIcon>)[name]) || icons.Box
@@ -162,8 +164,8 @@ function ToolNodeInner({ id, data, selected }: NodeProps) {
       </div>
       {node.problem ? <p className="px-3 pt-1 text-[10px] text-critical">{node.problem}</p> : null}
       {report?.message && status !== 'ok' ? (
-        <p className={`truncate px-3 pt-1 text-[10px] ${status === 'error' ? 'text-critical font-medium' : 'text-warning'}`} title={report.message} data-testid={status === 'error' ? 'node-error' : undefined}>
-          {report.message.split('\n')[0]}
+        <p className={`truncate px-3 pt-1 text-[10px] ${status === 'error' ? 'text-critical font-medium' : 'text-warning'}`} title={nodeMessage(report, i18next.language)} data-testid={status === 'error' ? 'node-error' : undefined}>
+          {nodeMessage(report, i18next.language).split('\n')[0]}
         </p>
       ) : null}
 

@@ -7,6 +7,7 @@ import uuid
 from apps.vision import images, queues
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
 from apps.vision.tools.builtin.output import fill_template, format_values
+from apps.vision.tools.messages import Msg
 
 
 def _key(ctx):
@@ -14,9 +15,9 @@ def _key(ctx):
     try:
         key = fill_template(str(ctx.param("key", "")), ctx, missing="fail", seen=seen)
     except (ValueError, TypeError, IndexError, KeyError, AttributeError) as exc:
-        raise ToolError(f"Queue key could not be filled: {exc}") from None
+        raise ToolError(Msg.of("queue_tools.key_fill_failed", "Queue key could not be filled: {error}", error=exc)) from None
     if seen:
-        raise ToolError(f"Queue key has missing values: {', '.join(seen)}")
+        raise ToolError(Msg.of("queue_tools.key_missing", "Queue key has missing values: {names}", names=", ".join(seen)))
     return key
 
 
@@ -58,11 +59,11 @@ class QueuePushTool(Tool):
                 name, sep, source = line.partition("=")
                 name, source = name.strip(), source.strip()
                 if not sep or not name or not source:
-                    raise ToolError("Write queue values as name=source, one per line")
+                    raise ToolError(Msg.of("queue_push.bad_values_line", "Write queue values as name=source, one per line"))
                 if source not in sources:
-                    raise ToolError(f"Queue value source '{source}' is missing")
+                    raise ToolError(Msg.of("queue_push.source_missing", "Queue value source '{source}' is missing", source=source))
                 if name in values:
-                    raise ToolError(f"Queue value name '{name}' is duplicated")
+                    raise ToolError(Msg.of("queue_push.name_duplicated", "Queue value name '{name}' is duplicated", name=name))
                 values[name] = sources[source]
         key = _key(ctx)
         try:
@@ -86,7 +87,7 @@ class QueuePushTool(Tool):
             raise ToolError(str(exc)) from None
         accepted = result.pop("accepted")
         return Result(outputs=result, status="ok" if accepted else "ng", branch="pushed" if accepted else "full",
-                      message="Item queued" if accepted else "Queue is full")
+                      message=Msg.of("queue_push.queued", "Item queued") if accepted else Msg.of("queue_push.full", "Queue is full"))
 
 
 class QueuePopTool(Tool):
@@ -131,12 +132,12 @@ class QueuePopTool(Tool):
                     image = images.store.get(ref)
                 output["image"] = image
                 if image is None:
-                    warnings.append("The queued image is no longer available")
+                    warnings.append(Msg.of("queue_pop.image_expired", "The queued image is no longer available"))
                     ctx.log(warnings[-1], level="warning")
             if ctx.flag("publish"):
                 context = {"_outputs": {**(ctx.context.get("_outputs") or {}), **item["values"]}}
         return Result(outputs=output, context=context, branch="matched" if item else "not_found",
-                      message=(warnings[0] if warnings else "Item matched") if item else "No matching item",
+                      message=(warnings[0] if warnings else Msg.of("queue_pop.matched", "Item matched")) if item else Msg.of("queue_pop.not_found", "No matching item"),
                       detail={"warnings": warnings, **({"flow_id": item["flow_id"], "run_id": item["run_id"], "at": item["at"]} if item else {})})
 
 

@@ -9,6 +9,7 @@ import numpy as np
 from apps.vision import calib
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
 from apps.vision.tools.builtin.locate import _current_pose
+from apps.vision.tools.messages import Msg
 
 
 def _rotation(angle: float) -> np.ndarray:
@@ -103,7 +104,7 @@ class AlignOffsetTool(Tool):
         mode = ctx.param("mode", "point")
         pose_ports = {"points"} if mode == "point_set" else {"line"} if mode == "line" else {"matches", "a", "b", "c"}
         if not pose_ports.intersection(ctx.inputs):
-            raise ToolError("No current position: wire matches or a/b/c, points for point sets, or a line for line mode")
+            raise ToolError(Msg.of("align_offset.no_position", "No current position: wire matches or a/b/c, points for point sets, or a line for line mode"))
         try:
             rx, ry, ra = (float(ctx.param(key, 0)) for key in ("ref_x", "ref_y", "ref_angle"))
             if not np.isfinite([rx, ry, ra]).all():
@@ -186,7 +187,7 @@ class AlignOffsetTool(Tool):
                         raise ValueError("The mapped position and angle must be finite")
                     outputs.update(mapped_x=mx, mapped_y=my, mapped_angle=ma)
         except (ToolError, ValueError, TypeError, KeyError, OverflowError, np.linalg.LinAlgError) as exc:
-            return self._not_found(ctx, f"Alignment unavailable: {exc}")
+            return self._not_found(ctx, Msg.of("align_offset.unavailable", "Alignment unavailable: {reason}", reason=exc))
 
         label = f"dx={dx:.2f} dy={dy:.2f} dtheta={dtheta:.2f} deg"
         overlays = [
@@ -195,7 +196,8 @@ class AlignOffsetTool(Tool):
             {"kind": "line", "x1": rx, "y1": ry, "x2": x, "y2": y, "color": "#f59e0b", "width": 2},
             {"kind": "text", "x": x, "y": y, "text": label, "color": "#22c55e"},
         ]
-        return Result(outputs=outputs, overlays=overlays, branch="found", message=label)
+        return Result(outputs=outputs, overlays=overlays, branch="found",
+                      message=Msg.of("align_offset.found", "dx={dx:.2f} dy={dy:.2f} dtheta={dtheta:.2f} deg", dx=dx, dy=dy, dtheta=dtheta))
 
 
 TOOLS = [AlignOffsetTool()]

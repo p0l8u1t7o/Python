@@ -9,6 +9,7 @@ import numpy as np
 
 from apps.vision.images import store as image_store
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, flow_out
+from apps.vision.tools.messages import Msg
 
 
 def _node_slug(value: Any) -> str:
@@ -71,7 +72,7 @@ class FrameAccumulateTool(Tool):
         if ctx.flag("reset") or bool(ctx.inputs.get("reset")):
             ctx.set_variable(meta_name, {"frames": 0}, scope="flow")
             ctx.set_variable(image_name, _empty_image(), scope="flow")
-            return Result(outputs={"frames": 0}, branch="waiting", message="Reset")
+            return Result(outputs={"frames": 0}, branch="waiting", message=Msg.of("frame_accumulate.reset", "Reset"))
 
         image = ctx.require_image()
         mode = str(ctx.param("mode", "mean"))
@@ -114,11 +115,11 @@ class FrameAccumulateTool(Tool):
 
         ready = frames >= target
         if not ready and not emit_always:
-            return Result(outputs={"frames": frames}, branch="waiting", message=f"{frames}/{target}")
+            return Result(outputs={"frames": frames}, branch="waiting", message=Msg.of("frame_accumulate.progress", "{frames}/{target}", frames=frames, target=target))
 
         out = _to_input_depth(acc / float(frames), image) if mode == "mean" else np.asarray(acc).astype(image.dtype, copy=False)
         branch = "ready" if ready else "waiting"
-        message = f"{mode} {frames}/{target}"
+        message = Msg.of("frame_accumulate.done", "{mode} {frames}/{target}", mode=mode, frames=frames, target=target)
         if ready:
             ctx.set_variable(meta_name, {"frames": 0}, scope="flow")
             ctx.set_variable(image_name, _empty_image(), scope="flow")
@@ -144,16 +145,16 @@ class PreviousImageTool(Tool):
         port = str(ctx.param("port", "image") or "image").strip()
         k = max(1, ctx.integer("k", 1))
         if not node or not port:
-            return Result(branch="not_found", status="ng", message="Node and port are required")
+            return Result(branch="not_found", status="ng", message=Msg.of("previous_image.missing_params", "Node and port are required"))
         with image_store._lock:  # noqa: SLF001 - ImageStore has no public run index reader.
             runs = [run for run in image_store._runs_by_flow.get(ctx.flow_id, []) if run != ctx.run_id]  # noqa: SLF001
         if len(runs) < k:
-            return Result(branch="not_found", status="ng", message=f"No image {k} run(s) back")
+            return Result(branch="not_found", status="ng", message=Msg.of("previous_image.not_enough_runs", "No image {k} run(s) back", k=k))
         run_id = runs[-k]
         ref = f"{run_id}:{node}:{port}"
         image = image_store.get(ref)
         if image is None:
-            return Result(branch="not_found", status="ng", message=f"{ref} not found")
+            return Result(branch="not_found", status="ng", message=Msg.of("previous_image.not_found", "{ref} not found", ref=ref))
         return Result(outputs={"image": image.copy()}, branch="found", message=ref)
 
 

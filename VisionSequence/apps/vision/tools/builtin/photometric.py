@@ -22,6 +22,7 @@ import cv2
 import numpy as np
 
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError
+from apps.vision.tools.messages import Msg
 
 OUTPUT_OPTIONS = [
     {"value": "curvature", "label": "Curvature (signed shape map: bumps bright, dents dark)"},
@@ -57,7 +58,7 @@ def _solvers(azimuths: tuple[float, ...], elevation: float) -> dict[str, Any]:
             return hit
     L = light_directions(list(azimuths), elevation)
     if np.linalg.matrix_rank(L) < 3:
-        raise ToolError("The light directions are degenerate (at least three lights from different sides are needed)")
+        raise ToolError(Msg.of("photometric_stereo.degenerate_lights", "The light directions are degenerate (at least three lights from different sides are needed)"))
     L64 = L.astype(np.float64)
     full = np.linalg.pinv(L64).astype(np.float32)  # (3, N)
     ltl_inv = np.linalg.inv(L64.T @ L64)
@@ -86,7 +87,8 @@ def _solvers(azimuths: tuple[float, ...], elevation: float) -> dict[str, Any]:
 def _gray(im: np.ndarray, k: int, h: int, w: int) -> np.ndarray:
     g = im if im.ndim == 2 else cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
     if g.shape[:2] != (h, w):
-        raise ToolError(f"Light image {k + 1} is {g.shape[1]}×{g.shape[0]} but image 1 is {w}×{h}; all lighting pictures must be the same size")
+        raise ToolError(Msg.of("photometric_stereo.size_mismatch", "Light image {k} is {w}×{h} but image 1 is {w0}×{h0}; all lighting pictures must be the same size",
+                                k=k + 1, w=g.shape[1], h=g.shape[0], w0=w, h0=h))
     if g.dtype != np.uint8:
         g = cv2.normalize(g.astype(np.float32), None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
     return np.ascontiguousarray(g)
@@ -203,21 +205,21 @@ class PhotometricStereoTool(Tool):
     def execute(self, ctx: ToolContext) -> Result:
         images = _input_images(ctx)
         if not images:
-            raise ToolError("Input port 'image' has no image")
+            raise ToolError(Msg.of("photometric_stereo.no_image", "Input port 'image' has no image"))
         if len(images) < 3:
-            raise ToolError("At least three lighting pictures are needed (four is the usual rig)")
+            raise ToolError(Msg.of("photometric_stereo.too_few", "At least three lighting pictures are needed (four is the usual rig)"))
         raw = ctx.inputs.get("azimuths") if ctx.inputs.get("azimuths") is not None else ctx.param("light_azimuth", [0, 90, 180, 270])
         if isinstance(raw, str):
             try:
                 raw = json.loads(raw)
             except json.JSONDecodeError:
-                raise ToolError("Light azimuths must be a JSON list of angles") from None
+                raise ToolError(Msg.of("photometric_stereo.azimuth_json", "Light azimuths must be a JSON list of angles")) from None
         try:
             azimuths = [float(a) for a in raw]
         except (TypeError, ValueError):
-            raise ToolError("Light azimuths must be a list of numbers") from None
+            raise ToolError(Msg.of("photometric_stereo.azimuth_numbers", "Light azimuths must be a list of numbers")) from None
         if len(azimuths) < len(images):
-            raise ToolError(f"{len(images)} pictures but only {len(azimuths)} light azimuths")
+            raise ToolError(Msg.of("photometric_stereo.azimuth_count", "{pictures} pictures but only {azimuths} light azimuths", pictures=len(images), azimuths=len(azimuths)))
         elevation = _input_elevation(ctx)
         normals, albedo = solve(images, azimuths, elevation, ctx.flag("drop_darkest", True))
         curv = curvature_of(normals)
@@ -227,7 +229,7 @@ class PhotometricStereoTool(Tool):
         which = str(ctx.param("output", "curvature"))
         main = maps.get(which, maps["curvature"])
         return Result(outputs={"image": main, "lights": len(images), **maps},
-                      message=f"{len(images)} lights, elevation {elevation:g}°, output {which}")
+                      message=Msg.of("photometric_stereo.done", "{n} lights, elevation {elevation:g}°, output {output}", n=len(images), elevation=elevation, output=which))
 
 
 def _input_images(ctx: ToolContext) -> list[np.ndarray]:
@@ -262,7 +264,7 @@ def _input_elevation(ctx: ToolContext) -> float:
         try:
             return float(value)
         except (TypeError, ValueError):
-            raise ToolError("Elevation input must be a number") from None
+            raise ToolError(Msg.of("photometric_stereo.bad_elevation", "Elevation input must be a number")) from None
     return ctx.number("light_elevation", 30)
 
 

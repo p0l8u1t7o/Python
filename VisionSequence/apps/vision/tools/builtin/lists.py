@@ -9,6 +9,7 @@ from typing import Any
 import numpy as np
 
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
+from apps.vision.tools.messages import Msg
 from apps.vision.tools.roi import extent, mask_for, region_overlay
 
 
@@ -48,7 +49,7 @@ EDGE_GREEN = "#22c55e"
 def _value_list(ctx: ToolContext) -> list[Any]:
     values = ctx.inputs.get("values")
     if not isinstance(values, list):
-        raise ToolError("Connect a values list")
+        raise ToolError(Msg.of("lists.need_values", "Connect a values list"))
     return list(values)
 
 
@@ -56,12 +57,12 @@ def _boxes(ctx: ToolContext) -> list[dict[str, Any]]:
     raw = ctx.inputs.get("matches")
     if not isinstance(raw, list):
         if isinstance(ctx.inputs.get("values"), list):
-            raise ToolError("This tool needs matches with cx/cy/w/h boxes, not values")
-        raise ToolError("Connect a matches list")
+            raise ToolError(Msg.of("lists.values_not_matches", "This tool needs matches with cx/cy/w/h boxes, not values"))
+        raise ToolError(Msg.of("lists.need_matches", "Connect a matches list"))
     out: list[dict[str, Any]] = []
     for i, item in enumerate(raw):
         if not isinstance(item, dict):
-            raise ToolError(f"Match {i} is not an object")
+            raise ToolError(Msg.of("lists.match_not_object", "Match {i} is not an object", i=i))
         box = dict(item)
         try:
             if "w" in box and "h" in box:
@@ -81,9 +82,9 @@ def _boxes(ctx: ToolContext) -> list[dict[str, Any]]:
             else:
                 raise TypeError
         except (TypeError, ValueError):
-            raise ToolError(f"Match {i} must have cx/cy/w/h, x/y/w/h, or bbox") from None
+            raise ToolError(Msg.of("lists.match_no_box", "Match {i} must have cx/cy/w/h, x/y/w/h, or bbox", i=i)) from None
         if w <= 0 or h <= 0:
-            raise ToolError(f"Match {i} has a non-positive size")
+            raise ToolError(Msg.of("lists.match_bad_size", "Match {i} has a non-positive size", i=i))
         box.update({"x": round(x, 3), "y": round(y, 3), "w": round(w, 3), "h": round(h, 3), "cx": round(cx, 3), "cy": round(cy, 3)})
         box["bbox"] = [round(x, 3), round(y, 3), round(w, 3), round(h, 3)]
         out.append(box)
@@ -98,27 +99,27 @@ def _boxes_from_value(raw: Any, port: str) -> list[dict[str, Any]]:
     try:
         return _boxes(proxy)
     except ToolError as exc:
-        raise ToolError(f"{port}: {exc}") from None
+        raise ToolError(Msg.of("lists.port_error", "{port}: {error}", port=port, error=str(exc))) from None
 
 
 def _data_input(ctx: ToolContext) -> tuple[str, list[Any]]:
     has_matches = isinstance(ctx.inputs.get("matches"), list)
     has_values = isinstance(ctx.inputs.get("values"), list)
     if has_matches and has_values:
-        raise ToolError("Connect either matches or values, not both")
+        raise ToolError(Msg.of("lists.both_inputs", "Connect either matches or values, not both"))
     if has_matches:
         return "matches", _boxes(ctx)
     if has_values:
         return "values", _value_list(ctx)
-    raise ToolError("Connect a values or matches list")
+    raise ToolError(Msg.of("lists.need_values_or_matches", "Connect a values or matches list"))
 
 
 def _pick_input(ctx: ToolContext) -> tuple[str, list[Any]]:
     present = [key for key in ("values", "matches", "points") if ctx.inputs.get(key) is not None]
     if len(present) > 1:
-        raise ToolError("Connect only one of values, matches or points")
+        raise ToolError(Msg.of("lists.one_pick_input", "Connect only one of values, matches or points"))
     if not present:
-        raise ToolError("Connect values, matches or points")
+        raise ToolError(Msg.of("lists.need_pick_input", "Connect values, matches or points"))
     key = present[0]
     if key == "matches":
         return key, _boxes(ctx)
@@ -128,7 +129,7 @@ def _pick_input(ctx: ToolContext) -> tuple[str, list[Any]]:
     try:
         arr = np.asarray(points, dtype=np.float64).reshape(-1, 2)
     except (TypeError, ValueError):
-        raise ToolError("Points must be a list of [x, y] pairs") from None
+        raise ToolError(Msg.of("lists.bad_points", "Points must be a list of [x, y] pairs")) from None
     return key, [[float(x), float(y)] for x, y in arr]
 
 
@@ -209,18 +210,18 @@ def _parse_classes(text: Any) -> list[tuple[str, float | None, float | None]]:
         if not line:
             continue
         if ":" not in line:
-            raise ToolError("Each class must be name:lower,upper")
+            raise ToolError(Msg.of("lists.class_format", "Each class must be name:lower,upper"))
         name, bounds = line.split(":", 1)
         parts = [p.strip() for p in bounds.split(",")]
         if len(parts) != 2:
-            raise ToolError("Each class must have lower and upper bounds")
+            raise ToolError(Msg.of("lists.class_bounds", "Each class must have lower and upper bounds"))
         lo = None if parts[0] == "" else _number_or_none(parts[0])
         hi = None if parts[1] == "" else _number_or_none(parts[1])
         if (parts[0] and lo is None) or (parts[1] and hi is None):
-            raise ToolError("Class bounds must be numeric or blank")
+            raise ToolError(Msg.of("lists.class_numeric", "Class bounds must be numeric or blank"))
         classes.append((name.strip() or f"class_{len(classes) + 1}", lo, hi))
     if not classes:
-        raise ToolError("At least one class is required")
+        raise ToolError(Msg.of("lists.class_required", "At least one class is required"))
     return classes
 
 
@@ -446,7 +447,7 @@ class BoxesMergeTool(Tool):
         for i, m in enumerate(matches):
             groups.setdefault(find(i), []).append(m)
         out = [_merge_group(group, str(ctx.param("keep", "highest_score"))) for _, group in sorted(groups.items())]
-        return Result(outputs={"matches": out, "count": len(out)}, overlays=_rect_overlays(out), message=f"{len(matches)} -> {len(out)} boxes")
+        return Result(outputs={"matches": out, "count": len(out)}, overlays=_rect_overlays(out), message=Msg.of("boxes_merge.done", "{before} -> {after} boxes", before=len(matches), after=len(out)))
 
 
 class BoxesFilterTool(Tool):
@@ -500,7 +501,7 @@ class BoxesFilterTool(Tool):
                 out.append(m)
         removed = len(matches) - len(out)
         overlays = ([region_overlay(region, label=str(ctx.param("roi_mode", "inside")))] if region else []) + _rect_overlays(out)
-        return Result(outputs={"matches": out, "count": len(out), "removed": removed}, overlays=overlays, message=f"{len(out)} kept, {removed} removed")
+        return Result(outputs={"matches": out, "count": len(out), "removed": removed}, overlays=overlays, message=Msg.of("boxes_filter.done", "{kept} kept, {removed} removed", kept=len(out), removed=removed))
 
 
 class EdgeFilterTool(Tool):
@@ -523,7 +524,7 @@ class EdgeFilterTool(Tool):
         matches = _boxes(ctx)
         image = ctx.image("image")
         if image is None:
-            raise ToolError("Wire the image into edge_filter; the bottom and right margins need its size")
+            raise ToolError(Msg.of("edge_filter.need_image", "Wire the image into edge_filter; the bottom and right margins need its size"))
         height, width = image.shape[:2]
         margins = (
             max(0.0, ctx.number("margin_top", 50)),
@@ -537,7 +538,7 @@ class EdgeFilterTool(Tool):
             (removed if _edge_hit(match, width, height, margins) else kept).append(match)
         overlays = [_match_overlay(m, EDGE_GREEN) for m in kept] + [_match_overlay(m, EDGE_RED) for m in removed]
         return Result(outputs={"matches": kept, "removed": removed, "count": len(kept)}, overlays=overlays, status="ok" if kept else "ng",
-                      message=f"{len(kept)} kept, {len(removed)} removed")
+                      message=Msg.of("edge_filter.done", "{kept} kept, {removed} removed", kept=len(kept), removed=len(removed)))
 
 
 class ArrayCorrectTool(Tool):
@@ -558,9 +559,9 @@ class ArrayCorrectTool(Tool):
         matches = _boxes(ctx)
         rows, cols = ctx.integer("rows", 1), ctx.integer("cols", 1)
         if rows <= 0 or cols <= 0:
-            raise ToolError("Rows and columns must be positive")
+            raise ToolError(Msg.of("array_correct.bad_grid", "Rows and columns must be positive"))
         if not matches:
-            raise ToolError("array_correct needs at least one match to infer the grid")
+            raise ToolError(Msg.of("array_correct.no_matches", "array_correct needs at least one match to infer the grid"))
         xs = [float(m["cx"]) for m in matches]
         ys = [float(m["cy"]) for m in matches]
         col_centers = _cluster_1d(xs, cols)
@@ -601,7 +602,7 @@ class ArrayCorrectTool(Tool):
                 out.append(item)
         ok = not missing
         return Result(outputs={"matches": out, "missing": missing, "ok": ok, "ng": not ok}, overlays=_rect_overlays(out, "#22c55e") + _rect_overlays([m for m in out if m.get("filled")], "#ef4444"),
-                      branch="ok" if ok else "ng", status="ok" if ok else "ng", message=f"{len(missing)} missing of {rows * cols}")
+                      branch="ok" if ok else "ng", status="ok" if ok else "ng", message=Msg.of("array_correct.done", "{missing} missing of {total}", missing=len(missing), total=rows * cols))
 
 
 class ListSortTool(Tool):
@@ -621,22 +622,22 @@ class ListSortTool(Tool):
         has_matches = isinstance(ctx.inputs.get("matches"), list)
         has_values = isinstance(ctx.inputs.get("values"), list)
         if has_matches and has_values:
-            raise ToolError("Connect either matches or values, not both")
+            raise ToolError(Msg.of("lists.both_inputs", "Connect either matches or values, not both"))
         by = str(ctx.param("by", "xy"))
         desc = ctx.flag("descending")
         if has_matches:
             matches = _sort_matches(_boxes(ctx), by, desc)
             return Result(outputs={"matches": matches, "values": [], "count": len(matches), "first": matches[0] if matches else None},
-                          overlays=_rect_overlays(matches), message=f"{len(matches)} sorted by {by}")
+                          overlays=_rect_overlays(matches), message=Msg.of("list_sort.sorted", "{n} sorted by {by}", n=len(matches), by=by))
         values = _value_list(ctx)
         if by != "value":
-            raise ToolError("Values can only be sorted by value")
+            raise ToolError(Msg.of("list_sort.values_only", "Values can only be sorted by value"))
         try:
             sorted_values = sorted(values, reverse=desc)
         except TypeError:
             sorted_values = sorted(values, key=lambda v: str(v), reverse=desc)
         return Result(outputs={"matches": [], "values": sorted_values, "count": len(sorted_values), "first": sorted_values[0] if sorted_values else None},
-                      message=f"{len(sorted_values)} sorted by value")
+                      message=Msg.of("list_sort.sorted_values", "{n} sorted by value", n=len(sorted_values)))
 
 
 class BoxesOverlapTool(Tool):
@@ -693,7 +694,7 @@ class BoxesOverlapTool(Tool):
             overlays=overlays,
             status="ok" if ok else "ng",
             branch="ok" if ok else "ng",
-            message=f"{count} overlapping boxes",
+            message=Msg.of("boxes_overlap.done", "{count} overlapping boxes", count=count),
         )
 
 
@@ -744,7 +745,7 @@ class ListFilterTool(Tool):
             outputs=outputs,
             overlays=_rect_overlays(outputs["matches"]) if kind == "matches" else [],
             status="ok" if kept else "ng",
-            message=f"{len(kept)} kept, {removed} removed",
+            message=Msg.of("list_filter.done", "{kept} kept, {removed} removed", kept=len(kept), removed=removed),
         )
 
 
@@ -799,7 +800,7 @@ class ListClassifyTool(Tool):
             outputs={"labels": labels, "counts": counts, "matches": out_matches, "dominant": dominant},
             overlays=_rect_overlays(out_matches) if kind == "matches" else [],
             status="ok" if labels else "ng",
-            message=f"{len(labels)} classified",
+            message=Msg.of("list_classify.done", "{n} classified", n=len(labels)),
         )
 
 
@@ -834,7 +835,7 @@ class ListPickTool(Tool):
     def execute(self, ctx: ToolContext) -> Result:
         kind, items = _pick_input(ctx)
         if not items:
-            return self._not_found("No items to pick")
+            return self._not_found(Msg.of("list_pick.empty", "No items to pick"))
         by = str(ctx.param("by", "first"))
         field = str(ctx.param("field", "value") or "")
         idx: int | None
@@ -845,26 +846,26 @@ class ListPickTool(Tool):
         elif by == "index":
             idx = ctx.integer("index", 0)
             if idx < 0 or idx >= len(items):
-                return self._not_found("Index is outside the list")
+                return self._not_found(Msg.of("list_pick.out_of_range", "Index is outside the list"))
         elif by in ("min", "max"):
             scored = [(_number_or_none(_field_value(item, field)), i) for i, item in enumerate(items)]
             scored = [(score, i) for score, i in scored if score is not None]
             if not scored:
-                return self._not_found("No numeric item to pick")
+                return self._not_found(Msg.of("list_pick.no_numeric", "No numeric item to pick"))
             idx = (min if by == "min" else max)(scored, key=lambda pair: pair[0])[1]
         elif by == "nearest":
             tx, ty = ctx.number("x", 0), ctx.number("y", 0)
             pts = [(_point_of(item), i) for i, item in enumerate(items)]
             pts = [(pt, i) for pt, i in pts if pt is not None]
             if not pts:
-                return self._not_found("No point-like item to pick")
+                return self._not_found(Msg.of("list_pick.no_point", "No point-like item to pick"))
             idx = min(pts, key=lambda pair: math.hypot(pair[0][0] - tx, pair[0][1] - ty))[1]
         else:
-            return self._not_found("Unknown pick mode")
+            return self._not_found(Msg.of("list_pick.unknown_mode", "Unknown pick mode"))
         value = dict(items[idx]) if isinstance(items[idx], dict) else list(items[idx]) if kind == "points" else items[idx]
         point = _point_of(value)
         overlays = [{"kind": "point", "x": point[0], "y": point[1], "color": "#22c55e", "label": "picked"}] if point else []
-        return Result(outputs={"value": value, "index": idx}, overlays=overlays, branch="found", message=f"Picked index {idx}")
+        return Result(outputs={"value": value, "index": idx}, overlays=overlays, branch="found", message=Msg.of("list_pick.picked", "Picked index {index}", index=idx))
 
 
 TOOLS = [

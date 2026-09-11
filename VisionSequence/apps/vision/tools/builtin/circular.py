@@ -19,6 +19,7 @@ import numpy as np
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
 from apps.vision.tools.defects import moving_median, robust_outliers, seg_indices, seg_len, segments
 from apps.vision.tools.builtin.locate import POLARITY_OPTIONS, find_edges_rows, fit_circle_lsq, pick_edge, sector_thetas, to_gray
+from apps.vision.tools.messages import Msg
 from apps.vision.tools.roi import region_overlay
 
 SELECT_OPTIONS = [{"value": "first", "label": "First (innermost)"}, {"value": "last", "label": "Last (outermost)"}, {"value": "strongest", "label": "Strongest"}]
@@ -72,7 +73,7 @@ class CircularCaliperTool(Tool):
         image = to_gray(ctx.require_image())
         region = ctx.roi()
         if region is None:
-            raise ToolError("No search ring is set")
+            raise ToolError(Msg.of("circular_caliper.no_ring", "No search ring is set"))
         shape = region.get("shape")
         if shape == "circle":
             cx, cy, r_in, r_out, a0, a1 = float(region["cx"]), float(region["cy"]), 0.0, float(region["r"]), None, None
@@ -82,9 +83,9 @@ class CircularCaliperTool(Tool):
             if a0 is None or a1 is None:
                 a0 = a1 = None
         else:
-            raise ToolError(f"Circular caliper needs a circle or annulus region, got '{shape}'")
+            raise ToolError(Msg.of("circular_caliper.bad_shape", "Circular caliper needs a circle or annulus region, got '{shape}'", shape=shape))
         if r_out - r_in < 3:
-            raise ToolError("The ring is too thin (at least 3 px)")
+            raise ToolError(Msg.of("circular_caliper.too_thin", "The ring is too thin (at least 3 px)"))
         n = max(6, ctx.integer("caliper_count", 72))
         thetas = sector_thetas(n, a0, a1)
         profiles, radii_axis = radial_profiles(image, cx, cy, r_in, r_out, thetas, ctx.integer("caliper_width", 5))
@@ -128,7 +129,9 @@ class CircularCaliperTool(Tool):
                      "mean_r": round(mean_r, 3) if found else nan, "min_r": round(min_r, 3) if found else nan, "max_r": round(max_r, 3) if found else nan,
                      "runout": round(runout, 3) if found else nan, "missing_count": missing, "outlier_count": int(outliers.sum()), "cx": cx, "cy": cy},
             overlays=overlays, branch="found" if found else "not_found", status="ok" if found else "ng",
-            message=(f"r {mean_r:.2f} ({min_r:.2f}–{max_r:.2f}), run-out {runout:.2f}, {missing} missing, {int(outliers.sum())} outliers of {n}" if found else f"only {int(valid.sum())} edges found of {n}"),
+            message=(Msg.of("circular_caliper.found", "r {mean_r:.2f} ({min_r:.2f}–{max_r:.2f}), run-out {runout:.2f}, {missing} missing, {outliers} outliers of {n}",
+                            mean_r=mean_r, min_r=min_r, max_r=max_r, runout=runout, missing=missing, outliers=int(outliers.sum()), n=n)
+                     if found else Msg.of("circular_caliper.too_few", "only {count} edges found of {n}", count=int(valid.sum()), n=n)),
         )
 
 
@@ -207,7 +210,7 @@ class ProfileDefectTool(Tool):
         values = _as_values(ctx.inputs.get("values"))
         n = len(values)
         if n < 3:
-            raise ToolError("At least three values are needed")
+            raise ToolError(Msg.of("profile_defect.too_few_values", "At least three values are needed"))
         pts = _as_points(ctx.inputs.get("points"))
         wrap = ctx.flag("wrap", True)
         mode = str(ctx.param("baseline", "fit_circle"))
@@ -299,7 +302,8 @@ class ProfileDefectTool(Tool):
                      "baseline_values": [None if not np.isfinite(b) else round(float(b), 3) for b in baseline],
                      "deviation": [None if not np.isfinite(v) else round(float(v), 3) for v in dev]},
             overlays=overlays, branch="ok" if ok else "defect", status="ok" if ok else "ng",
-            message=f"{count} defects, max deviation {max_dev:.2f}" if np.isfinite(max_dev) else f"{count} defects",
+            message=(Msg.of("profile_defect.found", "{count} defects, max deviation {max_dev:.2f}", count=count, max_dev=max_dev)
+                     if np.isfinite(max_dev) else Msg.of("profile_defect.done", "{count} defects", count=count)),
             detail=detail,
         )
 

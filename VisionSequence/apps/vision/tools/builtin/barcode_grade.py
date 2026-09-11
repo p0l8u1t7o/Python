@@ -9,6 +9,7 @@ import numpy as np
 from apps.vision import grading
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
 from apps.vision.tools.builtin.preprocess import to_gray
+from apps.vision.tools.messages import Msg
 from apps.vision.tools.roi import crop, region_overlay
 
 STANDARD_OPTIONS = [
@@ -51,7 +52,7 @@ class BarcodeGradeTool(Tool):
         region = ctx.roi()
         c = crop(gray, region, upright=True)
         if c.image.size == 0:
-            raise ToolError("The region falls outside the image")
+            raise ToolError(Msg.of("barcode_grade.bad_region", "The region falls outside the image"))
         sub = np.ascontiguousarray(c.image)
         standard = str(ctx.param("standard", "iso15415"))
         try:
@@ -68,12 +69,23 @@ class BarcodeGradeTool(Tool):
             pts = c.points_to_full(np.asarray(out["corners"], dtype=np.float64)).round(1).tolist()
             overlays.append({"kind": "polygon", "points": pts, "color": "#22c55e" if ok else "#ef4444", "width": 2, "label": f"{out['grade']} ({out['grade_value']:.1f}) {out['text'][:24]}"})
         worst = [p for p in out["params"] if p["grade"] == grading.LETTER_VALUE[out["grade"]] and p["key"] != "decode"] if out["text"] else []
-        message = (f"{out['symbology']} grade {out['grade']} ({out['grade_value']:.1f}), minimum {min_grade}" + (f" — limited by {', '.join(p['label'].lower() for p in worst[:3])}" if worst and not ok else "")
-                   if out["text"] else "No symbol decoded — grade F")
+        message = _grade_message(out, min_grade, worst, ok)
         return Result(
             outputs={"grade": out["grade"], "grade_value": out["grade_value"], "params": out["params"], "text": out["text"], "symbology": out["symbology"], "decoded": bool(out["text"])},
             overlays=overlays, branch="pass" if ok else "fail", status="ok" if ok else "ng", message=message, detail=out["detail"],
         )
+
+
+def _grade_message(out: dict[str, Any], min_grade: str, worst: list[dict[str, Any]], ok: bool) -> Msg:
+    """條碼分級的一行摘要（英文與改寫前逐字相同）。"""
+    if not out["text"]:
+        return Msg.of("barcode_grade.not_decoded", "No symbol decoded — grade F")
+    if worst and not ok:
+        return Msg.of("barcode_grade.limited", "{symbology} grade {grade} ({value:.1f}), minimum {minimum} — limited by {limits}",
+                      symbology=out['symbology'], grade=out['grade'], value=out['grade_value'], minimum=min_grade,
+                      limits=', '.join(p['label'].lower() for p in worst[:3]))
+    return Msg.of("barcode_grade.result", "{symbology} grade {grade} ({value:.1f}), minimum {minimum}",
+                  symbology=out['symbology'], grade=out['grade'], value=out['grade_value'], minimum=min_grade)
 
 
 TOOLS = [BarcodeGradeTool()]

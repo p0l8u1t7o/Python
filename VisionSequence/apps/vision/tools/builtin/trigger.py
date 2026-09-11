@@ -10,6 +10,7 @@ import numpy as np
 from apps.vision.images import store
 from apps.vision.models import Flow
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
+from apps.vision.tools.messages import Msg
 
 
 class TriggerFlowTool(Tool):
@@ -38,15 +39,15 @@ class TriggerFlowTool(Tool):
         target_id = self._target_id(ctx)
         mode = str(ctx.param("mode", "async") or "async").lower()
         if mode not in ("async", "sync"):
-            raise ToolError("Mode must be async or sync")
+            raise ToolError(Msg.of("trigger_flow.bad_mode", "Mode must be async or sync"))
         if ctx.sandboxed():
-            return Result(outputs={"run_id": "", "judge": "", "ok": True}, branch="ok", message=f"Would trigger flow {target_id}")
+            return Result(outputs={"run_id": "", "judge": "", "ok": True}, branch="ok", message=Msg.of("trigger_flow.would_trigger", "Would trigger flow {flow}", flow=target_id))
 
         target = Flow.objects.filter(pk=target_id).first()
         if target is None:
-            raise ToolError(f"Target flow {target_id} does not exist")
+            raise ToolError(Msg.of("trigger_flow.not_found", "Target flow {flow} does not exist", flow=target_id))
         if not target.is_enabled:
-            raise ToolError(f"Target flow '{target.name}' is disabled")
+            raise ToolError(Msg.of("trigger_flow.disabled", "Target flow '{name}' is disabled", name=target.name))
         chain = self._trigger_chain(ctx, target.id)
         child_context = self._child_context(ctx, chain)
 
@@ -57,19 +58,22 @@ class TriggerFlowTool(Tool):
             # 否則父流程等子流程、子流程等 worker，現場會看到整條線卡住，所以這裡寧可明確失敗。
             ok, cap = runner.sync_wait_available()
             if not ok:
-                raise ToolError(
+                raise ToolError(Msg.of(
+                    "trigger_flow.no_worker",
                     "Cannot wait for the triggered flow safely: no executor worker is clearly available "
-                    f"(workers {cap.get('workers_busy')}/{cap.get('max_workers')}, queued {cap.get('executor_queued')}). Use async mode or raise VISION_MAX_WORKERS."
-                )
+                    "(workers {busy}/{max_workers}, queued {queued}). Use async mode or raise VISION_MAX_WORKERS.",
+                    busy=cap.get("workers_busy"), max_workers=cap.get("max_workers"), queued=cap.get("executor_queued"),
+                ))
         future = runner.submit(target, trigger="trigger_flow", context=child_context)
         run_id = str(getattr(future, "run_id", ""))
         if mode == "async":
             return Result(outputs={"run_id": run_id, "judge": "", "ok": True}, branch="ok",
-                          message=f"Queued flow '{target.name}' as {run_id[:8]}")
+                          message=Msg.of("trigger_flow.queued", "Queued flow '{name}' as {run}", name=target.name, run=run_id[:8]))
         try:
             report = future.result(timeout=max(0.001, ctx.number("timeout_ms", 30000) / 1000.0))
         except FutureTimeout:
-            raise ToolError(f"Timed out waiting for triggered flow '{target.name}' ({run_id[:8]}); the child run continues") from None
+            raise ToolError(Msg.of("trigger_flow.timeout", "Timed out waiting for triggered flow '{name}' ({run}); the child run continues",
+                                  name=target.name, run=run_id[:8])) from None
         judge = str(report.outputs.get("judge") or report.status.upper())
         branch = report.status if report.status in ("ok", "ng") else "failed"
         ok = report.status == "ok"
@@ -77,7 +81,9 @@ class TriggerFlowTool(Tool):
             outputs={"run_id": run_id, "judge": judge, "ok": ok},
             status="ok" if report.status == "ok" else ("ng" if report.status == "ng" else "error"),
             branch=branch,
-            message=f"Triggered flow '{target.name}' finished {report.status}" + (f": {report.error}" if report.error else ""),
+            message=(Msg.of("trigger_flow.finished_error", "Triggered flow '{name}' finished {status}: {error}",
+                            name=target.name, status=report.status, error=report.error) if report.error
+                     else Msg.of("trigger_flow.finished", "Triggered flow '{name}' finished {status}", name=target.name, status=report.status)),
         )
 
     @staticmethod
@@ -85,9 +91,9 @@ class TriggerFlowTool(Tool):
         try:
             target_id = int(ctx.param("target_flow_id"))
         except (TypeError, ValueError):
-            raise ToolError("Pick a target flow") from None
+            raise ToolError(Msg.of("trigger_flow.no_target", "Pick a target flow")) from None
         if target_id <= 0:
-            raise ToolError("Pick a target flow")
+            raise ToolError(Msg.of("trigger_flow.no_target", "Pick a target flow"))
         return target_id
 
     @staticmethod
@@ -104,8 +110,9 @@ class TriggerFlowTool(Tool):
             chain.append(ctx.flow_id)
         if target_id in chain:
             if target_id == ctx.flow_id:
-                raise ToolError("A flow cannot trigger itself")
-            raise ToolError("Trigger chain would loop: " + " -> ".join([*(str(x) for x in chain), str(target_id)]))
+                raise ToolError(Msg.of("trigger_flow.self_trigger", "A flow cannot trigger itself"))
+            raise ToolError(Msg.of("trigger_flow.loop", "Trigger chain would loop: {chain}",
+                                  chain=" -> ".join([*(str(x) for x in chain), str(target_id)])))
         return [*chain, target_id]
 
     @staticmethod

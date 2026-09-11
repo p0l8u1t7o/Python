@@ -9,6 +9,7 @@ import numpy as np
 
 from apps.vision.capture.hub import CaptureError, FrameMeta, hub
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
+from apps.vision.tools.messages import Msg
 
 
 class ImageSourceTool(Tool):
@@ -64,7 +65,7 @@ class ImageSourceTool(Tool):
         if image is None and mode in ("auto", "source"):
             source_id = ctx.param("source_id")
             if not source_id:
-                raise ToolError("No image source is set and no scratch or pushed image is available")
+                raise ToolError(Msg.of("image_source.no_source", "No image source is set and no scratch or pushed image is available"))
             wanted = _camera_params(ctx)
             if wanted:
                 from apps.vision.capture.grabber import capture_grabber_for_source
@@ -129,11 +130,16 @@ class ImageSourceTool(Tool):
                     reason = str(getattr(grabber, "last_error", "") or reason)
                     timed_out = bool(getattr(grabber, "timed_out", False))
                 if ctx.param("on_timeout", "error") == "ng" and timed_out:
-                    msg = f"Image source {source_id} timed out" + (f": {reason}" if reason else "")
+                    if reason:
+                        msg = Msg.of("image_source.timed_out_reason", "Image source {source} timed out: {reason}", source=source_id, reason=reason)
+                    else:
+                        msg = Msg.of("image_source.timed_out", "Image source {source} timed out", source=source_id)
                     return Result(status="ng", branch="timeout", message=msg)
-                raise ToolError(f"Image source {source_id} returned no image" + (f": {reason}" if reason else ""))
+                if reason:
+                    raise ToolError(Msg.of("image_source.no_image_reason", "Image source {source} returned no image: {reason}", source=source_id, reason=reason))
+                raise ToolError(Msg.of("image_source.no_image", "Image source {source} returned no image", source=source_id))
         if image is None:
-            raise ToolError("No scratch image: upload one from the toolbar, or push an image through the API")
+            raise ToolError(Msg.of("image_source.no_scratch", "No scratch image: upload one from the toolbar, or push an image through the API"))
         convert = ctx.param("convert", "keep")
         if convert == "gray" and image.ndim == 3:
             image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -143,10 +149,20 @@ class ImageSourceTool(Tool):
             batch = [cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR) if frame.ndim == 2 else frame for frame in batch]
         h, w = image.shape[:2]
         detail = {"warnings": warnings} if warnings else {}
-        message = f"{w}×{h} from {used}" + ("; camera settings warning" if warnings else "")
-        if len(batch) > 1:
-            message += f", {len(batch)} frames"
+        message = _grab_message(w, h, used, bool(warnings), len(batch))
         return Result(outputs={"image": image, "images": batch, "width": w, "height": h, "applied": applied}, message=message, detail=detail)
+
+
+def _grab_message(w: int, h: int, used: str, warned: bool, frames: int) -> Msg:
+    """取像結果的一行摘要（英文與改寫前逐字相同）。"""
+    if frames > 1:
+        if warned:
+            return Msg.of("image_source.grabbed_warning_frames", "{w}×{h} from {used}; camera settings warning, {frames} frames",
+                          w=w, h=h, used=used, frames=frames)
+        return Msg.of("image_source.grabbed_frames", "{w}×{h} from {used}, {frames} frames", w=w, h=h, used=used, frames=frames)
+    if warned:
+        return Msg.of("image_source.grabbed_warning", "{w}×{h} from {used}; camera settings warning", w=w, h=h, used=used)
+    return Msg.of("image_source.grabbed", "{w}×{h} from {used}", w=w, h=h, used=used)
 
 
 def _camera_params(ctx: ToolContext) -> dict[str, float]:
@@ -224,13 +240,13 @@ class StereoGrabTool(Tool):
             right = wired_right if isinstance(wired_right, np.ndarray) else wired.copy()
             return Result(
                 outputs={"image": wired, "image_right": right, "dt_ms": None, "captured_at": None},
-                message=f"left {wired.shape[1]}x{wired.shape[0]}, right {right.shape[1]}x{right.shape[0]} (wired)",
+                message=Msg.of("stereo_grab.wired", "left {w}x{h}, right {rw}x{rh} (wired)", w=wired.shape[1], h=wired.shape[0], rw=right.shape[1], rh=right.shape[0]),
                 detail={"warnings": warnings} if warnings else {},
             )
         left_id = ctx.param("left")
         right_id = ctx.param("right")
         if not left_id or not right_id:
-            raise ToolError("Choose both stereo sources, or wire the left image in")
+            raise ToolError(Msg.of("stereo_grab.no_sources", "Choose both stereo sources, or wire the left image in"))
         timeout = max(0.05, ctx.number("timeout_ms", 1000) / 1000.0)
         from apps.vision.capture.grabber import capture_grabber_for_source
 
@@ -245,7 +261,7 @@ class StereoGrabTool(Tool):
             _add_grab_ms(ctx, (time.perf_counter() - started) * 1000.0)
             return Result(
                 outputs={"image": left, "image_right": right, "dt_ms": None, "captured_at": None},
-                message=f"left {left.shape[1]}x{left.shape[0]}, right {right.shape[1]}x{right.shape[0]}",
+                message=Msg.of("stereo_grab.grabbed", "left {w}x{h}, right {rw}x{rh}", w=left.shape[1], h=left.shape[0], rw=right.shape[1], rh=right.shape[0]),
             )
         if left_g is not None and right_g is not None and left_g.client == right_g.client:
             try:
@@ -253,7 +269,7 @@ class StereoGrabTool(Tool):
             except CaptureError as exc:
                 _add_grab_ms(ctx, (time.perf_counter() - started) * 1000.0)
                 if ctx.param("on_timeout", "error") == "ng" and exc.code == "timeout":
-                    return Result(status="ng", branch="timeout", message=f"Stereo grab timed out: {exc}")
+                    return Result(status="ng", branch="timeout", message=Msg.of("stereo_grab.timed_out_reason", "Stereo grab timed out: {reason}", reason=exc))
                 raise ToolError(str(exc)) from None
             left = left_g.accept_frame(left_frame)
             right = right_g.accept_frame(right_frame)
@@ -270,9 +286,11 @@ class StereoGrabTool(Tool):
             captured_at = None
             if left is None or right is None:
                 if ctx.param("on_timeout", "error") == "ng" and (_timed_out(left_id) or _timed_out(right_id) or (left_g and left_g.timed_out) or (right_g and right_g.timed_out)):
-                    return Result(status="ng", branch="timeout", message="Stereo grab timed out")
+                    return Result(status="ng", branch="timeout", message=Msg.of("stereo_grab.timed_out", "Stereo grab timed out"))
                 reason = left_reason if left is None else right_reason
-                raise ToolError("Stereo source returned no image" + (f": {reason}" if reason else ""))
+                if reason:
+                    raise ToolError(Msg.of("stereo_grab.no_image_reason", "Stereo source returned no image: {reason}", reason=reason))
+                raise ToolError(Msg.of("stereo_grab.no_image", "Stereo source returned no image"))
         max_dt = ctx.number("max_dt_ms", 10)
         if dt_ms is not None and max_dt > 0 and abs(dt_ms) > max_dt:
             msg = f"Stereo pair offset {dt_ms:.2f} ms is over {max_dt:.2f} ms"
@@ -282,7 +300,8 @@ class StereoGrabTool(Tool):
         rh, rw = right.shape[:2]
         return Result(
             outputs={"image": left, "image_right": right, "dt_ms": dt_ms, "captured_at": captured_at},
-            message=f"left {w}x{h}, right {rw}x{rh}" + (f", dt {dt_ms:.2f} ms" if dt_ms is not None else ""),
+            message=(Msg.of("stereo_grab.grabbed_dt", "left {w}x{h}, right {rw}x{rh}, dt {dt:.2f} ms", w=w, h=h, rw=rw, rh=rh, dt=dt_ms) if dt_ms is not None
+                     else Msg.of("stereo_grab.grabbed", "left {w}x{h}, right {rw}x{rh}", w=w, h=h, rw=rw, rh=rh)),
             detail={"warnings": warnings} if warnings else {},
         )
 

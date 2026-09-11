@@ -7,6 +7,7 @@ import math
 import re
 from typing import Any
 
+from apps.vision.tools.messages import Msg, parts as message_parts
 from apps.core.errors import ValidationError
 from apps.vision import inspect_composite as composite
 from apps.vision.graph import FLOW_IN, validate_graph
@@ -211,11 +212,11 @@ def evidence(graph: dict[str, Any], report: Any) -> list[dict[str, Any]]:
         instance = _instance(graph, task_id)
         if task["disabled"]:
             nid = task_id if instance is not None else next(n["id"] for n in _task_nodes(graph, task_id) if n.get("enabled") is False)
-            readings.append(_reading(task_id, "skipped", False, None, None, task.get("unit", ""), "A task step is disabled", [], nid))
+            readings.append(_reading(task_id, "skipped", False, None, None, task.get("unit", ""), Msg.of("inspect.step_disabled", "A task step is disabled"), [], nid))
             continue
         if task["custom"]:
             reason = task["reasons"][0]
-            readings.append(_reading(task_id, "skipped", False, None, None, task.get("unit", ""), "Review this custom task in the advanced flow", [], reason["node_id"]))
+            readings.append(_reading(task_id, "skipped", False, None, None, task.get("unit", ""), Msg.of("inspect.custom_task", "Review this custom task in the advanced flow"), [], reason["node_id"]))
             continue
         roles = composite.report_roles(instance) if instance is not None else (task.get("nodes") or {})
         find_id = roles.get("find")
@@ -225,29 +226,29 @@ def evidence(graph: dict[str, Any], report: Any) -> list[dict[str, Any]]:
         reports = {nid: nodes.get(nid, {}) for nid in role_ids}
         missing = [nid for nid, row in reports.items() if not row]
         if missing:
-            readings.append(_reading(task_id, "skipped", False, None, None, task.get("unit", ""), "No run result is available for this task step", [], missing[0]))
+            readings.append(_reading(task_id, "skipped", False, None, None, task.get("unit", ""), Msg.of("inspect.no_result", "No run result is available for this task step"), [], missing[0]))
             continue
         skipped = [nid for nid, row in reports.items() if row.get("status") == "skipped"]
         errors = [nid for nid, row in reports.items() if row.get("status") == "error"]
         overlays = [ov for row in reports.values() for ov in (row.get("overlays") or [])]
         if _skipped_by_locator(graph, task_id, nodes):
-            readings.append(_reading(task_id, "locate_failed", False, None, None, task.get("unit", ""), "Location failed", [], role_ids[0]))
+            readings.append(_reading(task_id, "locate_failed", False, None, None, task.get("unit", ""), Msg.of("inspect.locate_failed", "Location failed"), [], role_ids[0]))
             continue
         if errors:
             nid = errors[0]
-            readings.append(_reading(task_id, "error", False, None, None, task.get("unit", ""), reports[nid].get("message", ""), overlays, nid))
+            readings.append(_reading(task_id, "error", False, None, None, task.get("unit", ""), _row_msg(reports[nid]), overlays, nid))
             continue
         if skipped:
             verdict = "locate_failed" if _skipped_by_locator(graph, task_id, nodes) else "skipped"
-            readings.append(_reading(task_id, verdict, False, None, None, task.get("unit", ""), "The task did not run", overlays, skipped[0]))
+            readings.append(_reading(task_id, verdict, False, None, None, task.get("unit", ""), Msg.of("inspect.not_run", "The task did not run"), overlays, skipped[0]))
             continue
         if task["kind"] == "locate_part":
             row = reports.get(find_id or "", {})
             if row.get("status") == "ng" or row.get("branch") == "not_found":
-                readings.append(_reading(task_id, "not_found", True, False, None, "", row.get("message", ""), overlays, find_id or ""))
+                readings.append(_reading(task_id, "not_found", True, False, None, "", _row_msg(row), overlays, find_id or ""))
             else:
                 value = (reports.get(align_id or "", {}).get("outputs") or {}).get("transform")
-                readings.append(_reading(task_id, "pass", True, True, value, "", reports.get(align_id or "", {}).get("message", ""), overlays, align_id or find_id or ""))
+                readings.append(_reading(task_id, "pass", True, True, value, "", _row_msg(reports.get(align_id or "", {})), overlays, align_id or find_id or ""))
             continue
         definition = get_definition(task["kind"], task["version"])
         if definition.layout_hook:
@@ -265,7 +266,7 @@ def evidence(graph: dict[str, Any], report: Any) -> list[dict[str, Any]]:
             # 展開座標上的掃描標記不疊到原圖；還原節點提供原圖缺陷幾何。
             if task["kind"] == "inspect_circular_surface":
                 overlays = reports[roles["restore"]].get("overlays") or []
-            reason = reports[nid].get("message", "")
+            reason = _row_msg(reports[nid])
             unit = task.get("unit", "")
             if task["kind"] == "inspect_circular_surface":
                 fields = task["fields"]
@@ -285,11 +286,11 @@ def evidence(graph: dict[str, Any], report: Any) -> list[dict[str, Any]]:
         find_row = reports.get(find_id or "", {})
         tol_row = reports.get(tol_id or "", {})
         if find_row.get("status") == "ng" or find_row.get("branch") == "not_found":
-            readings.append(_reading(task_id, "not_found", True, False, None, task.get("unit", ""), find_row.get("message", ""), overlays, find_id or ""))
+            readings.append(_reading(task_id, "not_found", True, False, None, task.get("unit", ""), _row_msg(find_row), overlays, find_id or ""))
             continue
         value = _task_value(task, find_row, tol_row)
         verdict = "pass" if tol_row.get("status") == "ok" else "fail"
-        readings.append(_reading(task_id, verdict, True, True, value, task.get("unit", ""), tol_row.get("message", ""), overlays, tol_id or find_id or ""))
+        readings.append(_reading(task_id, verdict, True, True, value, task.get("unit", ""), _row_msg(tol_row), overlays, tol_id or find_id or ""))
     for reading in readings:
         if _instance(graph, reading["task_id"]) is not None:
             reading["node_id"] = reading["task_id"]
@@ -746,7 +747,16 @@ def _task_value(task: dict[str, Any], find_row: dict[str, Any], tol_row: dict[st
     return (find_row.get("outputs") or {}).get(port)
 
 
+def _row_msg(row: dict[str, Any] | None) -> str:
+    """節點報告的訊息；帶代碼就還原成 Msg，讀值才能一路把代碼帶到檢測任務頁。"""
+    row = row or {}
+    text = str(row.get("message") or "")
+    code = str(row.get("message_code") or "")
+    return Msg(text, code, row.get("message_args") or {}) if code else text
+
+
 def _reading(task_id: str, verdict: str, valid: bool, detected: bool | None, value: Any, unit: str, reason: str, overlays: list[dict[str, Any]], node_id: str) -> dict[str, Any]:
+    code, args = message_parts(reason)
     return {
         "task_id": task_id,
         "verdict": verdict,
@@ -754,7 +764,9 @@ def _reading(task_id: str, verdict: str, valid: bool, detected: bool | None, val
         "detected": detected,
         "value": value,
         "unit": unit,
-        "reason": reason or "",
+        "reason": str(reason or ""),
+        "reason_code": code,
+        "reason_args": args,
         "overlays": overlays,
         "node_id": node_id,
     }

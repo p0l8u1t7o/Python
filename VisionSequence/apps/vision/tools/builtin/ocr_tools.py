@@ -16,6 +16,7 @@ import numpy as np
 from apps.vision import ocr
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
 from apps.vision.tools.builtin.locate import to_gray
+from apps.vision.tools.messages import Msg
 from apps.vision.tools.roi import crop, region_overlay
 
 CHARSET_OPTIONS = [
@@ -117,7 +118,7 @@ class OcrReadTool(Tool):
         region = ctx.roi()
         c = crop(gray, region, upright=True)
         if c.image.size == 0 or min(c.image.shape[:2]) < 4:
-            raise ToolError("The region falls outside the image or is too small")
+            raise ToolError(Msg.of("ocr_read.bad_region", "The region falls outside the image or is too small"))
         sub = np.ascontiguousarray(c.image)
         if c.mask is not None:
             fill = 255 if ctx.param("polarity", "dark_on_light") == "dark_on_light" else 0
@@ -131,14 +132,14 @@ class OcrReadTool(Tool):
         if model_id:
             path = ctx.asset_path(str(model_id))
             if not path:
-                raise ToolError(f"Asset {model_id} not found")
+                raise ToolError(Msg.of("ocr_read.model_missing", "Asset {model_id} not found", model_id=model_id))
             if path.lower().endswith(".npz"):
                 try:
                     font = ocr.load_font(path)
                 except ocr.OcrError as exc:
                     raise ToolError(str(exc)) from None
             elif not path.lower().endswith(".onnx"):
-                raise ToolError("The model must be a taught font (.npz) or an ONNX recognition model")
+                raise ToolError(Msg.of("ocr_read.bad_model", "The model must be a taught font (.npz) or an ONNX recognition model"))
         items: list[dict[str, Any]] = []
         try:
             if font is not None:
@@ -171,7 +172,7 @@ class OcrReadTool(Tool):
             outputs={"text": text, "corrected": corrected, "pattern_ok": bool(pattern_ok), "corrections": corrections,
                      "items": items, "confidence": round(confidence, 4), "count": len(items)},
             overlays=overlays, branch="found" if found else "not_found", status="ok" if found else "ng",
-            message=(f"'{text}' ({confidence:.2f})" if text else "no text") + ("" if found else " — pattern mismatch" if text and not pattern_ok else " — below the confidence threshold" if text else ""),
+            message=_read_message(text, confidence, found, pattern_ok),
         )
 
     @staticmethod
@@ -195,6 +196,28 @@ class OcrReadTool(Tool):
             out_chars.append({"ch": ch["ch"], "conf": ch["conf"], "box": [to_full(ch["x0"], cy0), to_full(ch["x1"], cy0), to_full(ch["x1"], cy1), to_full(ch["x0"], cy1)]})
         conf = min((ch["conf"] for ch in chars), default=0.0)
         return {"text": text, "box": box, "confidence": round(conf, 4), "chars": out_chars, **({"detect_score": det[2]} if det is not None else {})}
+
+
+def _read_message(text: str, confidence: float, found: bool, pattern_ok: bool) -> Msg:
+    """文字辨識的一行摘要（英文與改寫前逐字相同）。"""
+    if not text:
+        return Msg.of("ocr_read.no_text", "no text")
+    if found:
+        return Msg.of("ocr_read.text", "'{text}' ({confidence:.2f})", text=text, confidence=confidence)
+    if not pattern_ok:
+        return Msg.of("ocr_read.pattern_mismatch", "'{text}' ({confidence:.2f}) — pattern mismatch", text=text, confidence=confidence)
+    return Msg.of("ocr_read.low_confidence", "'{text}' ({confidence:.2f}) — below the confidence threshold", text=text, confidence=confidence)
+
+
+def _verify_message(actual: str, expected: str, match: bool, fail_index: int, low_char: dict[str, Any] | None, min_conf: float) -> Msg:
+    """文字比對的一行摘要（英文與改寫前逐字相同）。"""
+    if match:
+        return Msg.of("ocv_verify.match", "'{actual}' matches '{expected}'", actual=actual, expected=expected)
+    if low_char is not None:
+        return Msg.of("ocv_verify.low_confidence",
+                      "'{actual}' does not match '{expected}' at character {index} (character {index} '{ch}' read with confidence {conf:.2f} < {min_conf:.2f})",
+                      actual=actual, expected=expected, index=fail_index + 1, ch=low_char.get('ch'), conf=float(low_char.get('conf', 0)), min_conf=min_conf)
+    return Msg.of("ocv_verify.mismatch", "'{actual}' does not match '{expected}' at character {index}", actual=actual, expected=expected, index=fail_index + 1)
 
 
 class OcvVerifyTool(Tool):
@@ -231,7 +254,7 @@ class OcvVerifyTool(Tool):
         if ctx.param("expected_source", "param") == "input":
             expected = ctx.inputs.get("expected")
             if expected is None:
-                raise ToolError("The expected input port is not connected")
+                raise ToolError(Msg.of("ocv_verify.expected_unconnected", "The expected input port is not connected"))
             expected = str(expected)
         else:
             expected = str(ctx.param("expected", "") or "")
@@ -252,9 +275,9 @@ class OcvVerifyTool(Tool):
                     chars.extend(ch for ch in it.get("chars", []) if isinstance(ch, dict))
         min_conf = ctx.number("min_char_confidence", 0)
         low = next((i for i, ch in enumerate(chars) if float(ch.get("conf", 1.0)) < min_conf), -1) if min_conf > 0 else -1
-        reason = ""
+        low_char: dict[str, Any] | None = None
         if match and low >= 0:
-            match, fail_index, reason = False, low, f"character {low + 1} '{chars[low].get('ch')}' read with confidence {float(chars[low].get('conf', 0)):.2f} < {min_conf:.2f}"
+            match, fail_index, low_char = False, low, chars[low]
         overlays: list[dict[str, Any]] = []
         if chars:
             for i, ch in enumerate(chars):
@@ -262,7 +285,7 @@ class OcvVerifyTool(Tool):
                 if isinstance(box, list) and len(box) == 4:
                     bad = (not match) and (i == fail_index or (fail_index >= len(chars) and i == len(chars) - 1))
                     overlays.append({"kind": "polygon", "points": box, "color": "#ef4444" if bad else "#22c55e", "width": 3 if bad else 1, **({"label": ch.get("ch", "")} if bad else {})})
-        message = f"'{actual}' matches '{expected}'" if match else (f"'{actual}' does not match '{expected}' at character {fail_index + 1}" + (f" ({reason})" if reason else ""))
+        message = _verify_message(actual, expected, match, fail_index, low_char, min_conf)
         return Result(
             outputs={"match": bool(match), "actual": actual, "fail_index": int(fail_index), "expected_text": expected},
             overlays=overlays, branch="pass" if match else "fail", status="ok" if match else "ng", message=message,

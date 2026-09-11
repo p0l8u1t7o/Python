@@ -6,6 +6,7 @@ from typing import Any
 
 from apps.vision import calib
 from apps.vision.tools.base import Param, ToolContext, ToolError
+from apps.vision.tools.messages import Msg
 
 
 CALIBRATION_PARAM = Param(
@@ -25,7 +26,7 @@ def read_mapping(ctx: ToolContext, key: str = "calibration") -> tuple[dict, dict
         mapping = payload.get(name) or {}
         if mapping.get("matrix") is not None:
             return payload, mapping
-    raise ToolError("The calibration has no world or robot mapping")
+    raise ToolError(Msg.of("physical.no_mapping", "The calibration has no world or robot mapping"))
 
 
 def world_outputs(

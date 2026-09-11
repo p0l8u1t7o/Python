@@ -13,6 +13,7 @@ from apps.vision.models import Flow
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
 from apps.vision.tools.builtin.measure import offset_matches, offset_points
 from apps.vision.tools.builtin.trigger import TriggerFlowTool, _plain
+from apps.vision.tools.messages import Msg
 from apps.vision.tools.roi import crop
 
 MAX_SUBFLOW_DEPTH = 5
@@ -67,9 +68,9 @@ def _child_context(ctx: ToolContext, chain: list[int], *, pass_outputs: bool, ex
 def _load_target(target_id: int) -> Flow:
     target = Flow.objects.filter(pk=target_id).first()
     if target is None:
-        raise ToolError(f"Target flow {target_id} does not exist")
+        raise ToolError(Msg.of("subflow.not_found", "Target flow {flow} does not exist", flow=target_id))
     if not target.is_enabled:
-        raise ToolError(f"Target flow '{target.name}' is disabled")
+        raise ToolError(Msg.of("subflow.disabled", "Target flow '{name}' is disabled", name=target.name))
     return target
 
 
@@ -83,7 +84,7 @@ def _run_child(
     extra_context: dict[str, Any] | None = None,
 ) -> engine.RunReport:
     if _subflow_depth(ctx) >= MAX_SUBFLOW_DEPTH:
-        raise ToolError(f"Nested flow depth is limited to {MAX_SUBFLOW_DEPTH}")
+        raise ToolError(Msg.of("subflow.depth_limit", "Nested flow depth is limited to {limit}", limit=MAX_SUBFLOW_DEPTH))
     chain = _chain(ctx, target.id)
     from apps.vision.runner import runner
 
@@ -171,7 +172,7 @@ class CallFlowTool(Tool):
         target_id = _target_id(ctx)
         if _dry_run(ctx):
             return Result(outputs={"judge": "", "ok": True, "duration_ms": 0.0, "outputs": {}}, branch="ok",
-                          message=f"Would call flow {target_id}")
+                          message=Msg.of("call_flow.would_call", "Would call flow {flow}", flow=target_id))
         target = _load_target(target_id)
         image = ctx.image("image") if ctx.flag("pass_image", True) else None
         report = _run_child(ctx, target, pass_outputs=ctx.flag("pass_outputs", True),
@@ -188,7 +189,9 @@ class CallFlowTool(Tool):
             status="ok" if report.status == "ok" else ("ng" if report.status == "ng" else "error"),
             branch=branch,
             context={"_outputs": parent_outputs},
-            message=f"Called flow '{target.name}' finished {report.status}" + (f": {report.error}" if report.error else ""),
+            message=(Msg.of("call_flow.finished_error", "Called flow '{name}' finished {status}: {error}",
+                            name=target.name, status=report.status, error=report.error) if report.error
+                     else Msg.of("call_flow.finished", "Called flow '{name}' finished {status}", name=target.name, status=report.status)),
         )
 
 
@@ -232,10 +235,10 @@ class ForEachTool(Tool):
         kind, items = self._items(ctx)
         max_items = max(1, ctx.integer("max_items", 100))
         if len(items) > max_items:
-            raise ToolError(f"for_each got {len(items)} items; max_items is {max_items}")
+            raise ToolError(Msg.of("for_each.too_many", "for_each got {count} items; max_items is {max_items}", count=len(items), max_items=max_items))
         if _dry_run(ctx):
             return Result(outputs={"count": len(items), "ok_count": len(items), "ng_count": 0, "items": [], "all_ok": True},
-                          branch="ok", message=f"Would call flow {target_id} for {len(items)} items")
+                          branch="ok", message=Msg.of("for_each.would_call", "Would call flow {flow} for {count} items", flow=target_id, count=len(items)))
         target = _load_target(target_id)
         rows: list[dict[str, Any]] = []
         ok_count = 0
@@ -269,7 +272,7 @@ class ForEachTool(Tool):
             status="ok" if all_ok else "ng",
             branch="ok" if all_ok else "ng",
             outputs={"count": len(rows), "ok_count": ok_count, "ng_count": ng_count, "items": rows, "all_ok": all_ok},
-            message=f"{ok_count}/{len(rows)} items OK",
+            message=Msg.of("for_each.summary", "{ok}/{total} items OK", ok=ok_count, total=len(rows)),
         )
 
     @staticmethod
@@ -282,29 +285,29 @@ class ForEachTool(Tool):
                 continue
             items = value if isinstance(value, list) else [value]
             return key, list(items)
-        raise ToolError("Wire matches, regions or images into for_each")
+        raise ToolError(Msg.of("for_each.no_items", "Wire matches, regions or images into for_each"))
 
     @staticmethod
     def _item_input(kind: str, item: Any, image: np.ndarray | None, index: int) -> tuple[np.ndarray | None, tuple[float, float], dict[str, Any]]:
         extra = {"item_index": index, "item": _plain(item)}
         if kind == "regions":
             if not isinstance(item, dict) or not item.get("shape"):
-                raise ToolError(f"regions[{index}] is not a region")
+                raise ToolError(Msg.of("for_each.bad_region", "regions[{index}] is not a region", index=index))
             if image is None:
-                raise ToolError("Region iteration needs an image input")
+                raise ToolError(Msg.of("for_each.no_image", "Region iteration needs an image input"))
             c = crop(image, item)
             extra.update({"region": item, "offset_x": c.x0, "offset_y": c.y0})
             return c.image, (float(c.x0), float(c.y0)), extra
         if kind == "matches":
             if not isinstance(item, dict):
-                raise ToolError(f"matches[{index}] is not an object")
+                raise ToolError(Msg.of("for_each.bad_match", "matches[{index}] is not an object", index=index))
             extra["match"] = _plain(item)
             return None, (0.0, 0.0), extra
         if kind == "images":
             if not isinstance(item, np.ndarray):
-                raise ToolError(f"images[{index}] is not an image")
+                raise ToolError(Msg.of("for_each.bad_image", "images[{index}] is not an image", index=index))
             return item, (0.0, 0.0), extra
-        raise ToolError("Items must be matches, regions or images")
+        raise ToolError(Msg.of("for_each.bad_kind", "Items must be matches, regions or images"))
 
 
 class TileTool(Tool):
@@ -337,7 +340,7 @@ class TileTool(Tool):
             width = ctx.integer("width", 0)
             height = ctx.integer("height", 0)
         if width <= 0 or height <= 0:
-            raise ToolError("Tile needs an image input or width and height parameters")
+            raise ToolError(Msg.of("tile.no_size", "Tile needs an image input or width and height parameters"))
         regions = tile_regions(
             width, height,
             rows=max(1, ctx.integer("rows", 1)),
@@ -346,7 +349,7 @@ class TileTool(Tool):
             overlap_mode=str(ctx.param("overlap_mode", "ratio") or "ratio"),
             include_remainder=ctx.flag("include_remainder", True),
         )
-        return Result(outputs={"regions": regions, "count": len(regions)}, message=f"{len(regions)} tiles")
+        return Result(outputs={"regions": regions, "count": len(regions)}, message=Msg.of("tile.count", "{count} tiles", count=len(regions)))
 
 
 def tile_regions(width: int, height: int, *, rows: int, cols: int, overlap: float = 0.0,

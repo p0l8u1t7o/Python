@@ -15,6 +15,7 @@ import cv2
 
 from apps.vision import fixed_images
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError
+from apps.vision.tools.messages import Msg
 
 _cursor: dict[tuple[int, str], int] = {}
 _lock = threading.Lock()
@@ -62,7 +63,7 @@ class FixedImageTool(Tool):
             image, idx, name = candidate, 0, "input"
         else:
             if not descs:
-                raise ToolError("No picture uploaded: add at least one picture to this step")
+                raise ToolError(Msg.of("fixed_image.no_pictures", "No picture uploaded: add at least one picture to this step"))
             n = len(descs)
             if str(ctx.param("mode", "cycle")) == "fixed":
                 idx = min(max(1, ctx.integer("index", 1)), n) - 1
@@ -75,7 +76,8 @@ class FixedImageTool(Tool):
             d = descs[idx]
             image = fixed_images.load(str(d["id"]))
             if image is None:
-                raise ToolError(f"Picture {idx + 1} ({d.get('name') or d['id']}) is missing from the store; upload it again")
+                raise ToolError(Msg.of("fixed_image.missing", "Picture {index} ({name}) is missing from the store; upload it again",
+                                       index=idx + 1, name=d.get("name") or d["id"]))
             name = str(d.get("name") or d["id"])
         convert = str(ctx.param("convert", "keep"))
         if convert == "gray" and image.ndim == 3:
@@ -84,7 +86,8 @@ class FixedImageTool(Tool):
             image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
         h, w = image.shape[:2]
         return Result(outputs={"image": image, "index": idx + 1, "name": name, "count": len(descs), "width": int(w), "height": int(h)},
-                      message=f"picture {idx + 1} of {len(descs)}: {name}" if candidate is None else "input picture")
+                      message=Msg.of("fixed_image.picture", "picture {index} of {count}: {name}", index=idx + 1, count=len(descs), name=name)
+                      if candidate is None else Msg.of("fixed_image.input", "input picture"))
 
 
 TOOLS = [FixedImageTool()]

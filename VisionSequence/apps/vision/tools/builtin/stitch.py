@@ -12,6 +12,7 @@ import numpy as np
 from apps.vision import calib, fixed_images
 from apps.vision.tools import accel
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError
+from apps.vision.tools.messages import Msg
 
 IMAGE_PORTS = ("image_1", "image_2", "image_3", "image_4")
 BLENDS = ("mean", "min", "max", "uncover")
@@ -26,14 +27,14 @@ class StitchInput:
 def _fixed_image_inputs(ctx: ToolContext) -> list[StitchInput]:
     raw = ctx.param("images") or []
     if not isinstance(raw, list):
-        raise ToolError("Fixed pictures must be an image list")
+        raise ToolError(Msg.of("stitch_images.fixed_not_list", "Fixed pictures must be an image list"))
     out: list[StitchInput] = []
     for index, item in enumerate(raw, start=1):
         if not isinstance(item, dict) or not item.get("id"):
             continue
         image = fixed_images.load(str(item["id"]))
         if image is None:
-            raise ToolError(f"Fixed picture {index} is missing")
+            raise ToolError(Msg.of("stitch_images.fixed_missing", "Fixed picture {index} is missing", index=index))
         out.append(StitchInput(image, str(item.get("name") or f"fixed {index}")))
     return out
 
@@ -54,7 +55,8 @@ def _check_compatible(images: list[StitchInput]) -> None:
     for index, item in enumerate(images[1:], start=2):
         image = item.image
         if image.dtype != first.dtype or image.ndim != first.ndim or (image.ndim == 3 and image.shape[2] != first.shape[2]):
-            raise ToolError(f"Image {index} ({item.label}) is {_shape_text(image)}, but image 1 is {_shape_text(first)}")
+            raise ToolError(Msg.of("stitch_images.incompatible", "Image {index} ({label}) is {shape}, but image 1 is {first}",
+                                    index=index, label=item.label, shape=_shape_text(image), first=_shape_text(first)))
 
 
 def _trimmed(images: list[StitchInput], trim: int) -> list[StitchInput]:
@@ -64,7 +66,7 @@ def _trimmed(images: list[StitchInput], trim: int) -> list[StitchInput]:
     for index, item in enumerate(images, start=1):
         h, w = item.image.shape[:2]
         if trim * 2 >= w or trim * 2 >= h:
-            raise ToolError(f"Image {index} ({item.label}) is too small for trim {trim}px")
+            raise ToolError(Msg.of("stitch_images.trim_too_small", "Image {index} ({label}) is too small for trim {trim}px", index=index, label=item.label, trim=trim))
         out.append(StitchInput(item.image[trim:h - trim, trim:w - trim], item.label))
     return out
 
@@ -140,18 +142,19 @@ def _grid_offsets(count: int, rows: int, cols: int, order: str, step_x: int, ste
 
 def stitch_grid(images: list[StitchInput], *, rows: int, cols: int, order: str, trim: int, blend: str, overlap_x: int, overlap_y: int) -> Result:
     if rows < 1 or cols < 1:
-        raise ToolError("Rows and columns must be positive")
+        raise ToolError(Msg.of("stitch_images.bad_grid_size", "Rows and columns must be positive"))
     if order not in ("row_major", "column_major"):
-        raise ToolError("Order must be row_major or column_major")
+        raise ToolError(Msg.of("stitch_images.bad_order", "Order must be row_major or column_major"))
     if len(images) != rows * cols:
-        raise ToolError(f"Grid is {rows}x{cols}, so it needs {rows * cols} pictures; got {len(images)}")
+        raise ToolError(Msg.of("stitch_images.grid_count", "Grid is {rows}x{cols}, so it needs {needed} pictures; got {got}", rows=rows, cols=cols, needed=rows * cols, got=len(images)))
     images = _trimmed(images, max(0, trim))
     _check_compatible(images)
     h0, w0 = images[0].image.shape[:2]
     for index, item in enumerate(images[1:], start=2):
         h, w = item.image.shape[:2]
         if (w, h) != (w0, h0):
-            raise ToolError(f"Image {index} ({item.label}) is {w}x{h} after trim, but image 1 is {w0}x{h0}; grid stitching never resizes inputs")
+            raise ToolError(Msg.of("stitch_images.size_mismatch", "Image {index} ({label}) is {w}x{h} after trim, but image 1 is {w0}x{h0}; grid stitching never resizes inputs",
+                                    index=index, label=item.label, w=w, h=h, w0=w0, h0=h0))
     overlap_x = max(0, min(int(overlap_x), w0 - 1))
     overlap_y = max(0, min(int(overlap_y), h0 - 1))
     step_x, step_y = w0 - overlap_x, h0 - overlap_y
@@ -167,7 +170,7 @@ def stitch_grid(images: list[StitchInput], *, rows: int, cols: int, order: str, 
     out = _finish_blend(canvas, counts, accum, blend)
     return Result(
         outputs={"image": out, "count": len(images), "width": out_w, "height": out_h, "offsets": offsets, "origin": [0.0, 0.0], "scale": 1.0},
-        message=f"grid {rows}x{cols}, {out_w}x{out_h}, {blend}",
+        message=Msg.of("stitch_images.grid_done", "grid {rows}x{cols}, {w}x{h}, {blend}", rows=rows, cols=cols, w=out_w, h=out_h, blend=blend),
     )
 
 
@@ -178,7 +181,7 @@ def _load_calibration(ctx: ToolContext, index: int) -> dict[str, Any] | None:
     try:
         return calib.from_asset(asset, ctx.asset_path)
     except calib.CalibError as exc:
-        raise ToolError(f"Calibration {index}: {exc}") from None
+        raise ToolError(Msg.of("stitch_images.calibration_error", "Calibration {index}: {error}", index=index, error=exc)) from None
 
 
 def _matrix_from_calibrations(payloads: list[dict[str, Any] | None], index: int) -> np.ndarray:
@@ -190,7 +193,7 @@ def _matrix_from_calibrations(payloads: list[dict[str, Any] | None], index: int)
     base = payloads[0]
     mapping = (payload or {}).get("mapping") if payload else None
     if not mapping:
-        raise ToolError(f"Image {index + 1} needs a calibration with world or mapping data")
+        raise ToolError(Msg.of("stitch_images.needs_calibration", "Image {index} needs a calibration with world or mapping data", index=index + 1))
     matrix = np.asarray(mapping["matrix"], dtype=np.float64).reshape(3, 3)
     if base and base.get("world"):
         matrix = np.asarray(base["world"]["matrix"], dtype=np.float64).reshape(3, 3) @ matrix
@@ -242,10 +245,10 @@ def stitch_homography(images: list[StitchInput], ctx: ToolContext, *, blend: str
     payloads = [_load_calibration(ctx, i + 1) for i in range(len(images))]
     matrices = [_matrix_from_calibrations(payloads, i) for i in range(len(images))]
     if payloads[0] is None and any((p or {}).get("world") for p in payloads[1:]):
-        raise ToolError("Image 1 needs a world calibration when other images use world calibrations")
+        raise ToolError(Msg.of("stitch_images.needs_world_first", "Image 1 needs a world calibration when other images use world calibrations"))
     plane_scale = _plane_scale(payloads, matrices, images, scale)
     if not math.isfinite(plane_scale) or plane_scale <= 0:
-        raise ToolError("Scale must be positive")
+        raise ToolError(Msg.of("stitch_images.bad_scale", "Scale must be positive"))
     min_x, min_y, max_x, max_y = _bounds(images, matrices)
     out_w = max(1, int(math.ceil((max_x - min_x) / plane_scale)))
     out_h = max(1, int(math.ceil((max_y - min_y) / plane_scale)))
@@ -260,7 +263,7 @@ def stitch_homography(images: list[StitchInput], ctx: ToolContext, *, blend: str
     return Result(
         outputs={"image": out, "count": len(images), "width": out_w, "height": out_h, "offsets": [], "origin": world_origin_px, "scale": plane_scale},
         detail={"covered_pixels": int(np.count_nonzero(counts)), "world_top_left": [min_x, min_y]},
-        message=f"homography {len(images)} pictures, {out_w}x{out_h}, scale {plane_scale:g}",
+        message=Msg.of("stitch_images.homography_done", "homography {n} pictures, {w}x{h}, scale {scale:g}", n=len(images), w=out_w, h=out_h, scale=plane_scale),
     )
 
 
@@ -311,17 +314,17 @@ class StitchImagesTool(Tool):
     def execute(self, ctx: ToolContext) -> Result:
         images = _inputs(ctx)
         if len(images) < 2:
-            raise ToolError("At least two pictures are needed; connect image_1 to image_4 or add fixed pictures")
+            raise ToolError(Msg.of("stitch_images.too_few", "At least two pictures are needed; connect image_1 to image_4 or add fixed pictures"))
         if len(images) > 4:
-            raise ToolError("At most four pictures can be stitched")
+            raise ToolError(Msg.of("stitch_images.too_many", "At most four pictures can be stitched"))
         blend = str(ctx.param("blend", "uncover"))
         if blend not in BLENDS:
-            raise ToolError("Blend must be mean, min, max or uncover")
+            raise ToolError(Msg.of("stitch_images.bad_blend", "Blend must be mean, min, max or uncover"))
         mode = str(ctx.param("mode", "grid"))
         if mode == "homography":
             return stitch_homography(images, ctx, blend=blend, scale=ctx.number("scale", 0))
         if mode != "grid":
-            raise ToolError("Mode must be grid or homography")
+            raise ToolError(Msg.of("stitch_images.bad_mode", "Mode must be grid or homography"))
         return stitch_grid(
             images, rows=max(1, ctx.integer("rows", 1)), cols=max(1, ctx.integer("cols", 2)),
             order=str(ctx.param("order", "row_major")), trim=max(0, ctx.integer("trim", 0)), blend=blend,

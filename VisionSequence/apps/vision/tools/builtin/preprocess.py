@@ -15,6 +15,7 @@ from apps.vision import fixed_images
 from apps.vision.tools import accel
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
 from apps.vision.tools.builtin.locate import reference_image
+from apps.vision.tools.messages import Msg
 from apps.vision.tools.roi import bounding_rect, crop, region_overlay
 
 
@@ -63,14 +64,14 @@ class CropTool(Tool):
         image = ctx.require_image()
         region = ctx.roi()
         if region is None:
-            raise ToolError("No region is set")
+            raise ToolError(Msg.of("crop.no_region", "No region is set"))
         c = crop(image, region, upright=True)
         if c.image.size == 0:
-            raise ToolError("The region falls outside the image")
+            raise ToolError(Msg.of("crop.outside", "The region falls outside the image"))
         return Result(
             outputs={"image": np.ascontiguousarray(c.image), "offset_x": c.x0, "offset_y": c.y0},
             overlays=[region_overlay(region, label="crop")],
-            message=f"{c.image.shape[1]}×{c.image.shape[0]}",
+            message=Msg.of("crop.size", "{w}×{h}", w=c.image.shape[1], h=c.image.shape[0]),
         )
 
 
@@ -199,7 +200,7 @@ class ThresholdTool(Tool):
             else:
                 full[area.y0 : area.y0 + out.shape[0], area.x0 : area.x0 + out.shape[1]] = out
             out = full
-        return Result(outputs={"image": out, "threshold_used": float(used)}, message=f"{method} t={used:g}")
+        return Result(outputs={"image": out, "threshold_used": float(used)}, message=Msg.of("threshold.done", "{method} t={used:g}", method=method, used=used))
 
 
 def _threshold_compare(image: np.ndarray, threshold: float | np.ndarray, compare: str, invert: bool) -> np.ndarray:
@@ -299,7 +300,7 @@ class ResizeTool(Tool):
             tw, th = max(1, int(w * s)), max(1, int(h * s))
         interp = {"area": cv2.INTER_AREA, "linear": cv2.INTER_LINEAR, "nearest": cv2.INTER_NEAREST, "cubic": cv2.INTER_CUBIC}[ctx.param("interpolation", "area")]
         out = cv2.resize(image, (tw, th), interpolation=interp)
-        return Result(outputs={"image": out, "scale_x": tw / w, "scale_y": th / h}, message=f"{w}×{h} → {tw}×{th}")
+        return Result(outputs={"image": out, "scale_x": tw / w, "scale_y": th / h}, message=Msg.of("resize.done", "{w}×{h} → {tw}×{th}", w=w, h=h, tw=tw, th=th))
 
 
 COLOR_SPACE_OPTIONS = [
@@ -318,7 +319,7 @@ def _colour_space(image: np.ndarray, space: str) -> np.ndarray:
     if space == "lab":
         return cv2.cvtColor(bgr, cv2.COLOR_BGR2LAB)
     if space != "hsv":
-        raise ToolError("Colour space must be hsv or lab")
+        raise ToolError(Msg.of("preprocess.bad_colour_space", "Colour space must be hsv or lab"))
     return cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
 
 
@@ -329,20 +330,20 @@ def _parse_segments(text: Any) -> list[tuple[str, tuple[int, int, int, int, int,
         if not line:
             continue
         if ":" not in line:
-            raise ToolError("Each segment must be name:h_low,h_high,s_low,s_high,v_low,v_high")
+            raise ToolError(Msg.of("color_segment.bad_segment", "Each segment must be name:h_low,h_high,s_low,s_high,v_low,v_high"))
         name, values = line.split(":", 1)
         parts = [p.strip() for p in values.split(",")]
         if len(parts) != 6:
-            raise ToolError("Each segment must have six numeric limits")
+            raise ToolError(Msg.of("color_segment.six_limits", "Each segment must have six numeric limits"))
         try:
             nums = tuple(int(round(float(p))) for p in parts)
         except ValueError:
-            raise ToolError("Segment limits must be numeric") from None
+            raise ToolError(Msg.of("color_segment.non_numeric", "Segment limits must be numeric")) from None
         segments.append(((name.strip() or f"class_{len(segments) + 1}")[:80], nums))
     if not segments:
-        raise ToolError("At least one colour segment is required")
+        raise ToolError(Msg.of("color_segment.no_segments", "At least one colour segment is required"))
     if len(segments) > 65535:
-        raise ToolError("At most 65535 colour segments are supported")
+        raise ToolError(Msg.of("color_segment.too_many", "At most 65535 colour segments are supported"))
     return segments
 
 
@@ -397,7 +398,7 @@ class ColorSegmentTool(Tool):
         region = ctx.roi()
         c = crop(image, region)
         if c.image.size == 0:
-            raise ToolError("The region falls outside the image")
+            raise ToolError(Msg.of("color_segment.outside", "The region falls outside the image"))
         space = str(ctx.param("space", "hsv")).lower()
         converted = _colour_space(np.ascontiguousarray(c.image), space)
         segments = _parse_segments(ctx.param("segments", ""))
@@ -432,7 +433,7 @@ class ColorSegmentTool(Tool):
         labels[c.y0 : c.y0 + local_labels.shape[0], c.x0 : c.x0 + local_labels.shape[1]] = local_labels
         total = sum(a["area"] for a in areas)
         return Result(outputs={"labels": labels, "areas": areas, "classes": classes}, overlays=overlays,
-                      message=f"{len(classes)} classes, {total} px")
+                      message=Msg.of("color_segment.done", "{n} classes, {total} px", n=len(classes), total=total))
 
 
 def _parse_label_values(text: Any) -> set[int]:
@@ -447,16 +448,16 @@ def _parse_label_values(text: Any) -> set[int]:
             try:
                 a, b = int(left.strip()), int(right.strip())
             except ValueError:
-                raise ToolError(f"Label range '{item}' is not valid") from None
+                raise ToolError(Msg.of("label_to_mask.bad_range", "Label range '{item}' is not valid", item=item)) from None
             lo, hi = sorted((a, b))
             values.update(range(lo, hi + 1))
         else:
             try:
                 values.add(int(item))
             except ValueError:
-                raise ToolError(f"Label value '{item}' is not valid") from None
+                raise ToolError(Msg.of("label_to_mask.bad_value", "Label value '{item}' is not valid", item=item)) from None
     if not values:
-        raise ToolError("Enter at least one label value")
+        raise ToolError(Msg.of("label_to_mask.no_values", "Enter at least one label value"))
     return values
 
 
@@ -477,18 +478,18 @@ class LabelToMaskTool(Tool):
     def execute(self, ctx: ToolContext) -> Result:
         labels = ctx.inputs.get("labels")
         if not isinstance(labels, np.ndarray):
-            raise ToolError("Input port 'labels' has no label map")
+            raise ToolError(Msg.of("label_to_mask.no_labels", "Input port 'labels' has no label map"))
         if labels.ndim != 2:
-            raise ToolError("The label map must be single-channel")
+            raise ToolError(Msg.of("label_to_mask.not_single_channel", "The label map must be single-channel"))
         if not np.issubdtype(labels.dtype, np.integer):
-            raise ToolError("The label map must use integer labels")
+            raise ToolError(Msg.of("label_to_mask.not_integer", "The label map must use integer labels"))
         values = np.asarray(sorted(_parse_label_values(ctx.param("values", "1"))), dtype=labels.dtype)
         hit = np.isin(labels, values)
         if ctx.flag("invert", False):
             hit = ~hit
         mask = hit.astype(np.uint8) * 255
         pixels = int(np.count_nonzero(mask))
-        return Result(outputs={"mask": mask, "pixels": pixels}, message=f"{pixels} pixels")
+        return Result(outputs={"mask": mask, "pixels": pixels}, message=Msg.of("label_to_mask.done", "{pixels} pixels", pixels=pixels))
 
 
 def _colour_hist(image: np.ndarray, space: str, bins: int, mask: np.ndarray | None = None) -> np.ndarray:
@@ -499,7 +500,7 @@ def _colour_hist(image: np.ndarray, space: str, bins: int, mask: np.ndarray | No
         hist = cv2.calcHist([converted], [1, 2], mask, [bins, bins], [0, 256, 0, 256])
     total = float(hist.sum())
     if total <= 0:
-        raise ToolError("The colour histogram has no pixels")
+        raise ToolError(Msg.of("color_classify.empty_hist", "The colour histogram has no pixels"))
     return (hist / total).astype(np.float32)
 
 
@@ -524,7 +525,7 @@ def _sample_hist(sample: dict[str, Any], space: str, bins: int) -> tuple[np.ndar
             return hit
     image = fixed_images.load(image_id)
     if image is None:
-        raise ToolError(f"Sample image '{sample.get('name') or image_id}' could not be loaded")
+        raise ToolError(Msg.of("color_classify.sample_missing", "Sample image '{name}' could not be loaded", name=sample.get("name") or image_id))
     hist = _colour_hist(image, space, bins)
     sig = _hist_signature(hist)
     with _COLOR_HIST_LOCK:
@@ -569,12 +570,12 @@ class ColorClassifyTool(Tool):
     def execute(self, ctx: ToolContext) -> Result:
         samples = ctx.param("samples", [])
         if not isinstance(samples, list) or not samples:
-            raise ToolError("At least one sample image is required")
+            raise ToolError(Msg.of("color_classify.no_samples", "At least one sample image is required"))
         image = ctx.require_image()
         region = ctx.roi()
         c = crop(image, region)
         if c.image.size == 0:
-            raise ToolError("The region falls outside the image")
+            raise ToolError(Msg.of("color_classify.outside", "The region falls outside the image"))
         space = str(ctx.param("space", "hsv")).lower()
         bins = max(2, min(64, ctx.integer("bins", 16)))
         metric = str(ctx.param("metric", "histogram_intersection"))
@@ -592,7 +593,7 @@ class ColorClassifyTool(Tool):
                 "similarity": round(_hist_similarity(hist, sig, sample_hist, sample_sig, metric), 6),
             })
         if not ranking:
-            raise ToolError("No usable sample images were provided")
+            raise ToolError(Msg.of("color_classify.no_usable_samples", "No usable sample images were provided"))
         ranking.sort(key=lambda item: float(item["similarity"]), reverse=True)
         top = ranking[0]
         similarity = float(top["similarity"])
@@ -602,7 +603,8 @@ class ColorClassifyTool(Tool):
         return Result(
             outputs={"label": label, "similarity": similarity, "ranking": ranking[:3]},
             overlays=overlays, branch="ok" if ok else "ng", status="ok" if ok else "ng",
-            message=f"{label} {similarity:.3f}" if ok else f"{label} {similarity:.3f} below minimum",
+            message=(Msg.of("color_classify.match", "{label} {similarity:.3f}", label=label, similarity=similarity) if ok
+                     else Msg.of("color_classify.below_minimum", "{label} {similarity:.3f} below minimum", label=label, similarity=similarity)),
         )
 
 
@@ -638,7 +640,7 @@ class ColorConvertTool(Tool):
             channels = {key: ctx.image(key) for key in ("r", "g", "b")}
             refs = [img for img in channels.values() if img is not None]
             if not refs:
-                raise ToolError("Merge RGB needs at least one grayscale channel")
+                raise ToolError(Msg.of("color_convert.merge_no_channel", "Merge RGB needs at least one grayscale channel"))
             shape = refs[0].shape[:2]
             dtype = refs[0].dtype
             merged: dict[str, np.ndarray] = {}
@@ -648,11 +650,12 @@ class ColorConvertTool(Tool):
                     continue
                 gray = to_gray(img)
                 if gray.shape[:2] != shape:
-                    raise ToolError(
-                        f"Merge RGB channel '{key}' is {gray.shape[1]}x{gray.shape[0]} but the first channel is {shape[1]}x{shape[0]}"
-                    )
+                    raise ToolError(Msg.of(
+                        "color_convert.merge_size_mismatch", "Merge RGB channel '{channel}' is {w}x{h} but the first channel is {w0}x{h0}",
+                        channel=key, w=gray.shape[1], h=gray.shape[0], w0=shape[1], h0=shape[0],
+                    ))
                 merged[key] = gray.astype(dtype, copy=False)
-            return Result(outputs={"image": cv2.merge([merged["b"], merged["g"], merged["r"]])}, message=f"merged {shape[1]}x{shape[0]}")
+            return Result(outputs={"image": cv2.merge([merged["b"], merged["g"], merged["r"]])}, message=Msg.of("color_convert.merged", "merged {w}x{h}", w=shape[1], h=shape[0]))
         image = ctx.require_image()
         if image.ndim == 2:
             image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
@@ -716,7 +719,7 @@ class ColorRangeTool(Tool):
         else:
             mask = cv2.inRange(hsv, (hl, lo[1], lo[2]), (179, hi[1], hi[2])) | cv2.inRange(hsv, (0, lo[1], lo[2]), (hh, hi[1], hi[2]))
         ratio = float(cv2.countNonZero(mask)) / mask.size
-        return Result(outputs={"image": mask, "ratio": ratio}, message=f"Coverage {ratio*100:.2f}%")
+        return Result(outputs={"image": mask, "ratio": ratio}, message=Msg.of("color_range.coverage", "Coverage {percent:.2f}%", percent=ratio * 100))
 
 
 class ArithmeticTool(Tool):
@@ -748,7 +751,7 @@ class ArithmeticTool(Tool):
         if op == "gain":
             return Result(outputs={"image": cv2.convertScaleAbs(a, alpha=ctx.number("gain", 1.0), beta=ctx.number("bias", 0))})
         if b is None:
-            raise ToolError("This operation needs a second image B")
+            raise ToolError(Msg.of("arithmetic.needs_b", "This operation needs a second image B"))
         if a.shape != b.shape:
             if a.ndim != b.ndim:
                 b = to_gray(b) if a.ndim == 2 else cv2.cvtColor(b, cv2.COLOR_GRAY2BGR)
@@ -843,7 +846,7 @@ class PasteBackTool(Tool):
         x0, y0 = max(0, x), max(0, y)
         x1, y1 = min(w, x + pw), min(h, y + ph)
         if x0 >= x1 or y0 >= y1:
-            return Result(outputs={"image": out}, message="outside")
+            return Result(outputs={"image": out}, message=Msg.of("paste_back.outside", "outside"))
         sx0, sy0 = x0 - x, y0 - y
         sx1, sy1 = sx0 + (x1 - x0), sy0 + (y1 - y0)
         src = patch[sy0:sy1, sx0:sx1]
@@ -862,7 +865,7 @@ class PasteBackTool(Tool):
             cv2.copyTo(src, mask[sy0:sy1, sx0:sx1], dst)
         else:
             out[y0:y1, x0:x1] = src
-        return Result(outputs={"image": out}, message=f"{x0},{y0} {x1 - x0}x{y1 - y0}")
+        return Result(outputs={"image": out}, message=Msg.of("paste_back.done", "{x},{y} {w}x{h}", x=x0, y=y0, w=x1 - x0, h=y1 - y0))
 
 
 def _match_image_shape(image: np.ndarray, like: np.ndarray) -> np.ndarray:
@@ -961,7 +964,7 @@ class ConvertDepthTool(Tool):
                 out = np.clip((x - lo) * (65535.0 / (hi - lo) if hi > lo else 1.0), 0, 65535).astype(np.uint16)
         else:
             out = image.astype(np.float32)
-        return Result(outputs={"image": out, "depth": imgfmt.depth_of(out)}, message=f"→ {imgfmt.depth_of(out)}")
+        return Result(outputs={"image": out, "depth": imgfmt.depth_of(out)}, message=Msg.of("convert_depth.done", "→ {depth}", depth=imgfmt.depth_of(out)))
 
 
 class LutTool(Tool):
@@ -1012,14 +1015,14 @@ class LutTool(Tool):
             lo, hi = np.percentile(image.astype(np.float32), [low, high])
             scale = 255.0 / (float(hi) - float(lo)) if hi > lo else 1.0
             out = np.clip((image.astype(np.float32) - float(lo)) * scale, 0, 255).astype(np.uint8)
-            return Result(outputs={"image": out}, message=f"{mode} {low:g}-{high:g}%")
+            return Result(outputs={"image": out}, message=Msg.of("lut.normalize_ratio", "{mode} {low:g}-{high:g}%", mode=mode, low=low, high=high))
         if mode == "normalize_std":
             src = image.astype(np.float32)
             mean, std = float(src.mean()), float(src.std())
             target_mean = ctx.number("target_mean", 128)
             target_std = max(0.0, ctx.number("target_std", 40))
             out = np.full(src.shape, target_mean, dtype=np.float32) if std < 1e-9 else (src - mean) * (target_std / std) + target_mean
-            return Result(outputs={"image": np.clip(np.rint(out), 0, 255).astype(np.uint8)}, message=f"{mode} mean={target_mean:g} std={target_std:g}")
+            return Result(outputs={"image": np.clip(np.rint(out), 0, 255).astype(np.uint8)}, message=Msg.of("lut.normalize_std", "{mode} mean={mean:g} std={std:g}", mode=mode, mean=target_mean, std=target_std))
         x = np.arange(256, dtype=np.float32)
         if mode == "linear":
             table = (x - 128.0) * ctx.number("contrast", 1.0) + 128.0 + ctx.number("brightness", 0.0)
@@ -1121,7 +1124,7 @@ class SurfaceFilterTool(Tool):
         area = None if region is None else crop(gray, region)
         crop_img = gray if area is None else area.image
         if crop_img.size == 0:
-            raise ToolError("The region falls outside the picture")
+            raise ToolError(Msg.of("surface_filter.outside", "The region falls outside the picture"))
         width = max(1, ctx.integer("width", 3) | 1)
         length = max(3, ctx.integer("length", 15) | 1)
         directions = min(32, max(2, ctx.integer("directions", 8)))
@@ -1155,7 +1158,7 @@ class SurfaceFilterTool(Tool):
         return Result(
             outputs={"image": out, "max_response": round(peak, 4), "mean_response": round(average, 4)},
             overlays=[region_overlay(region)] if region is not None else [],
-            message=f"peak {peak:.3f}, average {average:.3f} ({directions} directions)",
+            message=Msg.of("surface_filter.done", "peak {peak:.3f}, average {average:.3f} ({directions} directions)", peak=peak, average=average, directions=directions),
         )
 
 
@@ -1227,7 +1230,7 @@ class FilterTool(Tool):
                 if kernel.shape != (3, 3):
                     raise ValueError
             except (TypeError, ValueError):
-                raise ToolError("A custom kernel must be a 3×3 array of numbers") from None
+                raise ToolError(Msg.of("filter.bad_kernel", "A custom kernel must be a 3×3 array of numbers")) from None
             out = accel.filter2d(image, -1, kernel)
         return Result(outputs={"image": out}, message=method)
 
@@ -1332,7 +1335,7 @@ class FftFilterTool(Tool):
             if highpass:
                 np.add(out, 32768.0, out=out)
             out = np.clip(out, 0, 65535, out=out).astype(np.uint16)
-        return Result(outputs={"image": out, "spectrum": spectrum}, message=f"{ctx.param('mode', 'lowpass')} r={cutoff:g}")
+        return Result(outputs={"image": out, "spectrum": spectrum}, message=Msg.of("fft_filter.done", "{mode} r={cutoff:g}", mode=ctx.param("mode", "lowpass"), cutoff=cutoff))
 
 
 class WarpPerspectiveTool(Tool):
@@ -1355,7 +1358,7 @@ class WarpPerspectiveTool(Tool):
         region = ctx.roi()
         pts = (region or {}).get("points") or []
         if len(pts) < 4:
-            raise ToolError("Perspective correction needs a four-point polygon ROI")
+            raise ToolError(Msg.of("warp_perspective.needs_quad", "Perspective correction needs a four-point polygon ROI"))
         src = np.array(pts[:4], dtype=np.float32)
         # 依「左上、右上、右下、左下」排序（點可依任意順序畫）
         c = src.mean(axis=0)
@@ -1371,7 +1374,7 @@ class WarpPerspectiveTool(Tool):
         dst = np.array([[0, 0], [w_out - 1, 0], [w_out - 1, h_out - 1], [0, h_out - 1]], dtype=np.float32)
         matrix = cv2.getPerspectiveTransform(src, dst)
         out = cv2.warpPerspective(image, matrix, (w_out, h_out))
-        return Result(outputs={"image": out}, overlays=[region_overlay(region, label="src")], message=f"{w_out}×{h_out}")
+        return Result(outputs={"image": out}, overlays=[region_overlay(region, label="src")], message=Msg.of("warp_perspective.done", "{w}×{h}", w=w_out, h=h_out))
 
 
 class UndistortTool(Tool):
@@ -1421,7 +1424,7 @@ class UndistortTool(Tool):
                 scale=ctx.number("scale", 1),
                 alpha=alpha,
             )
-            return Result(outputs={"image": out, "mm_per_pixel": float("nan")}, message=f"Manual k1={k1:g} k2={k2:g}")
+            return Result(outputs={"image": out, "mm_per_pixel": float("nan")}, message=Msg.of("undistort.manual", "Manual k1={k1:g} k2={k2:g}", k1=k1, k2=k2))
         payload = read_calibration(ctx)
         image = ctx.require_image()
         alpha = ctx.number("alpha", 0)
@@ -1435,7 +1438,10 @@ class UndistortTool(Tool):
         world = payload.get("world") or {}
         mm_per_px = float(world.get("mm_per_px") or 0) or float("nan")
         return Result(outputs={"image": out, "mm_per_pixel": mm_per_px},
-                      message=f"Corrected ({lens['views']} views, {lens['rms']:.2f} px, alpha {alpha:.2f})" + (f", {mm_per_px:.4f} {payload.get('unit', 'mm')}/px" if mm_per_px == mm_per_px else ""))
+                      message=(Msg.of("undistort.corrected_scale", "Corrected ({views} views, {rms:.2f} px, alpha {alpha:.2f}), {mm_per_px:.4f} {unit}/px",
+                                      views=lens["views"], rms=lens["rms"], alpha=alpha, mm_per_px=mm_per_px, unit=payload.get("unit", "mm"))
+                               if mm_per_px == mm_per_px else
+                               Msg.of("undistort.corrected", "Corrected ({views} views, {rms:.2f} px, alpha {alpha:.2f})", views=lens["views"], rms=lens["rms"], alpha=alpha)))
 
 
 _MANUAL_UNDISTORT_MAPS: dict[tuple, tuple[np.ndarray, np.ndarray]] = {}
@@ -1561,7 +1567,7 @@ class ShadingCorrectTool(Tool):
             cv2.subtract(f, background, dst=f)
             f += np.float32(level)
             out = _to_depth(f, image)
-            return Result(outputs={"image": out, "mean_before": before, "mean_after": _mean_level(out)}, message=f"estimate σ={sigma:g}")
+            return Result(outputs={"image": out, "mean_before": before, "mean_after": _mean_level(out)}, message=Msg.of("shading_correct.estimate", "estimate σ={sigma:g}", sigma=sigma))
         gray = image.ndim == 2
         flat = reference_image(ctx, "flat_image", "flat", gray=gray)
         dark = reference_image(ctx, "dark_image", "dark", gray=gray) if mode == "dark_flat" else None
@@ -1569,9 +1575,11 @@ class ShadingCorrectTool(Tool):
             if ref is None:
                 continue
             if ref.shape[:2] != image.shape[:2]:
-                raise ToolError(f"The {name} reference is {ref.shape[1]}×{ref.shape[0]} but the image is {image.shape[1]}×{image.shape[0]}; retake the reference at the working resolution")
+                raise ToolError(Msg.of("shading_correct.size_mismatch", "The {name} reference is {w}×{h} but the image is {iw}×{ih}; retake the reference at the working resolution",
+                                        name=name, w=ref.shape[1], h=ref.shape[0], iw=image.shape[1], ih=image.shape[0]))
             if ref.ndim != image.ndim:
-                raise ToolError(f"The {name} reference is {'grayscale' if ref.ndim == 2 else 'colour'} but the image is {'grayscale' if gray else 'colour'}")
+                raise ToolError(Msg.of("shading_correct.gray_vs_colour", "The {name} reference is grayscale but the image is colour", name=name) if ref.ndim == 2
+                                else Msg.of("shading_correct.colour_vs_gray", "The {name} reference is colour but the image is grayscale", name=name))
         key = (ctx.param("flat"), ctx.param("dark") if dark is not None else None, image.ndim, float(target))
         with _GAIN_LOCK:
             hit = _GAIN_CACHE.get(key)
@@ -1595,7 +1603,10 @@ class ShadingCorrectTool(Tool):
         out = _to_depth(f, image)
         detail = {"zero_ratio": round(zero_ratio, 6), "gain_min": round(float(gain.min()), 4), "gain_max": round(float(gain.max()), 4)}
         return Result(outputs={"image": out, "mean_before": before, "mean_after": _mean_level(out)}, detail=detail,
-                      message=f"{mode}: gain {detail['gain_min']:.2f}–{detail['gain_max']:.2f}" + (f", {zero_ratio:.1%} unusable reference pixels" if zero_ratio else ""))
+                      message=(Msg.of("shading_correct.gain_unusable", "{mode}: gain {gain_min:.2f}–{gain_max:.2f}, {zero_ratio:.1%} unusable reference pixels",
+                                      mode=mode, gain_min=detail["gain_min"], gain_max=detail["gain_max"], zero_ratio=zero_ratio)
+                               if zero_ratio else
+                               Msg.of("shading_correct.gain", "{mode}: gain {gain_min:.2f}–{gain_max:.2f}", mode=mode, gain_min=detail["gain_min"], gain_max=detail["gain_max"])))
 
 
 TOOLS = [

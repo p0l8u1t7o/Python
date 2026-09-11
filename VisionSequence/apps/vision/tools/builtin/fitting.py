@@ -10,6 +10,7 @@ import numpy as np
 
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
 from apps.vision.tools.builtin import locate
+from apps.vision.tools.messages import Msg
 from apps.vision.tools.physical import CALIBRATION_PARAM, world_outputs
 
 
@@ -22,12 +23,12 @@ METHOD_OPTIONS = [
 def _as_points(value: Any, *, allow_contours: bool = True) -> np.ndarray:
     """把 points／第一條 contour 正規化成 (N, 2) float64。"""
     if value is None:
-        raise ToolError("Connect points or contours to fit")
+        raise ToolError(Msg.of("fitting.no_points", "Connect points or contours to fit"))
     if isinstance(value, np.ndarray):
         arr = value
         if arr.ndim >= 2:
             return arr.reshape(-1, 2).astype(np.float64)
-        raise ToolError("Connect points or contours to fit")
+        raise ToolError(Msg.of("fitting.no_points", "Connect points or contours to fit"))
     if allow_contours and isinstance(value, list) and value and isinstance(value[0], np.ndarray):
         return np.asarray(value[0], dtype=np.float64).reshape(-1, 2)
     rows: list[list[float]] = []
@@ -102,15 +103,15 @@ class FitLinePointsTool(Tool):
         points = _as_points(ctx.inputs.get("points") if ctx.inputs.get("points") is not None else ctx.inputs.get("contours"))
         count = len(points)
         if count < 2 or _point_span(points) < 1e-9:
-            return _ng("Need at least two distinct points", count)
+            return _ng(Msg.of("fit_line_points.too_few", "Need at least two distinct points"), count)
         method = str(ctx.param("method", "lsq"))
         fitted = locate.fit_points_line(points, ransac=(method == "ransac"), tol=ctx.number("ransac_tol", 2.0))
         if fitted is None:
-            return _ng("No line could be fitted", count)
+            return _ng(Msg.of("fit_line_points.no_fit", "No line could be fitted"), count)
         vx, vy, x0, y0, inliers = fitted
         used = points[np.asarray(inliers, dtype=bool)]
         if len(used) < 2:
-            return _ng("No line could be fitted", count)
+            return _ng(Msg.of("fit_line_points.no_fit", "No line could be fitted"), count)
         line = locate.line_span((vx, vy, x0, y0), used)
         angle = _line_angle(vx, vy)
         outputs: dict[str, Any] = {
@@ -124,7 +125,8 @@ class FitLinePointsTool(Tool):
             outputs=outputs,
             overlays=[{"kind": "line", **line, "color": "#22c55e", "width": 2}],
             branch="found",
-            message=f"{outputs['inliers']}/{count} points, RMS {outputs['residual_rms']:.3f}px",
+            message=Msg.of("fit_line_points.found", "{inliers}/{count} points, RMS {rms:.3f}px",
+                           inliers=outputs["inliers"], count=count, rms=outputs["residual_rms"]),
         )
 
 
@@ -154,11 +156,11 @@ class FitCirclePointsTool(Tool):
         count = len(points)
         span = _point_span(points)
         if count < 3 or span < 1e-9:
-            return _ng("Need at least three distinct points", count)
+            return _ng(Msg.of("fit_circle_points.too_few", "Need at least three distinct points"), count)
         if str(ctx.param("method", "lsq")) == "ransac":
             fitted = locate.fit_circle_ransac(points, tol=ctx.number("ransac_tol", 2.0))
             if fitted is None:
-                return _ng("No circle could be fitted", count)
+                return _ng(Msg.of("fit_circle_points.no_fit", "No circle could be fitted"), count)
             circle, inliers = fitted
             used = points[np.asarray(inliers, dtype=bool)]
         else:
@@ -166,7 +168,7 @@ class FitCirclePointsTool(Tool):
             inliers = np.ones(count, dtype=bool)
             used = points
         if circle is None or circle[2] > 50.0 * max(1e-9, span):
-            return _ng("The points are too close to a line to fit a circle", count)
+            return _ng(Msg.of("fit_circle_points.collinear", "The points are too close to a line to fit a circle"), count)
         cx, cy, r = circle
         out_circle = {"cx": cx, "cy": cy, "r": r}
         outputs: dict[str, Any] = {
@@ -178,7 +180,8 @@ class FitCirclePointsTool(Tool):
             outputs=outputs,
             overlays=[{"kind": "circle", "cx": cx, "cy": cy, "r": r, "color": "#22c55e", "width": 2}],
             branch="found",
-            message=f"{outputs['inliers']}/{count} points, r {r:.3f}px, RMS {outputs['residual_rms']:.3f}px",
+            message=Msg.of("fit_circle_points.found", "{inliers}/{count} points, r {r:.3f}px, RMS {rms:.3f}px",
+                           inliers=outputs["inliers"], count=count, r=r, rms=outputs["residual_rms"]),
         )
 
 
@@ -204,13 +207,13 @@ class FitEllipsePointsTool(Tool):
         points = _as_points(ctx.inputs.get("points") if ctx.inputs.get("points") is not None else ctx.inputs.get("contours"))
         count = len(points)
         if count < 5 or _point_span(points) < 1e-9:
-            return _ng("Need at least five distinct points", count)
+            return _ng(Msg.of("fit_ellipse_points.too_few", "Need at least five distinct points"), count)
         try:
             (cx, cy), (d1, d2), raw_angle = cv2.fitEllipse(points.astype(np.float32).reshape(-1, 1, 2))
         except cv2.error:
-            return _ng("No ellipse could be fitted", count)
+            return _ng(Msg.of("fit_ellipse_points.no_fit", "No ellipse could be fitted"), count)
         if not all(np.isfinite([cx, cy, d1, d2, raw_angle])) or min(d1, d2) <= 0:
-            return _ng("No ellipse could be fitted", count)
+            return _ng(Msg.of("fit_ellipse_points.no_fit", "No ellipse could be fitted"), count)
         major, minor = (float(d1), float(d2)) if d1 >= d2 else (float(d2), float(d1))
         angle = float(raw_angle + (90.0 if d2 > d1 else 0.0))
         angle = ((angle + 180.0) % 360.0) - 180.0
@@ -233,7 +236,8 @@ class FitEllipsePointsTool(Tool):
             outputs=outputs,
             overlays=[{"kind": "polyline", "points": poly.tolist(), "color": "#22c55e", "width": 2}],
             branch="found",
-            message=f"{count} points, {major:.3f}×{minor:.3f}px, RMS {residual:.4f}",
+            message=Msg.of("fit_ellipse_points.found", "{count} points, {major:.3f}×{minor:.3f}px, RMS {rms:.4f}",
+                           count=count, major=major, minor=minor, rms=residual),
         )
 
 

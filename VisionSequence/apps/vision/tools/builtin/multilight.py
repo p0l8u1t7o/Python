@@ -14,6 +14,7 @@ import numpy as np
 from apps.comm.writers import CommError, get_writer
 from apps.vision.capture.hub import CaptureError
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
+from apps.vision.tools.messages import Msg
 
 MAX_STEPS = 8
 
@@ -35,7 +36,7 @@ def _parse_steps(text: str, value_max: int = 255) -> list[LightStep]:
             continue
         parts = [p.strip() for p in line.split(",")]
         if len(parts) > 5:
-            raise ToolError(f"Step line {lineno} has too many columns")
+            raise ToolError(Msg.of("multi_light_grab.step_too_many_columns", "Step line {line} has too many columns", line=lineno))
         while len(parts) < 5:
             parts.append("")
         index = len(steps)
@@ -46,26 +47,37 @@ def _parse_steps(text: str, value_max: int = 255) -> list[LightStep]:
             azimuth = float(parts[3]) if parts[3] else float(index * 90)
             elevation = float(parts[4]) if parts[4] else 30.0
         except ValueError:
-            raise ToolError(f"Step line {lineno} must be channel,brightness[,exposure_us][,azimuth][,elevation]") from None
+            raise ToolError(Msg.of("multi_light_grab.step_bad_format", "Step line {line} must be channel,brightness[,exposure_us][,azimuth][,elevation]",
+                                   line=lineno)) from None
         if channel < 1:
-            raise ToolError(f"Step line {lineno} has an invalid light channel")
+            raise ToolError(Msg.of("multi_light_grab.step_bad_channel", "Step line {line} has an invalid light channel", line=lineno))
         if brightness < 0 or brightness > value_max:
-            raise ToolError(f"Step line {lineno} brightness is outside 0..{value_max}")
+            raise ToolError(Msg.of("multi_light_grab.step_bad_brightness", "Step line {line} brightness is outside 0..{max}", line=lineno, max=value_max))
         if exposure is not None and exposure <= 0:
             exposure = None
         steps.append(LightStep(channel, brightness, exposure, azimuth, elevation))
         if len(steps) > MAX_STEPS:
-            raise ToolError(f"At most {MAX_STEPS} light steps are allowed")
+            raise ToolError(Msg.of("multi_light_grab.too_many_steps", "At most {max} light steps are allowed", max=MAX_STEPS))
     if not steps:
-        raise ToolError("Write at least one light step")
+        raise ToolError(Msg.of("multi_light_grab.no_steps", "Write at least one light step"))
     return steps
 
 
 def _timeout_branch(ctx: ToolContext, source_id: Any, reason: str, timed_out: bool) -> Result | None:
     if ctx.param("on_timeout", "error") == "ng" and timed_out:
-        msg = f"Image source {source_id} timed out" + (f": {reason}" if reason else "")
+        if reason:
+            msg = Msg.of("multi_light_grab.timed_out_reason", "Image source {source} timed out: {reason}", source=source_id, reason=reason)
+        else:
+            msg = Msg.of("multi_light_grab.timed_out", "Image source {source} timed out", source=source_id)
         return Result(status="ng", branch="timeout", message=msg)
     return None
+
+
+def _no_image(source_id: Any, reason: Any) -> Msg:
+    """來源沒有回影像（有原因就附上）。"""
+    if reason:
+        return Msg.of("multi_light_grab.no_image_reason", "Image source {source} returned no image: {reason}", source=source_id, reason=reason)
+    return Msg.of("multi_light_grab.no_image", "Image source {source} returned no image", source=source_id)
 
 
 def _send_light(writer: Any, channel: int, value: Any, mode: str, timeout: float | None) -> dict[str, Any]:
@@ -104,7 +116,7 @@ def _deadline(ctx: ToolContext) -> float:
 def _check_deadline(ctx: ToolContext) -> None:
     end = _deadline(ctx)
     if end > 0 and time.perf_counter() > end:
-        raise ToolError("the run timed out")
+        raise ToolError(Msg.of("multi_light_grab.run_timed_out", "the run timed out"))
 
 
 def _sleep_ms(ctx: ToolContext, ms: float, warnings: list[str]) -> None:
@@ -177,18 +189,18 @@ class MultiLightGrabTool(Tool):
                     outputs[key] = images[idx]
             return Result(
                 outputs=outputs,
-                message=f"{len(images)} frames from wired image {wired.shape[1]}x{wired.shape[0]}",
+                message=Msg.of("multi_light_grab.wired", "{n} frames from wired image {w}x{h}", n=len(images), w=wired.shape[1], h=wired.shape[0]),
                 detail={"wired": True, "lit": False, "warnings": ["Wired image input was repeated for the light sequence"]},
             )
         source_id = ctx.param("source")
         if not source_id:
-            raise ToolError("Choose an image source")
+            raise ToolError(Msg.of("multi_light_grab.no_source", "Choose an image source"))
         writer = get_writer(str(ctx.param("connection", "")).strip())
         required = ctx.flag("required", False)
         lit = writer is not None
         warnings: list[str] = []
         if writer is None:
-            msg = f"Connection '{ctx.param('connection', '')}' is not open or does not exist"
+            msg = Msg.of("multi_light_grab.connection_missing", "Connection '{name}' is not open or does not exist", name=ctx.param('connection', ''))
             if required:
                 raise ToolError(msg)
             ctx.log(f"Multi-light grab degraded: {msg}", level="warning")
@@ -230,11 +242,11 @@ class MultiLightGrabTool(Tool):
                 branch = _timeout_branch(ctx, source_id, reason_text, timeout)
                 if branch is not None:
                     return branch
-                raise ToolError(f"Image source {source_id} returned no image" + (f": {reason_text}" if reason_text else ""))
+                raise ToolError(_no_image(source_id, reason_text))
             images = [image.copy() for _ in steps]
         else:
             if grabber is None:
-                raise ToolError(f"Capture camera {source_id} is not available: {reason}")
+                raise ToolError(Msg.of("multi_light_grab.camera_unavailable", "Capture camera {source} is not available: {reason}", source=source_id, reason=reason))
             try:
                 for step in steps:
                     _check_deadline(ctx)
@@ -250,7 +262,7 @@ class MultiLightGrabTool(Tool):
                         branch = _timeout_branch(ctx, source_id, str(getattr(grabber, "last_error", "") or ""), bool(getattr(grabber, "timed_out", False)))
                         if branch is not None:
                             return branch
-                        raise ToolError(f"Image source {source_id} returned no image" + (f": {grabber.last_error}" if grabber.last_error else ""))
+                        raise ToolError(_no_image(source_id, grabber.last_error))
                     images.append(frame)
                     if writer is not None and strobe:
                         light_results.append(_send_light(writer, step.channel, step.brightness, "off", timeout_s))
@@ -260,7 +272,7 @@ class MultiLightGrabTool(Tool):
                 if writer is not None:
                     self._after(ctx, writer, steps, remembered, timeout_s, warnings)
         if not images:
-            raise ToolError("No images were grabbed")
+            raise ToolError(Msg.of("multi_light_grab.no_images", "No images were grabbed"))
         outputs: dict[str, Any] = {
             "images": images,
             "image": images[0],
@@ -273,7 +285,7 @@ class MultiLightGrabTool(Tool):
             if len(images) > idx:
                 outputs[key] = images[idx]
         detail = {"lit": lit, "strobe": strobe, "warnings": warnings, "light_results": light_results}
-        return Result(outputs=outputs, message=f"{len(images)} frames, lit={str(lit).lower()}", detail=detail)
+        return Result(outputs=outputs, message=Msg.of("multi_light_grab.grabbed", "{n} frames, lit={lit}", n=len(images), lit=str(lit).lower()), detail=detail)
 
     @staticmethod
     def _after(ctx: ToolContext, writer: Any, steps: list[LightStep], remembered: dict[int, int], timeout: float | None, warnings: list[str]) -> None:
@@ -311,7 +323,7 @@ def _collect_images(ctx: ToolContext) -> list[np.ndarray]:
         if image is not None:
             out.append(image)
     if not out:
-        raise ToolError("Wire images into images or image/image_1..3")
+        raise ToolError(Msg.of("multi_light_fuse.no_images", "Wire images into images or image/image_1..3"))
     return out
 
 
@@ -321,7 +333,8 @@ def _check_shapes(images: list[np.ndarray]) -> None:
     for index, image in enumerate(images[1:], start=2):
         if image.shape[:2] != (h0, w0) or (image.shape[2:] if image.ndim == 3 else ()) != c0:
             h, w = image.shape[:2]
-            raise ToolError(f"Image {index} is {w}x{h} but image 1 is {w0}x{h0}; all pictures must be the same size")
+            raise ToolError(Msg.of("multi_light_fuse.size_mismatch", "Image {index} is {w}x{h} but image 1 is {w0}x{h0}; all pictures must be the same size",
+                                   index=index, w=w, h=h, w0=w0, h0=h0))
 
 
 def _u8(arr: np.ndarray) -> np.ndarray:
@@ -339,7 +352,7 @@ def _parse_angles(raw: Any) -> list[float]:
     try:
         return [float(x) for x in raw]
     except (TypeError, ValueError):
-        raise ToolError("Azimuths must be a list of numbers") from None
+        raise ToolError(Msg.of("multi_light_fuse.bad_azimuths", "Azimuths must be a list of numbers")) from None
 
 
 def _normalize_signed(arr: np.ndarray) -> np.ndarray:
@@ -401,7 +414,7 @@ class MultiLightFuseTool(Tool):
             raw_angles = ctx.inputs.get("azimuths") if ctx.inputs.get("azimuths") is not None else ctx.param("azimuths", [0, 90, 180, 270])
             azimuths = _parse_angles(raw_angles)
             if len(azimuths) < len(images):
-                raise ToolError(f"{len(images)} pictures but only {len(azimuths)} azimuths")
+                raise ToolError(Msg.of("multi_light_fuse.too_few_azimuths", "{n} pictures but only {m} azimuths", n=len(images), m=len(azimuths)))
             acc_x = np.zeros(images[0].shape[:2], dtype=np.float32)
             acc_y = np.zeros_like(acc_x)
             for image0, az in zip(images, azimuths, strict=False):
@@ -417,9 +430,9 @@ class MultiLightFuseTool(Tool):
             outputs["gradient"] = np.ascontiguousarray(gradient)
             image = _normalize_signed(gradient) if ctx.flag("normalize", True) else _u8(gradient)
         else:
-            raise ToolError("Mode must be reflection, shadow, direction or mean")
+            raise ToolError(Msg.of("multi_light_fuse.bad_mode", "Mode must be reflection, shadow, direction or mean"))
         outputs["image"] = image
-        return Result(outputs=outputs, message=f"{mode}, {len(images)} frames")
+        return Result(outputs=outputs, message=Msg.of("multi_light_fuse.fused", "{mode}, {n} frames", mode=mode, n=len(images)))
 
 
 TOOLS = [MultiLightGrabTool(), MultiLightFuseTool()]

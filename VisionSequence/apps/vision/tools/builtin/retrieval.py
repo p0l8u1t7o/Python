@@ -15,6 +15,7 @@ from apps.vision.tools.base import (
     flow_out,
     Port,
 )
+from apps.vision.tools.messages import Msg
 
 
 def _crop(image: np.ndarray, roi: dict[str, Any] | None) -> np.ndarray:
@@ -100,15 +101,15 @@ class DlRetrievalTool(Tool):
     def execute(self, ctx: ToolContext) -> Result:
         asset = ctx.param("model")
         if not asset:
-            raise ToolError("No reference library is set")
+            raise ToolError(Msg.of("dl_retrieval.no_model", "No reference library is set"))
         try:
             path = ctx.asset_path(str(asset))
         except Exception as exc:  # pragma: no cover - ToolContext owns the exact error type
-            raise ToolError(f"Reference library could not be found: {asset}") from exc
+            raise ToolError(Msg.of("dl_retrieval.model_missing", "Reference library could not be found: {asset}", asset=asset)) from exc
         # 查不到的資產是回 None 不是丟例外（比照 anomaly_tool）；少了這一行，
         # 模型被刪掉時現場看到的是 Path(None) 的 TypeError 而不是能照做的訊息。
         if not path:
-            raise ToolError(f"Reference library could not be found: {asset}")
+            raise ToolError(Msg.of("dl_retrieval.model_missing", "Reference library could not be found: {asset}", asset=asset))
         try:
             model = retrieval.load(Path(path))
             override = str(ctx.param("backbone_path") or "").strip() or None
@@ -123,7 +124,8 @@ class DlRetrievalTool(Tool):
         branch = "not_matched" if not matched else ("ok" if accepted else "ng")
         status = "ok" if accepted else "ng"
         label = str(result["label"]) if matched else ""
-        message = "Not matched" if not matched else f"{label} {float(result['similarity']):.3f}"
+        message = (Msg.of("dl_retrieval.not_matched", "Not matched") if not matched
+                   else Msg.of("dl_retrieval.result", "{label} {similarity:.3f}", label=label, similarity=float(result['similarity'])))
         return Result(
             status=status,
             branch=branch,
