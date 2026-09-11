@@ -47,7 +47,7 @@ from apps.accounts.security import authenticate, principal, require_feature
 from apps.core.errors import APIError, Conflict, NotFound, PermissionDenied, ValidationError
 from apps.core import audit
 from apps.core.models import AuditLog
-from apps.vision import archive, board, graphdiff, reporting, schemas, scripts, teachguard, trace, versions
+from apps.vision import archive, board, composites, graphdiff, reporting, schemas, scripts, teachguard, trace, versions
 from apps.vision.engine import NODE_REPORT_DEFAULTS
 from apps.vision.graph import validate_graph
 from apps.vision.images import encode_image, store
@@ -88,6 +88,8 @@ def _flow_out(flow: Flow) -> dict[str, Any]:
         "owner_id": flow.owner_id,
         "owner_name": flow.owner.username if flow.owner_id else "",
         "is_enabled": flow.is_enabled,
+        "kind": flow.kind,
+        "composite_tool": ({"id": flow.composite_tool.id, "key": flow.composite_tool.key, "label": flow.composite_tool.label, "builtin": flow.composite_tool.builtin, "interface": flow.composite_tool.interface or {}} if flow.kind == "tool" and hasattr(flow, "composite_tool") else None),
         "version": flow.version,
         "continuous_interval_ms": flow.continuous_interval_ms,
         "timeout_s": flow.timeout_s,
@@ -323,7 +325,8 @@ def _visible_flows(request: HttpRequest):
 
 @router.get("/flows")
 def list_flows(request: HttpRequest, q: str = "", limit: int = 100, offset: int = 0, mine: bool = False):
-    qs = _visible_flows(request)
+    # 複合工具的內部圖（kind=tool）不是流程：只在工具庫出現
+    qs = _visible_flows(request).filter(kind="flow")
     p = principal(request)
     if mine and p.user:
         qs = qs.filter(owner=p.user)
@@ -445,6 +448,8 @@ def patch_flow(request: HttpRequest, flow_id: int, payload: schemas.FlowPatch):
         raise Conflict("A flow with that name already exists", code="flow_name_taken") from None
     if graph_changed:
         versions.snapshot(flow, user=p.user)
+        if flow.kind == "tool":
+            composites.invalidate()
         changes = graphdiff.diff(before_graph, flow.graph)
         audit.record(request, "flow.update", flow, summary=f"v{flow.version}: {graphdiff.summarize(changes)}", detail=changes)
     if field_changes:
@@ -509,6 +514,8 @@ def release_version(request: HttpRequest, flow_id: int, version: int):
 @router.delete("/flows/{flow_id}", response={204: None})
 def delete_flow(request: HttpRequest, flow_id: int):
     flow = _editable_flow(request, flow_id)
+    if flow.kind == "tool":
+        raise Conflict("This flow is the implementation of a composite tool; delete the tool from the tool library", code="composite_tool_flow")
     audit.record(request, "flow.delete", flow, summary=f"v{flow.version}")
     runner.forget(flow.id)
     flow.delete()
@@ -760,11 +767,16 @@ def preview_flow(request: HttpRequest, flow_id: int, payload: schemas.PreviewReq
             input_image = archive.read(payload.reuse_image_ref.split(":", 1)[0], payload.reuse_image_ref)
         if input_image is None:
             raise NotFound("That image is no longer available (not in cache and not archived)", code="image_gone")
+    graph_override = payload.graph
+    if flow.kind == "tool":
+        # 工具編輯畫布：對外影像輸入接上一個只吃暫存／推送影像的取像節點（composites.preview_graph）
+        tool = getattr(flow, "composite_tool", None)
+        graph_override = composites.preview_graph(payload.graph, tool.interface if tool is not None else None)
     report = runner.run_sync(
         flow,
         trigger="preview",
         preview=True,
-        graph_override=payload.graph,
+        graph_override=graph_override,
         input_image=input_image,
         context=scripts.client_context(payload.context, admin=principal(request).is_admin),  # 管理員試執行可跑未核准的腳本
         until_node=payload.until_node,

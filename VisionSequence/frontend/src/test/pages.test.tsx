@@ -193,6 +193,26 @@ describe('pages render (smoke)', () => {
     expect(await screen.findByRole('dialog')).toBeInTheDocument()
   })
 
+  it('FlowEditorPage switches to tool mode for a composite tool flow', async () => {
+    // PRODUCT-DIRECTION v2 P2：kind=tool 的流程＝複合工具的畫布：右側是對外介面、沒有流程專屬的工具列項目
+    const { FlowEditorPage } = await import('@/pages/FlowEditorPage')
+    const { clearSession } = await import('@/lib/flowDraft')
+    clearSession(77)
+    renderDataPage(<FlowEditorPage />, '/flows/77', '/flows/:flowId')
+    expect(await screen.findByTestId('tool-mode-badge')).toBeInTheDocument()
+    expect(await screen.findByTestId('composite-interface')).toBeInTheDocument()
+    expect(screen.queryByTestId('btn-continuous')).toBeNull()
+    expect(screen.queryByTestId('not-commissioned-badge')).toBeNull()
+    // 對外參數：內建 mock 的 threshold 有 Level 這個對外名稱
+    expect(screen.getByTestId('composite-param-thr:threshold')).toHaveAttribute('data-exposed', 'true')
+    expect(screen.getByTestId('composite-alias-param-thr:threshold')).toHaveValue('Level')
+    expect(screen.getByTestId('composite-port-out-blob:count')).toHaveAttribute('data-exposed', 'true')
+    expect(screen.getByTestId('composite-port-out-thr:image')).toHaveAttribute('data-exposed', 'false')
+    fireEvent.click(screen.getByTestId('composite-expose-out-thr:image'))
+    expect(screen.getByTestId('composite-port-out-thr:image')).toHaveAttribute('data-exposed', 'true')
+    expect(screen.getAllByText(/Unsaved/).length).toBeGreaterThan(0)
+  })
+
   it('FlowEditorPage keeps run settings in the draft until Save', async () => {
     // Suggest5 第 1 點：間隔／逾時／並行度以前每改一下就 PATCH，描述卻要按儲存；現在一律隨儲存寫入
     const { FlowEditorPage } = await import('@/pages/FlowEditorPage')
@@ -736,6 +756,18 @@ describe('pages render (smoke)', () => {
     const { LoginPage } = await import('@/pages/LoginPage')
     renderPage(<LoginPage />, { route: '/login' })
     expect((await screen.findAllByText(/Sign in|Username|VisionSequence/)).length).toBeGreaterThan(0)
+  })
+
+  it('ToolLibraryPage lists composite tools with their usage', async () => {
+    const { ToolLibraryPage } = await import('@/pages/ToolLibraryPage')
+    renderPage(<ToolLibraryPage />, { route: '/tools' })
+    expect(await screen.findByTestId('tool-row-count_holes')).toBeInTheDocument()
+    expect(screen.getByTestId('tools-direct-reference')).toBeInTheDocument()
+    expect(screen.getByTestId('tool-open-count_holes')).toHaveTextContent('Edit')
+    fireEvent.click(screen.getByTestId('tools-create'))
+    expect(await screen.findByTestId('tools-form')).toBeInTheDocument()
+    fireEvent.change(screen.getByTestId('tools-form-label'), { target: { value: 'Edge check' } })
+    expect(screen.getByTestId('tools-form-key')).toHaveValue('edge_check')
   })
 
   it('AssetsPage, DlPage, IntegrationPage render without throwing', async () => {

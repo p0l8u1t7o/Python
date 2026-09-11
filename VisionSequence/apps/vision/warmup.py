@@ -69,7 +69,7 @@ def flow_ids_for_mode(mode: str) -> list[int]:
         mode = "off"
     if mode == "off":
         return []
-    qs = Flow.objects.filter(is_enabled=True)
+    qs = Flow.objects.filter(is_enabled=True, kind="flow")
     if mode == "commissioned":
         qs = qs.filter(commissioned=True)
     return list(qs.order_by("id").values_list("id", flat=True))

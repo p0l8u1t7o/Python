@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 
 import { logActivity } from '@/lib/activity'
-import type { EngineeringNote } from './types'
+import type { CompositeTool, CompositeUsage, EngineeringNote, NodeInterface } from './types'
 
 export function useEngineeringNotes(filters: Record<string, string | number | undefined> = {}) {
   return useQuery({ queryKey: ['engineering-notes', filters], queryFn: () => api.get<{ items: EngineeringNote[]; total: number }>('/vision/notes', filters) })
@@ -100,6 +100,7 @@ export const keys = {
   toolTypes: ['tool-types'] as const,
   capacity: ['capacity'] as const,
   flows: ['flows'] as const,
+  compositeTools: ['composite-tools'] as const,
   flow: (id: number) => ['flow', id] as const,
   recent: (id: number) => ['recent', id] as const,
   history: (id: number, params: Record<string, unknown>) => ['history', id, params] as const,
@@ -1485,4 +1486,54 @@ export function useDlMutations() {
     onSuccess: () => void client.invalidateQueries({ queryKey: ['dl', 'devices'] }),
   })
   return { createProject, patchProject, removeProject, uploadSamples, addRetrievalItems, removeRetrievalItem, fromSource, setLabel, setShapes, setSplit, autoSplit, freezeVersion, removeVersion, datasetExport, datasetImport, samPoint, removeSample, bulkLabels, autoLabel, startVideoExtract, stopVideoExtract, startTrain, quickRegister, cancelTrain, saveModel, discardModel, patchSettings }
+}
+
+// ---------------------------------------------------------------------------
+// 複合工具（工具庫）：改了工具本體＝改了工具目錄與所有用到它的流程，所以每個變更都作廢 tool-types 與 flows
+// ---------------------------------------------------------------------------
+export function useCompositeTools() {
+  return useQuery({ queryKey: keys.compositeTools, queryFn: () => api.get<{ items: CompositeTool[] }>('/vision/composite-tools') })
+}
+
+export function useCompositeTool(id: number | null) {
+  return useQuery({ queryKey: [...keys.compositeTools, id ?? 0], queryFn: () => api.get<CompositeTool>(`/vision/composite-tools/${id}`), enabled: id !== null })
+}
+
+export function fetchCompositeUsage(id: number): Promise<CompositeUsage> {
+  return api.get<CompositeUsage>(`/vision/composite-tools/${id}/usage`)
+}
+
+export function useCompositeToolMutations() {
+  const client = useQueryClient()
+  const invalidate = () => {
+    void client.invalidateQueries({ queryKey: keys.compositeTools })
+    void client.invalidateQueries({ queryKey: keys.toolTypes })
+    void client.invalidateQueries({ queryKey: keys.flows })
+  }
+  const create = useMutation({
+    mutationFn: (body: { key: string; label: string; description?: string; category?: string; icon?: string; graph: FlowGraph; interface: NodeInterface }) => api.post<CompositeTool>('/vision/composite-tools', body),
+    onSuccess: invalidate,
+  })
+  const update = useMutation({
+    mutationFn: ({ id, ...body }: { id: number; label?: string; description?: string; category?: string; icon?: string; graph?: FlowGraph; interface?: NodeInterface }) => api.put<CompositeTool>(`/vision/composite-tools/${id}`, body),
+    onSuccess: (saved) => {
+      invalidate()
+      void client.invalidateQueries({ queryKey: keys.flow(saved.flow_id) })
+    },
+  })
+  const remove = useMutation({ mutationFn: (id: number) => api.delete(`/vision/composite-tools/${id}`), onSuccess: invalidate })
+  const duplicate = useMutation({
+    mutationFn: ({ id, ...body }: { id: number; key?: string; label?: string }) => api.post<CompositeTool>(`/vision/composite-tools/${id}/duplicate`, body),
+    onSuccess: invalidate,
+  })
+  const importFile = useMutation({
+    mutationFn: ({ file, replace = false }: { file: File; replace?: boolean }) => {
+      const form = new FormData()
+      form.append('file', file)
+      form.append('replace', replace ? '1' : '0')
+      return api.postForm<{ tool: CompositeTool; action: 'created' | 'updated' | 'kept' }>('/vision/composite-tools/import', form)
+    },
+    onSuccess: invalidate,
+  })
+  return { create, update, remove, duplicate, importFile }
 }

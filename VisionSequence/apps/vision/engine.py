@@ -468,6 +468,11 @@ def execute(
                 report.warnings.append(NO_CHECK_WARNING)
         else:
             named_outputs["judge"] = _judge_for_status(report.status)
+    # 複合工具：內部節點的報告摺成實例一筆（判定與具名輸出已算完，摺疊不影響它們）
+    if compiled.composites:
+        from apps.vision import composites
+
+        composites.fold_report(report, compiled.composites)
     report.context = {k: _jsonable(v) for k, v in context.items() if not k.startswith("_")}
     report.outputs = _jsonable(named_outputs)
     report.finished_at = time.time()

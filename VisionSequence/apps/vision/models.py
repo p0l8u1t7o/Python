@@ -17,7 +17,10 @@ from django.db.models import Q
 
 
 class Flow(models.Model):
+    #: flow＝一般流程；tool＝複合工具的內部圖（流程清單不列、不可直接執行，由 CompositeTool 擁有）
+    KINDS = ("flow", "tool")
     name = models.CharField(max_length=120, unique=True)
+    kind = models.CharField(max_length=8, choices=[(v, v) for v in KINDS], default="flow", db_index=True)
     description = models.TextField(blank=True, default="")
     graph = models.JSONField(default=dict)
     #: 擁有者；null = 共用（示範流程、被刪除使用者留下的流程），管理員才能改。
@@ -61,6 +64,27 @@ class InspectionTrial(models.Model):
     judge = models.CharField(max_length=200, blank=True)
     executed_at = models.DateTimeField()
     executed_by = models.CharField(max_length=150)
+
+
+class CompositeTool(models.Model):
+    """複合工具（PRODUCT-DIRECTION v2 §3）：用底層工具接好線、宣告對外介面就是一個新工具；內部圖在 `flow`（kind=tool）。"""
+
+    key = models.CharField(max_length=64, unique=True)
+    label = models.CharField(max_length=120)
+    description = models.TextField(blank=True, default="")
+    category = models.CharField(max_length=32, default="logic")
+    icon = models.CharField(max_length=64, default="Boxes")
+    #: 內建的八種檢測任務工具：唯讀，只能「另存為我的工具」
+    builtin = models.BooleanField(default=False)
+    flow = models.OneToOneField(Flow, on_delete=models.CASCADE, related_name="composite_tool")
+    #: 對外介面 {inputs: [PortSpec], outputs: [PortSpec], params: [ParamSpec]}，key 是 `<inner>:<port>`
+    interface = models.JSONField(default=dict, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="composite_tools")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"{self.label} ({self.key})"
 
 
 class EngineeringNote(models.Model):

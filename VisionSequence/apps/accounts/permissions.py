@@ -27,6 +27,7 @@ FEATURES: dict[str, tuple[bool, bool]] = {
     "flows.run": (True, True),       # 執行一次、試執行、連續模式
     "flows.teach": (True, True),     # 參數卡（現場教導參數）與換線
     "flows.edit": (True, False),     # 建立、修改、刪除流程圖
+    "tools.edit": (True, False),     # 工具庫：建立、修改、刪除複合工具（操作員只能用）
     "sources": (True, False),        # 影像來源
     "assets": (True, False),         # 範本影像、模型、資料集
     "batch": (True, False),          # 批次測試

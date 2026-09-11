@@ -66,6 +66,7 @@ from apps.vision.api_spc import router as spc_router  # noqa: E402
 from apps.vision.api_fixed import router as fixed_router  # noqa: E402
 from apps.vision.api_inspect import router as inspect_router  # noqa: E402
 from apps.vision.api_notes import router as notes_router  # noqa: E402
+from apps.vision.api_composites import router as composites_router  # noqa: E402
 from apps.vision.api_settings import router as settings_router  # noqa: E402
 from apps.vision.api_teach import router as teach_router  # noqa: E402
 from apps.vision.api_variables import router as variables_router  # noqa: E402
@@ -85,6 +86,7 @@ api.add_router("/users", users_router)
 api.add_router("/vision/lock", lock_router)
 # flow-io 與 golden 先註冊：`/flows/import` 不能被 `/flows/{flow_id}` 吃掉（ninja 路徑參數不帶型別）。
 api.add_router("/vision", flowio_router)
+api.add_router("/vision", composites_router)
 api.add_router("/vision", golden_router)
 api.add_router("/vision", batch_router)
 api.add_router("/vision", precision_router)

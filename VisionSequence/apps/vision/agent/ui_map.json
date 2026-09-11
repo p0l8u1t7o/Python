@@ -1021,6 +1021,48 @@
    ]
   },
   {
+   "route": "/tools",
+   "id": "tools",
+   "names": {
+    "en": "Tool library",
+    "zh-Hant": "工具庫",
+    "zh-Hans": "工具库"
+   },
+   "summary": {
+    "en": "Composite tools built from other tools: create, edit on their own canvas, export and import",
+    "zh-Hant": "用其他工具組成的複合工具：新增、在工具的畫布上編輯、匯出與匯入",
+    "zh-Hans": "用其他工具组成的复合工具：新增、在工具的画布上编辑、导出与导入"
+   },
+   "feature": "tools.edit",
+   "actions": [
+    {
+     "en": "New tool",
+     "zh-Hant": "新增工具",
+     "zh-Hans": "新增工具"
+    },
+    {
+     "en": "Import",
+     "zh-Hant": "匯入",
+     "zh-Hans": "导入"
+    }
+   ]
+  },
+  {
+   "route": "/tools/:toolId",
+   "id": "tool_open",
+   "names": {
+    "en": "Tool",
+    "zh-Hant": "工具",
+    "zh-Hans": "工具"
+   },
+   "summary": {
+    "en": "Composite tools built from other tools: create, edit on their own canvas, export and import",
+    "zh-Hant": "用其他工具組成的複合工具：新增、在工具的畫布上編輯、匯出與匯入",
+    "zh-Hans": "用其他工具组成的复合工具：新增、在工具的画布上编辑、导出与导入"
+   },
+   "feature": "tools.edit"
+  },
+  {
    "route": "/calibration",
    "id": "calibration",
    "names": {

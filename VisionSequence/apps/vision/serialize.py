@@ -29,10 +29,11 @@ from apps.vision.graph import validate_graph
 from apps.vision.models import Asset, Flow
 
 SCHEMA_VERSION = 1
-DOC_KEYS = ("schema_version", "exported_at", "name", "description", "continuous_interval_ms", "graph", "fixed_images", "assets", "asset_warnings")
+DOC_KEYS = ("schema_version", "exported_at", "name", "description", "continuous_interval_ms", "graph", "fixed_images", "assets", "asset_warnings", "composite_tools")
 NODE_KEYS = ("id", "type", "label", "description", "enabled", "continue_on_error", "color", "params", "position", "width", "height")
 EDGE_KEYS = ("id", "source", "source_handle", "target", "target_handle")
 ASSET_REPORT_KEY = "_asset_import"
+COMPOSITE_REPORT_KEY = "_composite_import"
 
 
 def _ordered(obj: dict[str, Any], first: tuple[str, ...]) -> dict[str, Any]:
@@ -114,6 +115,12 @@ def export_flow(flow: Flow, *, include_assets: bool = False) -> dict[str, Any]:
         doc["assets"] = assets
         if warnings["skipped"]:
             doc["asset_warnings"] = warnings
+    # 用到的複合工具一起帶走（含巢狀），匯入端沒有就建起來（PRODUCT-DIRECTION v2 §3-8）
+    from apps.vision import composites
+
+    deps = composites.dependency_docs(flow.graph or {})
+    if deps:
+        doc["composite_tools"] = deps
     return {k: doc[k] for k in DOC_KEYS if k in doc}
 
 
@@ -351,6 +358,16 @@ def write_file(doc: dict[str, Any], path: str) -> None:
         f.write(to_bytes(doc))
 
 
+def parse_any(text: str | bytes) -> Any:
+    """只做 JSON 解碼（.tool.json 這類其他文件自己驗證形狀）。"""
+    if isinstance(text, bytes):
+        text = text.decode("utf-8-sig")
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValidationError(f"Not valid JSON: {exc}", code="bad_json") from None
+
+
 def parse(text: str | bytes) -> dict[str, Any]:
     if isinstance(text, bytes):
         text = text.decode("utf-8-sig")
@@ -397,6 +414,9 @@ def import_flow(doc: dict[str, Any], *, source_id: int | None = None, owner=None
     更新既有流程且未指定 source_id 時，取像步驟沿用原流程的來源。"""
     restore_fixed_images(doc)
     restore_assets(doc)
+    from apps.vision import composites
+
+    doc[COMPOSITE_REPORT_KEY] = composites.import_dependencies(owner, doc)
     graph = materialize_graph(doc, source_id=source_id)
     name = str(doc["name"]).strip()
     description = str(doc.get("description") or "")

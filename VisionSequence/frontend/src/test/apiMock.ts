@@ -875,7 +875,9 @@ export const ME = {
   prefs: {}, lock: { locked: false, holder: '', reason: '', expires_at: null },
 }
 
-export const FLOW = { id: 1, name: '示範流程', description: 'Inspect the sample part and publish width.', version: 1, is_enabled: true, continuous_interval_ms: 0, timeout_s: 0, concurrency: 1, stop_on_ng: false, owner_id: 1, owner_name: 'admin', recipe_count: 0, commissioned: false, check_count: 1, stats: { last_status: 'ok', total: 3, ok: 3, ng: 0, failed: 0, avg_ms: 5, last_ms: 5, running: false, continuous: false, queued: 0 }, graph: { nodes: [{ id: 'camera', type: 'image_source', label: 'Camera', params: { source_id: 1 } }, { id: 'thr', type: 'threshold', label: 'Threshold', params: { method: 'fixed', threshold: 60 } }, { id: 'judge_out', type: 'output', params: { name: 'judge' } }, { id: 'width_out', type: 'output', params: { name: 'width' } }], edges: [] }, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }
+export const FLOW = { id: 1, kind: 'flow', name: '示範流程', description: 'Inspect the sample part and publish width.', version: 1, is_enabled: true, continuous_interval_ms: 0, timeout_s: 0, concurrency: 1, stop_on_ng: false, owner_id: 1, owner_name: 'admin', recipe_count: 0, commissioned: false, check_count: 1, stats: { last_status: 'ok', total: 3, ok: 3, ng: 0, failed: 0, avg_ms: 5, last_ms: 5, running: false, continuous: false, queued: 0 }, graph: { nodes: [{ id: 'camera', type: 'image_source', label: 'Camera', params: { source_id: 1 } }, { id: 'thr', type: 'threshold', label: 'Threshold', params: { method: 'fixed', threshold: 60 } }, { id: 'judge_out', type: 'output', params: { name: 'judge' } }, { id: 'width_out', type: 'output', params: { name: 'width' } }], edges: [] }, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }
+export const COMPOSITE_TOOL = { id: 7, key: 'count_holes', type: 'composite:count_holes', label: 'Count holes', description: 'Threshold and count', category: 'detect', category_label: 'Detection', icon: 'Boxes', builtin: false, flow_id: 77, interface: { inputs: [{ key: 'thr:image', exposed: true }], outputs: [{ key: 'blob:count', exposed: true }] }, created_by: 'admin', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', version: 1, used_by_flows: 1, used_by_tools: 0, uses: [] }
+export const FLOW_TOOL = { ...FLOW, id: 77, kind: 'tool', name: 'tool:count_holes', description: 'Threshold and count', is_enabled: false, composite_tool: { id: 7, key: 'count_holes', label: 'Count holes', builtin: false, interface: { inputs: [{ key: 'thr:image', exposed: true }], outputs: [{ key: 'blob:count', exposed: true }], params: [{ key: 'thr:threshold', alias: 'Level', teach: true }] } }, graph: { nodes: [{ id: 'thr', type: 'threshold', label: 'Threshold', params: { method: 'fixed', threshold: 60 } }, { id: 'blob', type: 'blob', label: 'Blob', params: {} }], edges: [{ id: 'e1', source: 'thr', source_handle: 'image', target: 'blob', target_handle: 'image' }] } }
 export const FLOW_BARE = { ...FLOW, id: 9, name: '只有取像', check_count: 0, graph: { nodes: [FLOW.graph.nodes[0]], edges: [] } }
 export const FLOW_SIDE = { ...FLOW, id: 2, name: '側面流程', graph: { ...FLOW.graph, nodes: FLOW.graph.nodes.map((node) => node.id === 'thr' ? { ...node, params: { method: 'fixed', threshold: 80 } } : node) } }
 export const FLOW_GROUPED = {
@@ -1006,6 +1008,9 @@ export const DASHBOARD_DATA = {
 
 export function routes(path: string, body?: unknown): unknown {
   if (/\/vision\/inspect\/\d+\/last-trial$/.test(path)) return { trial: null, saved: true }
+  if (path === '/vision/composite-tools') return body ? { ...COMPOSITE_TOOL, ...(body as object), id: 8 } : { items: [COMPOSITE_TOOL] }
+  if (/\/vision\/composite-tools\/\d+\/usage$/.test(path)) return { flows: [{ id: 1, name: '示範流程', count: 1 }], tools: [] }
+  if (/\/vision\/composite-tools\/\d+$/.test(path)) return { ...COMPOSITE_TOOL, graph: { nodes: [], edges: [] } }
   if (path === '/vision/notes') return body ? { ...ENGINEERING_NOTE, ...(body as object), status: 'draft' } : { items: [ENGINEERING_NOTE], total: 1 }
   if (/^\/vision\/notes\/\d+/.test(path)) return { ...ENGINEERING_NOTE, ...(body as object ?? {}), status: path.endsWith('/confirm') ? 'confirmed' : path.endsWith('/retract') ? 'retracted' : 'draft' }
   if (path.startsWith('/vision/inspect/')) return inspectMock(path, body)
@@ -1030,6 +1035,7 @@ export function routes(path: string, body?: unknown): unknown {
   if (path.startsWith('/vision/summary')) return { station_id: 'ST01', version: '1.0.0', hours: 24, locked: false, totals: { total: 0, ok: 0, ng: 0, failed: 0, yield: null }, flows: [] }
   if (path.startsWith('/vision/audit')) return { items: [{ id: 1, at: '2026-01-01T00:00:00Z', actor: 'admin', actor_kind: 'user', action: 'flow.update', target_type: 'flow', target_id: '1', target_name: '示範流程', summary: 'threshold 60 → 46', detail: {}, ip: '127.0.0.1' }], total: 1, limit: 50, offset: 0, actions: ['flow.update'], actors: ['admin'] }
   if (/\/vision\/flows\/3$/.test(path)) return FLOW_GROUPED
+  if (/\/vision\/flows\/77$/.test(path)) return FLOW_TOOL
   if (path === '/vision/dashboards') return { items: [DASHBOARD, DASHBOARD_CHILD] }
   if (path === '/vision/dashboards/default') return DASHBOARD
   if (/\/vision\/dashboards\/\d+\/data$/.test(path)) return DASHBOARD_DATA

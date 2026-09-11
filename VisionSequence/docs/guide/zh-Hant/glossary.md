@@ -12,6 +12,7 @@
 | Tool page | 工具頁 | `/flows/:id/tools/:nodeId` | ToolPage | 專用於調校單一步驟；左參數、中影像與參考資訊、右操作按鈕 |
 | Image sources | 影像來源 | `/sources` | SourcesPage | 相機、資料夾、合成來源與使用者群組 |
 | Assets | 資產 | `/assets` | AssetsPage | 樣板影像、模型檔與資料集封存 |
+| Tool library | 工具庫 | `/tools` | ToolLibraryPage | 站台的複合工具：新增、編輯（開啟工具的畫布）、另存複本、匯出與匯入 `.tool.json`、刪除（仍被流程使用時擋下）。編輯需要 `tools.edit` 功能。 |
 | Users | 使用者 | `/users` | UsersPage | 帳號管理 |
 | Settings | 設定 | `/settings` | SettingsPage | key、主題、語言、引擎鎖與密碼 |
 | Help | 說明 | `/help` | HelpPage | 定義與操作說明 |
@@ -131,6 +132,9 @@
 | Asset | 資產 | 樣板影像、ONNX 模型或資料集封存等檔案。 |
 | Judge | 判定 | judge 工具產生的 OK/NG 結論。 |
 | Named output | 命名輸出 | output 工具回傳給自動化系統的 key/value。 |
+| Composite tool | 複合工具 | 用其他工具建立的工具：內部圖加上對外介面；放在工具庫、像內建工具一樣出現在工具選擇器，流程執行時展平成內部步驟（`composite:<key>`）。 |
+| Encapsulate as tool | 封裝成工具 | 把畫布上選取的步驟變成一個複合工具；選取範圍換成一個步驟，跨越它的連線變成埠。 |
+| Interface (composite tool) | 對外介面 | 哪些內部埠是工具的輸入與輸出、順序與顯示名稱，以及哪些內部參數出現在它的參數表（可標為教導參數）。 |
 | Variable | 變數 | 流程在執行間保留的值。 |
 | Board | 運行介面 | 流程的操作員畫面，顯示輸出、影像、今日計數與變數。 |
 | Calibration | 標定 | 保存鏡頭校正與像素到實體映射的資產。 |

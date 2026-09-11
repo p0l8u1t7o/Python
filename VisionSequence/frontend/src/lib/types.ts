@@ -91,6 +91,8 @@ export interface ToolTypeDef {
   cases_param?: string
   /** 內建／資料夾外掛／複合工具 */
   source?: 'builtin' | 'plugin' | 'composite'
+  /** 複合工具：工具庫的 id、內部流程 id（進入編輯）、是否內建 */
+  composite?: { id: number; flow_id: number; builtin: boolean; tool_key: string }
   params: ToolParam[]
   inputs: ToolPort[]
   outputs: ToolPort[]
@@ -122,6 +124,45 @@ export interface NodeInterface {
   inputs?: PortSpec[]
   outputs?: PortSpec[]
   params?: ParamSpec[]
+}
+
+/** 流程回應裡的複合工具摘要（kind=tool 的流程才有）。 */
+export interface CompositeToolSummary {
+  id: number
+  key: string
+  label: string
+  builtin: boolean
+  interface: NodeInterface
+}
+
+/** 工具庫的複合工具（PRODUCT-DIRECTION v2 §3／§5）。 */
+export interface CompositeTool {
+  id: number
+  key: string
+  /** 工具箱的型別：`composite:<key>` */
+  type: string
+  label: string
+  description: string
+  category: string
+  category_label: string
+  icon: string
+  builtin: boolean
+  flow_id: number
+  interface: NodeInterface
+  graph?: FlowGraph
+  created_by: string
+  created_at: string
+  updated_at: string
+  version: number
+  used_by_flows?: number
+  used_by_tools?: number
+  /** 這個工具內部用到的其他複合工具 key */
+  uses?: string[]
+}
+
+export interface CompositeUsage {
+  flows: { id: number; name: string; count: number }[]
+  tools: { id: number; key: string; label: string; count: number }[]
 }
 
 export interface InspectMeta {
@@ -384,6 +425,9 @@ export interface FlowStats {
 }
 
 export interface Flow {
+  /** flow＝一般流程；tool＝複合工具的內部圖（PRODUCT-DIRECTION v2 §3；流程清單不列、編輯器切成工具模式） */
+  kind?: 'flow' | 'tool'
+  composite_tool?: CompositeToolSummary | null
   archive_policy?: ArchivePolicy
   /** 現場看板設定（apps/vision/board.py）；空物件＝預設 */
   board?: import('./board').BoardConfig
@@ -778,7 +822,7 @@ export interface EngineLock {
 /** 功能鍵（accounts/permissions.py 的 FEATURES）：管理員勾選哪些角色能用。 */
 export type Feature =
   | 'flows.run' | 'flows.teach' | 'flows.edit' | 'sources' | 'assets'
-  | 'batch' | 'golden' | 'dl' | 'agent' | 'integration' | 'connections' | 'audit'
+  | 'batch' | 'golden' | 'dl' | 'agent' | 'integration' | 'connections' | 'audit' | 'tools.edit'
 
 export interface RolePermissions {
   features: { key: Feature; default: { engineer: boolean; operator: boolean } }[]

@@ -529,11 +529,23 @@ def get(key: str) -> ToolType:
     try:
         return _REGISTRY[key]
     except KeyError:
+        composite = _composite(key)
+        if composite is not None:
+            return composite
         raise UnknownToolType(key, list(_REGISTRY)) from None
 
 
 def has(key: str) -> bool:
-    return key in _REGISTRY
+    return key in _REGISTRY or _composite(key) is not None
+
+
+def _composite(key: str):
+    """`composite:<key>` 的工具型別由資料庫建成（apps/vision/composites.py）；內建登錄表查不到才來這裡。"""
+    if not isinstance(key, str) or not key.startswith("composite:"):
+        return None
+    from apps.vision import composites
+
+    return composites.registry().get(key)
 
 
 def all_types() -> list[ToolType]:
@@ -610,6 +622,9 @@ class ImplicitPort:
     accepts_semantics: tuple[str, ...] = ()
 
     def shows_on(self, tool: ToolType) -> bool:
+        # 複合工具沒有直通影像與標記埠（內部節點各自有）；位置修正埠仍看有沒有 roi 參數
+        if not getattr(tool, "implicit_ports", True) and self.key != TRANSFORM_IN:
+            return False
         return self.catalogued and (self.when is None or self.when(tool))
 
     def as_dict(self) -> dict[str, Any]:
@@ -673,6 +688,8 @@ def _with_default_primary(ports: list[dict[str, Any]], direction: str) -> list[d
 
 
 def catalogue() -> list[dict[str, Any]]:
+    from apps.vision import composites
+
     return [
         {
             "key": t.key,
@@ -690,8 +707,10 @@ def catalogue() -> list[dict[str, Any]]:
             "params": [p.as_dict() for p in t.params],
             "inputs": _with_default_primary([p.as_dict() for p in t.inputs] + [s.as_dict() for s in IMPLICIT_INPUTS if s.shows_on(t)], "in"),
             "outputs": _with_default_primary([p.as_dict() for p in t.outputs] + [s.as_dict() for s in IMPLICIT_OUTPUTS if s.shows_on(t)], "out"),
+            # 複合工具多帶自己的 id／內部流程 id／是否內建：工具庫與「進入編輯」用（PRODUCT-DIRECTION v2 §3-5）
+            **({"composite": {"id": t.tool_id, "flow_id": t.flow_id, "builtin": t.builtin, "tool_key": t.tool_key}} if getattr(t, "source", "") == "composite" else {}),
         }
-        for t in all_types()
+        for t in [*all_types(), *composites.all_types()]
     ]
 
 

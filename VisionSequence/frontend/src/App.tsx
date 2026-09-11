@@ -42,6 +42,8 @@ const ToolPage = lazy(() => import('@/pages/ToolPage').then((m) => ({ default: m
 const UsersPage = lazy(() => import('@/pages/UsersPage').then((m) => ({ default: m.UsersPage })))
 const AuditPage = lazy(() => import('@/pages/AuditPage').then((m) => ({ default: m.AuditPage })))
 const NotesPage = lazy(() => import('@/pages/NotesPage').then((m) => ({ default: m.NotesPage })))
+const ToolLibraryPage = lazy(() => import('@/pages/ToolLibraryPage').then((m) => ({ default: m.ToolLibraryPage })))
+const ToolOpenPage = lazy(() => import('@/pages/ToolLibraryPage').then((m) => ({ default: m.ToolOpenPage })))
 
 function RequireAuth() {
   const auth = useAuth()
@@ -74,6 +76,8 @@ const router = createBrowserRouter([
           { path: 'flows/:flowId/teach', element: <TeachPage /> },
           { path: 'flows/:flowId/golden', element: <GoldenPage /> },
           { path: 'flows/:flowId/inspect', element: <InspectPage /> },
+          { path: 'tools', element: <ToolLibraryPage /> },
+          { path: 'tools/:toolId', element: <ToolOpenPage /> },
           { path: 'teach', element: <StationTeachPage /> },
           { path: 'batch', element: <BatchPage /> },
           { path: 'dl', element: <DlPage /> },

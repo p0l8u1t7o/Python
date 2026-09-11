@@ -76,7 +76,7 @@ def h_list_flows(p: Any, args: dict[str, Any]) -> dict[str, Any]:
     from apps.vision.runner import runner
 
     q = str(args.get("query") or "").strip()
-    qs = Flow.objects.all().order_by("name")
+    qs = Flow.objects.filter(kind="flow").order_by("name")
     if q:
         qs = qs.filter(name__icontains=q)
     items = []

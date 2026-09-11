@@ -6,7 +6,7 @@
 import { Suspense, useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Activity, Brain, Camera, ChevronDown, ChevronRight, FlaskConical, GraduationCap, HelpCircle, History, Images, KeyRound, LayoutDashboard, Library, LogOut, Menu, Plug, Ruler, ScanSearch, Settings, ShieldCheck, SlidersHorizontal, Sparkles, UserRound, Users, Workflow } from 'lucide-react'
+import { Activity, Boxes, Brain, Camera, ChevronDown, ChevronRight, FlaskConical, GraduationCap, HelpCircle, History, Images, KeyRound, LayoutDashboard, Library, LogOut, Menu, Plug, Ruler, ScanSearch, Settings, ShieldCheck, SlidersHorizontal, Sparkles, UserRound, Users, Workflow } from 'lucide-react'
 
 import { AssistantDock } from '@/components/assistant/AssistantDock'
 import { ChangePasswordModal } from '@/components/auth/ChangePasswordModal'
@@ -50,6 +50,7 @@ const NAV: NavNode[] = [
     key: 'resources', icon: Library, children: [
       { to: '/sources', key: 'sources', icon: Camera, end: false, feature: 'sources' },
       { to: '/assets', key: 'assets', icon: Images, end: false, feature: 'assets' },
+      { to: '/tools', key: 'tools', icon: Boxes, end: false, feature: 'tools.edit' },
     ],
   },
   { to: '/integration', key: 'integration', icon: Plug, end: false, feature: 'integration', sections: true },
@@ -221,7 +222,13 @@ function Breadcrumb() {
   if (parts.length) {
     const nav = NAV_LEAVES.find((n) => n.to === `/${parts[0]}`)
     if (nav) crumbs.push({ label: t(`nav.${nav.key}`), to: parts.length > 1 ? nav.to : undefined })
-    if (flowId !== null) {
+    if (flowId !== null && flow.data?.kind === 'tool') {
+      // 複合工具的畫布：從工具庫進來，麵包屑也回工具庫（PRODUCT-DIRECTION v2 §3-5）
+      crumbs.splice(1, crumbs.length - 1, { label: t('nav.tools'), to: '/tools' })
+      crumbs.push({ label: `${t('breadcrumb.tool')}: ${flow.data.composite_tool?.label ?? flow.data.name}`, to: flowMatch?.[2] ? `/flows/${flowId}` : undefined })
+      const sub = flowMatch?.[2]
+      if (sub) crumbs.push({ label: t(`breadcrumb.${sub}`) })
+    } else if (flowId !== null) {
       crumbs.push({ label: flow.data?.name ?? `#${flowId}`, to: flowMatch?.[2] ? `/flows/${flowId}` : undefined })
       const sub = flowMatch?.[2]
       if (sub) crumbs.push({ label: t(`breadcrumb.${sub}`) })

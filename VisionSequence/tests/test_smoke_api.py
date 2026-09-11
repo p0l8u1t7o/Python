@@ -101,6 +101,7 @@ class GetEndpointsSmokeTests(TransactionTestCase):
         fid, sid, aid = self.flow.id, self.source.id, self.asset.id
         paths = [
             "/api/vision/notes", "/api/vision/notes/999999",
+            "/api/vision/composite-tools", "/api/vision/composite-tools/999999",
             "/api/vision/agent/chats/999999/resume",
             "/api/auth/me", "/api/vision/lock", "/api/users", "/api/users/permissions",
             "/api/vision/flows", f"/api/vision/flows/{fid}", f"/api/vision/flows/{fid}/recent?limit=1", f"/api/vision/flows/{fid}/stats", f"/api/vision/flows/{fid}/spc", "/api/vision/spc/alerts",

@@ -4,9 +4,10 @@
  */
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ClipboardCopy, ClipboardPaste, Copy, Eye, EyeOff, Layers2, SlidersHorizontal, Trash2, Play } from 'lucide-react'
+import { Boxes, ClipboardCopy, ClipboardPaste, Copy, Eye, EyeOff, Layers2, SlidersHorizontal, Trash2, Play } from 'lucide-react'
 
 import type { GraphNode } from '@/lib/types'
+import { isCompositeType } from '@/lib/composite'
 
 export interface NodeMenuState {
   x: number
@@ -18,6 +19,10 @@ export interface NodeContextMenuProps {
   menu: NodeMenuState | null
   onClose: () => void
   onOpenTool: (node: GraphNode) => void
+  /** 把目前選取的步驟封裝成複合工具（PRODUCT-DIRECTION v2 §3-4） */
+  onEncapsulate?: (node: GraphNode) => void
+  /** 複合工具節點：進入它自己的畫布 */
+  onEditComposite?: (node: GraphNode) => void
   /** 只跑到這一步（含上游）；試執行被鎖定時不給 */
   onRunTo?: (node: GraphNode) => void
   onDuplicate: (node: GraphNode) => void
@@ -78,9 +83,11 @@ export function NodeContextMenu(p: NodeContextMenuProps) {
     <div ref={ref} role="menu" className="fixed z-50 w-48 rounded-xl border border-line bg-surface p-1 shadow-xl" style={{ left: x, top: y }} data-testid="node-menu">
       <p className="truncate px-2 py-1 text-[11px] font-medium text-muted">{node.label || node.type}</p>
       {!isNote ? item(t('nodeMenu.openTool'), <SlidersHorizontal size={13} />, () => p.onOpenTool(node)) : null}
+      {!isNote && isCompositeType(node.type) && p.onEditComposite ? item(t('nodeMenu.editComposite'), <Boxes size={13} />, () => p.onEditComposite?.(node)) : null}
       {!isNote && p.onRunTo ? item(t('nodeMenu.runTo'), <Play size={13} />, () => p.onRunTo?.(node), { disabled: node.enabled === false, title: t('nodeMenu.runToHint') }) : null}
       {!isNote && node.type !== 'image_source' && node.type !== 'fixed_image' && node.meta?.inspect?.task_id && p.onCollapseTask ? item(t('nodeMenu.collapseTask'), <Layers2 size={13} />, () => p.onCollapseTask?.(node)) : null}
       {item(t('nodeMenu.duplicate'), <Copy size={13} />, () => p.onDuplicate(node))}
+      {!isNote && p.onEncapsulate ? item(t('nodeMenu.encapsulate'), <Boxes size={13} />, () => p.onEncapsulate?.(node)) : null}
       {!isNote ? item(node.enabled === false ? t('nodeMenu.enable') : t('nodeMenu.disable'), node.enabled === false ? <Eye size={13} /> : <EyeOff size={13} />, () => p.onToggleEnabled(node)) : null}
       {!isNote ? (
         <>

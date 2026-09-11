@@ -27,13 +27,16 @@ import {
   type Node,
   type NodeChange,
 } from '@xyflow/react'
-import { Camera, Check, ChevronDown, ChevronUp, Columns2, FileText, Layers, LayoutGrid, RotateCcw, X } from 'lucide-react'
+import { Boxes, Camera, Check, ChevronDown, ChevronUp, Columns2, FileText, Layers, LayoutGrid, RotateCcw, X } from 'lucide-react'
 import { MOBILE_QUERY, useMediaQuery } from '@/lib/useMediaQuery'
 
 import { EditorToolbar } from '@/components/editor/EditorToolbar'
 import { FlowCanvas, readInteractionMode, storeInteractionMode, type InteractionMode } from '@/components/editor/FlowCanvas'
 import { Inspector } from '@/components/editor/Inspector'
 import { NodeContextMenu, type NodeMenuState } from '@/components/editor/NodeContextMenu'
+import { CompositeInterfaceEditor } from '@/components/editor/CompositeInterfaceEditor'
+import { splitCompositeKey } from '@/lib/composite'
+import { EncapsulateDialog } from '@/components/editor/EncapsulateDialog'
 import { NodeList } from '@/components/editor/NodeList'
 import { FavoriteTools, ToolPicker, readFavorites, writeFavorites } from '@/components/editor/ToolPalette'
 import { NodeResult, RecentRunsTable, RunErrorBlock, RunWarnings, SpanTimingCard } from '@/components/editor/ResultsPanel'
@@ -63,9 +66,9 @@ import { countFolderPreviewFiles, countPreviewSequenceResult, createPreviewSeque
 import { describeReport, publishAssistantProgress, useRegisterAssistantContext } from '@/lib/assistantContext'
 import { useFlowStream, type StreamEvent } from '@/lib/flowStream'
 import { DECORATION_TYPES, checkConnection, graphProblems } from '@/lib/graphValidation'
-import { useAssetMutations, useClearRecent, useContinuous, useFlow, useFlowMutations, usePreviewFlow, useRecentRuns, useRecipes, useScratchImage, useSources, useToolTypes, type FlowPatch } from '@/lib/queries'
+import { fetchCompositeUsage, useAssetMutations, useClearRecent, useCompositeToolMutations, useContinuous, useFlow, useFlowMutations, usePreviewFlow, useRecentRuns, useRecipes, useScratchImage, useSources, useToolTypes, type FlowPatch } from '@/lib/queries'
 import { graphOutputNames } from '@/lib/portLayout'
-import { isImageRef, type FlowGraph, type GraphEdge, type GraphNode, type NodeReport, type Overlay, type Region, type RunReport, type ToolTypeDef } from '@/lib/types'
+import { isImageRef, type FlowGraph, type GraphEdge, type GraphNode, type NodeInterface, type NodeReport, type Overlay, type Region, type RunReport, type ToolTypeDef } from '@/lib/types'
 import { isLockHolder, useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
 
@@ -260,6 +263,16 @@ function EditorInner({ flowId }: { flowId: number }) {
 
   const catalogue = useToolTypes()
   const flow = useFlow(flowId)
+  //: 複合工具的畫布（Flow.kind=tool）：同一個編輯器、另一種存法——儲存走工具庫端點並先列影響清單（PRODUCT-DIRECTION v2 §3-5）
+  const compositeTool = flow.data?.kind === 'tool' ? flow.data.composite_tool ?? null : null
+  const toolMode = Boolean(compositeTool)
+  const toolModeRef = useRef(toolMode)
+  toolModeRef.current = toolMode
+  const compositeMutations = useCompositeToolMutations()
+  const [toolInterface, setToolInterface] = useState<NodeInterface>({})
+  const [encapsulateOpen, setEncapsulateOpen] = useState(false)
+  //: 封裝完成的圖先掛著，等工具目錄抓回新工具的定義再套上畫布（不然實例沒有把手、接過去的線靜默不畫）
+  const [pendingGraph, setPendingGraph] = useState<{ graph: FlowGraph; label: string } | null>(null)
   const recent = useRecentRuns(flowId)
   const { patch } = useFlowMutations()
   const preview = usePreviewFlow()
@@ -268,7 +281,7 @@ function EditorInner({ flowId }: { flowId: number }) {
   const clearRecent = useClearRecent()
   const { fromImage } = useAssetMutations()
   const session = useFlowSession(flowId)
-  const recipes = useRecipes(flowId)
+  const recipes = useRecipes(toolMode ? null : flowId)
   const [recipesOpen, setRecipesOpen] = useState(false)
   const { showConflict, dialog: saveConflictDialog } = useSaveConflictDialog()
 
@@ -396,7 +409,8 @@ function EditorInner({ flowId }: { flowId: number }) {
     payloads.current = new Map((graph.nodes ?? []).map((n) => [n.id, n]))
     setNodes(toFlowNodes(graph, defs))
     setEdges(toFlowEdges(graph, defs))
-    setMeta(source ? { name: source.name, description: source.description, settings: source.settings ?? settingsOf(data) } : { name: data.name, description: data.description, settings: settingsOf(data) })
+    setMeta(source ? { name: source.name, description: source.description, settings: source.settings ?? settingsOf(data) } : { name: data.composite_tool?.label ?? data.name, description: data.description, settings: settingsOf(data) })
+    setToolInterface(source?.toolInterface ?? data.composite_tool?.interface ?? {})
     setDirty(source ? source.dirty : false)
     lastAutoVersionSignature.current = flowGraphSignature(data.graph)
     history.current = createHistory<FlowGraph>(HISTORY_LIMIT)
@@ -424,13 +438,13 @@ function EditorInner({ flowId }: { flowId: number }) {
   }, [])
 
   // ---- 離開頁面時把目前的圖寫成草稿（工具頁會讀；回來時 version 相符就沿用） ----
-  const latest = useRef({ meta, dirty, version: flow.data?.version ?? 0, loaded: false })
-  latest.current = { meta, dirty, version: flow.data?.version ?? 0, loaded: loadedFor.current !== '' }
+  const latest = useRef({ meta, dirty, version: flow.data?.version ?? 0, loaded: false, toolInterface })
+  latest.current = { meta, dirty, version: flow.data?.version ?? 0, loaded: loadedFor.current !== '', toolInterface }
   useEffect(
     () => () => {
       const l = latest.current
       if (!l.loaded) return
-      setDraft(flowId, { baseVersion: l.version, graph: currentGraph(), name: l.meta.name, description: l.meta.description, settings: l.meta.settings, dirty: l.dirty })
+      setDraft(flowId, { baseVersion: l.version, graph: currentGraph(), name: l.meta.name, description: l.meta.description, settings: l.meta.settings, toolInterface: l.toolInterface, dirty: l.dirty })
     },
     [flowId, currentGraph],
   )
@@ -439,7 +453,7 @@ function EditorInner({ flowId }: { flowId: number }) {
   /** 引擎被鎖：整合方與鎖的持有者仍可執行，其他人（含管理員）只能編輯。 */
   const execLocked = auth.lock.locked && auth.me?.kind !== 'integrator' && !isLockHolder(auth.me, auth.lock)
   /** 共用（或別人的）流程一般使用者不能改，只能複製。 */
-  const readOnly = !auth.isEngineer  // 流程屬於產線：工程師都能改，操作員只能在參數卡頁調現場參數
+  const readOnly = toolMode ? !auth.can('tools.edit') || Boolean(compositeTool?.builtin) : !auth.isEngineer  // 流程屬於產線：工程師都能改，操作員只能在參數卡頁調現場參數；工具庫另有功能鍵
   const lockHint = execLocked ? t('lock.execDisabled', { holder: auth.lock.holder === 'integrator' ? t('lock.integrator') : auth.lock.holder }) : undefined
 
   const latestAutoVersion = useRef({ meta, dirty, readOnly })
@@ -448,7 +462,7 @@ function EditorInner({ flowId }: { flowId: number }) {
   useEffect(() => {
     const saveDraftVersion = async () => {
       const l = latestAutoVersion.current
-      if (l.readOnly || autoVersionSaving.current) return
+      if (l.readOnly || autoVersionSaving.current || toolModeRef.current) return
       const graph = currentGraph()
       const signature = flowGraphSignature(graph)
       if (!shouldSaveDraftVersion({ enabled: readFlowDraftAutoVersion(), dirty: l.dirty, currentSignature: signature, lastSavedSignature: lastAutoVersionSignature.current })) return
@@ -540,7 +554,13 @@ function EditorInner({ flowId }: { flowId: number }) {
     if (valid.size !== collapsedTasks.size) storeCollapsedTasks(valid)
   }, [collapsedTasks, taskGroupById, storeCollapsedTasks])
 
-  const problemMap = useMemo(() => graphProblems(graphNodes, graphEdges, defs), [graphNodes, graphEdges, defs])
+  // 工具模式：已對外的輸入埠由外部供給，不算「必填未接」（用一條來自虛擬節點的邊表示）
+  const problemEdges = useMemo(() => {
+    if (!toolMode) return graphEdges
+    const fed = (toolInterface.inputs ?? []).filter((spec) => spec.exposed === true).map((spec) => splitCompositeKey(spec.key))
+    return [...graphEdges, ...fed.map(({ inner, port }) => ({ id: `_tool_input-${inner}-${port}`, source: '_tool_input', source_handle: 'image', target: inner, target_handle: port }))]
+  }, [toolMode, toolInterface, graphEdges])
+  const problemMap = useMemo(() => graphProblems(graphNodes, problemEdges, defs), [graphNodes, problemEdges, defs])
   const boardOutputNames = useMemo(() => graphOutputNames(graphNodes, defs), [graphNodes, defs])
   const boardImageNodes = useMemo(
     () => graphNodes.filter((n) => defs.get(n.type)?.outputs.some((p) => p.type === 'image' && !p.implicit)).map((n) => ({ id: n.id, label: n.label || defs.get(n.type)?.label || n.id })),
@@ -666,6 +686,15 @@ function EditorInner({ flowId }: { flowId: number }) {
     },
     [defs, setNodes, setEdges],
   )
+
+  useEffect(() => {
+    if (!pendingGraph) return
+    if (!pendingGraph.graph.nodes.every((node) => DECORATION_TYPES.has(node.type) || defs.has(node.type))) return
+    pushHistory()
+    restoreGraph(pendingGraph.graph)
+    toast.success(t('editor.composite.encapsulated', { name: pendingGraph.label }))
+    setPendingGraph(null)
+  }, [pendingGraph, defs, pushHistory, restoreGraph, toast, t])
 
   const undo = useCallback(() => {
     const previous = undoHistory(history.current, currentGraph())
@@ -956,6 +985,24 @@ function EditorInner({ flowId }: { flowId: number }) {
       return false
     }
     if (problemMap.size > 0) toast.warning(t('editor.toast.validationWarning', { count: problemMap.size }))
+    if (compositeTool) {
+      try {
+        const usage = await fetchCompositeUsage(compositeTool.id)
+        const names = [...usage.flows.map((item) => item.name), ...usage.tools.map((item) => item.label)]
+        if (names.length && !(await confirm(t('editor.composite.impactConfirm', { count: names.length, names: names.join(', ') }), { title: t('editor.composite.impactTitle'), confirmLabel: t('editor.save') }))) return false
+        const graph = currentGraph()
+        await compositeMutations.update.mutateAsync({ id: compositeTool.id, label: meta.name.trim() || compositeTool.label, description: meta.description, graph, interface: toolInterface })
+        const fresh = await flow.refetch()
+        if (fresh.data) markSaved(fresh.data)
+        lastAutoVersionSignature.current = flowGraphSignature(graph)
+        setDirty(false)
+        toast.success(t('editor.toast.saved'))
+        return true
+      } catch (error) {
+        toast.error(errorMessage(error))
+        return false
+      }
+    }
     try {
       const graph = currentGraph()
       const saveBody = { id: flowId, name: meta.name.trim() || t('editor.untitled'), description: meta.description, ...meta.settings, graph }
@@ -985,7 +1032,7 @@ function EditorInner({ flowId }: { flowId: number }) {
       toast.error(errorMessage(error))
       return false
     }
-  }, [readOnly, problemMap.size, patch, flowId, meta, currentGraph, toast, t, markSaved, showConflict, loadServerConflict])
+  }, [readOnly, problemMap.size, patch, flowId, meta, currentGraph, toast, t, markSaved, showConflict, loadServerConflict, compositeTool, compositeMutations.update, confirm, flow, toolInterface])
   leaveSaveRef.current = save
 
   const patchFlowSettings = useCallback(
@@ -1186,12 +1233,13 @@ function EditorInner({ flowId }: { flowId: number }) {
 
   const exportFlow = useCallback(async () => {
     try {
-      await downloadFile(`/vision/flows/${flowId}/export`, `${meta.name || 'flow'}.flow.json`)
+      if (compositeTool) await downloadFile(`/vision/composite-tools/${compositeTool.id}/export`, `${compositeTool.key}.tool.json`)
+      else await downloadFile(`/vision/flows/${flowId}/export`, `${meta.name || 'flow'}.flow.json`)
       toast.success(t('flows.exported', { name: meta.name }))
     } catch (error) {
       toast.error(errorMessage(error))
     }
-  }, [flowId, meta.name, toast, t])
+  }, [flowId, meta.name, toast, t, compositeTool])
 
   const toggleContinuous = useCallback(async () => {
     const next = !flow.data?.continuous
@@ -1528,7 +1576,8 @@ function EditorInner({ flowId }: { flowId: number }) {
         }}
         dirty={dirty}
         readOnly={readOnly}
-        saving={patch.isPending}
+        saving={patch.isPending || compositeMutations.update.isPending}
+        mode={toolMode ? 'tool' : 'flow'}
         onSave={() => void save()}
         onOpenDrawer={(which) => { setDrawer(which); if (which === 'settings') setRightTab('inspector'); if (which === 'results') setRightTab('results') }}
         problemCount={problemMap.size}
@@ -1579,7 +1628,7 @@ function EditorInner({ flowId }: { flowId: number }) {
         onExport={() => void exportFlow()}
       />
 
-      {missingSourceNode && !scratch ? (
+      {missingSourceNode && !scratch && !toolMode ? (
         <div className="flex flex-wrap items-center gap-2 border-b border-warning/40 bg-warning-soft px-3 py-1.5 text-xs text-warning" role="status" data-testid="no-source-banner">
           <span className="font-medium">{t('editor.noSourceBanner')}</span>
           <Select className="!h-7 !w-56 !py-0 text-xs" value="" aria-label={t('editor.noSourcePick')} placeholder={t('editor.noSourcePick')}
@@ -1819,7 +1868,9 @@ function EditorInner({ flowId }: { flowId: number }) {
               onNodeDoubleClick={(_e, node) => {
                 // 雙擊步驟卡片直接開工具頁（與右鍵「開啟工具頁」同一路徑：離開時 cleanup 會把草稿寫進 store）
                 setSelectedId(node.id)
-                if (node.type === 'tool' && payloads.current.has(node.id)) navigate(`/flows/${flowId}/tools/${encodeURIComponent(node.id)}`)
+                const composite = payloads.current.has(node.id) ? defs.get(payloads.current.get(node.id)?.type ?? '')?.composite : undefined
+                if (node.type === 'tool' && composite) navigate(`/flows/${composite.flow_id}`)
+                else if (node.type === 'tool' && payloads.current.has(node.id)) navigate(`/flows/${flowId}/tools/${encodeURIComponent(node.id)}`)
                 else if (node.type === 'group') expandTask(taskIdFromGroupNodeId(node.id) ?? '')
                 else setRightTab('results')
               }}
@@ -1881,7 +1932,7 @@ function EditorInner({ flowId }: { flowId: number }) {
         {/* 右：側欄（設定 / 結果；< lg 時由工具列的「設定」「結果」喚出成抽屜） */}
         <aside className={rightDrawer ? 'fixed inset-y-0 right-0 z-40 flex w-[min(92vw,380px)] shrink-0 flex-col border-l border-line bg-surface shadow-2xl' : 'hidden shrink-0 flex-col border-l border-line bg-surface lg:flex'} style={rightDrawer ? undefined : { width: layout.right }} data-testid="inspector-pane" data-drawer={rightDrawer ? 'open' : undefined}>
           {rightDrawer ? <DrawerHead title={t(drawer === 'results' ? 'editor.drawerResults' : 'editor.drawerSettings')} closeLabel={t('common.close')} onClose={() => setDrawer(null)} /> : null}
-          <FlowNotesLink flowId={flowId} />
+          {toolMode ? null : <FlowNotesLink flowId={flowId} />}
           <Tabs
             size="sm"
             value={rightTab}
@@ -1897,12 +1948,27 @@ function EditorInner({ flowId }: { flowId: number }) {
                 <div className="space-y-3 p-3" data-testid="multi-select">
                   <p className="text-sm font-medium">{t('editor.multiSelected', { count: selectedCount })}</p>
                   <p className="text-xs text-muted">{t('editor.multiSelectedHint')}</p>
+                  {!readOnly ? (
+                    <Button size="sm" variant="primary" icon={<Boxes size={14} />} onClick={() => setEncapsulateOpen(true)} data-testid="editor-encapsulate">
+                      {t('editor.composite.encapsulate')}
+                    </Button>
+                  ) : null}
                   <Button size="sm" variant="danger" onClick={() => void deleteNodes(nodesRef.current.filter((n) => n.selected).map((n) => n.id))}>
                     {t('editor.deleteSelected', { count: selectedCount })}
                   </Button>
                 </div>
               ) : selectedGroup ? (
                 <TaskGroupInspector flowId={flowId} group={selectedGroup} nodes={graphNodes} defs={defs} onExpand={expandTask} onFocus={focusNode} />
+              ) : toolMode && compositeTool && !selected ? (
+                <div className="space-y-3 p-3" data-testid="tool-mode-panel">
+                  <p className="text-xs text-muted">{t('editor.composite.toolModeHint')}</p>
+                  {compositeTool.builtin ? <p className="rounded-lg bg-warning-soft px-3 py-2 text-xs text-warning">{t('editor.composite.builtinReadOnly')}</p> : null}
+                  <TextInput label={t('common.description')} value={meta.description} disabled={readOnly} onChange={(e) => { setMeta({ ...meta, description: e.target.value }); setDirty(true) }} />
+                  <div className="border-t border-line pt-3">
+                    <p className="mb-2 text-xs font-semibold text-heading">{t('editor.composite.interfaceTitle')}</p>
+                    <CompositeInterfaceEditor graph={{ nodes: graphNodes, edges: graphEdges }} defs={defs} value={toolInterface} readOnly={readOnly} onChange={(next) => { setToolInterface(next); setDirty(true) }} />
+                  </div>
+                </div>
               ) : selected ? (
                 <Inspector flowId={flowId} node={selected} definition={selectedDef} edges={graphEdges} graph={{ nodes: graphNodes, edges: graphEdges }} defs={defs} onChange={(p) => patchNode(selected.id, p)} onGraphChange={applyGraphChange} onDelete={() => void deleteNodes([selected.id])} />
               ) : (
@@ -2041,10 +2107,21 @@ function EditorInner({ flowId }: { flowId: number }) {
       <TemplateGallery open={galleryOpen} onClose={() => setGalleryOpen(false)} mode="load" prefix={templatePrefix} onPick={loadTemplate} />
       <RecipeDrawer open={recipesOpen} onClose={() => setRecipesOpen(false)} flowId={flowId} readOnly={readOnly} />
       <SaveTemplateModal open={saveTemplateOpen} onClose={() => setSaveTemplateOpen(false)} graph={currentGraph} defaultName={meta.name} />
+      <EncapsulateDialog
+        open={encapsulateOpen}
+        onClose={() => setEncapsulateOpen(false)}
+        graph={encapsulateOpen ? currentGraph() : { nodes: [], edges: [] }}
+        selectedIds={encapsulateOpen ? nodesRef.current.filter((n) => n.selected).map((n) => n.id) : []}
+        defs={defs}
+        categories={catalogue.data?.categories ?? []}
+        onApplied={(next, label) => setPendingGraph({ graph: next, label })}
+      />
       <NodeContextMenu
         menu={nodeMenu}
         onClose={() => setNodeMenu(null)}
         onOpenTool={(node) => navigate(`/flows/${flowId}/tools/${encodeURIComponent(node.id)}`)}
+        onEncapsulate={readOnly ? undefined : () => setEncapsulateOpen(true)}
+        onEditComposite={(node) => { const composite = defs.get(node.type)?.composite; if (composite) navigate(`/flows/${composite.flow_id}`) }}
         onRunTo={execLocked ? undefined : (node) => void doPreview(node.id)}
         onDuplicate={duplicateNode}
         onCollapseTask={(node) => collapseTask(node.meta?.inspect?.task_id ?? '')}

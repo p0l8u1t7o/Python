@@ -43,7 +43,7 @@ class TeachGroupOrderIn(Schema):
 
 def _visible_flows(request: HttpRequest):
     principal(request)
-    return Flow.objects.select_related("owner").order_by("name")
+    return Flow.objects.filter(kind="flow").select_related("owner").order_by("name")
 
 
 def _node_title(node: dict[str, Any], fallback: str) -> str:

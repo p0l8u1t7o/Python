@@ -67,6 +67,8 @@ export const UI_PAGES: UiPage[] = [
   { route: '/help/:page', id: 'help_page', title: 'help.title', help: '/help' },
   { route: '/sources', id: 'sources', nav: 'nav.sources', feature: 'sources', help: '/sources', actions: ['sources.create', 'sources.test'] },
   { route: '/assets', id: 'assets', nav: 'nav.assets', feature: 'assets', help: '/assets', actions: ['assets.upload'] },
+  { route: '/tools', id: 'tools', nav: 'nav.tools', feature: 'tools.edit', help: '/tools', actions: ['tools.create', 'tools.import.button'] },
+  { route: '/tools/:toolId', id: 'tool_open', title: 'breadcrumb.tool', feature: 'tools.edit', help: '/tools' },
   { route: '/calibration', id: 'calibration', nav: 'nav.calibration', feature: 'assets', help: '/calibration', actions: ['calibration.capture', 'calibration.calculate', 'calibration.save'] },
   { route: '/users', id: 'users', nav: 'nav.users', admin: true, help: '/users', actions: ['users.create', 'permissions.title'] },
   { route: '/audit', id: 'audit', nav: 'nav.audit', feature: 'audit', help: '/audit', actions: ['audit.export'] },

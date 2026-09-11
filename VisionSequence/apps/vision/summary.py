@@ -31,7 +31,7 @@ def of_this_station(hours: int = 24) -> dict[str, Any]:
     }
     flows: list[dict[str, Any]] = []
     totals = {"total": 0, "ok": 0, "ng": 0, "failed": 0}
-    for flow in Flow.objects.filter(is_enabled=True).only("id", "name"):
+    for flow in Flow.objects.filter(is_enabled=True, kind="flow").only("id", "name"):
         agg = rolled.get(flow.id) or {}
         ok, ng, failed = int(agg.get("ok") or 0), int(agg.get("ng") or 0), int(agg.get("failed") or 0)
         total = ok + ng + failed

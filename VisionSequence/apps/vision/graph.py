@@ -311,14 +311,18 @@ class CompiledGraph:
     nodes: dict[str, CompiledNode]
     #: 有邊連出的 (node_id, port) 集合：沒人用的輸出影像不必進快取（省記憶體與時間）。
     consumed: set[tuple[str, str]]
+    #: 複合工具實例 → 展平後的內部節點與對外輸出（composites.flatten）；引擎結束時摺成實例的報告
+    composites: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 def restrict_to(compiled: CompiledGraph, node_id: str) -> CompiledGraph:
     """只保留 node_id 與其祖先（資料邊與控制邊）：工具專屬頁調參數時不必跑整張圖。"""
-    if node_id not in compiled.nodes:
+    # 複合工具實例：展平後沒有這個 id，但有 `<instance>.<inner>`；跑到實例＝跑到它所有內部節點
+    starts = [node_id] if node_id in compiled.nodes else [n for n in compiled.nodes if n.startswith(f"{node_id}.")]
+    if not starts:
         raise GraphError(f"Node '{node_id}' does not exist", node_id=node_id)
     keep: set[str] = set()
-    stack = [node_id]
+    stack = list(starts)
     while stack:
         nid = stack.pop()
         if nid in keep:
@@ -332,10 +336,15 @@ def restrict_to(compiled: CompiledGraph, node_id: str) -> CompiledGraph:
         order=[n for n in compiled.order if n in keep],
         nodes={n: compiled.nodes[n] for n in keep},
         consumed=compiled.consumed,
+        composites={inst: info for inst, info in compiled.composites.items() if any(n in keep for n in info["inner"])},
     )
 
 
 def compile_graph(graph: dict) -> CompiledGraph:
+    from apps.vision import composites
+
+    # 複合工具在這裡展平（PRODUCT-DIRECTION v2 §3-6）：引擎只看得到內建工具
+    graph, instances = composites.flatten(graph)
     nodes = graph.get("nodes") or []
     edges = graph.get("edges") or []
     compiled: dict[str, CompiledNode] = {}
@@ -363,4 +372,4 @@ def compile_graph(graph: dict) -> CompiledGraph:
         else:
             compiled[t].inputs.setdefault(th, []).append((s, sh))
             consumed.add((s, sh))
-    return CompiledGraph(order=topological_order(nodes, edges), nodes=compiled, consumed=consumed)
+    return CompiledGraph(order=topological_order(nodes, edges), nodes=compiled, consumed=consumed, composites=instances)

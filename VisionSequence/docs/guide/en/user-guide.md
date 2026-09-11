@@ -136,6 +136,17 @@ Use **Grid** in the image viewer strip to switch the editor into grid view. Choo
 <li data-n="5"><strong>Add to canvas</strong> (or double-click a card) inserts the step in the centre of the canvas.</li>
 </ol></figcaption></figure>
 
+### 4-1. Composite tools {#composite}
+
+A **composite tool** is a tool you build from other tools: several steps wired together, with an **interface** that says which inner ports are its inputs and outputs and which inner parameters appear on its parameter form. Once saved it lives in the **Tool library** (Resources › Tool library) and appears in the tool picker like any built-in tool; drop it on a canvas, wire it and tune its parameters on the tool page. Every flow that uses it runs the same implementation.
+
+- **Encapsulate as tool** (the main path): select the steps on a canvas, right-click and choose "Encapsulate as tool…" (or use the button in the multi-selection panel), give it a name, a key and a category. The selected steps are replaced by one step; edges that crossed the selection become its ports and published output names move onto the new step.
+- **Edit a tool**: double-click a composite step, choose "Open the tool canvas" from its menu, or press Edit in the tool library. The tool's canvas is the ordinary editor with an **Interface** panel on the right: tick the inner ports to expose, drag or use the arrows to order them, give them display names, tick the inner parameters to expose and mark the ones the operator may teach. Try-run feeds the scratch image to every exposed image input.
+- **Direct reference**: tools are not versioned yet. Saving a tool changes every flow that uses it immediately, so Save first lists the flows and tools affected and asks you to confirm. A tool that is still in use cannot be deleted.
+- **Nesting** is allowed up to three levels; a tool cannot use itself, directly or through another tool.
+- **Export and import**: a tool downloads as a `.tool.json` file (nested tools included) and can be imported on another station; a flow export embeds the composite tools it uses so the flow can be imported on its own.
+- Built-in composite tools are read-only; use **Save a copy** in the tool library to get an editable one.
+
 ## 5. The tool page and ROIs {#tool}
 
 <figure class="shot"><img src="/docs/img/tool.jpg" alt="The tool page"><figcaption><b>Tool page</b> (editor › inspector › Open tool page, route <code>/flows/:id/tools/:step</code>)

@@ -39,8 +39,8 @@ interface AuthContextValue {
 const NO_LOCK: EngineLock = { locked: false, holder: '', reason: '', locked_at: null, expires_at: null }
 /** 後端沒回 permissions 時（舊版）用的出廠值，與 accounts/permissions.py 的預設一致。 */
 const FALLBACK: Record<Role, Feature[]> = {
-  admin: ['flows.run', 'flows.teach', 'flows.edit', 'sources', 'assets', 'batch', 'golden', 'dl', 'agent', 'integration', 'connections', 'audit'],
-  engineer: ['flows.run', 'flows.teach', 'flows.edit', 'sources', 'assets', 'batch', 'golden', 'dl', 'agent', 'integration'],
+  admin: ['flows.run', 'flows.teach', 'flows.edit', 'tools.edit', 'sources', 'assets', 'batch', 'golden', 'dl', 'agent', 'integration', 'connections', 'audit'],
+  engineer: ['flows.run', 'flows.teach', 'flows.edit', 'tools.edit', 'sources', 'assets', 'batch', 'golden', 'dl', 'agent', 'integration'],
   operator: ['flows.run', 'flows.teach'],
 }
 const AuthContext = createContext<AuthContextValue | null>(null)

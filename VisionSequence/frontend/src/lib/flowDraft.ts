@@ -9,7 +9,7 @@
  */
 import { useSyncExternalStore } from 'react'
 
-import type { Flow, FlowGraph, RunReport, ScratchImage } from './types'
+import type { Flow, FlowGraph, NodeInterface, RunReport, ScratchImage } from './types'
 
 /** 隨流程一起儲存的運行設定（以前每改一下就送伺服器，與描述的生效時機不一致）。 */
 export interface FlowSettings {
@@ -31,6 +31,8 @@ export interface FlowDraft {
   description: string
   /** 運行設定；舊草稿沒有這個欄位時儲存不帶（維持伺服器的值） */
   settings?: FlowSettings
+  /** 複合工具的內部圖（Flow.kind=tool）：對外介面也在草稿裡，儲存時一起送 */
+  toolInterface?: NodeInterface
   dirty: boolean
 }
 

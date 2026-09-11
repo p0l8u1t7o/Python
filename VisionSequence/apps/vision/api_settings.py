@@ -141,7 +141,7 @@ def auto_save_once(*, user=None) -> dict[str, Any]:
     """把所有流程存成版本；圖沒有變就跳過，避免擠掉手動版本。"""
     saved = 0
     skipped = 0
-    for flow in Flow.objects.all().order_by("id"):
+    for flow in Flow.objects.filter(kind="flow").order_by("id"):
         latest = flow.versions.order_by("-version").first()
         graph = flow.graph or {}
         if latest is not None and latest.graph == graph:

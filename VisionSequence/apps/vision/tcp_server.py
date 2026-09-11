@@ -69,9 +69,10 @@ _ACTOR = _TcpActor()
 
 
 def _find_flow(ident: str) -> Flow | None:
+    qs = Flow.objects.filter(kind="flow")
     if ident.isdigit():
-        return Flow.objects.filter(pk=int(ident)).first()
-    return Flow.objects.filter(name=ident).first()
+        return qs.filter(pk=int(ident)).first()
+    return qs.filter(name=ident).first()
 
 
 class BadArgument(ValueError):
@@ -129,7 +130,7 @@ def handle_command(line: str) -> dict[str, Any]:
             audit.record(_ACTOR, "lock.acquire", summary=lock.reason or "integrator", target_type="engine", target_name="integrator")
             return {"ok": True, "lock": lock.to_dict()}
         if cmd == "LIST":
-            return {"ok": True, "flows": [{"id": f.id, "name": f.name, "enabled": f.is_enabled} for f in Flow.objects.all()]}
+            return {"ok": True, "flows": [{"id": f.id, "name": f.name, "enabled": f.is_enabled} for f in Flow.objects.filter(kind="flow")]}
         if cmd in ("VARS", "SET"):
             if len(parts) < 2:
                 return {"ok": False, "error": f"{cmd} needs a flow id, a flow name or 'station'", "code": "missing_argument"}

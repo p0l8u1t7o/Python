@@ -9,7 +9,7 @@
  */
 import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { BookOpen, Download, Eraser, FlaskConical, Gem, HelpCircle, History, ImageUp, Keyboard, Layers2, LayoutTemplate, ListChecks, Lock, MoreHorizontal, Network, PanelLeft, Pause, Play, Plug, PowerOff, Radio, Redo2, Save, SlidersHorizontal, Square, Trash2, TriangleAlert, Undo2, X } from 'lucide-react'
+import { Boxes, BookOpen, Download, Eraser, FlaskConical, Gem, HelpCircle, History, ImageUp, Keyboard, Layers2, LayoutTemplate, ListChecks, Lock, MoreHorizontal, Network, PanelLeft, Pause, Play, Plug, PowerOff, Radio, Redo2, Save, SlidersHorizontal, Square, Trash2, TriangleAlert, Undo2, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { CapacityPill } from '@/components/layout/AppShell'
@@ -79,6 +79,8 @@ export interface EditorToolbarProps {
   /** 未教導（commissioned=false） */
   notCommissioned?: boolean
   onExport?: () => void
+  /** tool＝複合工具的畫布：沒有配方／子導覽／連續執行／Golden Set，匯出的是 .tool.json */
+  mode?: 'flow' | 'tool'
 }
 
 /** 暫存影像標籤：檔名＋尺寸＋清除。編輯器與工具頁共用。 */
@@ -119,7 +121,12 @@ export function EditorToolbar(p: EditorToolbarProps) {
             <Button size="sm" icon={<ListChecks size={14} />} onClick={() => p.onOpenDrawer?.('results')} data-testid="editor-drawer-results">{t('editor.drawerResults')}</Button>
           </span>
         ) : null}
-        {p.recipes && p.recipes.length > 0 ? <BoundRecipeSelect flowId={p.flowId} recipes={p.recipes} disabled={p.readOnly} testId="editor-recipe" /> : null}
+        {p.mode === 'tool' ? (
+          <Link to="/tools" className="flex items-center gap-1 whitespace-nowrap rounded-md border border-brand/40 bg-brand-soft px-1.5 py-0.5 text-[11px] text-brand hover:underline" title={t('editor.composite.toolModeHint')} data-testid="tool-mode-badge">
+            <Boxes size={11} /> {t('editor.composite.toolMode')}
+          </Link>
+        ) : null}
+        {p.mode !== 'tool' && p.recipes && p.recipes.length > 0 ? <BoundRecipeSelect flowId={p.flowId} recipes={p.recipes} disabled={p.readOnly} testId="editor-recipe" /> : null}
         {p.readOnly ? (
           <span className="flex items-center gap-1 whitespace-nowrap text-[11px] text-muted" title={t('flows.readOnlyHint')} data-testid="readonly-badge">
             <Lock size={12} /> {t('flows.readOnly')}
@@ -135,12 +142,12 @@ export function EditorToolbar(p: EditorToolbarProps) {
             <Lock size={12} /> {t('lock.short')}
           </span>
         ) : null}
-        {p.flowDisabled ? (
+        {p.flowDisabled && p.mode !== 'tool' ? (
           <span className="flex items-center gap-1 whitespace-nowrap text-[11px] text-muted" title={t('editor.flowDisabledHint')} data-testid="flow-disabled-badge">
             <PowerOff size={12} /> {t('editor.flowDisabled')}
           </span>
         ) : null}
-        {p.notCommissioned ? (
+        {p.notCommissioned && p.mode !== 'tool' ? (
           canTeach ? (
             <Link to={`/flows/${p.flowId}/teach`} className="flex items-center gap-1 whitespace-nowrap rounded-md border border-warning/40 bg-warning-soft px-1.5 py-0.5 text-[11px] text-warning hover:underline" title={t('flows.notCommissionedHint')} data-testid="not-commissioned-badge">
               <SlidersHorizontal size={11} /> {t('flows.notCommissioned')}
@@ -156,27 +163,27 @@ export function EditorToolbar(p: EditorToolbarProps) {
           <CapacityPill />
           <IconButton label={t('editor.undo')} onClick={p.onUndo} size="sm"><Undo2 size={15} /></IconButton>
           <IconButton label={t('editor.redo')} onClick={p.onRedo} size="sm"><Redo2 size={15} /></IconButton>
-          <FlowSubNav flowId={p.flowId} />
+          {p.mode !== 'tool' ? <FlowSubNav flowId={p.flowId} /> : null}
           <ActionMenu testId="editor-more" label={t('common.more')} trigger={(open, props) => (
             <Button size="sm" icon={<MoreHorizontal size={14} />} active={open} title={t('common.more')} {...props}>{t('common.more')}</Button>
           )}>
-            <ActionMenuItem icon={<LayoutTemplate size={13} />} onClick={p.onLoadTemplate} testId="menu-load-template">{t('templates.load')}</ActionMenuItem>
-            <ActionMenuItem icon={<Save size={13} />} onClick={p.onSaveTemplate} testId="menu-save-template">{t('templates.saveAs')}</ActionMenuItem>
-            {p.onManageRecipes ? <ActionMenuItem icon={<BookOpen size={13} />} onClick={p.onManageRecipes} title={t('recipes.manage')} testId="menu-recipes">{t('recipes.drawerTitle')}</ActionMenuItem> : null}
+            {p.mode !== 'tool' ? <ActionMenuItem icon={<LayoutTemplate size={13} />} onClick={p.onLoadTemplate} testId="menu-load-template">{t('templates.load')}</ActionMenuItem> : null}
+            {p.mode !== 'tool' ? <ActionMenuItem icon={<Save size={13} />} onClick={p.onSaveTemplate} testId="menu-save-template">{t('templates.saveAs')}</ActionMenuItem> : null}
+            {p.onManageRecipes && p.mode !== 'tool' ? <ActionMenuItem icon={<BookOpen size={13} />} onClick={p.onManageRecipes} title={t('recipes.manage')} testId="menu-recipes">{t('recipes.drawerTitle')}</ActionMenuItem> : null}
             <ActionMenuItem icon={<History size={13} />} onClick={() => setVersionsOpen(true)} testId="menu-versions">{t('versions.open')}</ActionMenuItem>
             <ActionMenuSeparator />
             <ActionMenuItem icon={<Network size={13} />} onClick={p.onAutoLayout} title={t('editor.autoLayoutHint')} testId="menu-auto-layout">{t('editor.autoLayout')}</ActionMenuItem>
-            {p.onToggleTaskGroups ? (
+            {p.onToggleTaskGroups && p.mode !== 'tool' ? (
               <ActionMenuItem icon={<Layers2 size={13} />} disabled={!p.taskGroupCount} onClick={p.onToggleTaskGroups} title={t('editor.groups.toggleHint')} testId="btn-toggle-groups">
                 {p.collapsedTaskCount ? t('editor.groups.expandAll') : t('editor.groups.collapseTasks')}
               </ActionMenuItem>
             ) : null}
             <ActionMenuSeparator />
-            <ActionMenuItem icon={<Gem size={13} />} to={`/flows/${p.flowId}/golden`} testId="btn-golden">{t('editor.golden')}</ActionMenuItem>
+            {p.mode !== 'tool' ? <ActionMenuItem icon={<Gem size={13} />} to={`/flows/${p.flowId}/golden`} testId="btn-golden">{t('editor.golden')}</ActionMenuItem> : null}
             {p.onExport ? <ActionMenuItem icon={<Download size={13} />} onClick={p.onExport} title={t('flows.exportHint')} testId="btn-export">{t('editor.export')}</ActionMenuItem> : null}
             <ActionMenuSeparator />
             <ActionMenuItem icon={<Eraser size={13} />} onClick={p.onClearResults} title={t('editor.clearResultsHint')} testId="editor-clear-results">{t('editor.clearResults')}</ActionMenuItem>
-            <ActionMenuItem icon={<Trash2 size={13} />} danger disabled={p.readOnly || p.resetting} onClick={p.onReset} title={t('editor.clearHistoryHint')} testId="btn-reset">{t('editor.clearHistory')}</ActionMenuItem>
+            {p.mode !== 'tool' ? <ActionMenuItem icon={<Trash2 size={13} />} danger disabled={p.readOnly || p.resetting} onClick={p.onReset} title={t('editor.clearHistoryHint')} testId="btn-reset">{t('editor.clearHistory')}</ActionMenuItem> : null}
           </ActionMenu>
           <VersionPanel flowId={p.flowId} open={versionsOpen} onClose={() => setVersionsOpen(false)} onRestored={p.onVersionRestored} />
         </span>
@@ -189,7 +196,7 @@ export function EditorToolbar(p: EditorToolbarProps) {
             {t('editor.preview')}
           </Button>
         </span>
-        {p.sequenceAvailable ? (
+        {p.sequenceAvailable && p.mode !== 'tool' ? (
           <span className="flex items-center gap-1.5 rounded-md border border-line px-1.5 py-0.5" title={t('editor.sequenceHint')} data-testid="sequence-preview-controls">
             {p.sequenceRunning && !p.sequencePaused ? (
               <Button size="sm" icon={<Pause size={14} />} disabled={p.execLocked} onClick={p.onSequencePause} data-testid="btn-sequence-preview">
@@ -245,12 +252,13 @@ export function EditorToolbar(p: EditorToolbarProps) {
             if (file) p.onUploadScratch(file)
           }}
         />
-        <span className="mx-1 h-5 w-px bg-line" aria-hidden />
-        <span title={p.lockHint ?? (p.flowDisabled && !p.isContinuous ? t('editor.flowDisabledHint') : p.isContinuous ? t('editor.continuousOff') : t('editor.continuous'))}>
+        {p.mode === 'tool' ? <span className="whitespace-nowrap text-[11px] text-muted" title={t('editor.composite.previewHint')} data-testid="tool-mode-preview-hint">{t('editor.composite.previewHint')}</span> : null}
+        {p.mode !== 'tool' ? <span className="mx-1 h-5 w-px bg-line" aria-hidden /> : null}
+        {p.mode !== 'tool' ? <span title={p.lockHint ?? (p.flowDisabled && !p.isContinuous ? t('editor.flowDisabledHint') : p.isContinuous ? t('editor.continuousOff') : t('editor.continuous'))}>
           <Button size="sm" icon={p.isContinuous ? <Square size={14} /> : <Radio size={14} />} active={p.isContinuous} loading={p.continuousPending} disabled={(p.execLocked || p.flowDisabled) && !p.isContinuous} onClick={p.onToggleContinuous} data-testid="btn-continuous">
             {p.isContinuous ? t('editor.continuousOn') : t('editor.continuous')}
           </Button>
-        </span>
+        </span> : null}
         {p.fpsLabel ? <span className="tnum whitespace-nowrap text-[11px] text-muted">{p.fpsLabel}</span> : null}
         <span className="ml-auto flex items-center gap-1">
           <ActionMenu testId="menu-help" label={t('nav.help')} trigger={(_open, props) => <button type="button" className="btn-icon" title={t('nav.help')} aria-label={t('nav.help')} {...props}><HelpCircle size={15} /></button>}>
