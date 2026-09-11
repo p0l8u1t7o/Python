@@ -14,6 +14,16 @@ AI 助手（侧栏 `/agent`）讓不熟悉工具鏈的人以三步建立检测�
 
 模式 chip 默认 Auto。問題會走 help；编辑指令會改流程；批次页上談到数据、图像、NG、threshold、results 時會走数据諮詢。猜錯時可手動選 Help、Edit flow、Consult data 或 Tune from data。页面以 `useRegisterAssistantContext` 登錄情境，離開時清除。
 
+### 从对话生成检测任务清单 {#tasklist}
+
+在**检测任务**页，助手会把您说的话转成一份任务清单的提案，而不是直接生成流程图。一句话可以同时包含好几项需求——“用十字标记定位工件、允许旋转；外径 35±0.2 mm、内径 26±0.2 mm；缺口超过 2 mm 判不合格”——也可以是修改（“外径公差改成 ±0.1”）或删除。提案以卡片呈现，每项任务一个区块：您说出的值标为已确认，助手推测的值标为**假设**，必填却没人给的值标为缺少。助手从图像推估的候选区域，点**在图像上显示**会以虚线画出；在您应用之前都只是提案。
+
+点击**全部确认**之前什么都不会改变；**舍弃**则丢掉这份提案。还有值缺少、要用毫米却没有标定、或图像来源有歧义时，卡片不会应用，而是先问您。应用走的是与页面表单相同的任务建立程序，结果与手动建立完全一样；之后照常在页面上保存。
+
+### 接着上次的进度 {#resume}
+
+在某条流程上打开的对话会绑定那条流程，并在流程图之外保存工作进度：做过的决策、尚未回答的问题、未确认的假设、哪些样本图用于调参、哪些用于验收，以及上次的试运行结果。之后在这条流程上再打开助手，会出现恢复卡：点继续就载入对话，未回答的问题可以直接在卡片上回答；如果流程在这之后保存过，卡片会说明，并依流程的版本历史列出改了什么。检测规格本身永远从流程读回——对话不会另存一份。列在“工程决策”下的决策可以存成工程笔记草稿。
+
 ### 说明回答如何運作 {#help-answering}
 
 第一次查詢時，`agent/help.py` 會把 `docs/*.html` 依 h2/h3 与錨点切成段落，加入各工具 skill text，並建立索引。分詞使用英數詞与 CJK bigram；BM25 以標題命中、用户指南、批次与助手页加權。文件變更時索引會重建。有 LLM 時會把最相關五段与近期對話送到 provider，系统提示要求只從段落回答、未涵蓋時明說、少於 300 字並列出使用段落。離线或 LLM 失敗時，回傳摘要与連結，並在 warnings 说明原因。
@@ -159,9 +169,15 @@ LLM mode 會把目前 graph 与 feedback 交給模型；每次精修都會重新
 
 在 provider 设置選 agentic，或设置 `VISION_AGENT_MODE=agentic`，會把助手產生、全域助手流程编辑与数据調校導向**背景工作**（`POST /agent/jobs`, 202）。介面每秒輪詢 `GET /agent/jobs/{id}?step_from=`，显示**步骤時間軸**：turn/trial 次數、每個 action 摘要与時間，並可取消。需要回答時 job 進入 waiting 状态，`POST /agent/jobs/{id}/answer` 后續跑。
 
-action layer（`apps/vision/agent/actions.py`）提供 `get_state`、`list_tools`、`get_tool_skill`、`analyze_region`、`draft_from_rules`、`use_candidate`、`replace_graph`、`patch_graph`、`run_trial`、`inspect_node`、`crop_template`、`auto_tune`、`ask_user`、`finish`。每次 graph 變更都經 `validate_graph`，並拒絕 dl_*、write_modbus、save_image 与多個 image_source。
+action layer（`apps/vision/agent/actions.py`）提供 `get_state`、`list_tools`、`get_tool_skill`、`analyze_region`、`draft_from_rules`、`use_candidate`、`replace_graph`、`patch_graph`、`run_trial`、`inspect_node`、`crop_template`、`auto_tune`、`ask_user`、`finish`。每次 graph 变更都经 `validate_graph`；dl_* 一律拒绝，write_modbus 与 save_image 只能经由已核准的动作加入（见[需要您核准的动作](#approval)），而且流程必须恰好有一个采集步骤。
 
 loop 預算為 12 turns、8 trials、30 tool calls、240 秒；若預算耗盡但已有 flow，該 flow 會作為結果並在 warnings 註記。provider shim 將中立 history 转為 Claude tools、OpenAI functions、Gemini functionDeclarations 或 OpenAI-compatible functions。
+
+### 需要您核准的动作 {#approval}
+
+在 agentic mode 下，助手可以在**您的**权限范围内操作平台：选择图像来源、资产或标定，建立、修改或删除检测任务，接上来源，试运行，自动调参（只用调参组的图像），以及运行批次。每个动作都会重新检查您的权限、遵守引擎锁定，并回报成功、未执行或不确定，附上证据——超时算不确定，绝不会回报成成功。
+
+有些动作会改变产线状态，一定会停下来等您：写输出到设备、存档到共享文件夹、启用结果回传、解除引擎锁定、删除流程或资产，以及把草稿存成流程版本。工作会暂停，面板上出现**动作核准**卡，列出动作、会改变什么与风险。只有点卡片上的**核准**才会执行；点**拒绝**则什么都不动，模型用文字说“已核准”也不算数。修改工程规格（放宽公差、换单位）同样会先问。保存版本时若发现别人已存了较新的版本，这次保存不会执行——助手会说明差异并询问您，绝不覆盖。助手要结束前，一定要在当前的流程上试运行过一次；试运行之后流程若又改过，就得再运行一次。
 
 ### 記憶：sessions、priors 与自訂 skills {#memory}
 

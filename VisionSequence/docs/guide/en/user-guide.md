@@ -61,6 +61,30 @@ Nothing is installed on your PC: open the station's address in Chrome, Edge (111
 
 Export and import use a stable JSON format, so flows can be kept in version control and moved between stations; the page asks which image source to bind on import. See [Golden Set and export](golden.md).
 
+### 3-1. Inspection tasks: build an inspection without wiring {#inspect}
+
+The **Inspection tasks** page (the button on a flow's row on the Flows page, or in the editor toolbar; route `/flows/:id/inspect`) builds an inspection from a list of tasks instead of steps and connections. Choose a task type under **Add task** — for example Locate part, Measure diameter, Measure distance, Inspect edge defect or Read and verify — draw the region on the image, fill in the specification (nominal value, tolerances, unit, calibration) and create the task. The page builds the steps, the connections and a pass/fail summary for you; the tool picker and wiring are never needed.
+
+- **Image source**: pick a source, add fixed images, or **Upload temporary image**. **Try run** is refused until there is an image to run on.
+- **Readings and status**: each task shows Pass, Fail, Not found, Location failed, Error, Skipped or Not run. A required task that fails or is skipped makes the whole result fail — a skipped check is never counted as a pass. When locating fails, the tasks that depend on it report Location failed instead of measuring the wrong place.
+- **Stale**: after you change a specification, the last readings are marked **Stale** until you select **Try run** again.
+- **The last readings are kept on the server**: after a try run the page stores the readings summary for the flow, so reopening the page — on another PC or in a fresh browser — shows the last readings. If the flow has changed since, they are marked Stale. Images and teaching need a new try run.
+- **Millimetres** need a calibration: the form asks you to select one (**Open calibration**) instead of silently reporting pixels.
+- **Custom**: if a task's steps are edited in the **Advanced flow** (a step added, a tool changed, an internal connection changed), the task is marked **Custom** with the reason and its form is hidden; **Open in advanced flow** jumps to that step. Moving steps or changing parameters the task does not manage keeps it editable.
+- **Save** stores the flow; if someone else saved it in the meantime, the save-conflict dialog lets you load their version, overwrite or cancel. **Advanced flow** opens the full graph at any time for viewing and debugging.
+
+Locating a part that may rotate: in **Locate part**, crop the locator mark from the current image (**Use this crop**), allow rotation and set the angle range; after the first try run, **Teach pose from this run** records the reference position. Use a mark that is not symmetric every 90° — a plain cross is ambiguous when the angle range is wide.
+
+The AI assistant can build the same task list from a conversation; see [From a conversation to an inspection task list](agent.md#tasklist).
+
+### 3-2. Engineering notes {#notes}
+
+**Engineering notes** (sidebar › Inspection › Engineering notes, route `/notes`) keep the reasons behind a setup — decisions, lessons, lighting, calibration, constraints, tolerance rationale and known issues — next to the flow they apply to. A note can link a project, part number, flow, recipe and image source, evidence images and run IDs, applicable conditions and a flow-version range. The inspection specification itself always stays in the flow.
+
+- A new note is a **draft**. Only a **confirmed** note is quoted by the AI assistant. By default an engineer can confirm their own draft; a station can require another engineer instead (`VISION_ENGINEERING_NOTE_SELF_CONFIRM=0`).
+- **Create replacement** writes a new draft that supersedes an old note: once it is saved, the old note stops appearing in assistant searches, and its history is kept. **Retract** withdraws a note without deleting it.
+- The editor and the Inspection tasks page link to the notes of the current flow, and decisions recorded in an assistant conversation can be saved as a draft with **Save as engineering note**.
+
 ## 4. The flow editor {#editor}
 
 <figure class="shot"><img src="/docs/img/editor.jpg" alt="The flow editor with a step selected"><figcaption><b>Flow editor</b> (Flows › a flow, route <code>/flows/:id</code>)
