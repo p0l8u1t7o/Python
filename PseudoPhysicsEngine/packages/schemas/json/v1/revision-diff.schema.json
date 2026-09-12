@@ -1,0 +1,109 @@
+{
+  "$defs": {
+    "RevisionChangeKind": {
+      "enum": [
+        "ADDED",
+        "REMOVED",
+        "MODIFIED"
+      ],
+      "title": "RevisionChangeKind",
+      "type": "string"
+    },
+    "RevisionDiffEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "object_type": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Object Type",
+          "type": "string"
+        },
+        "object_key": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Object Key",
+          "type": "string"
+        },
+        "change_kind": {
+          "$ref": "#/$defs/RevisionChangeKind"
+        },
+        "before": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Before"
+        },
+        "after": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "After"
+        }
+      },
+      "required": [
+        "object_type",
+        "object_key",
+        "change_kind"
+      ],
+      "title": "RevisionDiffEntry",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_name": {
+      "default": "RevisionDiff",
+      "title": "Schema Name",
+      "type": "string"
+    },
+    "schema_version": {
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "project_id": {
+      "format": "uuid",
+      "title": "Project Id",
+      "type": "string"
+    },
+    "from_revision_id": {
+      "format": "uuid",
+      "title": "From Revision Id",
+      "type": "string"
+    },
+    "to_revision_id": {
+      "format": "uuid",
+      "title": "To Revision Id",
+      "type": "string"
+    },
+    "entries": {
+      "items": {
+        "$ref": "#/$defs/RevisionDiffEntry"
+      },
+      "title": "Entries",
+      "type": "array"
+    }
+  },
+  "required": [
+    "project_id",
+    "from_revision_id",
+    "to_revision_id",
+    "entries"
+  ],
+  "title": "RevisionDiff",
+  "type": "object"
+}

@@ -1,0 +1,65 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_name": {
+      "const": "ProcessAnalysis",
+      "default": "ProcessAnalysis",
+      "title": "Schema Name",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "process_spec_id": {
+      "format": "uuid",
+      "title": "Process Spec Id",
+      "type": "string"
+    },
+    "project_id": {
+      "format": "uuid",
+      "title": "Project Id",
+      "type": "string"
+    },
+    "revision_id": {
+      "format": "uuid",
+      "title": "Revision Id",
+      "type": "string"
+    },
+    "critical_path_step_ids": {
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "title": "Critical Path Step Ids",
+      "type": "array"
+    },
+    "cycle_time_seconds": {
+      "minimum": 0,
+      "title": "Cycle Time Seconds",
+      "type": "number"
+    },
+    "target_cycle_time_seconds": {
+      "exclusiveMinimum": 0,
+      "title": "Target Cycle Time Seconds",
+      "type": "number"
+    },
+    "within_target": {
+      "title": "Within Target",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "process_spec_id",
+    "project_id",
+    "revision_id",
+    "critical_path_step_ids",
+    "cycle_time_seconds",
+    "target_cycle_time_seconds",
+    "within_target"
+  ],
+  "title": "ProcessAnalysis",
+  "type": "object"
+}

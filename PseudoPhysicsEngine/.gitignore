@@ -1,0 +1,41 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# JavaScript / frontend
+node_modules/
+dist/
+coverage/
+playwright-report/
+test-results/
+
+# Local configuration and runtime data
+.env
+.env.*
+!.env.example
+.local/
+platform.sqlite3
+platform.sqlite3-*
+storage/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Generated CAD, scene, and render artifacts
+*.gltf
+*.glb
+*.usd
+*.usda
+*.usdc
+*.usdz
+*.mp4
+

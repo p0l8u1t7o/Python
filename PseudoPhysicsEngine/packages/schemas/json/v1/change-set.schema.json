@@ -1,0 +1,160 @@
+{
+  "$defs": {
+    "ChangeOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "operation": {
+          "$ref": "#/$defs/OperationType"
+        },
+        "object_type": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Object Type",
+          "type": "string"
+        },
+        "object_id": {
+          "format": "uuid",
+          "title": "Object Id",
+          "type": "string"
+        },
+        "before": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Before"
+        },
+        "after": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "After"
+        }
+      },
+      "required": [
+        "operation",
+        "object_type",
+        "object_id"
+      ],
+      "title": "ChangeOperation",
+      "type": "object"
+    },
+    "OperationType": {
+      "enum": [
+        "ADD",
+        "UPDATE",
+        "REMOVE"
+      ],
+      "title": "OperationType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_name": {
+      "const": "ChangeSet",
+      "default": "ChangeSet",
+      "title": "Schema Name",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "project_id": {
+      "format": "uuid",
+      "title": "Project Id",
+      "type": "string"
+    },
+    "base_revision_id": {
+      "format": "uuid",
+      "title": "Base Revision Id",
+      "type": "string"
+    },
+    "reason": {
+      "maxLength": 1000,
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+    },
+    "user_instruction": {
+      "maxLength": 10000,
+      "minLength": 1,
+      "title": "User Instruction",
+      "type": "string"
+    },
+    "interpreted_intent": {
+      "maxLength": 10000,
+      "minLength": 1,
+      "title": "Interpreted Intent",
+      "type": "string"
+    },
+    "operations": {
+      "items": {
+        "$ref": "#/$defs/ChangeOperation"
+      },
+      "minItems": 1,
+      "title": "Operations",
+      "type": "array"
+    },
+    "requires_tessellation": {
+      "default": false,
+      "title": "Requires Tessellation",
+      "type": "boolean"
+    },
+    "requires_simulation": {
+      "default": false,
+      "title": "Requires Simulation",
+      "type": "boolean"
+    },
+    "requires_render": {
+      "default": false,
+      "title": "Requires Render",
+      "type": "boolean"
+    },
+    "approved_by": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Approved By"
+    }
+  },
+  "required": [
+    "id",
+    "project_id",
+    "base_revision_id",
+    "reason",
+    "user_instruction",
+    "interpreted_intent",
+    "operations"
+  ],
+  "title": "ChangeSet",
+  "type": "object"
+}

@@ -1,0 +1,86 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "project_id": {
+      "format": "uuid",
+      "title": "Project Id",
+      "type": "string"
+    },
+    "revision_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Revision Id"
+    },
+    "actor_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Actor Id"
+    },
+    "event_type": {
+      "maxLength": 100,
+      "pattern": "^[A-Z][A-Z0-9_]*$",
+      "title": "Event Type",
+      "type": "string"
+    },
+    "entity_type": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Entity Type",
+      "type": "string"
+    },
+    "entity_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Entity Id"
+    },
+    "details": {
+      "additionalProperties": true,
+      "title": "Details",
+      "type": "object"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "project_id",
+    "revision_id",
+    "actor_id",
+    "event_type",
+    "entity_type",
+    "entity_id",
+    "details",
+    "created_at"
+  ],
+  "title": "AuditEventRead",
+  "type": "object"
+}

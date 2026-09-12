@@ -1,0 +1,15 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "approved_by": {
+      "format": "uuid",
+      "title": "Approved By",
+      "type": "string"
+    }
+  },
+  "required": [
+    "approved_by"
+  ],
+  "title": "ReleaseRequest",
+  "type": "object"
+}

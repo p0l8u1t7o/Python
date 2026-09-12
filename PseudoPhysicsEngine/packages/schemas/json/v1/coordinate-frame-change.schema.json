@@ -1,0 +1,121 @@
+{
+  "$defs": {
+    "FrameTransformChange": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "matrix": {
+          "$ref": "#/$defs/Matrix4"
+        },
+        "trust_status": {
+          "$ref": "#/$defs/TrustStatus"
+        },
+        "source": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "matrix",
+        "trust_status",
+        "source"
+      ],
+      "title": "FrameTransformChange",
+      "type": "object"
+    },
+    "Matrix4": {
+      "maxItems": 4,
+      "minItems": 4,
+      "prefixItems": [
+        {
+          "$ref": "#/$defs/Vector4"
+        },
+        {
+          "$ref": "#/$defs/Vector4"
+        },
+        {
+          "$ref": "#/$defs/Vector4"
+        },
+        {
+          "$ref": "#/$defs/Vector4"
+        }
+      ],
+      "type": "array"
+    },
+    "TrustStatus": {
+      "enum": [
+        "INFERRED",
+        "DRAWING_CONFIRMED",
+        "CAD_CONFIRMED",
+        "SURVEY_CALIBRATED",
+        "RELEASED"
+      ],
+      "title": "TrustStatus",
+      "type": "string"
+    },
+    "Vector4": {
+      "maxItems": 4,
+      "minItems": 4,
+      "prefixItems": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "type": "array"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "parent_frame_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Parent Frame Id"
+    },
+    "transform_from_parent": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/FrameTransformChange"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "title": "CoordinateFrameChange",
+  "type": "object"
+}
