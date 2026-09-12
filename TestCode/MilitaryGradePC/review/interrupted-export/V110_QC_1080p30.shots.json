@@ -1,0 +1,2170 @@
+{
+  "fps": 30,
+  "width": 1920,
+  "height": 1080,
+  "frames": 5580,
+  "duration": 185.9779999999998,
+  "shots": [
+    {
+      "videoStart": 0,
+      "duration": 3,
+      "simStart": 0,
+      "simDuration": 0,
+      "station": 0,
+      "view": "overview",
+      "label": "軍規電腦 · 自動化光學 QC",
+      "detail": "托叉支承上層載具；升降平台支承最底層"
+    },
+    {
+      "videoStart": 3,
+      "duration": 0.51,
+      "simStart": 0,
+      "simDuration": 0.6,
+      "station": 0,
+      "view": "infeed",
+      "label": "上層托叉承重確認",
+      "detail": "托叉支承上層載具；升降平台支承最底層"
+    },
+    {
+      "videoStart": 3.51,
+      "duration": 2.38,
+      "simStart": 0.6,
+      "simDuration": 2.8,
+      "station": 0,
+      "view": "infeed",
+      "label": "推出最底層載具",
+      "detail": "推板與載具後緣同步前進 550 mm，上層載具保持支承"
+    },
+    {
+      "videoStart": 5.89,
+      "duration": 0.6880000000000001,
+      "simStart": 3.4,
+      "simDuration": 1.6,
+      "station": 0,
+      "view": "infeed",
+      "label": "推料氣缸復歸",
+      "detail": "推桿完全退出後才允許升降平台動作"
+    },
+    {
+      "videoStart": 6.577999999999999,
+      "duration": 0.68,
+      "simStart": 5,
+      "simDuration": 0.8,
+      "station": 0,
+      "view": "infeed",
+      "label": "升降平台接住上層",
+      "detail": "平台上升至托叉承載面"
+    },
+    {
+      "videoStart": 7.257999999999999,
+      "duration": 0.3825,
+      "simStart": 5.8,
+      "simDuration": 0.45,
+      "station": 0,
+      "view": "infeed",
+      "label": "托叉退出",
+      "detail": "升降平台已承重，解除上層托叉"
+    },
+    {
+      "videoStart": 7.640499999999999,
+      "duration": 0.602,
+      "simStart": 6.25,
+      "simDuration": 1.4,
+      "station": 0,
+      "view": "infeed",
+      "label": "進料堆下降一個間距",
+      "detail": "上層載具隨平台下降 110 mm，下一台進入推料高度"
+    },
+    {
+      "videoStart": 8.2425,
+      "duration": 0.3825,
+      "simStart": 7.65,
+      "simDuration": 0.45,
+      "station": 0,
+      "view": "infeed",
+      "label": "托叉重新承重",
+      "detail": "插入下一層載具下方，準備下一循環"
+    },
+    {
+      "videoStart": 8.625,
+      "duration": 0.7,
+      "simStart": 8.1,
+      "simDuration": 0.65,
+      "station": 0,
+      "view": "infeed",
+      "label": "讀取底面 SN",
+      "detail": "底視讀碼器穿過載具開口；本次 SN 為 DEMO-0001"
+    },
+    {
+      "videoStart": 9.325,
+      "duration": 0.301,
+      "simStart": 8.75,
+      "simDuration": 0.7,
+      "station": 0,
+      "view": "infeed",
+      "label": "四角側夾定位",
+      "detail": "四個 PU 接觸墊夾住護角，避開側面護蓋"
+    },
+    {
+      "videoStart": 9.626,
+      "duration": 1.032,
+      "simStart": 9.45,
+      "simDuration": 2.4,
+      "station": 0,
+      "view": "transfer",
+      "label": "輸送至 S1",
+      "detail": "止擋下降 → 雙帶同步輸送 → 到站減速"
+    },
+    {
+      "videoStart": 10.658,
+      "duration": 0.22,
+      "simStart": 11.85,
+      "simDuration": 0.5,
+      "station": 1,
+      "view": "surface",
+      "label": "S1 止擋定位",
+      "detail": "載具到位感測 ON，止擋上升，等待振動衰減"
+    },
+    {
+      "videoStart": 10.878,
+      "duration": 0.7,
+      "simStart": 12.35,
+      "simDuration": 0.7,
+      "station": 1,
+      "view": "surface",
+      "label": "頂視外蓋取像",
+      "detail": "QII §12.1 / 工單前 PI：Logo、麥拉、外蓋掉漆／破損與螺絲"
+    },
+    {
+      "videoStart": 11.578,
+      "duration": 0.22,
+      "simStart": 13.049999999999999,
+      "simDuration": 0.3,
+      "station": 1,
+      "view": "surface",
+      "label": "頂光關閉",
+      "detail": "準備側面相機巡拍"
+    },
+    {
+      "videoStart": 11.798,
+      "duration": 1.204,
+      "simStart": 13.35,
+      "simDuration": 2.8,
+      "station": 1,
+      "view": "surface",
+      "label": "退至上方再轉向：左側",
+      "detail": "工具先離開產品包絡，轉腕後接近下一側"
+    },
+    {
+      "videoStart": 13.002,
+      "duration": 1.118,
+      "simStart": 16.15,
+      "simDuration": 2.6,
+      "station": 1,
+      "view": "surface",
+      "label": "側面定位：左側",
+      "detail": "相機與產品保持 150 mm 工作距離"
+    },
+    {
+      "videoStart": 14.120000000000001,
+      "duration": 0.7,
+      "simStart": 18.75,
+      "simDuration": 0.6,
+      "station": 1,
+      "view": "surface",
+      "label": "側面取像：左側",
+      "detail": "門扣、圖示、按鍵外觀；功能與彈性測試留待後續階段"
+    },
+    {
+      "videoStart": 14.82,
+      "duration": 0.22,
+      "simStart": 19.35,
+      "simDuration": 0.2,
+      "station": 1,
+      "view": "surface",
+      "label": "關閉環形光",
+      "detail": "曝光完成"
+    },
+    {
+      "videoStart": 15.040000000000001,
+      "duration": 1.204,
+      "simStart": 19.55,
+      "simDuration": 2.8,
+      "station": 1,
+      "view": "surface",
+      "label": "退至上方再轉向：後側",
+      "detail": "工具先離開產品包絡，轉腕後接近下一側"
+    },
+    {
+      "videoStart": 16.244,
+      "duration": 1.118,
+      "simStart": 22.35,
+      "simDuration": 2.6,
+      "station": 1,
+      "view": "surface",
+      "label": "側面定位：後側",
+      "detail": "相機與產品保持 150 mm 工作距離"
+    },
+    {
+      "videoStart": 17.362,
+      "duration": 0.7,
+      "simStart": 24.950000000000003,
+      "simDuration": 0.6,
+      "station": 1,
+      "view": "surface",
+      "label": "側面取像：後側",
+      "detail": "門扣、圖示、按鍵外觀；功能與彈性測試留待後續階段"
+    },
+    {
+      "videoStart": 18.061999999999998,
+      "duration": 0.22,
+      "simStart": 25.550000000000004,
+      "simDuration": 0.2,
+      "station": 1,
+      "view": "surface",
+      "label": "關閉環形光",
+      "detail": "曝光完成"
+    },
+    {
+      "videoStart": 18.281999999999996,
+      "duration": 1.204,
+      "simStart": 25.750000000000004,
+      "simDuration": 2.8,
+      "station": 1,
+      "view": "surface",
+      "label": "退至上方再轉向：右側",
+      "detail": "工具先離開產品包絡，轉腕後接近下一側"
+    },
+    {
+      "videoStart": 19.485999999999997,
+      "duration": 1.118,
+      "simStart": 28.550000000000004,
+      "simDuration": 2.6,
+      "station": 1,
+      "view": "surface",
+      "label": "側面定位：右側",
+      "detail": "相機與產品保持 150 mm 工作距離"
+    },
+    {
+      "videoStart": 20.603999999999996,
+      "duration": 0.7,
+      "simStart": 31.150000000000006,
+      "simDuration": 0.6,
+      "station": 1,
+      "view": "surface",
+      "label": "側面取像：右側",
+      "detail": "門扣、圖示、按鍵外觀；功能與彈性測試留待後續階段"
+    },
+    {
+      "videoStart": 21.303999999999995,
+      "duration": 0.22,
+      "simStart": 31.750000000000007,
+      "simDuration": 0.2,
+      "station": 1,
+      "view": "surface",
+      "label": "關閉環形光",
+      "detail": "曝光完成"
+    },
+    {
+      "videoStart": 21.523999999999994,
+      "duration": 1.204,
+      "simStart": 31.950000000000006,
+      "simDuration": 2.8,
+      "station": 1,
+      "view": "surface",
+      "label": "退至上方再轉向：前側",
+      "detail": "工具先離開產品包絡，轉腕後接近下一側"
+    },
+    {
+      "videoStart": 22.727999999999994,
+      "duration": 1.118,
+      "simStart": 34.75000000000001,
+      "simDuration": 2.6,
+      "station": 1,
+      "view": "surface",
+      "label": "側面定位：前側",
+      "detail": "相機與產品保持 150 mm 工作距離"
+    },
+    {
+      "videoStart": 23.845999999999993,
+      "duration": 0.7,
+      "simStart": 37.35000000000001,
+      "simDuration": 0.6,
+      "station": 1,
+      "view": "surface",
+      "label": "側面取像：前側",
+      "detail": "門扣、圖示、按鍵外觀；功能與彈性測試留待後續階段"
+    },
+    {
+      "videoStart": 24.545999999999992,
+      "duration": 0.22,
+      "simStart": 37.95000000000001,
+      "simDuration": 0.2,
+      "station": 1,
+      "view": "surface",
+      "label": "關閉環形光",
+      "detail": "曝光完成"
+    },
+    {
+      "videoStart": 24.76599999999999,
+      "duration": 1.204,
+      "simStart": 38.15000000000001,
+      "simDuration": 2.8,
+      "station": 1,
+      "view": "surface",
+      "label": "接縫掃描準備",
+      "detail": "工具退至上方，切換線雷射 TCP"
+    },
+    {
+      "videoStart": 25.96999999999999,
+      "duration": 1.032,
+      "simStart": 40.95000000000001,
+      "simDuration": 2.4,
+      "station": 1,
+      "view": "surface",
+      "label": "線雷射起點定位",
+      "detail": "QII §10.1：LCD cover / AB 接縫 Gap 與 Step ≤ 0.5 mm；實際 ROI 待確認"
+    },
+    {
+      "videoStart": 27.001999999999992,
+      "duration": 2.15,
+      "simStart": 43.35000000000001,
+      "simDuration": 5,
+      "station": 1,
+      "view": "surface",
+      "label": "沿外蓋後緣掃描",
+      "detail": "保留輪廓與高度差；不將通用外觀表套用到所有接縫"
+    },
+    {
+      "videoStart": 29.15199999999999,
+      "duration": 1.204,
+      "simStart": 48.35000000000001,
+      "simDuration": 2.8,
+      "station": 1,
+      "view": "surface",
+      "label": "手臂退讓至安全高度",
+      "detail": "掃描完成、光源關閉；輸送許可等待手臂到位"
+    },
+    {
+      "videoStart": 30.35599999999999,
+      "duration": 1.505,
+      "simStart": 51.150000000000006,
+      "simDuration": 3.5,
+      "station": 1,
+      "view": "transfer",
+      "label": "輸送至 S2",
+      "detail": "止擋下降後輸送，四角側夾保持夾緊"
+    },
+    {
+      "videoStart": 31.86099999999999,
+      "duration": 0.22,
+      "simStart": 54.650000000000006,
+      "simDuration": 0.5,
+      "station": 2,
+      "view": "door",
+      "label": "S2 止擋定位",
+      "detail": "載具到位、相機配方與工單一致"
+    },
+    {
+      "videoStart": 32.08099999999999,
+      "duration": 1.075,
+      "simStart": 55.150000000000006,
+      "simDuration": 2.5,
+      "station": 2,
+      "view": "robot",
+      "label": "D1 上方轉位",
+      "detail": "HDMI / USB 3.1 ×2｜在產品上方轉腕與滑軌移位"
+    },
+    {
+      "videoStart": 33.15599999999999,
+      "duration": 1.075,
+      "simStart": 57.650000000000006,
+      "simDuration": 2.5,
+      "station": 2,
+      "view": "door",
+      "label": "D1 視覺定位",
+      "detail": "HDMI / USB 3.1 ×2｜相機確認門扣／圖示／封印"
+    },
+    {
+      "videoStart": 34.230999999999995,
+      "duration": 0.7,
+      "simStart": 60.150000000000006,
+      "simDuration": 0.5,
+      "station": 2,
+      "view": "door",
+      "label": "D1 門面取像",
+      "detail": "確認門扣關閉、取得視覺修正位置"
+    },
+    {
+      "videoStart": 34.931,
+      "duration": 0.22,
+      "simStart": 60.650000000000006,
+      "simDuration": 0.25,
+      "station": 2,
+      "view": "door",
+      "label": "D1 關閉取像光",
+      "detail": "曝光完成"
+    },
+    {
+      "videoStart": 35.150999999999996,
+      "duration": 0.774,
+      "simStart": 60.900000000000006,
+      "simDuration": 1.8,
+      "station": 2,
+      "view": "door",
+      "label": "D1 切換鉤爪 TCP",
+      "detail": "相機退離後鉤爪接近至門扣外 100 mm"
+    },
+    {
+      "videoStart": 35.925,
+      "duration": 1.548,
+      "simStart": 62.7,
+      "simDuration": 3.6,
+      "station": 2,
+      "view": "door",
+      "label": "D1 減速接近門扣",
+      "detail": "100 → 6 mm；五次曲線峰值速度小於 50 mm/s"
+    },
+    {
+      "videoStart": 37.473,
+      "duration": 0.765,
+      "simStart": 66.3,
+      "simDuration": 0.9,
+      "station": 2,
+      "view": "door",
+      "label": "D1 力控接觸",
+      "detail": "鉤尖接觸門扣；2 N 為工程模擬設定"
+    },
+    {
+      "videoStart": 38.238,
+      "duration": 0.68,
+      "simStart": 67.2,
+      "simDuration": 0.8,
+      "station": 2,
+      "view": "door",
+      "label": "D1 抬起門扣 3 mm",
+      "detail": "QII §12.1：先拉起門上邊沿，再打開"
+    },
+    {
+      "videoStart": 38.918,
+      "duration": 1.87,
+      "simStart": 68,
+      "simDuration": 2.2,
+      "station": 2,
+      "view": "door",
+      "label": "D1 沿鉸鏈弧線開門",
+      "detail": "鉤尖跟隨同一門緣座標；示意開度 115°"
+    },
+    {
+      "videoStart": 40.788,
+      "duration": 0.516,
+      "simStart": 70.2,
+      "simDuration": 1.2,
+      "station": 2,
+      "view": "door",
+      "label": "D1 鉤爪脫離",
+      "detail": "沿外法線退出 100 mm，再切換相機"
+    },
+    {
+      "videoStart": 41.303999999999995,
+      "duration": 1.032,
+      "simStart": 71.4,
+      "simDuration": 2.4,
+      "station": 2,
+      "view": "door",
+      "label": "D1 連接器對焦",
+      "detail": "相機工作距離 150 mm；曝光前等待到位"
+    },
+    {
+      "videoStart": 42.336,
+      "duration": 0.7,
+      "simStart": 73.80000000000001,
+      "simDuration": 0.65,
+      "station": 2,
+      "view": "door",
+      "label": "D1 連接器取像",
+      "detail": "端子數量、異物、損 pin、門內麥拉；不執行通電介面測試"
+    },
+    {
+      "videoStart": 43.036,
+      "duration": 0.22,
+      "simStart": 74.45000000000002,
+      "simDuration": 0.3,
+      "station": 2,
+      "view": "door",
+      "label": "D1 取像完成",
+      "detail": "關閉環形光"
+    },
+    {
+      "videoStart": 43.256,
+      "duration": 0.9460000000000001,
+      "simStart": 74.75000000000001,
+      "simDuration": 2.2,
+      "station": 2,
+      "view": "door",
+      "label": "D1 返回開門邊緣",
+      "detail": "重新以鉤爪 TCP 對準護蓋上緣"
+    },
+    {
+      "videoStart": 44.202,
+      "duration": 1.87,
+      "simStart": 76.95000000000002,
+      "simDuration": 2.2,
+      "station": 2,
+      "view": "door",
+      "label": "D1 保持門扣拉起並閉門",
+      "detail": "依 QII 關門順序：拉起上邊沿 → 關緊 → 按下鎖定"
+    },
+    {
+      "videoStart": 46.071999999999996,
+      "duration": 0.516,
+      "simStart": 79.15000000000002,
+      "simDuration": 1.2,
+      "station": 2,
+      "view": "door",
+      "label": "D1 鉤爪退出換壓頭",
+      "detail": "先退離再切換壓頭接觸點"
+    },
+    {
+      "videoStart": 46.587999999999994,
+      "duration": 0.765,
+      "simStart": 80.35000000000002,
+      "simDuration": 0.9,
+      "station": 2,
+      "view": "door",
+      "label": "D1 壓頭接觸門扣",
+      "detail": "PU 壓頭到位後才允許下壓鎖扣"
+    },
+    {
+      "videoStart": 47.352999999999994,
+      "duration": 0.85,
+      "simStart": 81.25000000000003,
+      "simDuration": 1,
+      "station": 2,
+      "view": "door",
+      "label": "D1 按下鎖定",
+      "detail": "壓頭隨門扣下行；8 N 峰值為示意值，需實測校正"
+    },
+    {
+      "videoStart": 48.202999999999996,
+      "duration": 0.9460000000000001,
+      "simStart": 82.25000000000003,
+      "simDuration": 2.2,
+      "station": 2,
+      "view": "door",
+      "label": "D1 閉合量測定位",
+      "detail": "壓頭退出，切換線雷射至護蓋外表面"
+    },
+    {
+      "videoStart": 49.148999999999994,
+      "duration": 0.7,
+      "simStart": 84.45000000000003,
+      "simDuration": 0.7,
+      "station": 2,
+      "view": "door",
+      "label": "D1 閉合確認",
+      "detail": "外觀、鎖扣回位、膠條未外露；保留輪廓待配方判定"
+    },
+    {
+      "videoStart": 49.849,
+      "duration": 0.22,
+      "simStart": 85.15000000000003,
+      "simDuration": 0.2,
+      "station": 2,
+      "view": "door",
+      "label": "D1 掃描關閉",
+      "detail": "準備下一個護蓋"
+    },
+    {
+      "videoStart": 50.068999999999996,
+      "duration": 1.075,
+      "simStart": 85.35000000000004,
+      "simDuration": 2.5,
+      "station": 2,
+      "view": "robot",
+      "label": "D2 上方轉位",
+      "detail": "AC 電源｜在產品上方轉腕與滑軌移位"
+    },
+    {
+      "videoStart": 51.144,
+      "duration": 1.075,
+      "simStart": 87.85000000000004,
+      "simDuration": 2.5,
+      "station": 2,
+      "view": "door",
+      "label": "D2 視覺定位",
+      "detail": "AC 電源｜相機確認門扣／圖示／封印"
+    },
+    {
+      "videoStart": 52.219,
+      "duration": 0.7,
+      "simStart": 90.35000000000004,
+      "simDuration": 0.5,
+      "station": 2,
+      "view": "door",
+      "label": "D2 門面取像",
+      "detail": "確認門扣關閉、取得視覺修正位置"
+    },
+    {
+      "videoStart": 52.919000000000004,
+      "duration": 0.22,
+      "simStart": 90.85000000000004,
+      "simDuration": 0.25,
+      "station": 2,
+      "view": "door",
+      "label": "D2 關閉取像光",
+      "detail": "曝光完成"
+    },
+    {
+      "videoStart": 53.139,
+      "duration": 0.774,
+      "simStart": 91.10000000000004,
+      "simDuration": 1.8,
+      "station": 2,
+      "view": "door",
+      "label": "D2 切換鉤爪 TCP",
+      "detail": "相機退離後鉤爪接近至門扣外 100 mm"
+    },
+    {
+      "videoStart": 53.913000000000004,
+      "duration": 1.548,
+      "simStart": 92.90000000000003,
+      "simDuration": 3.6,
+      "station": 2,
+      "view": "door",
+      "label": "D2 減速接近門扣",
+      "detail": "100 → 6 mm；五次曲線峰值速度小於 50 mm/s"
+    },
+    {
+      "videoStart": 55.461000000000006,
+      "duration": 0.765,
+      "simStart": 96.50000000000003,
+      "simDuration": 0.9,
+      "station": 2,
+      "view": "door",
+      "label": "D2 力控接觸",
+      "detail": "鉤尖接觸門扣；2 N 為工程模擬設定"
+    },
+    {
+      "videoStart": 56.226000000000006,
+      "duration": 0.68,
+      "simStart": 97.40000000000003,
+      "simDuration": 0.8,
+      "station": 2,
+      "view": "door",
+      "label": "D2 抬起門扣 3 mm",
+      "detail": "QII §12.1：先拉起門上邊沿，再打開"
+    },
+    {
+      "videoStart": 56.906000000000006,
+      "duration": 1.87,
+      "simStart": 98.20000000000003,
+      "simDuration": 2.2,
+      "station": 2,
+      "view": "door",
+      "label": "D2 沿鉸鏈弧線開門",
+      "detail": "鉤尖跟隨同一門緣座標；示意開度 115°"
+    },
+    {
+      "videoStart": 58.776,
+      "duration": 0.516,
+      "simStart": 100.40000000000003,
+      "simDuration": 1.2,
+      "station": 2,
+      "view": "door",
+      "label": "D2 鉤爪脫離",
+      "detail": "沿外法線退出 100 mm，再切換相機"
+    },
+    {
+      "videoStart": 59.292,
+      "duration": 1.032,
+      "simStart": 101.60000000000004,
+      "simDuration": 2.4,
+      "station": 2,
+      "view": "door",
+      "label": "D2 連接器對焦",
+      "detail": "相機工作距離 150 mm；曝光前等待到位"
+    },
+    {
+      "videoStart": 60.324,
+      "duration": 0.7,
+      "simStart": 104.00000000000004,
+      "simDuration": 0.65,
+      "station": 2,
+      "view": "door",
+      "label": "D2 連接器取像",
+      "detail": "端子數量、異物、損 pin、門內麥拉；不執行通電介面測試"
+    },
+    {
+      "videoStart": 61.024,
+      "duration": 0.22,
+      "simStart": 104.65000000000005,
+      "simDuration": 0.3,
+      "station": 2,
+      "view": "door",
+      "label": "D2 取像完成",
+      "detail": "關閉環形光"
+    },
+    {
+      "videoStart": 61.244,
+      "duration": 0.9460000000000001,
+      "simStart": 104.95000000000005,
+      "simDuration": 2.2,
+      "station": 2,
+      "view": "door",
+      "label": "D2 返回開門邊緣",
+      "detail": "重新以鉤爪 TCP 對準護蓋上緣"
+    },
+    {
+      "videoStart": 62.19,
+      "duration": 1.87,
+      "simStart": 107.15000000000005,
+      "simDuration": 2.2,
+      "station": 2,
+      "view": "door",
+      "label": "D2 保持門扣拉起並閉門",
+      "detail": "依 QII 關門順序：拉起上邊沿 → 關緊 → 按下鎖定"
+    },
+    {
+      "videoStart": 64.06,
+      "duration": 0.516,
+      "simStart": 109.35000000000005,
+      "simDuration": 1.2,
+      "station": 2,
+      "view": "door",
+      "label": "D2 鉤爪退出換壓頭",
+      "detail": "先退離再切換壓頭接觸點"
+    },
+    {
+      "videoStart": 64.57600000000001,
+      "duration": 0.765,
+      "simStart": 110.55000000000005,
+      "simDuration": 0.9,
+      "station": 2,
+      "view": "door",
+      "label": "D2 壓頭接觸門扣",
+      "detail": "PU 壓頭到位後才允許下壓鎖扣"
+    },
+    {
+      "videoStart": 65.34100000000001,
+      "duration": 0.85,
+      "simStart": 111.45000000000006,
+      "simDuration": 1,
+      "station": 2,
+      "view": "door",
+      "label": "D2 按下鎖定",
+      "detail": "壓頭隨門扣下行；8 N 峰值為示意值，需實測校正"
+    },
+    {
+      "videoStart": 66.191,
+      "duration": 0.9460000000000001,
+      "simStart": 112.45000000000006,
+      "simDuration": 2.2,
+      "station": 2,
+      "view": "door",
+      "label": "D2 閉合量測定位",
+      "detail": "壓頭退出，切換線雷射至護蓋外表面"
+    },
+    {
+      "videoStart": 67.137,
+      "duration": 0.7,
+      "simStart": 114.65000000000006,
+      "simDuration": 0.7,
+      "station": 2,
+      "view": "door",
+      "label": "D2 閉合確認",
+      "detail": "外觀、鎖扣回位、膠條未外露；保留輪廓待配方判定"
+    },
+    {
+      "videoStart": 67.837,
+      "duration": 0.22,
+      "simStart": 115.35000000000007,
+      "simDuration": 0.2,
+      "station": 2,
+      "view": "door",
+      "label": "D2 掃描關閉",
+      "detail": "準備下一個護蓋"
+    },
+    {
+      "videoStart": 68.057,
+      "duration": 1.075,
+      "simStart": 115.55000000000007,
+      "simDuration": 2.5,
+      "station": 2,
+      "view": "robot",
+      "label": "D3 上方轉位",
+      "detail": "Type-C / 耳機麥克風｜在產品上方轉腕與滑軌移位"
+    },
+    {
+      "videoStart": 69.132,
+      "duration": 1.075,
+      "simStart": 118.05000000000007,
+      "simDuration": 2.5,
+      "station": 2,
+      "view": "door",
+      "label": "D3 視覺定位",
+      "detail": "Type-C / 耳機麥克風｜相機確認門扣／圖示／封印"
+    },
+    {
+      "videoStart": 70.20700000000001,
+      "duration": 0.7,
+      "simStart": 120.55000000000007,
+      "simDuration": 0.5,
+      "station": 2,
+      "view": "door",
+      "label": "D3 門面取像",
+      "detail": "確認門扣關閉、取得視覺修正位置"
+    },
+    {
+      "videoStart": 70.90700000000001,
+      "duration": 0.22,
+      "simStart": 121.05000000000007,
+      "simDuration": 0.25,
+      "station": 2,
+      "view": "door",
+      "label": "D3 關閉取像光",
+      "detail": "曝光完成"
+    },
+    {
+      "videoStart": 71.12700000000001,
+      "duration": 0.774,
+      "simStart": 121.30000000000007,
+      "simDuration": 1.8,
+      "station": 2,
+      "view": "door",
+      "label": "D3 切換鉤爪 TCP",
+      "detail": "相機退離後鉤爪接近至門扣外 100 mm"
+    },
+    {
+      "videoStart": 71.90100000000001,
+      "duration": 1.548,
+      "simStart": 123.10000000000007,
+      "simDuration": 3.6,
+      "station": 2,
+      "view": "door",
+      "label": "D3 減速接近門扣",
+      "detail": "100 → 6 mm；五次曲線峰值速度小於 50 mm/s"
+    },
+    {
+      "videoStart": 73.44900000000001,
+      "duration": 0.765,
+      "simStart": 126.70000000000006,
+      "simDuration": 0.9,
+      "station": 2,
+      "view": "door",
+      "label": "D3 力控接觸",
+      "detail": "鉤尖接觸門扣；2 N 為工程模擬設定"
+    },
+    {
+      "videoStart": 74.21400000000001,
+      "duration": 0.68,
+      "simStart": 127.60000000000007,
+      "simDuration": 0.8,
+      "station": 2,
+      "view": "door",
+      "label": "D3 抬起門扣 3 mm",
+      "detail": "QII §12.1：先拉起門上邊沿，再打開"
+    },
+    {
+      "videoStart": 74.89400000000002,
+      "duration": 1.87,
+      "simStart": 128.40000000000006,
+      "simDuration": 2.2,
+      "station": 2,
+      "view": "door",
+      "label": "D3 沿鉸鏈弧線開門",
+      "detail": "鉤尖跟隨同一門緣座標；示意開度 115°"
+    },
+    {
+      "videoStart": 76.76400000000002,
+      "duration": 0.516,
+      "simStart": 130.60000000000005,
+      "simDuration": 1.2,
+      "station": 2,
+      "view": "door",
+      "label": "D3 鉤爪脫離",
+      "detail": "沿外法線退出 100 mm，再切換相機"
+    },
+    {
+      "videoStart": 77.28000000000003,
+      "duration": 1.032,
+      "simStart": 131.80000000000004,
+      "simDuration": 2.4,
+      "station": 2,
+      "view": "door",
+      "label": "D3 連接器對焦",
+      "detail": "相機工作距離 150 mm；曝光前等待到位"
+    },
+    {
+      "videoStart": 78.31200000000003,
+      "duration": 0.7,
+      "simStart": 134.20000000000005,
+      "simDuration": 0.65,
+      "station": 2,
+      "view": "door",
+      "label": "D3 連接器取像",
+      "detail": "端子數量、異物、損 pin、門內麥拉；不執行通電介面測試"
+    },
+    {
+      "videoStart": 79.01200000000003,
+      "duration": 0.22,
+      "simStart": 134.85000000000005,
+      "simDuration": 0.3,
+      "station": 2,
+      "view": "door",
+      "label": "D3 取像完成",
+      "detail": "關閉環形光"
+    },
+    {
+      "videoStart": 79.23200000000003,
+      "duration": 0.9460000000000001,
+      "simStart": 135.15000000000006,
+      "simDuration": 2.2,
+      "station": 2,
+      "view": "door",
+      "label": "D3 返回開門邊緣",
+      "detail": "重新以鉤爪 TCP 對準護蓋上緣"
+    },
+    {
+      "videoStart": 80.17800000000003,
+      "duration": 1.87,
+      "simStart": 137.35000000000005,
+      "simDuration": 2.2,
+      "station": 2,
+      "view": "door",
+      "label": "D3 保持門扣拉起並閉門",
+      "detail": "依 QII 關門順序：拉起上邊沿 → 關緊 → 按下鎖定"
+    },
+    {
+      "videoStart": 82.04800000000003,
+      "duration": 0.516,
+      "simStart": 139.55000000000004,
+      "simDuration": 1.2,
+      "station": 2,
+      "view": "door",
+      "label": "D3 鉤爪退出換壓頭",
+      "detail": "先退離再切換壓頭接觸點"
+    },
+    {
+      "videoStart": 82.56400000000004,
+      "duration": 0.765,
+      "simStart": 140.75000000000003,
+      "simDuration": 0.9,
+      "station": 2,
+      "view": "door",
+      "label": "D3 壓頭接觸門扣",
+      "detail": "PU 壓頭到位後才允許下壓鎖扣"
+    },
+    {
+      "videoStart": 83.32900000000004,
+      "duration": 0.85,
+      "simStart": 141.65000000000003,
+      "simDuration": 1,
+      "station": 2,
+      "view": "door",
+      "label": "D3 按下鎖定",
+      "detail": "壓頭隨門扣下行；8 N 峰值為示意值，需實測校正"
+    },
+    {
+      "videoStart": 84.17900000000003,
+      "duration": 0.9460000000000001,
+      "simStart": 142.65000000000003,
+      "simDuration": 2.2,
+      "station": 2,
+      "view": "door",
+      "label": "D3 閉合量測定位",
+      "detail": "壓頭退出，切換線雷射至護蓋外表面"
+    },
+    {
+      "videoStart": 85.12500000000003,
+      "duration": 0.7,
+      "simStart": 144.85000000000002,
+      "simDuration": 0.7,
+      "station": 2,
+      "view": "door",
+      "label": "D3 閉合確認",
+      "detail": "外觀、鎖扣回位、膠條未外露；保留輪廓待配方判定"
+    },
+    {
+      "videoStart": 85.82500000000003,
+      "duration": 0.22,
+      "simStart": 145.55,
+      "simDuration": 0.2,
+      "station": 2,
+      "view": "door",
+      "label": "D3 掃描關閉",
+      "detail": "準備下一個護蓋"
+    },
+    {
+      "videoStart": 86.04500000000003,
+      "duration": 1.075,
+      "simStart": 145.75,
+      "simDuration": 2.5,
+      "station": 2,
+      "view": "robot",
+      "label": "D4 上方轉位",
+      "detail": "Smart Card｜在產品上方轉腕與滑軌移位"
+    },
+    {
+      "videoStart": 87.12000000000003,
+      "duration": 1.075,
+      "simStart": 148.25,
+      "simDuration": 2.5,
+      "station": 2,
+      "view": "door",
+      "label": "D4 視覺定位",
+      "detail": "Smart Card｜相機確認門扣／圖示／封印"
+    },
+    {
+      "videoStart": 88.19500000000004,
+      "duration": 0.7,
+      "simStart": 150.75,
+      "simDuration": 0.5,
+      "station": 2,
+      "view": "door",
+      "label": "D4 門面取像",
+      "detail": "確認門扣關閉、取得視覺修正位置"
+    },
+    {
+      "videoStart": 88.89500000000004,
+      "duration": 0.22,
+      "simStart": 151.25,
+      "simDuration": 0.25,
+      "station": 2,
+      "view": "door",
+      "label": "D4 關閉取像光",
+      "detail": "曝光完成"
+    },
+    {
+      "videoStart": 89.11500000000004,
+      "duration": 0.774,
+      "simStart": 151.5,
+      "simDuration": 1.8,
+      "station": 2,
+      "view": "door",
+      "label": "D4 切換鉤爪 TCP",
+      "detail": "相機退離後鉤爪接近至門扣外 100 mm"
+    },
+    {
+      "videoStart": 89.88900000000004,
+      "duration": 1.548,
+      "simStart": 153.3,
+      "simDuration": 3.6,
+      "station": 2,
+      "view": "door",
+      "label": "D4 減速接近門扣",
+      "detail": "100 → 6 mm；五次曲線峰值速度小於 50 mm/s"
+    },
+    {
+      "videoStart": 91.43700000000004,
+      "duration": 0.765,
+      "simStart": 156.9,
+      "simDuration": 0.9,
+      "station": 2,
+      "view": "door",
+      "label": "D4 力控接觸",
+      "detail": "鉤尖接觸門扣；2 N 為工程模擬設定"
+    },
+    {
+      "videoStart": 92.20200000000004,
+      "duration": 0.68,
+      "simStart": 157.8,
+      "simDuration": 0.8,
+      "station": 2,
+      "view": "door",
+      "label": "D4 抬起門扣 3 mm",
+      "detail": "QII §12.1：先拉起門上邊沿，再打開"
+    },
+    {
+      "videoStart": 92.88200000000005,
+      "duration": 1.87,
+      "simStart": 158.60000000000002,
+      "simDuration": 2.2,
+      "station": 2,
+      "view": "door",
+      "label": "D4 沿鉸鏈弧線開門",
+      "detail": "鉤尖跟隨同一門緣座標；示意開度 115°"
+    },
+    {
+      "videoStart": 94.75200000000005,
+      "duration": 0.516,
+      "simStart": 160.8,
+      "simDuration": 1.2,
+      "station": 2,
+      "view": "door",
+      "label": "D4 鉤爪脫離",
+      "detail": "沿外法線退出 100 mm，再切換相機"
+    },
+    {
+      "videoStart": 95.26800000000006,
+      "duration": 1.032,
+      "simStart": 162,
+      "simDuration": 2.4,
+      "station": 2,
+      "view": "door",
+      "label": "D4 連接器對焦",
+      "detail": "相機工作距離 150 mm；曝光前等待到位"
+    },
+    {
+      "videoStart": 96.30000000000005,
+      "duration": 0.7,
+      "simStart": 164.4,
+      "simDuration": 0.65,
+      "station": 2,
+      "view": "door",
+      "label": "D4 連接器取像",
+      "detail": "端子數量、異物、損 pin、門內麥拉；不執行通電介面測試"
+    },
+    {
+      "videoStart": 97.00000000000006,
+      "duration": 0.22,
+      "simStart": 165.05,
+      "simDuration": 0.3,
+      "station": 2,
+      "view": "door",
+      "label": "D4 取像完成",
+      "detail": "關閉環形光"
+    },
+    {
+      "videoStart": 97.22000000000006,
+      "duration": 0.9460000000000001,
+      "simStart": 165.35000000000002,
+      "simDuration": 2.2,
+      "station": 2,
+      "view": "door",
+      "label": "D4 返回開門邊緣",
+      "detail": "重新以鉤爪 TCP 對準護蓋上緣"
+    },
+    {
+      "videoStart": 98.16600000000005,
+      "duration": 1.87,
+      "simStart": 167.55,
+      "simDuration": 2.2,
+      "station": 2,
+      "view": "door",
+      "label": "D4 保持門扣拉起並閉門",
+      "detail": "依 QII 關門順序：拉起上邊沿 → 關緊 → 按下鎖定"
+    },
+    {
+      "videoStart": 100.03600000000006,
+      "duration": 0.516,
+      "simStart": 169.75,
+      "simDuration": 1.2,
+      "station": 2,
+      "view": "door",
+      "label": "D4 鉤爪退出換壓頭",
+      "detail": "先退離再切換壓頭接觸點"
+    },
+    {
+      "videoStart": 100.55200000000006,
+      "duration": 0.765,
+      "simStart": 170.95,
+      "simDuration": 0.9,
+      "station": 2,
+      "view": "door",
+      "label": "D4 壓頭接觸門扣",
+      "detail": "PU 壓頭到位後才允許下壓鎖扣"
+    },
+    {
+      "videoStart": 101.31700000000006,
+      "duration": 0.85,
+      "simStart": 171.85,
+      "simDuration": 1,
+      "station": 2,
+      "view": "door",
+      "label": "D4 按下鎖定",
+      "detail": "壓頭隨門扣下行；8 N 峰值為示意值，需實測校正"
+    },
+    {
+      "videoStart": 102.16700000000006,
+      "duration": 0.9460000000000001,
+      "simStart": 172.85,
+      "simDuration": 2.2,
+      "station": 2,
+      "view": "door",
+      "label": "D4 閉合量測定位",
+      "detail": "壓頭退出，切換線雷射至護蓋外表面"
+    },
+    {
+      "videoStart": 103.11300000000006,
+      "duration": 0.7,
+      "simStart": 175.04999999999998,
+      "simDuration": 0.7,
+      "station": 2,
+      "view": "door",
+      "label": "D4 閉合確認",
+      "detail": "外觀、鎖扣回位、膠條未外露；保留輪廓待配方判定"
+    },
+    {
+      "videoStart": 103.81300000000006,
+      "duration": 0.22,
+      "simStart": 175.74999999999997,
+      "simDuration": 0.2,
+      "station": 2,
+      "view": "door",
+      "label": "D4 掃描關閉",
+      "detail": "準備下一個護蓋"
+    },
+    {
+      "videoStart": 104.03300000000006,
+      "duration": 1.075,
+      "simStart": 175.94999999999996,
+      "simDuration": 2.5,
+      "station": 2,
+      "view": "robot",
+      "label": "D5 上方轉位",
+      "detail": "COM / 千兆網口｜在產品上方轉腕與滑軌移位"
+    },
+    {
+      "videoStart": 105.10800000000006,
+      "duration": 1.075,
+      "simStart": 178.44999999999996,
+      "simDuration": 2.5,
+      "station": 2,
+      "view": "door",
+      "label": "D5 視覺定位",
+      "detail": "COM / 千兆網口｜相機確認門扣／圖示／封印"
+    },
+    {
+      "videoStart": 106.18300000000006,
+      "duration": 0.7,
+      "simStart": 180.94999999999996,
+      "simDuration": 0.5,
+      "station": 2,
+      "view": "door",
+      "label": "D5 門面取像",
+      "detail": "確認門扣關閉、取得視覺修正位置"
+    },
+    {
+      "videoStart": 106.88300000000007,
+      "duration": 0.22,
+      "simStart": 181.44999999999996,
+      "simDuration": 0.25,
+      "station": 2,
+      "view": "door",
+      "label": "D5 關閉取像光",
+      "detail": "曝光完成"
+    },
+    {
+      "videoStart": 107.10300000000007,
+      "duration": 0.774,
+      "simStart": 181.69999999999996,
+      "simDuration": 1.8,
+      "station": 2,
+      "view": "door",
+      "label": "D5 切換鉤爪 TCP",
+      "detail": "相機退離後鉤爪接近至門扣外 100 mm"
+    },
+    {
+      "videoStart": 107.87700000000007,
+      "duration": 1.548,
+      "simStart": 183.49999999999997,
+      "simDuration": 3.6,
+      "station": 2,
+      "view": "door",
+      "label": "D5 減速接近門扣",
+      "detail": "100 → 6 mm；五次曲線峰值速度小於 50 mm/s"
+    },
+    {
+      "videoStart": 109.42500000000007,
+      "duration": 0.765,
+      "simStart": 187.09999999999997,
+      "simDuration": 0.9,
+      "station": 2,
+      "view": "door",
+      "label": "D5 力控接觸",
+      "detail": "鉤尖接觸門扣；2 N 為工程模擬設定"
+    },
+    {
+      "videoStart": 110.19000000000007,
+      "duration": 0.68,
+      "simStart": 187.99999999999997,
+      "simDuration": 0.8,
+      "station": 2,
+      "view": "door",
+      "label": "D5 抬起門扣 3 mm",
+      "detail": "QII §12.1：先拉起門上邊沿，再打開"
+    },
+    {
+      "videoStart": 110.87000000000008,
+      "duration": 1.87,
+      "simStart": 188.79999999999998,
+      "simDuration": 2.2,
+      "station": 2,
+      "view": "door",
+      "label": "D5 沿鉸鏈弧線開門",
+      "detail": "鉤尖跟隨同一門緣座標；示意開度 115°"
+    },
+    {
+      "videoStart": 112.74000000000008,
+      "duration": 0.516,
+      "simStart": 190.99999999999997,
+      "simDuration": 1.2,
+      "station": 2,
+      "view": "door",
+      "label": "D5 鉤爪脫離",
+      "detail": "沿外法線退出 100 mm，再切換相機"
+    },
+    {
+      "videoStart": 113.25600000000009,
+      "duration": 1.032,
+      "simStart": 192.19999999999996,
+      "simDuration": 2.4,
+      "station": 2,
+      "view": "door",
+      "label": "D5 連接器對焦",
+      "detail": "相機工作距離 150 mm；曝光前等待到位"
+    },
+    {
+      "videoStart": 114.28800000000008,
+      "duration": 0.7,
+      "simStart": 194.59999999999997,
+      "simDuration": 0.65,
+      "station": 2,
+      "view": "door",
+      "label": "D5 連接器取像",
+      "detail": "端子數量、異物、損 pin、門內麥拉；不執行通電介面測試"
+    },
+    {
+      "videoStart": 114.98800000000008,
+      "duration": 0.22,
+      "simStart": 195.24999999999997,
+      "simDuration": 0.3,
+      "station": 2,
+      "view": "door",
+      "label": "D5 取像完成",
+      "detail": "關閉環形光"
+    },
+    {
+      "videoStart": 115.20800000000008,
+      "duration": 0.9460000000000001,
+      "simStart": 195.54999999999998,
+      "simDuration": 2.2,
+      "station": 2,
+      "view": "door",
+      "label": "D5 返回開門邊緣",
+      "detail": "重新以鉤爪 TCP 對準護蓋上緣"
+    },
+    {
+      "videoStart": 116.15400000000008,
+      "duration": 1.87,
+      "simStart": 197.74999999999997,
+      "simDuration": 2.2,
+      "station": 2,
+      "view": "door",
+      "label": "D5 保持門扣拉起並閉門",
+      "detail": "依 QII 關門順序：拉起上邊沿 → 關緊 → 按下鎖定"
+    },
+    {
+      "videoStart": 118.02400000000009,
+      "duration": 0.516,
+      "simStart": 199.94999999999996,
+      "simDuration": 1.2,
+      "station": 2,
+      "view": "door",
+      "label": "D5 鉤爪退出換壓頭",
+      "detail": "先退離再切換壓頭接觸點"
+    },
+    {
+      "videoStart": 118.54000000000009,
+      "duration": 0.765,
+      "simStart": 201.14999999999995,
+      "simDuration": 0.9,
+      "station": 2,
+      "view": "door",
+      "label": "D5 壓頭接觸門扣",
+      "detail": "PU 壓頭到位後才允許下壓鎖扣"
+    },
+    {
+      "videoStart": 119.30500000000009,
+      "duration": 0.85,
+      "simStart": 202.04999999999995,
+      "simDuration": 1,
+      "station": 2,
+      "view": "door",
+      "label": "D5 按下鎖定",
+      "detail": "壓頭隨門扣下行；8 N 峰值為示意值，需實測校正"
+    },
+    {
+      "videoStart": 120.15500000000009,
+      "duration": 0.9460000000000001,
+      "simStart": 203.04999999999995,
+      "simDuration": 2.2,
+      "station": 2,
+      "view": "door",
+      "label": "D5 閉合量測定位",
+      "detail": "壓頭退出，切換線雷射至護蓋外表面"
+    },
+    {
+      "videoStart": 121.10100000000008,
+      "duration": 0.7,
+      "simStart": 205.24999999999994,
+      "simDuration": 0.7,
+      "station": 2,
+      "view": "door",
+      "label": "D5 閉合確認",
+      "detail": "外觀、鎖扣回位、膠條未外露；保留輪廓待配方判定"
+    },
+    {
+      "videoStart": 121.80100000000009,
+      "duration": 0.22,
+      "simStart": 205.94999999999993,
+      "simDuration": 0.2,
+      "station": 2,
+      "view": "door",
+      "label": "D5 掃描關閉",
+      "detail": "準備下一個護蓋"
+    },
+    {
+      "videoStart": 122.02100000000009,
+      "duration": 1.075,
+      "simStart": 206.14999999999992,
+      "simDuration": 2.5,
+      "station": 2,
+      "view": "robot",
+      "label": "BAT1 上方轉位",
+      "detail": "電池 1 封印｜在產品上方轉腕與滑軌移位"
+    },
+    {
+      "videoStart": 123.09600000000009,
+      "duration": 1.075,
+      "simStart": 208.64999999999992,
+      "simDuration": 2.5,
+      "station": 2,
+      "view": "door",
+      "label": "BAT1 視覺定位",
+      "detail": "電池 1 封印｜相機確認門扣／圖示／封印"
+    },
+    {
+      "videoStart": 124.17100000000009,
+      "duration": 0.7,
+      "simStart": 211.14999999999992,
+      "simDuration": 0.5,
+      "station": 2,
+      "view": "door",
+      "label": "BAT1 門面取像",
+      "detail": "封印與外觀檢查；本階段不拆拔模組"
+    },
+    {
+      "videoStart": 124.8710000000001,
+      "duration": 0.22,
+      "simStart": 211.64999999999992,
+      "simDuration": 0.25,
+      "station": 2,
+      "view": "door",
+      "label": "BAT1 關閉取像光",
+      "detail": "曝光完成"
+    },
+    {
+      "videoStart": 125.0910000000001,
+      "duration": 1.075,
+      "simStart": 211.89999999999992,
+      "simDuration": 2.5,
+      "station": 2,
+      "view": "robot",
+      "label": "BAT2 上方轉位",
+      "detail": "電池 2 封印｜在產品上方轉腕與滑軌移位"
+    },
+    {
+      "videoStart": 126.1660000000001,
+      "duration": 1.075,
+      "simStart": 214.39999999999992,
+      "simDuration": 2.5,
+      "station": 2,
+      "view": "door",
+      "label": "BAT2 視覺定位",
+      "detail": "電池 2 封印｜相機確認門扣／圖示／封印"
+    },
+    {
+      "videoStart": 127.2410000000001,
+      "duration": 0.7,
+      "simStart": 216.89999999999992,
+      "simDuration": 0.5,
+      "station": 2,
+      "view": "door",
+      "label": "BAT2 門面取像",
+      "detail": "封印與外觀檢查；本階段不拆拔模組"
+    },
+    {
+      "videoStart": 127.9410000000001,
+      "duration": 0.22,
+      "simStart": 217.39999999999992,
+      "simDuration": 0.25,
+      "station": 2,
+      "view": "door",
+      "label": "BAT2 關閉取像光",
+      "detail": "曝光完成"
+    },
+    {
+      "videoStart": 128.16100000000012,
+      "duration": 1.075,
+      "simStart": 217.64999999999992,
+      "simDuration": 2.5,
+      "station": 2,
+      "view": "robot",
+      "label": "HDD 上方轉位",
+      "detail": "HDD 保護門（不拆拔）｜在產品上方轉腕與滑軌移位"
+    },
+    {
+      "videoStart": 129.2360000000001,
+      "duration": 1.075,
+      "simStart": 220.14999999999992,
+      "simDuration": 2.5,
+      "station": 2,
+      "view": "door",
+      "label": "HDD 視覺定位",
+      "detail": "HDD 保護門（不拆拔）｜相機確認門扣／圖示／封印"
+    },
+    {
+      "videoStart": 130.3110000000001,
+      "duration": 0.7,
+      "simStart": 222.64999999999992,
+      "simDuration": 0.5,
+      "station": 2,
+      "view": "door",
+      "label": "HDD 門面取像",
+      "detail": "確認門扣關閉、取得視覺修正位置"
+    },
+    {
+      "videoStart": 131.01100000000008,
+      "duration": 0.22,
+      "simStart": 223.14999999999992,
+      "simDuration": 0.25,
+      "station": 2,
+      "view": "door",
+      "label": "HDD 關閉取像光",
+      "detail": "曝光完成"
+    },
+    {
+      "videoStart": 131.23100000000008,
+      "duration": 0.774,
+      "simStart": 223.39999999999992,
+      "simDuration": 1.8,
+      "station": 2,
+      "view": "door",
+      "label": "HDD 切換鉤爪 TCP",
+      "detail": "相機退離後鉤爪接近至門扣外 100 mm"
+    },
+    {
+      "videoStart": 132.00500000000008,
+      "duration": 1.548,
+      "simStart": 225.19999999999993,
+      "simDuration": 3.6,
+      "station": 2,
+      "view": "door",
+      "label": "HDD 減速接近門扣",
+      "detail": "100 → 6 mm；五次曲線峰值速度小於 50 mm/s"
+    },
+    {
+      "videoStart": 133.55300000000008,
+      "duration": 0.765,
+      "simStart": 228.79999999999993,
+      "simDuration": 0.9,
+      "station": 2,
+      "view": "door",
+      "label": "HDD 力控接觸",
+      "detail": "鉤尖接觸門扣；2 N 為工程模擬設定"
+    },
+    {
+      "videoStart": 134.31800000000007,
+      "duration": 0.68,
+      "simStart": 229.69999999999993,
+      "simDuration": 0.8,
+      "station": 2,
+      "view": "door",
+      "label": "HDD 抬起門扣 3 mm",
+      "detail": "QII §12.1：先拉起門上邊沿，再打開"
+    },
+    {
+      "videoStart": 134.99800000000008,
+      "duration": 1.87,
+      "simStart": 230.49999999999994,
+      "simDuration": 2.2,
+      "station": 2,
+      "view": "door",
+      "label": "HDD 沿鉸鏈弧線開門",
+      "detail": "鉤尖跟隨同一門緣座標；示意開度 115°"
+    },
+    {
+      "videoStart": 136.86800000000008,
+      "duration": 0.516,
+      "simStart": 232.69999999999993,
+      "simDuration": 1.2,
+      "station": 2,
+      "view": "door",
+      "label": "HDD 鉤爪脫離",
+      "detail": "沿外法線退出 100 mm，再切換相機"
+    },
+    {
+      "videoStart": 137.38400000000007,
+      "duration": 1.032,
+      "simStart": 233.89999999999992,
+      "simDuration": 2.4,
+      "station": 2,
+      "view": "door",
+      "label": "HDD 連接器對焦",
+      "detail": "相機工作距離 150 mm；曝光前等待到位"
+    },
+    {
+      "videoStart": 138.41600000000008,
+      "duration": 0.7,
+      "simStart": 236.29999999999993,
+      "simDuration": 0.65,
+      "station": 2,
+      "view": "door",
+      "label": "HDD 連接器取像",
+      "detail": "端子數量、異物、損 pin、門內麥拉；不執行通電介面測試"
+    },
+    {
+      "videoStart": 139.11600000000007,
+      "duration": 0.22,
+      "simStart": 236.94999999999993,
+      "simDuration": 0.3,
+      "station": 2,
+      "view": "door",
+      "label": "HDD 取像完成",
+      "detail": "關閉環形光"
+    },
+    {
+      "videoStart": 139.33600000000007,
+      "duration": 0.9460000000000001,
+      "simStart": 237.24999999999994,
+      "simDuration": 2.2,
+      "station": 2,
+      "view": "door",
+      "label": "HDD 返回開門邊緣",
+      "detail": "重新以鉤爪 TCP 對準護蓋上緣"
+    },
+    {
+      "videoStart": 140.28200000000007,
+      "duration": 1.87,
+      "simStart": 239.44999999999993,
+      "simDuration": 2.2,
+      "station": 2,
+      "view": "door",
+      "label": "HDD 保持門扣拉起並閉門",
+      "detail": "依 QII 關門順序：拉起上邊沿 → 關緊 → 按下鎖定"
+    },
+    {
+      "videoStart": 142.15200000000007,
+      "duration": 0.516,
+      "simStart": 241.64999999999992,
+      "simDuration": 1.2,
+      "station": 2,
+      "view": "door",
+      "label": "HDD 鉤爪退出換壓頭",
+      "detail": "先退離再切換壓頭接觸點"
+    },
+    {
+      "videoStart": 142.66800000000006,
+      "duration": 0.765,
+      "simStart": 242.8499999999999,
+      "simDuration": 0.9,
+      "station": 2,
+      "view": "door",
+      "label": "HDD 壓頭接觸門扣",
+      "detail": "PU 壓頭到位後才允許下壓鎖扣"
+    },
+    {
+      "videoStart": 143.43300000000005,
+      "duration": 0.85,
+      "simStart": 243.74999999999991,
+      "simDuration": 1,
+      "station": 2,
+      "view": "door",
+      "label": "HDD 按下鎖定",
+      "detail": "壓頭隨門扣下行；8 N 峰值為示意值，需實測校正"
+    },
+    {
+      "videoStart": 144.28300000000004,
+      "duration": 0.9460000000000001,
+      "simStart": 244.74999999999991,
+      "simDuration": 2.2,
+      "station": 2,
+      "view": "door",
+      "label": "HDD 閉合量測定位",
+      "detail": "壓頭退出，切換線雷射至護蓋外表面"
+    },
+    {
+      "videoStart": 145.22900000000004,
+      "duration": 0.7,
+      "simStart": 246.9499999999999,
+      "simDuration": 0.7,
+      "station": 2,
+      "view": "door",
+      "label": "HDD 閉合確認",
+      "detail": "外觀、鎖扣回位、膠條未外露；保留輪廓待配方判定"
+    },
+    {
+      "videoStart": 145.92900000000003,
+      "duration": 0.22,
+      "simStart": 247.6499999999999,
+      "simDuration": 0.2,
+      "station": 2,
+      "view": "door",
+      "label": "HDD 掃描關閉",
+      "detail": "準備下一個護蓋"
+    },
+    {
+      "videoStart": 146.14900000000003,
+      "duration": 1.29,
+      "simStart": 247.84999999999988,
+      "simDuration": 3,
+      "station": 2,
+      "view": "robot",
+      "label": "手臂退出翻轉包絡",
+      "detail": "所有護蓋閉合，工具移到翻轉治具外上方"
+    },
+    {
+      "videoStart": 147.43900000000002,
+      "duration": 1.505,
+      "simStart": 250.84999999999988,
+      "simDuration": 3.5,
+      "station": 2,
+      "view": "transfer",
+      "label": "輸送至 S3",
+      "detail": "四角側夾保持夾緊，翻轉夾臂保持張開"
+    },
+    {
+      "videoStart": 148.94400000000002,
+      "duration": 0.22,
+      "simStart": 254.34999999999988,
+      "simDuration": 0.5,
+      "station": 3,
+      "view": "flip",
+      "label": "S3 止擋定位",
+      "detail": "載具到位與翻轉軸原點確認"
+    },
+    {
+      "videoStart": 149.16400000000002,
+      "duration": 0.3655,
+      "simStart": 254.84999999999988,
+      "simDuration": 0.85,
+      "station": 3,
+      "view": "flip",
+      "label": "翻轉夾臂先夾緊",
+      "detail": "PU 夾墊接触護角，夾持完成後才鬆開載具側夾"
+    },
+    {
+      "videoStart": 149.5295,
+      "duration": 0.301,
+      "simStart": 255.69999999999987,
+      "simDuration": 0.7,
+      "station": 3,
+      "view": "flip",
+      "label": "載具側夾鬆開",
+      "detail": "翻轉夾持仍保持，交接期間不失去約束"
+    },
+    {
+      "videoStart": 149.8305,
+      "duration": 1.53,
+      "simStart": 256.39999999999986,
+      "simDuration": 1.8,
+      "station": 3,
+      "view": "flip",
+      "label": "抬升 210 mm",
+      "detail": "清出定位銷、堆疊柱與旋轉掃掠包絡"
+    },
+    {
+      "videoStart": 151.3605,
+      "duration": 2.38,
+      "simStart": 258.1999999999999,
+      "simDuration": 2.8,
+      "station": 3,
+      "view": "flip",
+      "label": "翻面 180°",
+      "detail": "S 曲線起停，繞輸送 X 軸旋轉；手臂維持退讓"
+    },
+    {
+      "videoStart": 153.7405,
+      "duration": 0.22,
+      "simStart": 260.9999999999999,
+      "simDuration": 0.5,
+      "station": 3,
+      "view": "flip",
+      "label": "旋轉軸煞車確認",
+      "detail": "停穩後才允許近距離取像"
+    },
+    {
+      "videoStart": 153.9605,
+      "duration": 1.075,
+      "simStart": 261.4999999999999,
+      "simDuration": 2.5,
+      "station": 3,
+      "view": "bottom",
+      "label": "相機定位：底殼法規印刷",
+      "detail": "沿預定接近路徑移動，等待 TCP 到位"
+    },
+    {
+      "videoStart": 155.03549999999998,
+      "duration": 0.7,
+      "simStart": 263.9999999999999,
+      "simDuration": 0.55,
+      "station": 3,
+      "view": "bottom",
+      "label": "取像：底殼法規印刷",
+      "detail": "QII §10.2 / 工單前 PI：白色字體、法規標誌與可辨識性"
+    },
+    {
+      "videoStart": 155.73549999999997,
+      "duration": 0.22,
+      "simStart": 264.5499999999999,
+      "simDuration": 0.25,
+      "station": 3,
+      "view": "bottom",
+      "label": "影像確認：底殼法規印刷",
+      "detail": "模擬影像事件；缺陷演算法待導入"
+    },
+    {
+      "videoStart": 155.95549999999997,
+      "duration": 1.075,
+      "simStart": 264.7999999999999,
+      "simDuration": 2.5,
+      "station": 3,
+      "view": "bottom",
+      "label": "相機定位：SN 與警語",
+      "detail": "沿預定接近路徑移動，等待 TCP 到位"
+    },
+    {
+      "videoStart": 157.03049999999996,
+      "duration": 0.7,
+      "simStart": 267.2999999999999,
+      "simDuration": 0.55,
+      "station": 3,
+      "view": "bottom",
+      "label": "取像：SN 與警語",
+      "detail": "依工單核對安規、SN、鈕扣電池警語；OS／CPU 位於閉合機內，待後續工位"
+    },
+    {
+      "videoStart": 157.73049999999995,
+      "duration": 0.22,
+      "simStart": 267.8499999999999,
+      "simDuration": 0.25,
+      "station": 3,
+      "view": "bottom",
+      "label": "影像確認：SN 與警語",
+      "detail": "模擬影像事件；缺陷演算法待導入"
+    },
+    {
+      "videoStart": 157.95049999999995,
+      "duration": 1.075,
+      "simStart": 268.0999999999999,
+      "simDuration": 2.5,
+      "station": 3,
+      "view": "bottom",
+      "label": "相機定位：外露 Docking 接點",
+      "detail": "沿預定接近路徑移動，等待 TCP 到位"
+    },
+    {
+      "videoStart": 159.02549999999994,
+      "duration": 0.7,
+      "simStart": 270.5999999999999,
+      "simDuration": 0.55,
+      "station": 3,
+      "view": "bottom",
+      "label": "取像：外露 Docking 接點",
+      "detail": "實機照片為外露接點，直接檢查翹 pin／損 pin／異物；無底面開蓋動作"
+    },
+    {
+      "videoStart": 159.72549999999993,
+      "duration": 0.22,
+      "simStart": 271.1499999999999,
+      "simDuration": 0.25,
+      "station": 3,
+      "view": "bottom",
+      "label": "影像確認：外露 Docking 接點",
+      "detail": "模擬影像事件；缺陷演算法待導入"
+    },
+    {
+      "videoStart": 159.94549999999992,
+      "duration": 1.075,
+      "simStart": 271.3999999999999,
+      "simDuration": 2.5,
+      "station": 3,
+      "view": "bottom",
+      "label": "相機定位：螺絲／腳墊區域 1",
+      "detail": "沿預定接近路徑移動，等待 TCP 到位"
+    },
+    {
+      "videoStart": 161.0204999999999,
+      "duration": 0.7,
+      "simStart": 273.8999999999999,
+      "simDuration": 0.55,
+      "station": 3,
+      "view": "bottom",
+      "label": "取像：螺絲／腳墊區域 1",
+      "detail": "QII §16：檢查螺絲頭十字 R 角；照片建模數量不代替 BOM"
+    },
+    {
+      "videoStart": 161.7204999999999,
+      "duration": 0.22,
+      "simStart": 274.44999999999993,
+      "simDuration": 0.25,
+      "station": 3,
+      "view": "bottom",
+      "label": "影像確認：螺絲／腳墊區域 1",
+      "detail": "模擬影像事件；缺陷演算法待導入"
+    },
+    {
+      "videoStart": 161.9404999999999,
+      "duration": 1.075,
+      "simStart": 274.69999999999993,
+      "simDuration": 2.5,
+      "station": 3,
+      "view": "bottom",
+      "label": "相機定位：螺絲／腳墊區域 2",
+      "detail": "沿預定接近路徑移動，等待 TCP 到位"
+    },
+    {
+      "videoStart": 163.0154999999999,
+      "duration": 0.7,
+      "simStart": 277.19999999999993,
+      "simDuration": 0.55,
+      "station": 3,
+      "view": "bottom",
+      "label": "取像：螺絲／腳墊區域 2",
+      "detail": "QII §16：檢查螺絲頭十字 R 角；照片建模數量不代替 BOM"
+    },
+    {
+      "videoStart": 163.71549999999988,
+      "duration": 0.22,
+      "simStart": 277.74999999999994,
+      "simDuration": 0.25,
+      "station": 3,
+      "view": "bottom",
+      "label": "影像確認：螺絲／腳墊區域 2",
+      "detail": "模擬影像事件；缺陷演算法待導入"
+    },
+    {
+      "videoStart": 163.93549999999988,
+      "duration": 1.075,
+      "simStart": 277.99999999999994,
+      "simDuration": 2.5,
+      "station": 3,
+      "view": "bottom",
+      "label": "相機定位：螺絲／腳墊區域 3",
+      "detail": "沿預定接近路徑移動，等待 TCP 到位"
+    },
+    {
+      "videoStart": 165.01049999999987,
+      "duration": 0.7,
+      "simStart": 280.49999999999994,
+      "simDuration": 0.55,
+      "station": 3,
+      "view": "bottom",
+      "label": "取像：螺絲／腳墊區域 3",
+      "detail": "QII §16：檢查螺絲頭十字 R 角；照片建模數量不代替 BOM"
+    },
+    {
+      "videoStart": 165.71049999999985,
+      "duration": 0.22,
+      "simStart": 281.04999999999995,
+      "simDuration": 0.25,
+      "station": 3,
+      "view": "bottom",
+      "label": "影像確認：螺絲／腳墊區域 3",
+      "detail": "模擬影像事件；缺陷演算法待導入"
+    },
+    {
+      "videoStart": 165.93049999999985,
+      "duration": 1.075,
+      "simStart": 281.29999999999995,
+      "simDuration": 2.5,
+      "station": 3,
+      "view": "bottom",
+      "label": "相機定位：螺絲／腳墊區域 4",
+      "detail": "沿預定接近路徑移動，等待 TCP 到位"
+    },
+    {
+      "videoStart": 167.00549999999984,
+      "duration": 0.7,
+      "simStart": 283.79999999999995,
+      "simDuration": 0.55,
+      "station": 3,
+      "view": "bottom",
+      "label": "取像：螺絲／腳墊區域 4",
+      "detail": "QII §16：檢查螺絲頭十字 R 角；照片建模數量不代替 BOM"
+    },
+    {
+      "videoStart": 167.70549999999983,
+      "duration": 0.22,
+      "simStart": 284.34999999999997,
+      "simDuration": 0.25,
+      "station": 3,
+      "view": "bottom",
+      "label": "影像確認：螺絲／腳墊區域 4",
+      "detail": "模擬影像事件；缺陷演算法待導入"
+    },
+    {
+      "videoStart": 167.92549999999983,
+      "duration": 1.29,
+      "simStart": 284.59999999999997,
+      "simDuration": 3,
+      "station": 3,
+      "view": "flip",
+      "label": "相機退離翻轉治具",
+      "detail": "確認工具已離開旋轉包絡，再解除旋轉軸煞車"
+    },
+    {
+      "videoStart": 169.21549999999982,
+      "duration": 2.38,
+      "simStart": 287.59999999999997,
+      "simDuration": 2.8,
+      "station": 3,
+      "view": "flip",
+      "label": "翻回 0°",
+      "detail": "護蓋保持閉合，夾臂保持夾持"
+    },
+    {
+      "videoStart": 171.59549999999982,
+      "duration": 0.774,
+      "simStart": 290.4,
+      "simDuration": 1.8,
+      "station": 3,
+      "view": "flip",
+      "label": "下降至載具承載墊",
+      "detail": "平順下降，落座後才重新夾緊"
+    },
+    {
+      "videoStart": 172.36949999999982,
+      "duration": 0.301,
+      "simStart": 292.2,
+      "simDuration": 0.7,
+      "station": 3,
+      "view": "flip",
+      "label": "載具四角側夾夾緊",
+      "detail": "承載墊落座、定位到位"
+    },
+    {
+      "videoStart": 172.6704999999998,
+      "duration": 0.3655,
+      "simStart": 292.9,
+      "simDuration": 0.85,
+      "station": 3,
+      "view": "flip",
+      "label": "翻轉夾臂鬆開",
+      "detail": "載具側夾完成後解除翻轉夾持"
+    },
+    {
+      "videoStart": 173.0359999999998,
+      "duration": 1.204,
+      "simStart": 293.75,
+      "simDuration": 2.8,
+      "station": 3,
+      "view": "flip",
+      "label": "手臂回待命位置",
+      "detail": "工具退回後開放 S4 輸送"
+    },
+    {
+      "videoStart": 174.2399999999998,
+      "duration": 1.032,
+      "simStart": 296.55,
+      "simDuration": 2.4,
+      "station": 3,
+      "view": "transfer",
+      "label": "輸送至 S4",
+      "detail": "出料區到位，等待彙整判定"
+    },
+    {
+      "videoStart": 175.27199999999982,
+      "duration": 0.43,
+      "simStart": 298.95,
+      "simDuration": 1,
+      "station": 4,
+      "view": "outfeed",
+      "label": "彙整第一階段結果",
+      "detail": "模擬 OK／NG 與影像索引；MES 尚未連接"
+    },
+    {
+      "videoStart": 175.70199999999983,
+      "duration": 0.301,
+      "simStart": 299.95,
+      "simDuration": 0.7,
+      "station": 4,
+      "view": "outfeed",
+      "label": "出料側夾鬆開",
+      "detail": "完成工單前 PI 範圍，保留未涵蓋項目待人工檢驗"
+    },
+    {
+      "videoStart": 176.00299999999982,
+      "duration": 2.38,
+      "simStart": 300.65,
+      "simDuration": 2.8,
+      "station": 4,
+      "view": "outfeed",
+      "label": "載具拉入出料堆料架",
+      "detail": "上層托叉承重，拉料鞋與載具前緣同步移動"
+    },
+    {
+      "videoStart": 178.3829999999998,
+      "duration": 0.68,
+      "simStart": 303.45,
+      "simDuration": 0.8,
+      "station": 4,
+      "view": "outfeed",
+      "label": "出料平台接管上層重量",
+      "detail": "先抬高 4 mm，使上層載具離開托叉"
+    },
+    {
+      "videoStart": 179.06299999999982,
+      "duration": 0.3825,
+      "simStart": 304.25,
+      "simDuration": 0.45,
+      "station": 4,
+      "view": "outfeed",
+      "label": "出料托叉退出",
+      "detail": "平台承重後才退出托叉"
+    },
+    {
+      "videoStart": 179.4454999999998,
+      "duration": 1.53,
+      "simStart": 304.7,
+      "simDuration": 1.8,
+      "station": 4,
+      "view": "outfeed",
+      "label": "出料平台上升一個間距",
+      "detail": "已檢載具與上層載具共同上升 110 mm"
+    },
+    {
+      "videoStart": 180.9754999999998,
+      "duration": 0.3825,
+      "simStart": 306.5,
+      "simDuration": 0.45,
+      "station": 4,
+      "view": "outfeed",
+      "label": "出料托叉承重",
+      "detail": "托叉伸入最下方載具，支承整疊"
+    },
+    {
+      "videoStart": 181.3579999999998,
+      "duration": 1.19,
+      "simStart": 306.95,
+      "simDuration": 1.4,
+      "station": 4,
+      "view": "outfeed",
+      "label": "出料平台下降復歸",
+      "detail": "整疊留在托叉，平台獨立回到入料高度"
+    },
+    {
+      "videoStart": 182.5479999999998,
+      "duration": 0.43,
+      "simStart": 308.34999999999997,
+      "simDuration": 1,
+      "station": 4,
+      "view": "outfeed",
+      "label": "單台循環完成",
+      "detail": "第一階段示意完成；未執行開機、LCD、鍵盤與模組拆拔"
+    },
+    {
+      "videoStart": 182.9779999999998,
+      "duration": 3,
+      "simStart": 309.34999999999997,
+      "simDuration": 0,
+      "station": 4,
+      "view": "overview",
+      "label": "本台檢測流程完成",
+      "detail": "第一階段示意完成；未執行開機、LCD、鍵盤與模組拆拔"
+    }
+  ],
+  "gpu": "ANGLE (NVIDIA, NVIDIA GeForce RTX 5070 Ti Laptop GPU (0x00002F18) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+}

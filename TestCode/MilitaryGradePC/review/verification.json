@@ -1,0 +1,43 @@
+{
+  "report": [
+    {
+      "sku": "V110-STND",
+      "steps": 214,
+      "cycle": 309.34999999999997,
+      "maxError": 1.3830600733622803e-12,
+      "maxAngle": 0,
+      "worst": "側面定位：前側"
+    },
+    {
+      "sku": "V110-STND",
+      "continuous": true,
+      "time": 309.34999999999997,
+      "elapsed": 316.02499999998645,
+      "maxContactError": 0.07992596466533478
+    },
+    {
+      "sku": "V110-STND",
+      "quarterTurnClearance": 44.24999999999909
+    },
+    {
+      "sku": "V110-RF",
+      "steps": 214,
+      "cycle": 309.34999999999997,
+      "maxError": 1.3830600733622803e-12,
+      "maxAngle": 0,
+      "worst": "側面定位：前側"
+    },
+    {
+      "sku": "V110-RF",
+      "continuous": true,
+      "time": 309.34999999999997,
+      "elapsed": 312.00625000003936,
+      "maxContactError": 0.07997439298798643
+    },
+    {
+      "sku": "V110-RF",
+      "quarterTurnClearance": 44.24999999999909
+    }
+  ],
+  "failures": []
+}
