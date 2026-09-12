@@ -1,2 +1,0 @@
-# 開發工具（不進發行版）：.\scripts\dev.ps1 -Setup 會一起安裝。
-ruff==0.9.6                    # 靜態檢查：ruff check apps tests config vscapture
