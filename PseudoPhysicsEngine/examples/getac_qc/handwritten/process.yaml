@@ -2,13 +2,13 @@ stations:
   - id: S1
     name: 進料
     modules: [infeed_rack, conveyor_1]
-    inputs: 升降架滿載
-    outputs: 單台到定位點
+    inputs: 升降架槽位內的待測工件
+    outputs: 工件送達第一段輸送帶末端
   - id: S2
     name: 外觀取像
     modules: [vision_fixture]
     inputs: 工件正面朝上
-    outputs: 正面與側面影像
+    outputs: 工件定位於視覺治具並完成取像
   - id: S3
     name: 護蓋開啟與連接口檢測
     modules: [robot_1]
@@ -18,19 +18,152 @@ stations:
     name: 翻面與背印檢測
     modules: [robot_2]
     inputs: 正面朝上
-    outputs: 背面印刷影像
+    outputs: 工件翻面並完成背印取像
   - id: S5
     name: 出料
     modules: [conveyor_2, outfeed_rack]
     inputs: 完成檢測
-    outputs: 工件入出料架
+    outputs: 工件進入出料架
+
+workpiece_sku: V110_std
+initial_workpiece_frame: infeed_rack.slot_5
+
 steps:
-  - {id: S1.1, station: S1, actor: infeed_rack.lift, action: actuate, duration_s: 8}
-  - {id: S2.1, station: S2, actor: vision_fixture, action: capture, duration_s: 8}
-  - {id: S3.1, station: S3, actor: robot_1, action: move_joint, duration_s: 14}
-  - {id: S4.1, station: S4, actor: robot_2, action: flip, duration_s: 14}
-  - {id: S5.1, station: S5, actor: outfeed_rack.lift, action: actuate, duration_s: 8}
+  - id: S1.lift
+    station: S1
+    actor: infeed_rack.lift
+    action: actuate
+    value: {value_mm: 275}
+  - id: S1.load
+    station: S1
+    actor: conveyor_1
+    action: transfer
+    target: {frame: conveyor_1.start}
+  - id: S1.convey
+    station: S1
+    actor: conveyor_1
+    action: transfer
+    target: {frame: conveyor_1.end}
+
+  - id: S2.position
+    station: S2
+    actor: conveyor_1
+    action: transfer
+    target: {frame: vision_fixture.top}
+  - id: S2.capture
+    station: S2
+    actor: vision_fixture
+    action: capture
+    duration_s: 0.5
+
+  - id: S3.prepare
+    station: S3
+    actor: robot_1
+    action: move_joint
+    value: {joints_deg: [12, -18, 28, 16, 22, 30]}
+    duration_s: 1.5
+  - id: S3.approach
+    station: S3
+    actor: robot_1
+    action: move_to
+    target:
+      frame: workpiece.cover_lan.edge
+      offset: {xyz: [0, 0, 2], rpy_deg: [0, 0, 0]}
+    duration_s: 1.5
+  - id: S3.open
+    station: S3
+    actor: workpiece.cover_lan
+    action: actuate
+    value: {open_angle_deg: 90}
+    target:
+      module: workpiece
+      id: cover_lan
+      offset: {xyz: [0, 0, 2], rpy_deg: [0, 0, 0]}
+    driven_by: robot_1
+    duration_s: 2.5
+  - id: S3.capture
+    station: S3
+    actor: robot_1
+    action: capture
+    duration_s: 0.5
+  - id: S3.close
+    station: S3
+    actor: workpiece.cover_lan
+    action: actuate
+    value: {open_angle_deg: 0}
+    target:
+      module: workpiece
+      id: cover_lan
+      offset: {xyz: [0, 0, 2], rpy_deg: [0, 0, 0]}
+    driven_by: robot_1
+    duration_s: 2.5
+
+  - id: S4.prepare
+    station: S4
+    actor: robot_2
+    action: move_joint
+    value: {joints_deg: [-14, -20, 32, -18, 24, -35]}
+    duration_s: 1.5
+  - id: S4.approach
+    station: S4
+    actor: robot_2
+    action: move_to
+    target:
+      frame: workpiece.left
+      offset: {xyz: [0, 0, 2], rpy_deg: [0, 0, 0]}
+    duration_s: 1.5
+  - id: S4.grip
+    station: S4
+    actor: robot_2
+    action: grip
+    duration_s: 0.2
+  - id: S4.flip
+    station: S4
+    actor: robot_2
+    action: flip
+    value: {lift_mm: 100, angle_deg: 180}
+    duration_s: 4
+  - id: S4.capture
+    station: S4
+    actor: robot_2
+    action: capture
+    duration_s: 0.5
+  - id: S4.place
+    station: S4
+    actor: robot_2
+    action: release
+    target:
+      frame: vision_fixture.top
+      offset: {xyz: [0, 0, 0], rpy_deg: [180, 0, 0]}
+    duration_s: 0.2
+
+  - id: S5.raise
+    station: S5
+    actor: outfeed_rack.lift
+    action: actuate
+    value: {value_mm: 275}
+  - id: S5.load
+    station: S5
+    actor: conveyor_2
+    action: transfer
+    target:
+      frame: conveyor_2.start
+      offset: {rpy_deg: [180, 0, 0]}
+  - id: S5.convey
+    station: S5
+    actor: conveyor_2
+    action: transfer
+    target:
+      frame: conveyor_2.end
+      offset: {rpy_deg: [180, 0, 0]}
+  - id: S5.store
+    station: S5
+    actor: conveyor_2
+    action: transfer
+    target:
+      frame: outfeed_rack.slot_5
+      offset: {rpy_deg: [180, 0, 0]}
+
 takt:
   target_s: 45
   parallel_workpieces: 1
-

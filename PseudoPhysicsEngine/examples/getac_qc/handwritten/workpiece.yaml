@@ -6,8 +6,8 @@ skus:
     covers:
       - id: cover_lan
         face: rear
-        rect: {u: 40, v: 120, w: 60, h: 20}
-        hinge: {edge: bottom, open_angle_deg: 110, trust: inferred}
+        rect: {u: 40, v: 8, w: 60, h: 20}
+        hinge: {edge: bottom, open_angle_deg: 90, trust: inferred}
         latch: friction
     ports: []
     inspect_regions:
@@ -16,4 +16,3 @@ skus:
         rect: {u: 20, v: 30, w: 200, h: 60}
         requires: {min_px_per_mm: 8, lighting: diffuse}
 variants_note: 護蓋位置與連接口數量依 SKU 不同
-

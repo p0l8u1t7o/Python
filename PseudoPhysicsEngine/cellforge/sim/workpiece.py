@@ -15,7 +15,7 @@ from cellforge.schema.models import Cover, Process, Sku, Workpiece
 @dataclass(slots=True)
 class BuiltWorkpiece:
     sku: Sku
-    assembly: cq.Assembly
+    assembly: cq.Assembly | None
     definition: ModuleDef
     warnings: list[str] = field(default_factory=list)
 
@@ -127,16 +127,19 @@ def _choose_sku(workpiece: Workpiece, process: Process | None) -> Sku:
     return workpiece.skus[0]
 
 
-def build_workpiece(workpiece: Workpiece, process: Process | None = None) -> BuiltWorkpiece:
+def build_workpiece(
+    workpiece: Workpiece, process: Process | None = None, *, build_geometry: bool = True
+) -> BuiltWorkpiece:
     sku = _choose_sku(workpiece, process)
-    assembly = cq.Assembly(name="workpiece")
-    assembly.add(
-        cq.Workplane("XY")
-        .box(sku.size.x, sku.size.y, sku.size.z)
-        .translate((0, 0, sku.size.z / 2)),
-        name="body",
-        color=cq.Color(0.16, 0.18, 0.2),
-    )
+    assembly = cq.Assembly(name="workpiece") if build_geometry else None
+    if assembly is not None:
+        assembly.add(
+            cq.Workplane("XY")
+            .box(sku.size.x, sku.size.y, sku.size.z)
+            .translate((0, 0, sku.size.z / 2)),
+            name="body",
+            color=cq.Color(0.16, 0.18, 0.2),
+        )
     warnings: list[str] = []
     frames: dict[str, Frame] = {"workpiece": Frame()}
     axes: list[ModuleAxis] = []
@@ -147,13 +150,14 @@ def build_workpiece(workpiece: Workpiece, process: Process | None = None) -> Bui
     for cover in sku.covers:
         face, center, pivot, free, width, height, axis = _cover_data(cover, sku, warnings)
         rpy = Rotation.from_matrix(face.rotation).as_euler("xyz", degrees=True)
-        plate = cq.Workplane("XY").box(width, height, 2.0)
-        assembly.add(
-            plate,
-            name=cover.id,
-            color=cq.Color(0.35, 0.38, 0.42),
-            loc=cq.Location(tuple(center), tuple(float(value) for value in rpy)),
-        )
+        if assembly is not None:
+            plate = cq.Workplane("XY").box(width, height, 2.0)
+            assembly.add(
+                plate,
+                name=cover.id,
+                color=cq.Color(0.35, 0.38, 0.42),
+                loc=cq.Location(tuple(center), tuple(float(value) for value in rpy)),
+            )
         axis_local = face.rotation.T @ axis
         open_angle = float(cover.hinge.get("open_angle_deg", 110.0))
         axes.append(

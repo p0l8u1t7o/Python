@@ -1,4 +1,4 @@
-"""Restricted sequence API used by project animation/sequence.py files."""
+"""Restricted sequence API backed by the WP2 simulator."""
 
 from __future__ import annotations
 
@@ -6,7 +6,10 @@ import contextvars
 from dataclasses import dataclass, field
 from typing import Any
 
-from cellforge.schema.models import Process
+from cellforge.schema.models import Process, ProcessStep
+from cellforge.sim.engine import Simulator
+from cellforge.sim.scene import SceneModel
+from cellforge.sim.scheduler import schedule_process
 
 _active: contextvars.ContextVar[SequenceBuilder] = contextvars.ContextVar("cellforge_sequence")
 
@@ -14,21 +17,64 @@ _active: contextvars.ContextVar[SequenceBuilder] = contextvars.ContextVar("cellf
 @dataclass
 class SequenceBuilder:
     process: Process
+    scene: SceneModel
     fps: int = 50
     time_s: float = 0.0
-    nodes: dict[str, dict[str, Any]] = field(default_factory=dict)
-    events: list[dict[str, Any]] = field(default_factory=list)
-    station_ranges: dict[str, list[float]] = field(default_factory=dict)
-    _joints: dict[str, list[float]] = field(default_factory=dict)
+    simulator: Simulator = field(init=False)
+    _legacy_index: int = 0
+    _compiled: bool = False
 
-    def _span(self, station: str | None, duration_s: float) -> tuple[float, float]:
+    def __post_init__(self) -> None:
+        self.simulator = Simulator(self.scene, fps=self.fps)
+        self.simulator.initialize_workpiece(self.process.initial_workpiece_frame)
+
+    def run_process(self) -> None:
+        if self._legacy_index:
+            raise ValueError("run_process() 不可與舊式逐步 sequence API 混用")
+        if not self._compiled:
+            schedule_process(self.process, self.simulator)
+            self.time_s = self.simulator.duration_s
+            self._compiled = True
+
+    def _step(
+        self,
+        action: str,
+        actor: str,
+        *,
+        station: str | None = None,
+        target: dict[str, Any] | None = None,
+        value: Any = None,
+        duration_s: float | None = None,
+    ) -> None:
+        if self._compiled:
+            raise ValueError("run_process() 後不可再加入舊式 sequence 動作")
+        self._legacy_index += 1
+        station_id = station or (self.process.stations[0].id if self.process.stations else "legacy")
+        step = ProcessStep(
+            id=f"legacy.{self._legacy_index}",
+            station=station_id,
+            actor=actor,
+            action=action,
+            target=target,
+            value=value,
+            duration_s=duration_s,
+        )
         t0 = self.time_s
-        self.time_s += max(0.0, float(duration_s))
-        if station:
-            bounds = self.station_ranges.setdefault(station, [t0, self.time_s])
-            bounds[0] = min(bounds[0], t0)
-            bounds[1] = max(bounds[1], self.time_s)
-        return t0, self.time_s
+        t1, ik = self.simulator.execute(step, t0)
+        self.time_s = t1
+        self.simulator.steps.append(
+            {
+                "id": step.id,
+                "station": station_id,
+                "actor": actor,
+                "action": action,
+                "t0": t0,
+                "t1": t1,
+                "ik": ik,
+            }
+        )
+        bounds = self.simulator.station_ranges.setdefault(station_id, [t0, t1])
+        bounds[1] = max(bounds[1], t1)
 
     def move_joint(
         self,
@@ -37,15 +83,13 @@ class SequenceBuilder:
         duration_s: float = 1.0,
         station: str | None = None,
     ) -> None:
-        if len(joints_deg) != 6:
-            raise ValueError("步驟 0 的 move_joint 需要六個關節角")
-        start = self._joints.get(actor, [0.0] * 6)
-        t0, t1 = self._span(station, duration_s)
-        node = self.nodes.setdefault(actor, {"type": "robot", "joints_deg": []})
-        if not node["joints_deg"]:
-            node["joints_deg"].append([t0, *start])
-        node["joints_deg"].append([t1, *[float(value) for value in joints_deg]])
-        self._joints[actor] = list(joints_deg)
+        self._step(
+            "move_joint",
+            actor,
+            station=station,
+            value={"joints_deg": joints_deg},
+            duration_s=duration_s,
+        )
 
     def move_to(
         self,
@@ -54,12 +98,7 @@ class SequenceBuilder:
         duration_s: float = 1.0,
         station: str | None = None,
     ) -> None:
-        t0, t1 = self._span(station, duration_s)
-        node = self.nodes.setdefault(actor, {"type": "pose", "pose": []})
-        pose = target.get("xyz", [0, 0, 0]) + target.get("rpy_deg", [0, 0, 0])
-        if not node["pose"]:
-            node["pose"].append([t0, *pose])
-        node["pose"].append([t1, *pose])
+        self._step("move_to", actor, station=station, target=target, duration_s=duration_s)
 
     def actuate(
         self,
@@ -69,51 +108,31 @@ class SequenceBuilder:
         station: str | None = None,
         unit: str = "value",
     ) -> None:
-        t0, t1 = self._span(station, duration_s)
-        key = {"mm": "value_mm", "deg": "value_deg"}.get(unit, "value")
-        node = self.nodes.setdefault(
-            actor, {"type": "prismatic" if unit == "mm" else "actuator", key: []}
-        )
-        if not node[key]:
-            node[key].append([t0, 0.0])
-        node[key].append([t1, float(value)])
+        encoded: Any = value if unit not in {"mm", "deg"} else {f"value_{unit}": value}
+        self._step("actuate", actor, station=station, value=encoded, duration_s=duration_s)
 
     def wait_for(self, duration_s: float, station: str | None = None) -> None:
-        self._span(station, duration_s)
+        self._step("wait", "system", station=station, duration_s=duration_s)
 
     def emit(self, event_id: str) -> None:
-        self.events.append({"t": self.time_s, "id": event_id})
+        self.simulator.events.append({"t": self.time_s, "id": event_id})
 
     def attach(self, actor: str, target: str) -> None:
-        node = self.nodes.setdefault(actor, {"type": "pose", "attached_to": []})
-        node.setdefault("attached_to", []).append([self.time_s, target])
+        robot = target.removesuffix(".tool") if target.endswith(".tool") else actor
+        self._step("attach", robot)
 
     def detach(self, actor: str) -> None:
-        node = self.nodes.setdefault(actor, {"type": "pose", "attached_to": []})
-        node.setdefault("attached_to", []).append([self.time_s, None])
+        self._step("detach", actor.removesuffix(".tool"))
 
     def capture(self, actor: str, station: str | None = None, duration_s: float = 0.2) -> None:
-        self._span(station, duration_s)
-        self.events.append({"t": self.time_s, "id": f"{actor}.capture"})
+        self._step("capture", actor, station=station, duration_s=duration_s)
 
     def timeline(self) -> dict[str, Any]:
+        result = self.simulator.timeline()
         station_names = {station.id: station.name for station in self.process.stations}
-        stations = [
-            {
-                "id": station_id,
-                "name": station_names.get(station_id, station_id),
-                "t0": bounds[0],
-                "t1": bounds[1],
-            }
-            for station_id, bounds in self.station_ranges.items()
-        ]
-        return {
-            "fps": self.fps,
-            "duration_s": self.time_s,
-            "stations": stations,
-            "nodes": self.nodes,
-            "events": self.events,
-        }
+        for station in result["stations"]:
+            station["name"] = station_names.get(station["id"], station["id"])
+        return result
 
 
 def _builder() -> SequenceBuilder:
@@ -121,6 +140,10 @@ def _builder() -> SequenceBuilder:
         return _active.get()
     except LookupError as error:
         raise RuntimeError("sequence API 只能在 cell build 載入 sequence.py 時使用") from error
+
+
+def run_process() -> None:
+    _builder().run_process()
 
 
 def move_joint(
@@ -166,8 +189,13 @@ def capture(actor: str, station: str | None = None, duration_s: float = 0.2) -> 
 
 
 def grip(actor: str, station: str | None = None, duration_s: float = 0.2) -> None:
-    actuate(f"{actor}.grip", 1.0, duration_s, station)
+    _builder()._step("grip", actor, station=station, duration_s=duration_s)
 
 
-def release(actor: str, station: str | None = None, duration_s: float = 0.2) -> None:
-    actuate(f"{actor}.grip", 0.0, duration_s, station)
+def release(
+    actor: str,
+    station: str | None = None,
+    duration_s: float = 0.2,
+    target: dict[str, Any] | None = None,
+) -> None:
+    _builder()._step("release", actor, station=station, duration_s=duration_s, target=target)

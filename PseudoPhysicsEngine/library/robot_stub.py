@@ -21,7 +21,9 @@ def _z_cylinder(radius: float, height: float, start_z: float = 0.0) -> cq.Solid:
     return cq.Solid.makeCylinder(radius, height, cq.Vector(0, 0, start_z), cq.Vector(0, 0, 1))
 
 
-def _tool_parameters(params: dict[str, Any]) -> tuple[float, float, float, cq.Shape | None]:
+def _tool_parameters(
+    params: dict[str, Any], *, include_shape: bool = True
+) -> tuple[float, float, float, cq.Shape | None]:
     tool = params.get("tool") or {}
     if not isinstance(tool, dict):
         raise ValueError("tool 必須是參數物件")
@@ -34,16 +36,18 @@ def _tool_parameters(params: dict[str, Any]) -> tuple[float, float, float, cq.Sh
         )
     module_name = str(tool["part"]).replace("\\", "/").removesuffix(".py").replace("/", ".")
     module = importlib.import_module(module_name)
-    assembly = module.build(dict(tool.get("params", {})))
     definition = module.MODULE
     tcp = definition.frames.get("tool_center_point", Frame(xyz=(0, 0, 150)))
     length = float(tcp.xyz[2])
     mass = float(tool.get("mass_kg", definition.payload_kg or 1.2))
-    return length, float(tool.get("radius_mm", 30)), mass, assembly.toCompound()
+    shape = None
+    if include_shape:
+        shape = module.build(dict(tool.get("params", {}))).toCompound()
+    return length, float(tool.get("radius_mm", 30)), mass, shape
 
 
 def chain_from_params(params: dict[str, Any]) -> Chain:
-    length, radius, mass, _shape = _tool_parameters(params)
+    length, radius, mass, _shape = _tool_parameters(params, include_shape=False)
     return make_stub_chain(
         float(params.get("reach_mm", 905)),
         float(params.get("payload_kg", 7)),
@@ -76,7 +80,7 @@ def module_definition(params: dict[str, Any]) -> ModuleDef:
     dims = stub_dimensions(
         float(params.get("reach_mm", 905)),
         float(params.get("payload_kg", 7)),
-        tool_length_mm=_tool_parameters(params)[0],
+        tool_length_mm=_tool_parameters(params, include_shape=False)[0],
     )
     flange[:3, 3] += flange[:3, 0] * dims.l6_mm
     return ModuleDef(

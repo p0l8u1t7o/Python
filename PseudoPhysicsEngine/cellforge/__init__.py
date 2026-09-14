@@ -37,7 +37,7 @@ def _disable_nlopt_on_windows() -> None:
     """cadquery 會同時載入 casadi 與 nlopt；在 Windows 上兩者並存會讓 python.exe 結束時崩潰。
 
     nlopt 只給 cadquery 的草圖約束求解器使用，CellForge 用不到，所以在 cadquery 載入前換成替身。
-    詳見 docs/DECISIONS.md「casadi 與 nlopt 並存導致結束時崩潰」。
+    詳見 docs/DECISIONS.md D-011。
     """
     if sys.platform != "win32" or os.environ.get("CELLFORGE_ALLOW_NLOPT") == "1":
         return

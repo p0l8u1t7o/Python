@@ -43,3 +43,20 @@ Claude CLI 在長上下文工作階段直接讀取多張高解析照片或 PDF �
 關節採 URDF 語意：`origin` 是 parent link 到零位 child link 的變換，`axis` 表示在 joint frame；CellForge 記憶體與 GLB extras 使用 mm／度，URDF 讀寫則固定換成公尺／弧度。GLB 的模組根節點代表 `base`（手臂為 `link0`），各 child link 幾何先乘其零位世界變換的反矩陣，再掛到保存 rest TRS 的關節節點；固定的 `tool` 節點代表 TCP，Z 軸沿 link6 的 +X。
 
 WP1 尚未包含工件流程模擬，因此工件根節點與 STEP 頂層組件先放在世界原點；WP2 再由 timeline 驅動其世界姿態。動態模組 frame 以實際 params 生成並寫入模組 GLB extras；工件也納入 STEP 裝配，以確保交付幾何與 GLB 場景一致。
+
+## D-010：單工件排程與初始放置 frame（2026-09-14）
+
+WP2 以單一工件模擬 first-article cycle；同站順序、同 actor 與工件持有動作會自動序列化，站別第一步未寫 `requires` 時隱含等待前一站的 `<station>.done`，明寫 `requires` 則可讓不同站平行。穩態多工件節拍留待 WP3 以各站瓶頸估算，不在此複製工件實體。
+
+規格未定義工件在 t=0 的資料欄位，因此新增相容的 `process.initial_workpiece_frame`；模擬器以該具名 frame 求世界位姿與支撐模組，不從步驟內容猜測，也不把範例座標寫死在引擎內。工件姿態、附著關係與所有 IK 失敗均烘焙到 timeline，後續檢查只取樣而不重解 IK。
+
+## D-011：Windows 上 python.exe 結束時崩潰的兩個來源（2026-09-14，實測後修訂）
+
+症狀：程序在所有工作完成後、直譯器結束清理時崩潰，跳出「python.exe - 應用程式錯誤／記憶體不能為 read」對話框，exit code 為 0xC0000005 或 0xC0000374。輸出檔案通常已寫完，但錯誤碼會讓 CLI 與 job 被誤判為失敗。以逐一載入的子程序實測，查到兩個互相獨立的來源：
+
+1. **casadi 與 nlopt 同時載入**：cadquery 初始化時兩者都會載入。最小重現為 `import casadi; import nlopt`；與載入順序無關，換版本（casadi 3.6.7～3.8.0 × nlopt 2.9.1～2.11.0）、限制 OpenMP／OpenBLAS 執行緒、`importlib.util.LazyLoader` 皆無效。處置：`cellforge/__init__.py` 在 Windows 上把 `nlopt` 換成替身模組（nlopt 只給 cadquery 的草圖約束求解器使用，CellForge 用不到；真的被呼叫時丟出中文錯誤）。`library/__init__.py` 先載入 cellforge，確保替身比各模組的 `import cadquery` 更早生效。需要 nlopt 時設 `CELLFORGE_ALLOW_NLOPT=1`。
+2. **先建立 OCP XCAF 物件、之後才載入 PyMuPDF**：建置後 `import pymupdf` 會崩潰，先載入 PyMuPDF 再建置則正常。`cell build`、`cell validate`、同程序 `build_project`、建置後載入 Playwright 皆正常。後端在模組頂端就載入 `cellforge.intake`（連帶載入 PyMuPDF），順序本來就安全；pytest 則由 `tests/conftest.py` 在收集測試前先載入 PyMuPDF。原先以 `atexit` 呼叫 `os._exit` 跳過清理、強制重排測試順序的作法已移除，避免掩蓋其他原生問題。
+
+local API 模式以 `cell build --json` 子程序執行工程建置（WP2 引入），保留此作法的理由是隔離：建置中的原生崩潰只會讓該 job 失敗，不會拖垮整個後端。
+
+開發機的 `.venv` 另放 `Lib/site-packages/zz_cellforge_crash_guard.pth`＋`cellforge_crash_guard.py`：每個 python 程序啟動時關閉 Windows 崩潰對話框（`SetErrorMode`）、以 faulthandler 把崩潰程序的命令列與堆疊追加到 `%TEMP%\cellforge-crash\YYYYMMDD.log`，並先載入 cellforge。這兩個檔案不在版控內，只用於開發與代理大量執行測試時避免彈窗；重建 venv 後如需同樣保護，須再複製一次。

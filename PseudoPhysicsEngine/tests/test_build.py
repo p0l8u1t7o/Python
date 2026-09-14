@@ -149,9 +149,9 @@ def _aabb_distance(first, second):
     return np.linalg.norm(separation)
 
 
-def _assert_robot_geometry_follows_fk(gltf, joints, module_id="robot_1"):
+def _assert_robot_geometry_follows_fk(gltf, joints, module_id="robot_1", chain=None):
     values = {f"j{i + 1}": value for i, value in enumerate(joints)}
-    chain = make_stub_chain()
+    chain = chain or make_stub_chain()
     transforms = chain.link_transforms(joints)
     module_world = _node_world(gltf, module_id, {})
     links = [*(f"link{i}" for i in range(7)), "tool"]
@@ -174,7 +174,7 @@ def test_glb_joint_rest_and_motion_match_kinematic_chain(tmp_path):
     shutil.copytree(SOURCE, project, ignore=shutil.ignore_patterns("build"))
     build_project(project)
     gltf = GLTF2().load_binary(str(project / "build" / "scene.glb"))
-    chain = make_stub_chain()
+    chain = make_stub_chain(tool_length_mm=140)
     module_world = _node_world(gltf, "robot_1", {})
     rest_tool = np.linalg.inv(module_world) @ _node_world(gltf, "robot_1.tool", {})
     assert np.allclose(rest_tool, chain.fk(np.zeros(6)), atol=1e-7)
@@ -190,8 +190,11 @@ def test_robot_link_visual_aabbs_form_connected_fk_chain_at_rest_and_when_posed(
     shutil.copytree(SOURCE, project, ignore=shutil.ignore_patterns("build"))
     build_project(project)
     gltf = GLTF2().load_binary(str(project / "build" / "scene.glb"))
-    _assert_robot_geometry_follows_fk(gltf, np.zeros(6))
-    _assert_robot_geometry_follows_fk(gltf, np.asarray([20, -30, 45, 10, 35, 80], dtype=float))
+    chain = make_stub_chain(tool_length_mm=140)
+    _assert_robot_geometry_follows_fk(gltf, np.zeros(6), chain=chain)
+    _assert_robot_geometry_follows_fk(
+        gltf, np.asarray([20, -30, 45, 10, 35, 80], dtype=float), chain=chain
+    )
 
 
 def test_vendor_robot_glb_uses_the_same_fk_aligned_connected_geometry(tmp_path):

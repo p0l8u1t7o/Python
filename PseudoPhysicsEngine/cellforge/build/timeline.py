@@ -6,16 +6,17 @@ import importlib.util
 from pathlib import Path
 
 from cellforge.schema.models import Process
+from cellforge.sim.scene import SceneModel
 
 from . import seq
 
 
-def expand_sequence(path: Path, process: Process) -> dict:
+def expand_sequence(path: Path, process: Process, scene: SceneModel) -> dict:
     spec = importlib.util.spec_from_file_location("cellforge_project_sequence", path)
     if spec is None or spec.loader is None:
         raise ValueError(f"無法載入動畫腳本：{path}")
     module = importlib.util.module_from_spec(spec)
-    builder = seq.SequenceBuilder(process)
+    builder = seq.SequenceBuilder(process, scene)
     token = seq._active.set(builder)
     try:
         spec.loader.exec_module(module)

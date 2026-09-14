@@ -10,9 +10,6 @@ import socketserver
 import threading
 from pathlib import Path
 
-from playwright.sync_api import Error as PlaywrightError
-from playwright.sync_api import sync_playwright
-
 
 class SnapshotError(RuntimeError):
     pass
@@ -26,6 +23,9 @@ class _QuietHandler(http.server.SimpleHTTPRequestHandler):
 def snapshot_project(
     project_dir: Path, time_s: float, camera: str, output: Path | None = None
 ) -> Path:
+    from playwright.sync_api import Error as PlaywrightError
+    from playwright.sync_api import sync_playwright
+
     platform_root = Path(__file__).resolve().parents[1]
     viewer_dist = platform_root / "web" / "dist"
     if not viewer_dist.is_dir():

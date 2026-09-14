@@ -10,7 +10,7 @@ import cadquery as cq
 
 from cellforge.checks import run_checks
 from cellforge.schema import Checks, Timeline, VendorManifest
-from cellforge.sim import build_workpiece
+from cellforge.sim import SceneModel, build_workpiece
 from cellforge.validation import validate_project
 from cellforge.versioning import snapshot_build
 from cellforge.yamlio import load_yaml
@@ -51,6 +51,8 @@ def build_project(project_dir: Path, level: str = "L0") -> dict:
                 loc=cadquery_location(instance.pose.xyz, instance.pose.rpy_deg),
             )
     built_workpiece = build_workpiece(workpiece, process)
+    assert built_workpiece.assembly is not None
+    scene = SceneModel(cell, modules, built_workpiece)
     assembly.add(built_workpiece.assembly, name="workpiece")
     expected_step_names = [module.instance.id for module in modules] + ["workpiece"]
     build_dir = project_dir / "build"
@@ -78,7 +80,7 @@ def build_project(project_dir: Path, level: str = "L0") -> dict:
     )
     export_glb(modules, build_dir / "scene.glb", built_workpiece)
     timeline = Timeline.model_validate(
-        expand_sequence(project_dir / "animation" / "sequence.py", process)
+        expand_sequence(project_dir / "animation" / "sequence.py", process, scene)
     ).model_dump(mode="json")
     (build_dir / "timeline.json").write_text(
         json.dumps(timeline, ensure_ascii=False, indent=2), encoding="utf-8"

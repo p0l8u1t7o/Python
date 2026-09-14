@@ -185,6 +185,18 @@
       ],
       "default": null,
       "title": "Workpiece Sku"
+    },
+    "initial_workpiece_frame": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Initial Workpiece Frame"
     }
   },
   "required": [

@@ -65,7 +65,8 @@ def solve_ik(
         if candidate.shape != midpoint.shape:
             raise ValueError(f"IK 初始值應有 {len(midpoint)} 個關節值")
         seeds.append(np.clip(candidate, finite_lower, finite_upper))
-    seeds.extend([np.clip(np.zeros_like(midpoint), finite_lower, finite_upper), midpoint])
+    fallback_seeds = [np.clip(np.zeros_like(midpoint), finite_lower, finite_upper), midpoint]
+    seeds.extend(fallback_seeds[: max(0, seed_count - len(seeds))])
     rng = np.random.default_rng(0xCE11F0)
     for _ in range(max(0, seed_count - len(seeds))):
         seeds.append(rng.uniform(finite_lower, finite_upper))

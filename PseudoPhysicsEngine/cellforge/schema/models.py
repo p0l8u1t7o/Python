@@ -207,6 +207,7 @@ class Process(ForgeModel):
     steps: list[ProcessStep]
     takt: Takt
     workpiece_sku: str | None = None
+    initial_workpiece_frame: str | None = None
 
     @model_validator(mode="after")
     def references_are_valid(self) -> Process:
@@ -233,12 +234,32 @@ class TimelineEvent(ForgeModel):
     id: str
 
 
+class TimelineStep(ForgeModel):
+    id: str
+    station: str
+    actor: str
+    action: str
+    t0: float
+    t1: float
+    ik: str | None = None
+
+
+class TimelineIKFailure(ForgeModel):
+    step_id: str
+    t: float
+    position_error_mm: float
+    orientation_error_deg: float
+    nearest_distance_mm: float
+
+
 class Timeline(ForgeModel):
     fps: int
     duration_s: float
     stations: list[TimelineStation] = Field(default_factory=list)
+    steps: list[TimelineStep] = Field(default_factory=list)
     nodes: dict[str, dict[str, Any]] = Field(default_factory=dict)
     events: list[TimelineEvent] = Field(default_factory=list)
+    ik_failures: list[TimelineIKFailure] = Field(default_factory=list)
 
 
 class CheckSummary(ForgeModel):

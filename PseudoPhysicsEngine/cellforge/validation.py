@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
+from types import SimpleNamespace
 
 from pydantic import ValidationError
 
@@ -19,6 +20,8 @@ from cellforge.schema import (
     Workpiece,
 )
 from cellforge.schema.models import ModuleInstance
+from cellforge.sim import SceneModel, build_workpiece
+from cellforge.sim.scheduler import validate_process
 from cellforge.yamlio import load_yaml
 
 
@@ -57,6 +60,17 @@ def validate_project(project_dir: Path) -> tuple[Project, Workpiece, Cell, Proce
     for machine in cell.machines:
         for instance in machine.modules:
             _validate_module(instance, vendor_ids)
+    vendor_items = {item.id: item.model_dump(mode="json") for item in vendor_manifest.vendors}
+    try:
+        modules = [
+            _describe_module(instance, vendor_items)
+            for machine in cell.machines
+            for instance in machine.modules
+        ]
+        scene = SceneModel(cell, modules, build_workpiece(workpiece, process, build_geometry=False))
+        validate_process(scene, process)
+    except (ImportError, AttributeError, KeyError, ValueError) as error:
+        raise ProjectValidationError(f"流程驗證失敗：{error}") from error
     sequence_path = project_dir / "animation" / "sequence.py"
     if not sequence_path.is_file():
         raise ProjectValidationError("缺少必要檔案：animation/sequence.py")
@@ -96,3 +110,23 @@ def _validate_module(instance: ModuleInstance, vendor_ids: set[str]) -> None:
         validate_params(definition, instance.params)
     except (ImportError, AttributeError, ValueError) as error:
         raise ProjectValidationError(f"模組 {instance.id} 驗證失敗：{error}") from error
+
+
+def _describe_module(instance: ModuleInstance, vendor_items: dict[str, dict]):
+    if instance.vendor:
+        item = vendor_items[instance.vendor]
+        module = load_part("library/robot_stub.py")
+        params = {
+            "reach_mm": item.get("limits", {}).get("reach_mm", 905),
+            "payload_kg": item.get("limits", {}).get("payload_kg", 7),
+            "name": instance.id,
+            **instance.params,
+        }
+    else:
+        assert instance.part is not None
+        module = load_part(instance.part)
+        params = instance.params
+    definition = getattr(module, "module_definition", lambda _params: module.MODULE)(params)
+    chain_factory = getattr(module, "chain_from_params", None)
+    chain = chain_factory(params) if callable(chain_factory) else None
+    return SimpleNamespace(instance=instance, definition=definition, chain=chain)

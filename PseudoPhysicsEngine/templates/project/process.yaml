@@ -3,10 +3,17 @@ stations:
     name: 示意站
     modules: [placeholder]
 steps:
-  - id: S1.1
+  - id: S1.move
     station: S1
     actor: placeholder
-    action: wait
-    duration_s: 1
+    action: transfer
+    target:
+      frame: placeholder.top
+      offset: {xyz: [0, 0, 20], rpy_deg: [0, 0, 0]}
+  - id: S1.inspect
+    station: S1
+    actor: placeholder
+    action: capture
+    requires: [S1.move.done]
+    duration_s: 0.5
 takt: {target_s: 60, parallel_workpieces: 1}
-

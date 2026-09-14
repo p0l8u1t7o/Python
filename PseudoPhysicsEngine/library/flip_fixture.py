@@ -28,7 +28,7 @@ def build(params: dict) -> cq.Assembly:
 MODULE = ModuleDef(
     id="flip_fixture",
     params_schema={"type": "object"},
-    frames={"base": Frame(), "nest": Frame(xyz=(0, 0, 240))},
+    frames={"base": Frame(), "nest": Frame(link="nest")},
     axes=[
         {
             "id": "flip",

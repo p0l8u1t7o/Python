@@ -18,8 +18,10 @@ machines:
         pose: {xyz: [-2300, 0, 0], rpy_deg: [0, 0, 0], trust: inferred}
       - id: robot_1
         part: library/robot_stub.py
-        params: {reach_mm: 905}
-        pose: {xyz: [-900, -750, 0], rpy_deg: [0, 0, 15], trust: inferred}
+        params:
+          reach_mm: 905
+          tool: {part: library/force_eoat.py, params: {length_mm: 140}}
+        pose: {xyz: [0, 650, 0], rpy_deg: [0, 0, 0], trust: inferred}
       - id: vision_fixture
         part: library/box.py
         params: {size: [900, 700, 850], color: [0.3, 0.35, 0.4]}
@@ -27,7 +29,7 @@ machines:
       - id: robot_2
         part: library/robot_stub.py
         params: {reach_mm: 905}
-        pose: {xyz: [1350, -750, 0], rpy_deg: [0, 0, 165], trust: inferred}
+        pose: {xyz: [-400, 0, 0], rpy_deg: [0, 0, 0], trust: inferred}
       - id: conveyor_2
         part: library/conveyor.py
         params: {length_mm: 1300, width_mm: 600, height_mm: 760}
@@ -36,4 +38,3 @@ machines:
         part: library/lift_rack.py
         params: {levels: 6, pitch_mm: 80}
         pose: {xyz: [3600, 0, 0], rpy_deg: [0, 0, 0], trust: inferred}
-

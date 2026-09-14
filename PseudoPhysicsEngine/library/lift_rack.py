@@ -29,7 +29,10 @@ def build(params: dict) -> cq.Assembly:
 def module_definition(params: dict) -> ModuleDef:
     levels = int(params.get("levels", 6))
     pitch = float(params.get("pitch_mm", 90))
-    slots = {f"slot_{index}": Frame(xyz=(0, 0, 130 + index * pitch)) for index in range(levels)}
+    slots = {
+        f"slot_{index}": Frame(xyz=(0, 0, 130 + index * pitch), link="lift")
+        for index in range(levels)
+    }
     return ModuleDef(
         id="lift_rack",
         params_schema=MODULE.params_schema,

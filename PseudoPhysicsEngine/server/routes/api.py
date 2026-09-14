@@ -8,6 +8,8 @@ import json
 import mimetypes
 import os
 import re
+import subprocess
+import sys
 from datetime import date, datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -18,7 +20,6 @@ from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
 from cellforge.agents import AstraAgent, EngineeringAgent, refresh_theme_local
-from cellforge.changes import apply_local_change
 from cellforge.diffing import diff_versions
 from cellforge.exports import export_project
 from cellforge.intake import prepare_intake
@@ -33,6 +34,38 @@ from cellforge.questions import update_questions
 from cellforge.schema import Questions
 from cellforge.versioning import commit_changes
 from cellforge.yamlio import dump_yaml, load_yaml
+
+
+def _local_build(project: Path) -> dict[str, Any]:
+    """Isolate OCP from the ASGI worker thread on Windows."""
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "cellforge.cli",
+            "build",
+            "--project",
+            str(project),
+            "--level",
+            "L1",
+            "--json",
+        ],
+        cwd=Path(__file__).resolve().parents[2],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    output = completed.stdout.strip()
+    if completed.returncode != 0:
+        detail = output or completed.stderr.strip() or f"exit {completed.returncode}"
+        raise ValueError(f"本機建置失敗：{detail}")
+    try:
+        return json.loads(output.splitlines()[-1])
+    except (IndexError, json.JSONDecodeError) as error:
+        raise ValueError("本機建置未回傳有效 JSON") from error
+
 
 router = APIRouter(prefix="/api")
 
@@ -398,9 +431,7 @@ async def start_build(project_id: str, request: Request) -> dict[str, Any]:
     async def worker(emit):
         emit("progress", {"progress": 0.05, "message": "工程代理開始建立初版"})
         if _local_agent(request):
-            from cellforge.build.pipeline import build_project
-
-            result = await asyncio.to_thread(build_project, project, "L1")
+            result = await asyncio.to_thread(_local_build, project)
             result.update({"status": "ok", "mode": "local"})
         else:
             result = await _agent(request).run("first_build", project, emit)
@@ -460,6 +491,8 @@ async def create_change(project_id: str, body: ChangeCreate, request: Request) -
 
     async def worker(emit):
         if _local_agent(request):
+            from cellforge.changes import apply_local_change
+
             result = await asyncio.to_thread(apply_local_change, project, change_id, body.text)
         else:
             result = await _agent(request).run(

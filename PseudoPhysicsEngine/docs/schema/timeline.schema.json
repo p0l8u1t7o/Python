@@ -19,6 +19,40 @@
       "title": "TimelineEvent",
       "type": "object"
     },
+    "TimelineIKFailure": {
+      "additionalProperties": true,
+      "properties": {
+        "step_id": {
+          "title": "Step Id",
+          "type": "string"
+        },
+        "t": {
+          "title": "T",
+          "type": "number"
+        },
+        "position_error_mm": {
+          "title": "Position Error Mm",
+          "type": "number"
+        },
+        "orientation_error_deg": {
+          "title": "Orientation Error Deg",
+          "type": "number"
+        },
+        "nearest_distance_mm": {
+          "title": "Nearest Distance Mm",
+          "type": "number"
+        }
+      },
+      "required": [
+        "step_id",
+        "t",
+        "position_error_mm",
+        "orientation_error_deg",
+        "nearest_distance_mm"
+      ],
+      "title": "TimelineIKFailure",
+      "type": "object"
+    },
     "TimelineStation": {
       "additionalProperties": true,
       "properties": {
@@ -42,6 +76,57 @@
       ],
       "title": "TimelineStation",
       "type": "object"
+    },
+    "TimelineStep": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "station": {
+          "title": "Station",
+          "type": "string"
+        },
+        "actor": {
+          "title": "Actor",
+          "type": "string"
+        },
+        "action": {
+          "title": "Action",
+          "type": "string"
+        },
+        "t0": {
+          "title": "T0",
+          "type": "number"
+        },
+        "t1": {
+          "title": "T1",
+          "type": "number"
+        },
+        "ik": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ik"
+        }
+      },
+      "required": [
+        "id",
+        "station",
+        "actor",
+        "action",
+        "t0",
+        "t1"
+      ],
+      "title": "TimelineStep",
+      "type": "object"
     }
   },
   "additionalProperties": true,
@@ -61,6 +146,13 @@
       "title": "Stations",
       "type": "array"
     },
+    "steps": {
+      "items": {
+        "$ref": "#/$defs/TimelineStep"
+      },
+      "title": "Steps",
+      "type": "array"
+    },
     "nodes": {
       "additionalProperties": {
         "additionalProperties": true,
@@ -74,6 +166,13 @@
         "$ref": "#/$defs/TimelineEvent"
       },
       "title": "Events",
+      "type": "array"
+    },
+    "ik_failures": {
+      "items": {
+        "$ref": "#/$defs/TimelineIKFailure"
+      },
+      "title": "Ik Failures",
       "type": "array"
     }
   },
