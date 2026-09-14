@@ -24,6 +24,6 @@ def build(params: dict) -> cq.Assembly:
 MODULE = ModuleDef(
     id="camera_light",
     params_schema={"type": "object"},
-    frames={"mount": Frame(), "optical": Frame(xyz=(0, 0, -80))},
+    frames={"mount": Frame(), "optical": Frame(xyz=(0, 0, -80), rpy_deg=(180, 0, 0))},
     collision="box",
 )

@@ -16,6 +16,16 @@ def build(params: dict) -> cq.Assembly:
     return result
 
 
+def module_definition(params: dict) -> ModuleDef:
+    size = params.get("size", [500, 500, 500])
+    return ModuleDef(
+        id="box",
+        params_schema=MODULE.params_schema,
+        frames={"mount": Frame(), "top": Frame(xyz=(0, 0, float(size[2]) / 2))},
+        collision="box",
+    )
+
+
 MODULE = ModuleDef(
     id="box",
     params_schema={
@@ -25,6 +35,6 @@ MODULE = ModuleDef(
             "color": {"type": "array", "minItems": 3, "maxItems": 3},
         },
     },
-    frames={"mount": Frame()},
+    frames={"mount": Frame(), "top": Frame(xyz=(0, 0, 250))},
     collision="box",
 )

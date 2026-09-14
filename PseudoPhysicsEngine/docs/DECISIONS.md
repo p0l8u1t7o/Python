@@ -30,10 +30,16 @@ Claude CLI 在長上下文工作階段直接讀取多張高解析照片或 PDF �
 
 驗收時發現 `cell snapshot --cam top` 雖產生名為 top 的 PNG，檢視器卻忽略 `cam` query，因此內容仍是 ISO。Viewer 現在讀取 `cam=iso|top`，共用同一套 camera preset 給 URL 初始值與畫面按鈕。Snapshot helper 若輸出已位於最新 `.cellforge/vN`，會跳過 copy-to-self，避免 Windows 檔案鎖定錯誤。
 
-## D-007：Windows L1 碰撞檢查採 20 ms swept AABB（2026-09-14）
+## D-007：Windows L1 碰撞核心採 python-fcl（2026-09-14，修訂）
 
-`python-fcl` 在 Windows Python 3.12 的部署可用性不足，因此 L1 先使用可重現的 swept AABB 包絡、每 20 ms 取樣。`checks.json` 明確記錄 `native_fcl: false`、數值、限制與來源，保留日後換成 FCL 的契約。Getac 基準版實測法蘭間隙 −3.2 mm；CR-001 退 20 mm 後為 +16.8 mm，干涉項由紅轉綠。
+已確認 Python 3.12 可安裝並載入 `python-fcl 0.7`，因此原先「Windows 不可用」的判斷撤回，依賴正式列入 `pyproject.toml`。既有 L1 寫死間隙與 swept AABB 邏輯只為 WP1 相容而暫留，將在 WP3 以 FCL 帶號距離及實際幾何取樣完整取代；舊有 −3.2／16.8 mm 不再視為工程驗收值。
 
 ## D-008：簡報範本與工具備案（2026-09-14）
 
 開發書指定的 `zq-work-deck` 未出現在 workspace，Artifact Tool runtime 亦未由本工作階段提供。因此驗收 deck 採 CellForge Midnight 版式，以 Windows PowerPoint COM 產生原生可編輯文字與圖形，並逐張輸出 1920×1080 PNG 檢查。這項偏差寫入 export manifest；若日後提供範本與 runtime，應改回範本／Artifact Tool 流程。
+
+## D-009：WP1 關節 frame、URDF 單位與工件初始姿態（2026-09-14）
+
+關節採 URDF 語意：`origin` 是 parent link 到零位 child link 的變換，`axis` 表示在 joint frame；CellForge 記憶體與 GLB extras 使用 mm／度，URDF 讀寫則固定換成公尺／弧度。GLB 的模組根節點代表 `base`（手臂為 `link0`），各 child link 幾何先乘其零位世界變換的反矩陣，再掛到保存 rest TRS 的關節節點；固定的 `tool` 節點代表 TCP，Z 軸沿 link6 的 +X。
+
+WP1 尚未包含工件流程模擬，因此工件根節點與 STEP 頂層組件先放在世界原點；WP2 再由 timeline 驅動其世界姿態。動態模組 frame 以實際 params 生成並寫入模組 GLB extras；工件也納入 STEP 裝配，以確保交付幾何與 GLB 場景一致。

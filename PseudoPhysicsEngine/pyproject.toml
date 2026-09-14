@@ -14,6 +14,8 @@ dependencies = [
   "xlrd>=2.0,<3",
   "openpyxl>=3.1,<4",
   "numpy>=2.0,<3",
+  "python-fcl>=0.7,<0.8",
+  "scipy",
   "pydantic>=2.9,<3",
   "ruamel.yaml>=0.18,<0.19",
   "typer>=0.12,<1",

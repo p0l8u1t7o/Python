@@ -8,6 +8,7 @@ import urllib.request
 from datetime import date
 from pathlib import Path
 
+from cellforge.kinematics.stub import stub_dimensions, write_stub_urdf
 from cellforge.yamlio import dump_yaml, load_yaml
 
 
@@ -30,38 +31,32 @@ def stub_robot(
     vendor_dir = project / "vendor" / vendor_id
     vendor_dir.mkdir(parents=True, exist_ok=True)
     urdf = vendor_dir / f"{vendor_id}.urdf"
-    joints = "\n".join(
-        (
-            f'  <joint name="j{i}" type="revolute">'
-            f'<parent link="link{i - 1}"/><child link="link{i}"/>'
-            '<axis xyz="0 0 1"/>'
-            '<limit lower="-3.141593" upper="3.141593" '
-            'effort="100" velocity="2.0"/></joint>\n'
-            f'  <link name="link{i}"/>'
-        )
-        for i in range(1, 7)
+    limits = write_stub_urdf(
+        urdf,
+        name=vendor_id,
+        reach_mm=reach_mm,
+        payload_kg=payload_kg,
     )
-    urdf.write_text(
-        f'<?xml version="1.0"?>\n<robot name="{vendor_id}">\n'
-        f'  <link name="link0"/>\n{joints}\n</robot>\n',
-        encoding="utf-8",
-    )
+    dims = stub_dimensions(reach_mm, payload_kg)
     entry = {
         "id": vendor_id,
         "kind": "robot",
         "files": {"urdf": urdf.relative_to(project).as_posix()},
         "source_url": source_url,
         "downloaded": date.today().isoformat(),
-        "sha256": {"urdf": _sha256(urdf)},
+        "sha256": {"urdf": limits.pop("sha256")},
         "units_in_file": "mm",
         "up_axis": "z",
         "approximated": True,
-        "frames": {"base": {"xyz": [0, 0, 0]}, "flange": {"xyz": [reach_mm, 0, 360]}},
-        "limits": {
-            "reach_mm": reach_mm,
-            "payload_kg": payload_kg,
-            "joints_deg": [[-180, 180] for _ in range(6)],
+        "frames": {
+            "base": {"xyz": [0, 0, 0], "rpy_deg": [0, 0, 0]},
+            "flange": {
+                "link": "link6",
+                "xyz": [dims.l6_mm, 0, 0],
+                "rpy_deg": [0, 90, 0],
+            },
         },
+        "limits": limits,
     }
     return _upsert(project, entry)
 

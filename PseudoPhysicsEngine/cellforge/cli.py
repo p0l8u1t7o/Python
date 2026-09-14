@@ -227,7 +227,7 @@ def vendor_stub(
 
     entry = stub_robot(project.resolve(), vendor_id, reach_mm=reach_mm, payload_kg=payload_kg)
     _emit(
-        {"status": "ok", "vendor": entry, "message": f"Created vendor stub {vendor_id}"},
+        {"status": "ok", "vendor": entry, "message": f"已建立 vendor stub：{vendor_id}"},
         json_output,
     )
 

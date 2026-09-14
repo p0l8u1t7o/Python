@@ -10,6 +10,7 @@ import cadquery as cq
 
 from cellforge.checks import run_checks
 from cellforge.schema import Checks, Timeline, VendorManifest
+from cellforge.sim import build_workpiece
 from cellforge.validation import validate_project
 from cellforge.versioning import snapshot_build
 from cellforge.yamlio import load_yaml
@@ -49,21 +50,24 @@ def build_project(project_dir: Path, level: str = "L0") -> dict:
                 name=instance.id,
                 loc=cadquery_location(instance.pose.xyz, instance.pose.rpy_deg),
             )
+    built_workpiece = build_workpiece(workpiece, process)
+    assembly.add(built_workpiece.assembly, name="workpiece")
+    expected_step_names = [module.instance.id for module in modules] + ["workpiece"]
     build_dir = project_dir / "build"
     build_dir.mkdir(parents=True, exist_ok=True)
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", FutureWarning)
             inspection, fallback = export_and_validate_step(
-                assembly, build_dir / "scene.step", [module.instance.id for module in modules]
+                assembly, build_dir / "scene.step", expected_step_names
             )
     except StepValidationError as error:
         raise BuildError(str(error)) from error
     step_report = inspection.as_dict()
     step_report.update(
         {
-            "expected_top_level_part_count": len(modules),
-            "expected_names": [module.instance.id for module in modules],
+            "expected_top_level_part_count": len(expected_step_names),
+            "expected_names": expected_step_names,
             "name_match": True,
             "count_match": True,
             "xcaf_fallback_used": fallback,
@@ -72,7 +76,7 @@ def build_project(project_dir: Path, level: str = "L0") -> dict:
     (build_dir / "step_validation.json").write_text(
         json.dumps(step_report, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-    export_glb(modules, build_dir / "scene.glb")
+    export_glb(modules, build_dir / "scene.glb", built_workpiece)
     timeline = Timeline.model_validate(
         expand_sequence(project_dir / "animation" / "sequence.py", process)
     ).model_dump(mode="json")
@@ -133,6 +137,7 @@ def build_project(project_dir: Path, level: str = "L0") -> dict:
         "version": version,
         "level": level,
         "modules": len(modules),
+        "warnings": built_workpiece.warnings,
         "duration_s": timeline["duration_s"],
         "step": step_report,
         "checks": checks["summary"] if checks else None,

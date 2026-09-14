@@ -9,3 +9,4 @@ examples/*/handwritten/build/
 probe*.step
 .step1-runtime/
 .cellforge-runtime/
+debug.log

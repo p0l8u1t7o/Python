@@ -173,6 +173,18 @@
     },
     "takt": {
       "$ref": "#/$defs/Takt"
+    },
+    "workpiece_sku": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Workpiece Sku"
     }
   },
   "required": [

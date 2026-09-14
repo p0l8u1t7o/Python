@@ -21,6 +21,7 @@ class BuiltModule:
     assembly: cq.Assembly
     source: str
     station: str | None = None
+    chain: Any | None = None
 
 
 def module_import_name(part: str) -> str:
@@ -55,12 +56,24 @@ def build_module(
         definition = python_module.MODULE
         params = {
             "reach_mm": item.get("limits", {}).get("reach_mm", 905),
+            "payload_kg": item.get("limits", {}).get("payload_kg", 7),
             "name": instance.id,
             **instance.params,
         }
         validate_params(definition, params)
         assembly = python_module.build(params)
-        return BuiltModule(instance, definition, assembly, f"vendor:{instance.vendor}")
+        dynamic_definition = getattr(python_module, "module_definition", lambda _p: definition)(
+            params
+        )
+        chain_factory = getattr(python_module, "chain_from_params", None)
+        chain = chain_factory(params) if callable(chain_factory) else None
+        return BuiltModule(
+            instance,
+            dynamic_definition,
+            assembly,
+            f"vendor:{instance.vendor}",
+            chain=chain,
+        )
     assert instance.part is not None
     python_module = load_part(instance.part)
     definition = getattr(python_module, "MODULE", None)
@@ -71,4 +84,9 @@ def build_module(
     assembly = builder(dict(instance.params))
     if not isinstance(assembly, cq.Assembly):
         raise ValueError(f"{instance.part}.build() 必須回傳 cq.Assembly")
-    return BuiltModule(instance, definition, assembly, instance.part)
+    dynamic_definition = getattr(python_module, "module_definition", lambda _p: definition)(
+        instance.params
+    )
+    chain_factory = getattr(python_module, "chain_from_params", None)
+    chain = chain_factory(instance.params) if callable(chain_factory) else None
+    return BuiltModule(instance, dynamic_definition, assembly, instance.part, chain=chain)

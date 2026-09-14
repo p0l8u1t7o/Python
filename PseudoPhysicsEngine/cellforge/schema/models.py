@@ -206,6 +206,7 @@ class Process(ForgeModel):
     stations: list[Station]
     steps: list[ProcessStep]
     takt: Takt
+    workpiece_sku: str | None = None
 
     @model_validator(mode="after")
     def references_are_valid(self) -> Process:

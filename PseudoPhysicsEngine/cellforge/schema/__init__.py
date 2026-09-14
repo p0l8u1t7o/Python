@@ -1,6 +1,6 @@
 """Public schema API."""
 
-from .base import Frame, ModuleDef
+from .base import Frame, JointOrigin, ModuleAxis, ModuleDef
 from .models import (
     SCHEMAS,
     Assumptions,
@@ -22,6 +22,8 @@ __all__ = [
     "Checks",
     "Frame",
     "InputManifest",
+    "JointOrigin",
+    "ModuleAxis",
     "ModuleDef",
     "Process",
     "Project",

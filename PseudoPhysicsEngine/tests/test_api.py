@@ -70,7 +70,7 @@ def test_step1_wizard_api_flow(tmp_path: Path):
         build_job = wait_for(client, build.json()["id"])
         assert build_job["status"] == "done", build_job
         versions = client.get(f"/api/projects/{project_id}/versions").json()
-        assert versions[-1]["step"]["top_level_part_count"] == 7
+        assert versions[-1]["step"]["top_level_part_count"] == 8
         assert versions[-1]["step"]["all_names_preserved"] is True
         assert (
             client.get(
