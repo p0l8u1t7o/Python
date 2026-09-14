@@ -47,6 +47,7 @@ class _Observation:
     source: str
     allowed: bool
     static_pair: bool
+    support: bool
 
 
 def _convex(vertices: np.ndarray, faces: np.ndarray) -> Any:
@@ -231,6 +232,103 @@ def _is_driven(pair: tuple[str, str], t: float, spans) -> bool:
     )
 
 
+def _support_windows(
+    scene: SceneModel, process: Process, timeline: dict[str, Any]
+) -> list[tuple[float, float, str]]:
+    """Return intervals where a module may support the workpiece during a hand-off."""
+
+    duration = float(timeline.get("duration_s", 0.0))
+    attachment_keys = sorted(
+        (float(key[0]), key[1])
+        for key in timeline.get("nodes", {}).get("workpiece", {}).get("attached_to", [])
+    )
+
+    def module_owner(name: str | None) -> str | None:
+        if not name:
+            return None
+        owner = name.partition(".")[0]
+        return owner if owner in scene.modules else None
+
+    intervals: list[tuple[float, float, str]] = []
+    for index, (start, attached) in enumerate(attachment_keys):
+        owner = module_owner(attached)
+        if owner is not None:
+            end = attachment_keys[index + 1][0] if index + 1 < len(attachment_keys) else duration
+            intervals.append((start, max(start, end), owner))
+
+    specifications = {step.id: step for step in process.steps}
+
+    def owner_before(t: float) -> str | None:
+        previous = None
+        for key_t, attached in attachment_keys:
+            if key_t >= t - 1e-9:
+                break
+            previous = module_owner(attached)
+        if previous is None and attachment_keys and attachment_keys[0][0] <= t + 1e-9:
+            previous = module_owner(attachment_keys[0][1])
+        return previous
+
+    timed_steps = sorted(timeline.get("steps", []), key=lambda item: float(item["t0"]))
+    for timed in timed_steps:
+        specification = specifications.get(timed.get("id"))
+        if specification is None:
+            continue
+        t0, t1 = float(timed["t0"]), float(timed["t1"])
+        action = specification.action
+        target = specification.target or {}
+        target_frame = target.get("frame")
+        if action in {"transfer", "release", "detach", "place"} and target_frame:
+            owner = scene.frame_owner(target_frame)
+            if owner in scene.modules:
+                intervals.append((t0, t1, owner))
+        if action in {"transfer", "grip", "attach"}:
+            owner = owner_before(t0)
+            if owner is not None:
+                intervals.append((t0, t1, owner))
+                # Grip only changes attachment state.  When the engine models the
+                # physical lift as the following held motion, that motion is the
+                # remainder of the same support hand-off.
+                if action in {"grip", "attach"}:
+                    for later in timed_steps:
+                        if float(later["t0"]) < t1 - 1e-9:
+                            continue
+                        later_specification = specifications.get(later.get("id"))
+                        if later_specification is None:
+                            continue
+                        if later_specification.actor != specification.actor:
+                            continue
+                        if later_specification.action in {"release", "detach"}:
+                            break
+                        if later_specification.action in {"move_to", "move_joint", "flip"}:
+                            intervals.append((t0, float(later["t1"]), owner))
+                            break
+
+    merged: list[tuple[float, float, str]] = []
+    for owner in sorted({interval[2] for interval in intervals}):
+        owner_intervals = sorted((start, end) for start, end, item in intervals if item == owner)
+        for start, end in owner_intervals:
+            if merged and merged[-1][2] == owner and start <= merged[-1][1] + 1e-9:
+                old_start, old_end, _ = merged[-1]
+                merged[-1] = (old_start, max(old_end, end), owner)
+            else:
+                merged.append((start, end, owner))
+    return merged
+
+
+def _is_support_pair(
+    first: CollisionPart,
+    second: CollisionPart,
+    t: float,
+    windows: list[tuple[float, float, str]],
+) -> bool:
+    work, other = (first, second) if first.workpiece else (second, first)
+    if not work.workpiece:
+        return False
+    return any(
+        owner == other.module and start - 1e-9 <= t <= end + 1e-9 for start, end, owner in windows
+    )
+
+
 def _excluded(
     scene: SceneModel,
     first: CollisionPart,
@@ -250,14 +348,14 @@ def _excluded(
     if not work.workpiece:
         return False
     attached = state.attached_to
-    if attached and other.module == attached.partition(".")[0]:
-        if attached.endswith(".tool"):
-            return other.name == attached
-        return True
-    return False
+    return bool(attached and attached.endswith(".tool") and other.name == attached)
 
 
-def _severity(distance: float, *, allowed: bool, static_pair: bool) -> str | None:
+def _severity(
+    distance: float, *, allowed: bool, static_pair: bool, support: bool = False
+) -> str | None:
+    if support:
+        return "red" if distance < -STATIC_PENETRATION_MM else None
     if allowed:
         return "green"
     if static_pair:
@@ -271,7 +369,12 @@ def _severity(distance: float, *, allowed: bool, static_pair: bool) -> str | Non
 
 def _finish_segment(pair: tuple[str, str], segment: dict[str, Any]) -> dict[str, Any]:
     worst: _Observation = segment["worst"]
-    severity = _severity(worst.distance, allowed=worst.allowed, static_pair=worst.static_pair)
+    severity = _severity(
+        worst.distance,
+        allowed=worst.allowed,
+        static_pair=worst.static_pair,
+        support=worst.support,
+    )
     assert severity is not None
     clearance = max(0.0, -worst.distance) + WARNING_DISTANCE_MM
     detail = f"最小帶號距離 {worst.distance:.3f} mm"
@@ -302,6 +405,7 @@ def run_collision_checks(
     parts = build_collision_parts(scene)
     fcl_objects = {part.key: fcl.CollisionObject(part.geometry) for part in parts}
     spans = _driven_pairs(process, timeline)
+    support_windows = _support_windows(scene, process, timeline)
     active: dict[tuple[str, str], dict[str, Any]] = {}
     finished: list[dict[str, Any]] = []
     previous_signature: tuple[Any, ...] | None = None
@@ -340,7 +444,16 @@ def run_collision_checks(
                 pairs_evaluated += 1
                 pair = tuple(sorted((first.name, second.name)))
                 allowed = _is_driven(pair, t, spans)
-                if _severity(distance, allowed=allowed, static_pair=static_pair) is None:
+                support = _is_support_pair(first, second, t, support_windows)
+                if (
+                    _severity(
+                        distance,
+                        allowed=allowed,
+                        static_pair=static_pair,
+                        support=support,
+                    )
+                    is None
+                ):
                     continue
                 current = observations.get(pair)
                 if current is None or distance < current.distance:
@@ -350,6 +463,7 @@ def run_collision_checks(
                         source=source,
                         allowed=allowed,
                         static_pair=static_pair,
+                        support=support,
                     )
 
         missing = set(active) - set(observations)

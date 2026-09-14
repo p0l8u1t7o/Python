@@ -96,6 +96,15 @@ steps:
       offset: {xyz: [0, 0, 4], rpy_deg: [0, 0, 0]}
     driven_by: robot_1
     duration_s: 2.5
+  - id: S3.clear
+    station: S3
+    actor: robot_1
+    action: move_to
+    target:
+      frame: workpiece.cover_lan.edge
+      offset: {xyz: [0, 0, 200], rpy_deg: [0, 0, 0]}
+    value: {linear: true}
+    duration_s: 1.5
 
   - id: S4.prepare
     station: S4
@@ -136,6 +145,15 @@ steps:
       frame: vision_fixture.top
       offset: {xyz: [0, 0, 39], rpy_deg: [180, 0, 0]}
     duration_s: 0.2
+  - id: S4.clear
+    station: S4
+    actor: robot_2
+    action: move_to
+    target:
+      frame: workpiece.left
+      offset: {xyz: [0, 0, 250], rpy_deg: [0, 0, 0]}
+    value: {linear: true}
+    duration_s: 1.5
 
   - id: S5.raise
     station: S5

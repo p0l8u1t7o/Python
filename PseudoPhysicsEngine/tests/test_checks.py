@@ -110,6 +110,114 @@ def test_static_collision_and_clearance_are_computed_from_geometry():
     assert clearance["min_dist_mm"] > 0
 
 
+def _support_case(*, workpiece_z: float, transfer: bool):
+    spacing = 100.0
+    cell = Cell.model_validate(
+        {
+            "units": "mm",
+            "plant_frame": {},
+            "machines": [
+                {
+                    "id": "line",
+                    "modules": [
+                        {
+                            "id": "support_a",
+                            "part": "library/box.py",
+                            "params": {"size": [spacing, spacing, spacing]},
+                        },
+                        {
+                            "id": "support_b",
+                            "part": "library/box.py",
+                            "params": {"size": [spacing, spacing, spacing]},
+                            "pose": {"xyz": [spacing, 0, 0]},
+                        },
+                    ],
+                }
+            ],
+        }
+    )
+    steps = (
+        [
+            {
+                "id": "S1.handoff",
+                "station": "S1",
+                "actor": "support_a",
+                "action": "transfer",
+                "target": {"frame": "support_b.top"},
+                "duration_s": 1.0,
+            }
+        ]
+        if transfer
+        else []
+    )
+    process = _process(steps, ["support_a", "support_b"])
+    workpiece = _workpiece()
+    scene = _scene(cell, workpiece, process)
+    end_x = spacing if transfer else 0.0
+    duration = 1.0 if transfer else 0.0
+    timeline = {
+        "fps": 50,
+        "duration_s": duration,
+        "stations": [{"id": "S1", "t0": 0.0, "t1": duration}],
+        "steps": (
+            [
+                {
+                    "id": "S1.handoff",
+                    "station": "S1",
+                    "actor": "support_a",
+                    "action": "transfer",
+                    "t0": 0.0,
+                    "t1": 1.0,
+                }
+            ]
+            if transfer
+            else []
+        ),
+        "nodes": {
+            "workpiece": {
+                "type": "pose",
+                "pose_quat": [
+                    [0.0, 0.0, 0.0, workpiece_z, 0.0, 0.0, 0.0, 1.0],
+                    [duration, end_x, 0.0, workpiece_z, 0.0, 0.0, 0.0, 1.0],
+                ],
+                "attached_to": (
+                    [[0.0, "support_a"], [duration, "support_b"]]
+                    if transfer
+                    else [[0.0, "support_a"]]
+                ),
+            }
+        },
+        "events": [],
+        "ik_failures": [],
+    }
+    return run_checks(cell, workpiece, process, timeline, 1, scene=scene)
+
+
+def test_handoff_allows_contact_with_departing_and_arriving_supports():
+    support_height = 100.0
+    workpiece_z = support_height / 2
+    report = _support_case(workpiece_z=workpiece_z, transfer=True)
+    assert not any(
+        item["type"] == "interference"
+        and "workpiece" in item["objects"]
+        and ({"support_a", "support_b"} & set(item["objects"]))
+        for item in report["items"]
+    )
+
+
+def test_support_penetration_beyond_tolerance_is_red():
+    support_height = 100.0
+    penetration = 3.0
+    report = _support_case(workpiece_z=support_height / 2 - penetration, transfer=False)
+    item = next(
+        item
+        for item in report["items"]
+        if item["type"] == "interference" and set(item["objects"]) == {"support_a", "workpiece"}
+    )
+    assert item["severity"] == "red"
+    assert item["min_dist_mm"] <= -penetration
+
+
 def _robot_case(*, mass_kg: float = 1.0):
     cell = Cell.model_validate(
         {

@@ -72,3 +72,7 @@ stub 手臂的 j5 與 j6 關節原點重合，link4、link5、link6 是同一腕
 ## D-014：FCL 凸包穿透深度 fallback（2026-09-14）
 
 Windows 的 python-fcl 0.7 對剛好接觸的 `fcl.Convex` 偶爾回傳負的 signed distance，卻沒有 collision contact；該數值可能沿箱體長邊而非分離方向，不能當穿透深度。檢查器仍先呼叫 `DistanceRequest(enable_signed_distance=True)`；負值時優先採 FCL contact depth，無 contact 時採世界 AABB 最小重疊深度。每筆使用替代值的 check 都在 `source` 明列 fallback 名稱。
+
+## D-015：交接期間的工件支撐窗口（2026-09-14）
+
+工件從模組 A 交接到模組 B 時，A 的支撐窗口延續到取件步驟結束，B 的窗口則自送達步驟開始；窗口由 timeline 的 `steps`、`attached_to` 與 process 目標 frame 所屬模組推導。模擬器的 `grip` 只切換 attachment、實際抬離在緊接的持件運動，因此該第一段運動也納入 A 的離場窗口。工件本體與蓋板在窗口內允許至多 1 mm 的接觸數值誤差，更深的穿透仍回報紅色，避免把實際掉入治具的問題掩蓋掉。
