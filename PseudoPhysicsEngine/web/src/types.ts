@@ -57,3 +57,37 @@ export type Job = {
   error?: string;
   result?: Record<string, unknown>;
 };
+
+export type TimelineStation = {
+  id: string;
+  name?: string;
+  t0: number;
+  t1: number;
+};
+
+export type TimelineNode = {
+  type?: string;
+  joint_names?: string[];
+  joints_deg?: number[][];
+  value_deg?: number[][];
+  value_mm?: number[][];
+  value?: number[][];
+  pose_quat?: number[][];
+};
+
+export type Timeline = {
+  duration_s: number;
+  stations: TimelineStation[];
+  nodes: Record<string, TimelineNode>;
+};
+
+export type Check = {
+  id: string;
+  severity: "red" | "yellow" | "green";
+  type: string;
+  t?: number | null;
+  detail?: string;
+  objects?: string[];
+  value?: number | null;
+  unit?: string | null;
+};

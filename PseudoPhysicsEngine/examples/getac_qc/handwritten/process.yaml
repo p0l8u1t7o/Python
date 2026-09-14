@@ -102,7 +102,7 @@ steps:
     action: move_to
     target:
       frame: workpiece.cover_lan.edge
-      offset: {xyz: [0, 0, 200], rpy_deg: [0, 0, 0]}
+      offset: {xyz: [200, 0, 100], rpy_deg: [0, 0, 0]}
     value: {linear: true}
     duration_s: 1.5
 

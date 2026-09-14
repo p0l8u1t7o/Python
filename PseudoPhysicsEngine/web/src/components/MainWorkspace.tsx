@@ -26,6 +26,7 @@ export function MainWorkspace({ projectId, onBack }: { projectId: string; onBack
   const [version, setVersion] = useState<string>();
   const [overlayVersion, setOverlayVersion] = useState<string>();
   const [checks, setChecks] = useState<Check[]>([]);
+  const [focusedCheck, setFocusedCheck] = useState<Check>();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [changes, setChanges] = useState<Change[]>([]);
   const [process, setProcess] = useState<Process>();
@@ -53,6 +54,7 @@ export function MainWorkspace({ projectId, onBack }: { projectId: string; onBack
     void refresh().catch((reason) => setError(String(reason)));
   }, [refresh]);
   useEffect(() => {
+    setFocusedCheck(undefined);
     if (!version) {
       setChecks([]);
       return;
@@ -179,6 +181,8 @@ export function MainWorkspace({ projectId, onBack }: { projectId: string; onBack
           version={version}
           overlayVersion={overlayVersion}
           checks={checks}
+          focusedCheck={focusedCheck}
+          onCheckSelect={setFocusedCheck}
           onChangeRequest={(object, time, text) => void submitChange(text, object, time)}
         />
         <aside className="side-panel">
@@ -212,7 +216,9 @@ export function MainWorkspace({ projectId, onBack }: { projectId: string; onBack
             {tab === "資料" && (
               <DataPanel projectId={projectId} files={files} onFiles={supplement} />
             )}
-            {tab === "檢查" && <ChecksPanel checks={checks} summary={latest?.checks} />}
+            {tab === "檢查" && (
+              <ChecksPanel checks={checks} summary={latest?.checks} onSelect={setFocusedCheck} />
+            )}
             {tab === "問題" && <QuestionPanel projectId={projectId} />}
             {tab === "假設" && <AssumptionPanel projectId={projectId} />}
             {tab === "變更" && (
@@ -268,9 +274,11 @@ export function MainWorkspace({ projectId, onBack }: { projectId: string; onBack
 function ChecksPanel({
   checks,
   summary,
+  onSelect,
 }: {
   checks: Check[];
   summary?: { red: number; yellow: number; green: number };
+  onSelect: (check: Check) => void;
 }) {
   return (
     <div>
@@ -281,13 +289,17 @@ function ChecksPanel({
       </div>
       <div className="compact-list">
         {checks.map((item) => (
-          <article key={item.id} className={`check-${item.severity}`}>
+          <button
+            key={item.id}
+            className={`check-row check-${item.severity}`}
+            onClick={() => onSelect(item)}
+          >
             <b>
               {item.id} · {item.type}
             </b>
             <p>{item.detail}</p>
             <small>{item.objects?.join(" ↔ ")}</small>
-          </article>
+          </button>
         ))}
       </div>
     </div>

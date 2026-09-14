@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import base64
 import csv
+import html as html_lib
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -199,14 +201,7 @@ def _report(project: Path, version_dir: Path, target: Path) -> Path:
         f"{step['leaf_part_count']} leaves; names preserved = "
         f"{step['all_names_preserved']}"
     )
-    images = [
-        image
-        for image in (
-            project / "build" / "snapshot_t0_iso.png",
-            project / "build" / "snapshot_station_s3.png",
-        )
-        if image.is_file()
-    ]
+    images = _review_snapshots(project, version_dir, checks)
     if images:
         image_table = document.add_table(rows=1, cols=len(images))
         for cell, image in zip(image_table.rows[0].cells, images, strict=True):
@@ -267,7 +262,12 @@ def _deck(project: Path, version_dir: Path, target: Path) -> Path:
             f"{len(workpiece['skus'][0].get('covers', []))}"
         ),
         "step": step,
-        "snapshot": str((project / "build" / "snapshot_station_s3.png").resolve()),
+        "snapshot": str(
+            next(
+                iter(_review_snapshots(project, version_dir, checks)),
+                project / "build" / "snapshot_station_s3.png",
+            ).resolve()
+        ),
     }
     data_path = target.with_suffix(".deck-data.json")
     data_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
@@ -299,12 +299,77 @@ def _deck(project: Path, version_dir: Path, target: Path) -> Path:
 
 def _html(project: Path, version_dir: Path, target: Path) -> Path:
     scene = base64.b64encode((version_dir / "scene.glb").read_bytes()).decode("ascii")
-    timeline = (version_dir / "timeline.json").read_text("utf-8")
-    checks = (version_dir / "checks.json").read_text("utf-8")
-    title = load_yaml(project / "project.yaml")["name"]
-    html = f'''<!doctype html><meta charset="utf-8"><title>{title}</title><style>body{{font:15px system-ui;background:#0b1118;color:#e6f1ff;margin:0}}header,main{{padding:24px}}.grid{{display:grid;grid-template-columns:2fr 1fr;gap:20px}}canvas{{width:100%;height:520px;background:#121d29}}article{{background:#172431;padding:16px;margin:8px 0;border-left:5px solid #4299e1}}.red{{border-color:#f56565}}.green{{border-color:#48bb78}}</style><header><h1>{title}</h1><p>Self-contained CellForge review • {version_dir.name}</p></header><main class="grid"><canvas id="view" width="1100" height="520"></canvas><section id="checks"></section></main><script>const glb="{scene}";const timeline={timeline};const checks={checks};const c=document.querySelector('canvas'),x=c.getContext('2d');x.fillStyle='#172431';x.fillRect(50,80,1000,340);x.fillStyle='#4299e1';timeline.stations.forEach((s,i)=>{{const w=900/timeline.stations.length;x.fillRect(100+i*w,180,w-15,120);x.fillStyle='#e6f1ff';x.fillText(s.id,120+i*w,245);x.fillStyle='#4299e1'}});document.querySelector('#checks').innerHTML=checks.items.map(i=>`<article class="${{i.severity}}"><b>${{i.id}} · ${{i.severity}}</b><p>${{i.detail||''}}</p></article>`).join('');</script>'''  # noqa: E501
-    target.write_text(html, encoding="utf-8")
+    timeline = json.loads((version_dir / "timeline.json").read_text("utf-8"))
+    checks = json.loads((version_dir / "checks.json").read_text("utf-8"))
+    title = str(load_yaml(project / "project.yaml")["name"])
+    bundle_candidates = (
+        source_root() / "web" / "dist" / "offline.js",
+        Path(__file__).resolve().parent / "_viewer" / "offline.js",
+        Path(__file__).resolve().parent / "_offline_viewer.js",
+    )
+    bundle_path = next((path for path in bundle_candidates if path.is_file()), None)
+    if bundle_path is None:
+        raise FileNotFoundError("缺少離線 3D viewer bundle；請先在 web 執行 npm run build")
+    bundle = bundle_path.read_text("utf-8").replace("</script", "<\\/script")
+    payload = json.dumps(
+        {"scene": scene, "timeline": timeline, "checks": checks, "title": title},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).replace("</script", "<\\/script")
+    shell = (Path(__file__).resolve().parent / "_offline_viewer.html").read_text("utf-8")
+    document = (
+        shell.replace("__TITLE__", html_lib.escape(title))
+        .replace("__VERSION__", version_dir.name)
+        .replace("__PAYLOAD__", payload)
+        .replace("__BUNDLE__", bundle)
+    )
+    target.write_text(document, encoding="utf-8")
     return target
+
+
+def _review_snapshots(project: Path, version_dir: Path, checks: dict[str, Any]) -> list[Path]:
+    candidates: dict[Path, float] = {}
+    for directory in (version_dir, project / "build"):
+        if not directory.is_dir():
+            continue
+        for path in directory.glob("snapshot_t*.png"):
+            match = re.match(r"snapshot_t(-?\d+(?:\.\d+)?)_", path.name)
+            if match:
+                candidates[path] = float(match.group(1))
+    desired = []
+    for severity in ("red", "yellow"):
+        timed = [
+            item
+            for item in checks.get("items", [])
+            if item.get("severity") == severity and isinstance(item.get("t"), int | float)
+        ]
+        if timed:
+            desired.append(float(max(timed, key=_check_badness)["t"]))
+    selected: list[Path] = []
+    for check_time in desired:
+        available = [path for path in candidates if path not in selected]
+        if available:
+            selected.append(min(available, key=lambda path: abs(candidates[path] - check_time)))
+    if selected:
+        return selected
+    return [
+        path
+        for path in (
+            project / "build" / "snapshot_t0_iso.png",
+            project / "build" / "snapshot_station_s3.png",
+        )
+        if path.is_file()
+    ]
+
+
+def _check_badness(item: dict[str, Any]) -> float:
+    distance = item.get("min_dist_mm")
+    if isinstance(distance, int | float):
+        return -float(distance)
+    value, limit = item.get("value"), item.get("limit")
+    if isinstance(value, int | float) and isinstance(limit, int | float):
+        return abs(float(value) - float(limit)) / max(abs(float(limit)), 1e-9)
+    return 0.0
 
 
 def _safe_name(value: str) -> str:

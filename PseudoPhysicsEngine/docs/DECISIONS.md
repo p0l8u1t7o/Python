@@ -76,3 +76,11 @@ Windows 的 python-fcl 0.7 對剛好接觸的 `fcl.Convex` 偶爾回傳負的 si
 ## D-015：交接期間的工件支撐窗口（2026-09-14）
 
 工件從模組 A 交接到模組 B 時，A 的支撐窗口延續到取件步驟結束，B 的窗口則自送達步驟開始；窗口由 timeline 的 `steps`、`attached_to` 與 process 目標 frame 所屬模組推導。模擬器的 `grip` 只切換 attachment、實際抬離在緊接的持件運動，因此該第一段運動也納入 A 的離場窗口。工件本體與蓋板在窗口內允許至多 1 mm 的接觸數值誤差，更深的穿透仍回報紅色，避免把實際掉入治具的問題掩蓋掉。
+
+## D-016：線上與單檔 Viewer 共用關節取樣核心（2026-09-14）
+
+React viewer 與離線 HTML 都呼叫 `web/src/viewer-core.ts`：先保存 GLB joint 節點的 rest TRS，再套用 timeline 的軸運動與工件 quaternion pose。離線版本另由 esbuild 產生單一 IIFE，匯出時連同 base64 GLB、timeline、checks 內嵌，因此 `file://` 不需網路、模組載入或後端服務，也避免兩套關節語意逐漸分歧。
+
+## D-017：交付報告的檢查截圖選擇（2026-09-14）
+
+報告與簡報若已有檢查時刻截圖，分別選最嚴重的 red、yellow 項目之最近時間 PNG；若沒有帶時間的截圖才沿用舊的總覽／S3 圖。匯出不自行啟動瀏覽器補拍，以免無 Playwright 的交付主機因產 DOCX/PPTX 而失敗。

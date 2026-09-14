@@ -1,7 +1,9 @@
 # CellForge
 
-CellForge is a local-first engineering workspace for generating and reviewing
-manufacturing cells.
+CellForge is a local-first engineering workspace for building and reviewing articulated
+manufacturing-cell simulations. Engineering truth stays in YAML, CadQuery modules, and vendor
+URDF/STEP; each build produces a named STEP assembly, hierarchical GLB, sampled timeline, and L1
+evidence.
 
 ## Python setup
 
@@ -19,14 +21,14 @@ cell build --project examples/getac_qc/handwritten --level L0
 cell snapshot --project examples/getac_qc/handwritten --t 40 --cam iso
 ```
 
-## Step 3–6 engineering workflow
+## Articulated simulation and L1 workflow
 
 ```powershell
 # Traceable vendor source or an explicit approximation
 cell vendor stub denso_vs060 --project <project> --reach-mm 905 --payload-kg 7
 cell vendor add camera_model <file-or-url> --kind sensor --project <project>
 
-# Named CAD, motion, 20 ms swept-envelope checks, and immutable version
+# Named CAD, IK motion, 20 ms signed-distance samples, and immutable version
 cell build --project <project> --level L1
 cell checks --project <project>
 cell diff v1 v2 --project <project>
@@ -35,10 +37,23 @@ cell diff v1 v2 --project <project>
 cell export --project <project> --kinds all
 ```
 
-The L1 result contains interference, reachability, joint-limit, hardware and takt
-checks. A check records its measured value, limit, unit, affected objects and
-evidence source. The browser can jump to red/yellow times, toggle collision
-geometry, overlay another version, select a module, and create a contextual CR.
+`process.yaml` targets named frames (`<module>.<frame>`, `<robot>.tool`, and workpiece cover
+hinge/edge frames). The simulator schedules event dependencies and serializes each actor, solves
+robot IK, interpolates all six joints and module axes, tracks hinged covers, and carries the
+workpiece through attachment, transfer, placement, and flip states.
+
+L1 checks use native python-fcl signed distance on convex CadQuery sub-parts every 20 ms with an
+AABB broadphase. They also consume recorded IK failures, actual URDF limits/speeds, module strokes,
+payload data, and station occupancy/takt. Check values are computed evidence—not acceptance
+constants. During a hand-off, shallow contact with departing/arriving supports is allowed, while
+penetration deeper than 1 mm remains red.
+
+The browser applies timeline values to GLB joint nodes from their zero-pose rest transforms. It can
+play at 0.25–4×, jump by station or red/yellow marker, highlight involved objects, select a node for
+station/vendor/trust/world-position details, show collision geometry, tint inferred geometry, use
+station cameras, and overlay another version. Context changes retain object and time; a retract
+edits offset Z in the target frame. HTML export embeds the same articulated viewer, GLB, timeline,
+and checks in one file that works offline via `file://`.
 
 CellForge exposes the same engineering boundary over stdio MCP:
 
@@ -109,8 +124,9 @@ refreshes the theme, camera/easing plan and 1920×1080 review video.
 
 1. Install Python 3.12, Node.js 20+, Microsoft Edge/Chrome, and optionally Word
    and PowerPoint for Office rendering.
-2. Create `.venv`, install `.[dev]`, run `python -m playwright install chromium`,
-   then run `npm ci` and `npm run build` under `web/`.
+2. Create `.venv`, install `.[dev]`, run `python -m playwright install chromium`, then run
+   `npm ci`, `npm run lint`, `npx tsc --noEmit`, and `npm run build` under `web/`. The web build
+   also creates the inline offline-viewer bundle used by HTML export.
 3. Set `CELLFORGE_PROJECTS_ROOT` to a writable local directory. Do not place
    active projects on a sync drive while CAD builds are running.
 4. Run `start.cmd`; it returns only after `/api/health` succeeds or the bounded

@@ -96,3 +96,9 @@ def test_astra_hash_protection_and_non_office_exports(tmp_path: Path):
     assert len(exported["files"]) == 6
     for name in exported["files"]:
         assert (Path(exported["directory"]) / name).stat().st_size > 0
+    html = next(
+        (Path(exported["directory"]) / name) for name in exported["files"] if name.endswith(".html")
+    ).read_text("utf-8")
+    assert "window.CELLFORGE_DATA=" in html
+    assert "cellforgeOfflineReady" in html
+    assert "getContext('2d')" not in html

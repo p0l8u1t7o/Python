@@ -511,13 +511,66 @@ textarea:focus {
   bottom: 15px;
   left: 15px;
   display: grid;
-  grid-template-columns: 58px 1fr 64px 96px;
+  grid-template-columns: 58px minmax(0, 1fr) 64px 96px;
   align-items: center;
   gap: 10px;
   padding: 11px;
   border: 1px solid #354555;
   border-radius: 9px;
   background: #101923e8;
+}
+.timeline-track {
+  position: relative;
+  min-width: 0;
+  padding-top: 25px;
+}
+.timeline-track > input {
+  position: relative;
+  z-index: 3;
+  display: block;
+  height: 16px;
+  padding: 0;
+}
+.station-segments,
+.timeline-checks {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 22px;
+}
+.station-segments button {
+  position: absolute;
+  height: 20px;
+  overflow: hidden;
+  padding: 1px 3px;
+  border-radius: 3px;
+  border-color: #40576a;
+  background: #1a2a37;
+  font-size: 9px;
+}
+.station-segments button:nth-child(even) {
+  background: #213442;
+}
+.timeline-checks {
+  z-index: 4;
+  top: 20px;
+  height: 14px;
+  pointer-events: none;
+}
+.timeline-checks button {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  padding: 0;
+  transform: translateX(-50%);
+  border: 1px solid #fff8;
+  border-radius: 50%;
+  pointer-events: auto;
+}
+.timeline-checks .red {
+  background: #f56565;
+}
+.timeline-checks .yellow {
+  background: #ecc94b;
 }
 .timeline .play {
   padding: 6px;
@@ -732,35 +785,44 @@ textarea:focus {
   color: #ffb4bd;
   border-color: #f56565;
 }
-.check-markers {
-  position: absolute;
-  z-index: 3;
-  top: 58px;
-  left: 14px;
-  display: grid;
-  gap: 5px;
-}
-.check-markers button {
-  padding: 5px 8px;
-  font-size: 9px;
-  text-align: left;
-}
-.check-markers .red,
 .check-red {
   border-left: 4px solid #f56565;
 }
-.check-markers .yellow,
 .check-yellow {
   border-left: 4px solid #ecc94b;
 }
-.selection-label {
+.selection-card {
   position: absolute;
   z-index: 3;
   left: 15px;
-  bottom: 76px;
-  padding: 7px 10px;
-  border-radius: 6px;
+  bottom: 92px;
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 1px solid #354a5a;
+  border-radius: 7px;
   background: #0d151ee8;
+  font-size: 11px;
+}
+.selection-card span {
+  color: #9babb8;
+}
+.viewer-tools button.active-trust {
+  color: #ffd29b;
+  border-color: #d69e5b;
+}
+.check-row {
+  width: 100%;
+  display: block;
+  padding: 12px;
+  text-align: left;
+  border-radius: 8px;
+  background: #121e27;
+}
+.check-row p,
+.check-row small {
+  display: block;
+  color: #8fa1af;
   font-size: 11px;
 }
 .context-menu {
