@@ -1,0 +1,61 @@
+{
+  "$defs": {
+    "InputFile": {
+      "additionalProperties": true,
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "product_photo",
+            "inspection_spec",
+            "checklist",
+            "layout",
+            "cad",
+            "drawing",
+            "text",
+            "other"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "note": {
+          "default": "",
+          "title": "Note",
+          "type": "string"
+        },
+        "sha256": {
+          "title": "Sha256",
+          "type": "string"
+        },
+        "added": {
+          "format": "date-time",
+          "title": "Added",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "kind",
+        "sha256",
+        "added"
+      ],
+      "title": "InputFile",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "properties": {
+    "files": {
+      "items": {
+        "$ref": "#/$defs/InputFile"
+      },
+      "title": "Files",
+      "type": "array"
+    }
+  },
+  "title": "InputManifest",
+  "type": "object"
+}

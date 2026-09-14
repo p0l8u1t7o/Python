@@ -1,0 +1,39 @@
+units: mm
+plant_frame:
+  description: 機台原點，X 沿產線，Y 指向操作側，Z 向上
+  trust: inferred
+  source: 步驟 0 手寫案例
+survey_points: []
+machines:
+  - id: qc_line_01
+    pose: {xyz: [0, 0, 0], rpy_deg: [0, 0, 0], trust: inferred}
+    modules:
+      - id: infeed_rack
+        part: library/lift_rack.py
+        params: {levels: 6, pitch_mm: 80}
+        pose: {xyz: [-3300, 0, 0], rpy_deg: [0, 0, 0], trust: inferred}
+      - id: conveyor_1
+        part: library/conveyor.py
+        params: {length_mm: 1300, width_mm: 600, height_mm: 760}
+        pose: {xyz: [-2300, 0, 0], rpy_deg: [0, 0, 0], trust: inferred}
+      - id: robot_1
+        part: library/robot_stub.py
+        params: {reach_mm: 905}
+        pose: {xyz: [-900, -750, 0], rpy_deg: [0, 0, 15], trust: inferred}
+      - id: vision_fixture
+        part: library/box.py
+        params: {size: [900, 700, 850], color: [0.3, 0.35, 0.4]}
+        pose: {xyz: [200, 0, 425], rpy_deg: [0, 0, 0], trust: inferred}
+      - id: robot_2
+        part: library/robot_stub.py
+        params: {reach_mm: 905}
+        pose: {xyz: [1350, -750, 0], rpy_deg: [0, 0, 165], trust: inferred}
+      - id: conveyor_2
+        part: library/conveyor.py
+        params: {length_mm: 1300, width_mm: 600, height_mm: 760}
+        pose: {xyz: [2550, 0, 0], rpy_deg: [0, 0, 0], trust: inferred}
+      - id: outfeed_rack
+        part: library/lift_rack.py
+        params: {levels: 6, pitch_mm: 80}
+        pose: {xyz: [3600, 0, 0], rpy_deg: [0, 0, 0], trust: inferred}
+

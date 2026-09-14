@@ -1,0 +1,87 @@
+{
+  "additionalProperties": true,
+  "properties": {
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "owner": {
+      "enum": [
+        "engineering",
+        "astra"
+      ],
+      "title": "Owner",
+      "type": "string"
+    },
+    "created": {
+      "format": "date-time",
+      "title": "Created",
+      "type": "string"
+    },
+    "created_by": {
+      "enum": [
+        "user",
+        "engineering",
+        "astra",
+        "system"
+      ],
+      "title": "Created By",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "open",
+        "running",
+        "done",
+        "failed",
+        "blocked"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "depends_on": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Depends On",
+      "type": "array"
+    },
+    "instruction": {
+      "title": "Instruction",
+      "type": "string"
+    },
+    "inputs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Inputs",
+      "type": "array"
+    },
+    "outputs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Outputs",
+      "type": "array"
+    },
+    "log": {
+      "title": "Log",
+      "type": "string"
+    },
+    "result": {
+      "default": null,
+      "title": "Result"
+    }
+  },
+  "required": [
+    "id",
+    "owner",
+    "created",
+    "created_by",
+    "status",
+    "instruction",
+    "log"
+  ],
+  "title": "Task",
+  "type": "object"
+}

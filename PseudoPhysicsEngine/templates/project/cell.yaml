@@ -1,0 +1,15 @@
+units: mm
+plant_frame:
+  description: 機台原點
+  trust: inferred
+  source: 尚未量測
+survey_points: []
+machines:
+  - id: cell_01
+    pose: {xyz: [0, 0, 0], rpy_deg: [0, 0, 0], trust: inferred}
+    modules:
+      - id: placeholder
+        part: library/box.py
+        params: {size: [500, 500, 500]}
+        pose: {xyz: [0, 0, 0], rpy_deg: [0, 0, 0], trust: inferred}
+

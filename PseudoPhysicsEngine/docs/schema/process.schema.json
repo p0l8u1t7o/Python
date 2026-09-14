@@ -1,0 +1,185 @@
+{
+  "$defs": {
+    "ProcessStep": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "station": {
+          "title": "Station",
+          "type": "string"
+        },
+        "actor": {
+          "title": "Actor",
+          "type": "string"
+        },
+        "action": {
+          "enum": [
+            "move_to",
+            "move_joint",
+            "grip",
+            "release",
+            "actuate",
+            "wait",
+            "capture",
+            "flip",
+            "transfer",
+            "attach",
+            "detach",
+            "emit"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target"
+        },
+        "value": {
+          "default": null,
+          "title": "Value"
+        },
+        "duration_s": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration S"
+        },
+        "requires": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Requires",
+          "type": "array"
+        },
+        "emits": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Emits",
+          "type": "array"
+        },
+        "driven_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Driven By"
+        }
+      },
+      "required": [
+        "id",
+        "station",
+        "actor",
+        "action"
+      ],
+      "title": "ProcessStep",
+      "type": "object"
+    },
+    "Station": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "modules": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Modules",
+          "type": "array"
+        },
+        "inputs": {
+          "default": "",
+          "title": "Inputs",
+          "type": "string"
+        },
+        "outputs": {
+          "default": "",
+          "title": "Outputs",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "modules"
+      ],
+      "title": "Station",
+      "type": "object"
+    },
+    "Takt": {
+      "additionalProperties": true,
+      "properties": {
+        "target_s": {
+          "title": "Target S",
+          "type": "number"
+        },
+        "parallel_workpieces": {
+          "default": 1,
+          "title": "Parallel Workpieces",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "target_s"
+      ],
+      "title": "Takt",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "properties": {
+    "stations": {
+      "items": {
+        "$ref": "#/$defs/Station"
+      },
+      "title": "Stations",
+      "type": "array"
+    },
+    "steps": {
+      "items": {
+        "$ref": "#/$defs/ProcessStep"
+      },
+      "title": "Steps",
+      "type": "array"
+    },
+    "takt": {
+      "$ref": "#/$defs/Takt"
+    }
+  },
+  "required": [
+    "stations",
+    "steps",
+    "takt"
+  ],
+  "title": "Process",
+  "type": "object"
+}

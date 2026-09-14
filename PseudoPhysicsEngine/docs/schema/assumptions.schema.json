@@ -1,0 +1,80 @@
+{
+  "$defs": {
+    "Assumption": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "from_question": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "From Question"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "basis": {
+          "title": "Basis",
+          "type": "string"
+        },
+        "affects": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Affects",
+          "type": "array"
+        },
+        "status": {
+          "default": "active",
+          "enum": [
+            "active",
+            "overridden"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "overridden_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Overridden By"
+        }
+      },
+      "required": [
+        "id",
+        "text",
+        "basis"
+      ],
+      "title": "Assumption",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "properties": {
+    "assumptions": {
+      "items": {
+        "$ref": "#/$defs/Assumption"
+      },
+      "title": "Assumptions",
+      "type": "array"
+    }
+  },
+  "title": "Assumptions",
+  "type": "object"
+}

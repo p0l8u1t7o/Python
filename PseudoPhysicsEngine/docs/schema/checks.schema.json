@@ -1,0 +1,182 @@
+{
+  "$defs": {
+    "CheckItem": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "interference",
+            "reachability",
+            "joint_limit",
+            "hardware",
+            "takt"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "red",
+            "yellow",
+            "green"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "t": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "T"
+        },
+        "objects": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Objects",
+          "type": "array"
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Detail"
+        },
+        "suggestion": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Suggestion"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "limit": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Limit"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "severity"
+      ],
+      "title": "CheckItem",
+      "type": "object"
+    },
+    "CheckSummary": {
+      "additionalProperties": true,
+      "properties": {
+        "red": {
+          "default": 0,
+          "title": "Red",
+          "type": "integer"
+        },
+        "yellow": {
+          "default": 0,
+          "title": "Yellow",
+          "type": "integer"
+        },
+        "green": {
+          "default": 0,
+          "title": "Green",
+          "type": "integer"
+        }
+      },
+      "title": "CheckSummary",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "properties": {
+    "version": {
+      "title": "Version",
+      "type": "integer"
+    },
+    "generated": {
+      "format": "date-time",
+      "title": "Generated",
+      "type": "string"
+    },
+    "summary": {
+      "$ref": "#/$defs/CheckSummary"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/CheckItem"
+      },
+      "title": "Items",
+      "type": "array"
+    }
+  },
+  "required": [
+    "version",
+    "generated",
+    "summary"
+  ],
+  "title": "Checks",
+  "type": "object"
+}

@@ -1,0 +1,36 @@
+stations:
+  - id: S1
+    name: 進料
+    modules: [infeed_rack, conveyor_1]
+    inputs: 升降架滿載
+    outputs: 單台到定位點
+  - id: S2
+    name: 外觀取像
+    modules: [vision_fixture]
+    inputs: 工件正面朝上
+    outputs: 正面與側面影像
+  - id: S3
+    name: 護蓋開啟與連接口檢測
+    modules: [robot_1]
+    inputs: 護蓋全關
+    outputs: 護蓋與連接口影像
+  - id: S4
+    name: 翻面與背印檢測
+    modules: [robot_2]
+    inputs: 正面朝上
+    outputs: 背面印刷影像
+  - id: S5
+    name: 出料
+    modules: [conveyor_2, outfeed_rack]
+    inputs: 完成檢測
+    outputs: 工件入出料架
+steps:
+  - {id: S1.1, station: S1, actor: infeed_rack.lift, action: actuate, duration_s: 8}
+  - {id: S2.1, station: S2, actor: vision_fixture, action: capture, duration_s: 8}
+  - {id: S3.1, station: S3, actor: robot_1, action: move_joint, duration_s: 14}
+  - {id: S4.1, station: S4, actor: robot_2, action: flip, duration_s: 14}
+  - {id: S5.1, station: S5, actor: outfeed_rack.lift, action: actuate, duration_s: 8}
+takt:
+  target_s: 45
+  parallel_workpieces: 1
+

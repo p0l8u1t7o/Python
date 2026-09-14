@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+web/node_modules/
+web/dist/
+examples/*/handwritten/build/
+probe*.step
+.step1-runtime/
+.cellforge-runtime/

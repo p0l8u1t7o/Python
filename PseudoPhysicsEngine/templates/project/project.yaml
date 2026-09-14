@@ -1,0 +1,13 @@
+name: 新案子
+customer: ""
+product: ""
+description: ""
+constraints:
+  robot_brand: null
+  takt_target_s: null
+  footprint_mm: null
+  stations_max: null
+  safety_notes: ""
+  free_text: ""
+created: 2026-09-14
+

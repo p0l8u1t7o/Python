@@ -1,0 +1,19 @@
+units: mm
+skus:
+  - id: V110_std
+    size: {x: 312, y: 292, z: 39, trust: inferred, source: "步驟 0 手寫案例"}
+    mass_kg: 2.1
+    covers:
+      - id: cover_lan
+        face: rear
+        rect: {u: 40, v: 120, w: 60, h: 20}
+        hinge: {edge: bottom, open_angle_deg: 110, trust: inferred}
+        latch: friction
+    ports: []
+    inspect_regions:
+      - id: rear_print
+        face: bottom
+        rect: {u: 20, v: 30, w: 200, h: 60}
+        requires: {min_px_per_mm: 8, lighting: diffuse}
+variants_note: 護蓋位置與連接口數量依 SKU 不同
+

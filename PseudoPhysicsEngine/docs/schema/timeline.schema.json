@@ -1,0 +1,86 @@
+{
+  "$defs": {
+    "TimelineEvent": {
+      "additionalProperties": true,
+      "properties": {
+        "t": {
+          "title": "T",
+          "type": "number"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "t",
+        "id"
+      ],
+      "title": "TimelineEvent",
+      "type": "object"
+    },
+    "TimelineStation": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "t0": {
+          "title": "T0",
+          "type": "number"
+        },
+        "t1": {
+          "title": "T1",
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "t0",
+        "t1"
+      ],
+      "title": "TimelineStation",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "properties": {
+    "fps": {
+      "title": "Fps",
+      "type": "integer"
+    },
+    "duration_s": {
+      "title": "Duration S",
+      "type": "number"
+    },
+    "stations": {
+      "items": {
+        "$ref": "#/$defs/TimelineStation"
+      },
+      "title": "Stations",
+      "type": "array"
+    },
+    "nodes": {
+      "additionalProperties": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Nodes",
+      "type": "object"
+    },
+    "events": {
+      "items": {
+        "$ref": "#/$defs/TimelineEvent"
+      },
+      "title": "Events",
+      "type": "array"
+    }
+  },
+  "required": [
+    "fps",
+    "duration_s"
+  ],
+  "title": "Timeline",
+  "type": "object"
+}

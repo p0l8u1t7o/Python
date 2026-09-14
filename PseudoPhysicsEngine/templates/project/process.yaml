@@ -1,0 +1,12 @@
+stations:
+  - id: S1
+    name: 示意站
+    modules: [placeholder]
+steps:
+  - id: S1.1
+    station: S1
+    actor: placeholder
+    action: wait
+    duration_s: 1
+takt: {target_s: 60, parallel_workpieces: 1}
+

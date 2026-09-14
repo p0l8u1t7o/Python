@@ -1,0 +1,210 @@
+{
+  "$defs": {
+    "Machine": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "pose": {
+          "$ref": "#/$defs/Pose"
+        },
+        "modules": {
+          "items": {
+            "$ref": "#/$defs/ModuleInstance"
+          },
+          "title": "Modules",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "modules"
+      ],
+      "title": "Machine",
+      "type": "object"
+    },
+    "ModuleInstance": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "part": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Part"
+        },
+        "vendor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Vendor"
+        },
+        "params": {
+          "additionalProperties": true,
+          "title": "Params",
+          "type": "object"
+        },
+        "pose": {
+          "$ref": "#/$defs/Pose"
+        },
+        "mount": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mount"
+        },
+        "trust": {
+          "anyOf": [
+            {
+              "enum": [
+                "inferred",
+                "confirmed"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Trust"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "ModuleInstance",
+      "type": "object"
+    },
+    "Pose": {
+      "additionalProperties": true,
+      "properties": {
+        "xyz": {
+          "default": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Xyz",
+          "type": "array"
+        },
+        "rpy_deg": {
+          "default": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Rpy Deg",
+          "type": "array"
+        },
+        "trust": {
+          "default": "inferred",
+          "enum": [
+            "inferred",
+            "confirmed"
+          ],
+          "title": "Trust",
+          "type": "string"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        }
+      },
+      "title": "Pose",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "properties": {
+    "units": {
+      "const": "mm",
+      "default": "mm",
+      "title": "Units",
+      "type": "string"
+    },
+    "plant_frame": {
+      "additionalProperties": true,
+      "title": "Plant Frame",
+      "type": "object"
+    },
+    "survey_points": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Survey Points",
+      "type": "array"
+    },
+    "machines": {
+      "items": {
+        "$ref": "#/$defs/Machine"
+      },
+      "title": "Machines",
+      "type": "array"
+    }
+  },
+  "required": [
+    "plant_frame",
+    "machines"
+  ],
+  "title": "Cell",
+  "type": "object"
+}

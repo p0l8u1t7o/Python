@@ -1,0 +1,115 @@
+{
+  "$defs": {
+    "Constraints": {
+      "additionalProperties": true,
+      "properties": {
+        "robot_brand": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Robot Brand"
+        },
+        "takt_target_s": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Takt Target S"
+        },
+        "footprint_mm": {
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Footprint Mm"
+        },
+        "stations_max": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stations Max"
+        },
+        "safety_notes": {
+          "default": "",
+          "title": "Safety Notes",
+          "type": "string"
+        },
+        "free_text": {
+          "default": "",
+          "title": "Free Text",
+          "type": "string"
+        }
+      },
+      "title": "Constraints",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "properties": {
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "customer": {
+      "default": "",
+      "title": "Customer",
+      "type": "string"
+    },
+    "product": {
+      "default": "",
+      "title": "Product",
+      "type": "string"
+    },
+    "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+    },
+    "constraints": {
+      "$ref": "#/$defs/Constraints"
+    },
+    "created": {
+      "format": "date",
+      "title": "Created",
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "created"
+  ],
+  "title": "Project",
+  "type": "object"
+}

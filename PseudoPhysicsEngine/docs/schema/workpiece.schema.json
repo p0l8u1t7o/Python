@@ -1,0 +1,192 @@
+{
+  "$defs": {
+    "Cover": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "face": {
+          "enum": [
+            "front",
+            "rear",
+            "left",
+            "right",
+            "top",
+            "bottom"
+          ],
+          "title": "Face",
+          "type": "string"
+        },
+        "rect": {
+          "$ref": "#/$defs/Rect"
+        },
+        "hinge": {
+          "additionalProperties": true,
+          "title": "Hinge",
+          "type": "object"
+        },
+        "latch": {
+          "title": "Latch",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "face",
+        "rect",
+        "hinge",
+        "latch"
+      ],
+      "title": "Cover",
+      "type": "object"
+    },
+    "Rect": {
+      "additionalProperties": true,
+      "properties": {
+        "u": {
+          "title": "U",
+          "type": "number"
+        },
+        "v": {
+          "title": "V",
+          "type": "number"
+        },
+        "w": {
+          "title": "W",
+          "type": "number"
+        },
+        "h": {
+          "title": "H",
+          "type": "number"
+        }
+      },
+      "required": [
+        "u",
+        "v",
+        "w",
+        "h"
+      ],
+      "title": "Rect",
+      "type": "object"
+    },
+    "Size3D": {
+      "additionalProperties": true,
+      "properties": {
+        "x": {
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "title": "Y",
+          "type": "number"
+        },
+        "z": {
+          "title": "Z",
+          "type": "number"
+        },
+        "trust": {
+          "default": "inferred",
+          "enum": [
+            "inferred",
+            "confirmed"
+          ],
+          "title": "Trust",
+          "type": "string"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "title": "Size3D",
+      "type": "object"
+    },
+    "Sku": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "size": {
+          "$ref": "#/$defs/Size3D"
+        },
+        "mass_kg": {
+          "title": "Mass Kg",
+          "type": "number"
+        },
+        "covers": {
+          "items": {
+            "$ref": "#/$defs/Cover"
+          },
+          "title": "Covers",
+          "type": "array"
+        },
+        "ports": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Ports",
+          "type": "array"
+        },
+        "inspect_regions": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Inspect Regions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "size",
+        "mass_kg"
+      ],
+      "title": "Sku",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "properties": {
+    "units": {
+      "const": "mm",
+      "default": "mm",
+      "title": "Units",
+      "type": "string"
+    },
+    "skus": {
+      "items": {
+        "$ref": "#/$defs/Sku"
+      },
+      "title": "Skus",
+      "type": "array"
+    },
+    "variants_note": {
+      "default": "",
+      "title": "Variants Note",
+      "type": "string"
+    }
+  },
+  "required": [
+    "skus"
+  ],
+  "title": "Workpiece",
+  "type": "object"
+}

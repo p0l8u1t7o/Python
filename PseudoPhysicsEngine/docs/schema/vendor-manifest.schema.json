@@ -1,0 +1,112 @@
+{
+  "$defs": {
+    "VendorItem": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "robot",
+            "actuator",
+            "sensor",
+            "frame",
+            "gripper",
+            "other"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "files": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Files",
+          "type": "object"
+        },
+        "source_url": {
+          "title": "Source Url",
+          "type": "string"
+        },
+        "downloaded": {
+          "format": "date",
+          "title": "Downloaded",
+          "type": "string"
+        },
+        "sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            }
+          ],
+          "title": "Sha256"
+        },
+        "units_in_file": {
+          "enum": [
+            "mm",
+            "inch"
+          ],
+          "title": "Units In File",
+          "type": "string"
+        },
+        "up_axis": {
+          "enum": [
+            "x",
+            "y",
+            "z"
+          ],
+          "title": "Up Axis",
+          "type": "string"
+        },
+        "approximated": {
+          "default": false,
+          "title": "Approximated",
+          "type": "boolean"
+        },
+        "frames": {
+          "additionalProperties": true,
+          "title": "Frames",
+          "type": "object"
+        },
+        "limits": {
+          "additionalProperties": true,
+          "title": "Limits",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "files",
+        "source_url",
+        "downloaded",
+        "sha256",
+        "units_in_file",
+        "up_axis",
+        "frames"
+      ],
+      "title": "VendorItem",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "properties": {
+    "vendors": {
+      "items": {
+        "$ref": "#/$defs/VendorItem"
+      },
+      "title": "Vendors",
+      "type": "array"
+    }
+  },
+  "title": "VendorManifest",
+  "type": "object"
+}

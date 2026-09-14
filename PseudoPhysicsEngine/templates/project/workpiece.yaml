@@ -1,0 +1,10 @@
+units: mm
+skus:
+  - id: placeholder
+    size: {x: 300, y: 200, z: 40, trust: inferred, source: "待確認"}
+    mass_kg: 1.0
+    covers: []
+    ports: []
+    inspect_regions: []
+variants_note: ""
+
