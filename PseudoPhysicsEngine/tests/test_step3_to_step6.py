@@ -10,6 +10,7 @@ from cellforge.changes import apply_local_change
 from cellforge.diffing import diff_versions
 from cellforge.exports import export_project
 from cellforge.project import create_project
+from cellforge.yamlio import load_yaml
 
 
 def make_project(root: Path) -> Path:
@@ -38,21 +39,46 @@ def test_l1_interference_change_and_diff(tmp_path: Path):
     project = make_project(tmp_path)
     before = build_project(project, "L1")
     checks_before = json.loads((project / ".cellforge" / "v1" / "checks.json").read_text("utf-8"))
-    interference = next(item for item in checks_before["items"] if item["type"] == "interference")
-    assert interference["severity"] == "red"
-    assert interference["value"] == -3.2
+    interference = [
+        item
+        for item in checks_before["items"]
+        if item["type"] == "interference"
+        and item["severity"] == "red"
+        and any(name.startswith("robot_1") for name in item["objects"])
+        and any(name.startswith("workpiece") for name in item["objects"])
+    ]
+    assert interference
+    worst = min(interference, key=lambda item: item["min_dist_mm"])
+    process_before = load_yaml(project / "process.yaml")
+    approach_before = next(step for step in process_before["steps"] if step["id"] == "S3.approach")
+    offset_before = float(approach_before["target"]["offset"]["xyz"][2])
 
     change_dir = project / "changes"
     change_dir.mkdir(exist_ok=True)
-    (change_dir / "CR-001.md").write_text("# CR-001\n- status: open\n", encoding="utf-8")
-    applied = apply_local_change(project, "CR-001", "法蘭退 20 mm")
+    (change_dir / "CR-001.md").write_text("# CR-001\n- 狀態：open\n", encoding="utf-8")
+    retract_mm = 20.0
+    applied = apply_local_change(
+        project,
+        "CR-001",
+        f"法蘭退 {retract_mm:g} mm",
+        "robot_1.tool",
+        float(worst["t"]),
+    )
     checks_after = json.loads((project / ".cellforge" / "v2" / "checks.json").read_text("utf-8"))
-    resolved = next(item for item in checks_after["items"] if item["type"] == "interference")
+    red_after = [
+        item
+        for item in checks_after["items"]
+        if item["type"] == "interference" and item["severity"] == "red"
+    ]
+    process_after = load_yaml(project / "process.yaml")
+    approach_after = next(step for step in process_after["steps"] if step["id"] == "S3.approach")
     assert before["version"] == 1
     assert applied["build"]["version"] == 2
-    assert resolved["severity"] == "green"
-    assert resolved["value"] == 16.8
+    assert not red_after
+    assert float(approach_after["target"]["offset"]["xyz"][2]) == (offset_before + retract_mm)
     assert diff_versions(project, "v1", "v2")["count"] > 0
+    cr = (change_dir / "CR-001.md").read_text("utf-8")
+    assert all(field in cr for field in ("代理解讀", "影響", "差異", "結果", "狀態：applied"))
 
 
 def test_astra_hash_protection_and_non_office_exports(tmp_path: Path):

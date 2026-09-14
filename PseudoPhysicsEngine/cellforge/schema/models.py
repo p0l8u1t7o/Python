@@ -280,6 +280,14 @@ class CheckItem(ForgeModel):
     limit: float | None = None
     unit: str | None = None
     source: str | None = None
+    min_dist_mm: float | None = None
+
+
+class CheckEngine(ForgeModel):
+    collision: str
+    native_fcl: bool
+    samples: int
+    pairs_evaluated: int
 
 
 class Checks(ForgeModel):
@@ -287,6 +295,7 @@ class Checks(ForgeModel):
     generated: datetime
     summary: CheckSummary
     items: list[CheckItem] = Field(default_factory=list)
+    engine: CheckEngine | None = None
 
 
 class Task(ForgeModel):

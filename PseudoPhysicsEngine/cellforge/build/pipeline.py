@@ -94,7 +94,13 @@ def build_project(project_dir: Path, level: str = "L0") -> dict:
         ]
         checks = Checks.model_validate(
             run_checks(
-                cell, workpiece, process, timeline, max(existing, default=0) + 1, vendor_items
+                cell,
+                workpiece,
+                process,
+                timeline,
+                max(existing, default=0) + 1,
+                vendor_items,
+                scene=scene,
             )
         ).model_dump(mode="json")
         (build_dir / "checks.json").write_text(

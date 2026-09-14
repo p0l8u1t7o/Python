@@ -8,7 +8,7 @@ from typing import Any
 import numpy as np
 from scipy.spatial.transform import Rotation, Slerp
 
-from .scene import SceneModel, SimulationState
+from .scene import SceneModel, SimulationState, motion, transform
 
 
 def _bracket(keys: list[list[Any]], t: float) -> tuple[list[Any], list[Any], float]:
@@ -94,5 +94,9 @@ def world_transforms(scene: SceneModel, state: SimulationState) -> dict[str, np.
             result[f"{module_name}.tool"] = links[module.chain.tip_link].copy()
     result["workpiece"] = state.workpiece_pose.copy()
     for axis in scene.workpiece.definition.axes:
-        result[f"workpiece.{axis.id}"] = scene.resolve_frame(f"workpiece.{axis.id}", state)
+        # GLB joint nodes live at the hinge origin; named workpiece frames may live
+        # elsewhere on the moving cover and therefore are not node transforms.
+        origin = transform(axis.origin.xyz, axis.origin.rpy_deg)
+        moving = origin @ motion(axis, state.axes.get(f"workpiece.{axis.id}", 0.0))
+        result[f"workpiece.{axis.id}"] = state.workpiece_pose @ moving
     return result

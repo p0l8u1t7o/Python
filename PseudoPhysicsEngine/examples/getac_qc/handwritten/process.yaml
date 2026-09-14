@@ -61,24 +61,23 @@ steps:
     actor: robot_1
     action: move_joint
     value: {joints_deg: [12, -18, 28, 16, 22, 30]}
-    duration_s: 1.5
   - id: S3.approach
     station: S3
     actor: robot_1
     action: move_to
     target:
       frame: workpiece.cover_lan.edge
-      offset: {xyz: [0, 0, 2], rpy_deg: [0, 0, 0]}
-    duration_s: 1.5
+      offset: {xyz: [0, 0, -3], rpy_deg: [0, 0, 0]}
+    value: {linear: true}
   - id: S3.open
     station: S3
     actor: workpiece.cover_lan
     action: actuate
-    value: {open_angle_deg: 90}
+    value: {open_angle_deg: 60}
     target:
       module: workpiece
       id: cover_lan
-      offset: {xyz: [0, 0, 2], rpy_deg: [0, 0, 0]}
+      offset: {xyz: [0, 0, 4], rpy_deg: [0, 0, 0]}
     driven_by: robot_1
     duration_s: 2.5
   - id: S3.capture
@@ -94,7 +93,7 @@ steps:
     target:
       module: workpiece
       id: cover_lan
-      offset: {xyz: [0, 0, 2], rpy_deg: [0, 0, 0]}
+      offset: {xyz: [0, 0, 4], rpy_deg: [0, 0, 0]}
     driven_by: robot_1
     duration_s: 2.5
 
@@ -110,7 +109,8 @@ steps:
     action: move_to
     target:
       frame: workpiece.left
-      offset: {xyz: [0, 0, 2], rpy_deg: [0, 0, 0]}
+      offset: {xyz: [0, 0, 50], rpy_deg: [0, 0, 0]}
+    value: {linear: true}
     duration_s: 1.5
   - id: S4.grip
     station: S4
@@ -121,7 +121,7 @@ steps:
     station: S4
     actor: robot_2
     action: flip
-    value: {lift_mm: 100, angle_deg: 180}
+    value: {lift_mm: 160, angle_deg: 180}
     duration_s: 4
   - id: S4.capture
     station: S4
@@ -134,7 +134,7 @@ steps:
     action: release
     target:
       frame: vision_fixture.top
-      offset: {xyz: [0, 0, 0], rpy_deg: [180, 0, 0]}
+      offset: {xyz: [0, 0, 39], rpy_deg: [180, 0, 0]}
     duration_s: 0.2
 
   - id: S5.raise
@@ -148,21 +148,21 @@ steps:
     action: transfer
     target:
       frame: conveyor_2.start
-      offset: {rpy_deg: [180, 0, 0]}
+      offset: {xyz: [0, 0, 39], rpy_deg: [180, 0, 0]}
   - id: S5.convey
     station: S5
     actor: conveyor_2
     action: transfer
     target:
       frame: conveyor_2.end
-      offset: {rpy_deg: [180, 0, 0]}
+      offset: {xyz: [0, 0, 39], rpy_deg: [180, 0, 0]}
   - id: S5.store
     station: S5
     actor: conveyor_2
     action: transfer
     target:
       frame: outfeed_rack.slot_5
-      offset: {rpy_deg: [180, 0, 0]}
+      offset: {xyz: [0, 0, 39], rpy_deg: [180, 0, 0]}
 
 takt:
   target_s: 45

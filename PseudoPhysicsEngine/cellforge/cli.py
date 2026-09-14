@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -320,18 +319,7 @@ def main() -> None:
         sys.stdout.reconfigure(encoding="utf-8")
     if hasattr(sys.stderr, "reconfigure"):
         sys.stderr.reconfigure(encoding="utf-8")
-    try:
-        app()
-    except SystemExit as error:
-        exit_code = int(error.code or 0)
-        sys.stdout.flush()
-        sys.stderr.flush()
-        if os.name == "nt":
-            # OCP may fault while Windows unloads its native DLLs after all
-            # command output and files are already complete. Exit directly so
-            # callers receive the real Typer status instead of 0xC0000005.
-            os._exit(exit_code)
-        raise
+    app()
 
 
 if __name__ == "__main__":

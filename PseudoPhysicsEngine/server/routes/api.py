@@ -487,13 +487,15 @@ def version_diff(project_id: str, version: str, other: str, request: Request) ->
 @router.post("/projects/{project_id}/changes", status_code=201)
 async def create_change(project_id: str, body: ChangeCreate, request: Request) -> dict[str, Any]:
     project = _project(request, project_id)
-    change_id = _write_change(project, body.text)
+    change_id = _write_change(project, body.text, object_name=body.object, t=body.t)
 
     async def worker(emit):
         if _local_agent(request):
             from cellforge.changes import apply_local_change
 
-            result = await asyncio.to_thread(apply_local_change, project, change_id, body.text)
+            result = await asyncio.to_thread(
+                apply_local_change, project, change_id, body.text, body.object, body.t
+            )
         else:
             result = await _agent(request).run(
                 "apply_cr",
@@ -515,11 +517,20 @@ async def create_change(project_id: str, body: ChangeCreate, request: Request) -
     return {**job.public(), "change_id": change_id}
 
 
-def _write_change(project: Path, text: str, source: str = "user") -> str:
+def _write_change(
+    project: Path,
+    text: str,
+    source: str = "使用者",
+    object_name: str | None = None,
+    t: float | None = None,
+) -> str:
     number = len(list((project / "changes").glob("CR-*.md"))) + 1
     change_id = f"CR-{number:03d}"
+    location = f" / 3D 右鍵 {object_name}" if object_name else ""
+    if object_name and t is not None:
+        location += f" @ t={t:g}"
     (project / "changes" / f"{change_id}.md").write_text(
-        f"# {change_id}\n- 來源：{source}\n- 原始指令：{text}\n- 狀態：open\n",
+        f"# {change_id}\n- 來源：{source}{location}\n- 原始指令：{text}\n- 狀態：open\n",
         encoding="utf-8",
     )
     commit_changes(project, f"create {change_id}", ["changes"])

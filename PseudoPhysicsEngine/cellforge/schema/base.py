@@ -71,6 +71,7 @@ class ModuleDef(ForgeModel):
     axes: list[ModuleAxis] = Field(default_factory=list)
     collision: Literal["hull", "box", "mesh"] = "box"
     payload_kg: float | None = None
+    tool_mass_kg: float | None = None
     vendor: str | None = None
     part_no: str | None = None
 

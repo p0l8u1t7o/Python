@@ -60,6 +60,7 @@ def chain_from_params(params: dict[str, Any]) -> Chain:
 
 def module_definition(params: dict[str, Any]) -> ModuleDef:
     chain = chain_from_params(params)
+    _tool_length, _tool_radius, tool_mass, _shape = _tool_parameters(params, include_shape=False)
     axes = []
     for joint in chain.active_joints:
         assert joint.limit is not None
@@ -94,6 +95,7 @@ def module_definition(params: dict[str, Any]) -> ModuleDef:
         axes=axes,
         collision="hull",
         payload_kg=float(params.get("payload_kg", 7)),
+        tool_mass_kg=tool_mass,
     )
 
 
@@ -126,7 +128,7 @@ def build(params: dict) -> cq.Assembly:
     result.add(
         _x_cylinder(
             52,
-            dims.l3_mm / 2,
+            dims.l3_mm / 2 - 27.5,
             (dims.l3_mm / 2, 0, dims.d1_mm + dims.l2_mm),
         ),
         name="link4",

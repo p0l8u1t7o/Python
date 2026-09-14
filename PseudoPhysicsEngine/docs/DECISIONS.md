@@ -60,3 +60,15 @@ WP2 以單一工件模擬 first-article cycle；同站順序、同 actor 與工�
 local API 模式以 `cell build --json` 子程序執行工程建置（WP2 引入），保留此作法的理由是隔離：建置中的原生崩潰只會讓該 job 失敗，不會拖垮整個後端。
 
 開發機的 `.venv` 另放 `Lib/site-packages/zz_cellforge_crash_guard.pth`＋`cellforge_crash_guard.py`：每個 python 程序啟動時關閉 Windows 崩潰對話框（`SetErrorMode`）、以 faulthandler 把崩潰程序的命令列與堆疊追加到 `%TEMP%\cellforge-crash\YYYYMMDD.log`，並先載入 cellforge。這兩個檔案不在版控內，只用於開發與代理大量執行測試時避免彈窗；重建 venv 後如需同樣保護，須再複製一次。
+
+## D-012：靜態物件的接近警告（2026-09-14）
+
+WP3 本次驗收明列「兩個靜態箱體相距 5 mm 應為黃色」，與引擎計畫 5.1 的「靜態↔靜態不報黃」衝突。依較新的明確驗收要求，靜態配對仍只在 t=0 評估一次；穿透超過 1 mm 報紅，未穿透但距離小於 10 mm 報黃。這保留佈局淨空預警，又不增加後續時間樣本成本。
+
+## D-013：同軸腕部的相鄰碰撞排除（2026-09-14）
+
+stub 手臂的 j5 與 j6 關節原點重合，link4、link5、link6 是同一腕部關節殼；只按圖論的一條 edge 排除會把隔著零長度 link 的 link4↔link6 誤報為自碰撞。碰撞器因此把「經過零位移關節相連」視為機械上的相鄰 link；其他非相鄰 link 仍照常檢查。
+
+## D-014：FCL 凸包穿透深度 fallback（2026-09-14）
+
+Windows 的 python-fcl 0.7 對剛好接觸的 `fcl.Convex` 偶爾回傳負的 signed distance，卻沒有 collision contact；該數值可能沿箱體長邊而非分離方向，不能當穿透深度。檢查器仍先呼叫 `DistanceRequest(enable_signed_distance=True)`；負值時優先採 FCL contact depth，無 contact 時採世界 AABB 最小重疊深度。每筆使用替代值的 check 都在 `source` 明列 fallback 名稱。

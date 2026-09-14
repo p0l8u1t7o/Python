@@ -152,7 +152,21 @@ class Simulator:
             }
         )
 
-    def _solve(self, step_id: str, actor: str, target: np.ndarray, t: float) -> np.ndarray:
+    def _solve(
+        self,
+        step_id: str,
+        actor: str,
+        target: np.ndarray,
+        t: float,
+        *,
+        record: bool = True,
+    ) -> np.ndarray:
+        result = self._solve_result(step_id, actor, target)
+        if record:
+            self._record_ik(step_id, t, result)
+        return result.joints
+
+    def _solve_result(self, step_id: str, actor: str, target: np.ndarray):
         module = self.scene.robots.get(actor)
         if module is None:
             raise ValueError(f"步驟 {step_id} 的 actor 不是手臂：{actor}")
@@ -163,14 +177,22 @@ class Simulator:
             max_nfev=180,
             seed_count=2,
         )
-        self._record_ik(step_id, t, result)
-        return result.joints
+        return result
 
-    def _joint_duration(self, actor: str, start: np.ndarray, end: np.ndarray) -> float:
-        speeds = np.asarray(
-            [joint.max_speed or 180.0 for joint in self.scene.robots[actor].chain.active_joints]
-        )
-        return float(np.max(np.abs(end - start) / (speeds * 0.5)))
+    def _joint_duration(
+        self, actor: str, start: np.ndarray, end: np.ndarray, speed_scale: float
+    ) -> float:
+        if speed_scale <= 0:
+            raise ValueError("speed_scale 必須大於零")
+        speeds = self._joint_speeds(actor)
+        return float(np.max(np.abs(end - start) / (speeds * speed_scale)))
+
+    def _joint_speeds(self, actor: str) -> np.ndarray:
+        joints = self.scene.robots[actor].chain.active_joints
+        missing = [joint.id for joint in joints if joint.max_speed is None]
+        if missing:
+            raise ValueError(f"手臂 {actor} 的關節缺少最大速度：{', '.join(missing)}")
+        return np.asarray([joint.max_speed for joint in joints], dtype=float)
 
     def _move_joints(
         self,
@@ -179,9 +201,14 @@ class Simulator:
         goal: np.ndarray,
         t0: float,
         duration_s: float | None,
+        speed_scale: float = 0.5,
     ) -> float:
         start = self.state.joints[actor].copy()
-        duration = self._joint_duration(actor, start, goal) if duration_s is None else duration_s
+        duration = (
+            self._joint_duration(actor, start, goal, speed_scale)
+            if duration_s is None
+            else duration_s
+        )
         t1 = t0 + max(0.0, float(duration))
         for t in _sample_times(t0, t1):
             ratio = 1.0 if t1 <= t0 else (t - t0) / (t1 - t0)
@@ -192,20 +219,55 @@ class Simulator:
     def _move_to(self, step: ProcessStep, t0: float) -> float:
         target = self.scene.frame_target(step.target or {}, self.state, tool=True)
         linear = isinstance(step.value, dict) and bool(step.value.get("linear"))
+        speed_scale = (
+            float(step.value.get("speed_scale", 0.5)) if isinstance(step.value, dict) else 0.5
+        )
         if not linear:
             goal = self._solve(step.id, step.actor, target, t0)
-            return self._move_joints(step.id, step.actor, goal, t0, step.duration_s)
+            return self._move_joints(step.id, step.actor, goal, t0, step.duration_s, speed_scale)
         start_pose = self.scene.resolve_frame(f"{step.actor}.tool", self.state)
-        distance = float(np.linalg.norm(target[:3, 3] - start_pose[:3, 3]))
-        duration = step.duration_s if step.duration_s is not None else distance / 150.0
-        t1 = t0 + max(0.0, duration)
-        seed = self.state.joints[step.actor].copy()
-        for t in _sample_times(t0, t1):
-            ratio = 1.0 if t1 <= t0 else (t - t0) / (t1 - t0)
-            desired = _interpolate_pose(start_pose, target, ratio)
-            self.state.joints[step.actor] = seed
-            seed = self._solve(step.id, step.actor, desired, t)
-            self._append_joints(step.actor, t, seed)
+        endpoint = self._solve(step.id, step.actor, target, t0, record=False)
+        derive_duration = step.duration_s is None
+        initial_duration = (
+            step.duration_s
+            if step.duration_s is not None
+            else self._joint_duration(
+                step.actor, self.state.joints[step.actor], endpoint, speed_scale
+            )
+        )
+        duration = max(0.0, float(initial_duration))
+        start_joints = self.state.joints[step.actor].copy()
+        speeds = self._joint_speeds(step.actor)
+        plan = []
+        for _attempt in range(5 if derive_duration else 1):
+            local_times = _sample_times(0.0, duration)
+            seed = start_joints.copy()
+            plan = []
+            for local_t in local_times:
+                ratio = 1.0 if duration <= 0 else local_t / duration
+                desired = _interpolate_pose(start_pose, target, ratio)
+                self.state.joints[step.actor] = seed
+                result = self._solve_result(step.id, step.actor, desired)
+                seed = result.joints
+                plan.append((ratio, result))
+            required = duration
+            for (ratio_a, result_a), (ratio_b, result_b) in zip(plan, plan[1:], strict=False):
+                ratio_span = ratio_b - ratio_a
+                if ratio_span <= 1e-12:
+                    continue
+                segment = np.max(
+                    np.abs(result_b.joints - result_a.joints) / (speeds * speed_scale * ratio_span)
+                )
+                required = max(required, float(segment))
+            if not derive_duration or required <= duration * (1.0 + 1e-9):
+                break
+            duration = required
+        t1 = t0 + duration
+        self.state.joints[step.actor] = start_joints
+        for ratio, result in plan:
+            t = t0 + ratio * duration
+            self._record_ik(step.id, t, result)
+            self._append_joints(step.actor, t, result.joints)
         return t1
 
     def _move_joint(self, step: ProcessStep, t0: float) -> float:
@@ -222,7 +284,8 @@ class Simulator:
         if goal.shape != (len(limits),):
             raise ValueError(f"步驟 {step.id} 的 move_joint 關節數量不符")
         goal = np.clip(goal, limits[:, 0], limits[:, 1])
-        return self._move_joints(step.id, step.actor, goal, t0, step.duration_s)
+        speed_scale = float(value.get("speed_scale", 0.5)) if isinstance(value, dict) else 0.5
+        return self._move_joints(step.id, step.actor, goal, t0, step.duration_s, speed_scale)
 
     def _cover_name(self, step: ProcessStep) -> str | None:
         if step.actor.startswith("workpiece."):

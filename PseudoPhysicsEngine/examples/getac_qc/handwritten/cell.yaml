@@ -21,15 +21,15 @@ machines:
         params:
           reach_mm: 905
           tool: {part: library/force_eoat.py, params: {length_mm: 140}}
-        pose: {xyz: [0, 650, 0], rpy_deg: [0, 0, 0], trust: inferred}
+        pose: {xyz: [0, 650, 0], rpy_deg: [0, 0, 180], trust: inferred}
       - id: vision_fixture
         part: library/box.py
-        params: {size: [900, 700, 850], color: [0.3, 0.35, 0.4]}
-        pose: {xyz: [200, 0, 425], rpy_deg: [0, 0, 0], trust: inferred}
+        params: {size: [300, 220, 10], color: [0.3, 0.35, 0.4]}
+        pose: {xyz: [200, 0, 800], rpy_deg: [0, 0, 0], trust: inferred}
       - id: robot_2
         part: library/robot_stub.py
         params: {reach_mm: 905}
-        pose: {xyz: [-400, 0, 0], rpy_deg: [0, 0, 0], trust: inferred}
+        pose: {xyz: [-400, -650, 0], rpy_deg: [0, 0, 180], trust: inferred}
       - id: conveyor_2
         part: library/conveyor.py
         params: {length_mm: 1300, width_mm: 600, height_mm: 760}

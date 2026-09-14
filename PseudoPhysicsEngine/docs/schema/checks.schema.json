@@ -1,5 +1,34 @@
 {
   "$defs": {
+    "CheckEngine": {
+      "additionalProperties": true,
+      "properties": {
+        "collision": {
+          "title": "Collision",
+          "type": "string"
+        },
+        "native_fcl": {
+          "title": "Native Fcl",
+          "type": "boolean"
+        },
+        "samples": {
+          "title": "Samples",
+          "type": "integer"
+        },
+        "pairs_evaluated": {
+          "title": "Pairs Evaluated",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "collision",
+        "native_fcl",
+        "samples",
+        "pairs_evaluated"
+      ],
+      "title": "CheckEngine",
+      "type": "object"
+    },
     "CheckItem": {
       "additionalProperties": true,
       "properties": {
@@ -117,6 +146,18 @@
           ],
           "default": null,
           "title": "Source"
+        },
+        "min_dist_mm": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min Dist Mm"
         }
       },
       "required": [
@@ -170,6 +211,17 @@
       },
       "title": "Items",
       "type": "array"
+    },
+    "engine": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CheckEngine"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     }
   },
   "required": [
