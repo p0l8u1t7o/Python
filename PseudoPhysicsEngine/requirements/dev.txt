@@ -1,7 +1,0 @@
-# Decision-neutral Python development tools installed in .venv on 2026-09-12.
-# Product/runtime dependencies will be selected and locked only after plan approval.
-mypy==2.3.1
-pre-commit==4.6.2
-pytest==9.1.1
-ruff==0.16.7
-uv==0.12.13
