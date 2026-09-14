@@ -19,7 +19,11 @@ def build(params: dict) -> cq.Assembly:
     for x in (-length * 0.42, length * 0.42):
         for y in (-width * 0.38, width * 0.38):
             leg = cq.Workplane("XY").box(60, 60, height).translate((x, y, height / 2))
-            result.add(leg, name=f"leg_{'p' if x > 0 else 'n'}x_{'p' if y > 0 else 'n'}y")
+            result.add(
+                leg,
+                name=f"leg_{'p' if x > 0 else 'n'}x_{'p' if y > 0 else 'n'}y",
+                color=cq.Color(0.32, 0.37, 0.4),
+            )
     return result
 
 

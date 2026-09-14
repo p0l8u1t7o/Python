@@ -7,6 +7,7 @@ import warnings
 from pathlib import Path
 
 import cadquery as cq
+import numpy as np
 
 from cellforge.checks import run_checks
 from cellforge.schema import Checks, Timeline, VendorManifest
@@ -15,15 +16,54 @@ from cellforge.validation import validate_project
 from cellforge.versioning import snapshot_build
 from cellforge.yamlio import load_yaml
 
-from .glb import export_glb
+from .glb import _assembly_meshes, export_glb
 from .modules import BuiltModule, build_module
 from .stepio import StepValidationError, export_and_validate_step
 from .timeline import expand_sequence
-from .transforms import cadquery_location
+from .transforms import cadquery_location, matrix_from_pose
 
 
 class BuildError(RuntimeError):
     pass
+
+
+FLOOR_TOLERANCE_MM = 5.0
+
+
+def _has_valid_module_mount(module: BuiltModule, modules: list[BuiltModule]) -> bool:
+    reference = (module.instance.mount or "").strip()
+    if not reference or reference == "floor":
+        return False
+    module_id, separator, frame_name = reference.partition(".")
+    targets = {item.instance.id: item for item in modules if item.instance.id != module.instance.id}
+    target = targets.get(module_id)
+    return target is not None and (not separator or frame_name in target.definition.frames)
+
+
+def _module_floor_warnings(modules: list[BuiltModule]) -> list[str]:
+    """Report fixed module roots that visibly float above or penetrate the plant floor."""
+
+    messages: list[str] = []
+    for module in modules:
+        transform = matrix_from_pose(module.instance.pose.xyz, module.instance.pose.rpy_deg)
+        lowest = np.inf
+        for _name, mesh in _assembly_meshes(module.assembly):
+            world = mesh.vertices @ transform[:3, :3].T + transform[:3, 3]
+            if len(world):
+                lowest = min(lowest, float(world[:, 2].min()))
+        if not np.isfinite(lowest):
+            continue
+        if lowest < -FLOOR_TOLERANCE_MM:
+            messages.append(
+                f"模組 {module.instance.id} 最低點 z={lowest:.1f} mm，低於地板超過 "
+                f"{FLOOR_TOLERANCE_MM:g} mm；請修正 pose 或幾何。"
+            )
+        elif lowest > FLOOR_TOLERANCE_MM and not _has_valid_module_mount(module, modules):
+            messages.append(
+                f"模組 {module.instance.id} 最低點 z={lowest:.1f} mm，懸空超過 "
+                f"{FLOOR_TOLERANCE_MM:g} mm；請補足落地結構或以 mount 指定承載模組／frame。"
+            )
+    return messages
 
 
 def build_project(project_dir: Path, level: str = "L0") -> dict:
@@ -51,6 +91,7 @@ def build_project(project_dir: Path, level: str = "L0") -> dict:
                 loc=cadquery_location(instance.pose.xyz, instance.pose.rpy_deg),
             )
     built_workpiece = build_workpiece(workpiece, process)
+    build_warnings = [*built_workpiece.warnings, *_module_floor_warnings(modules)]
     assert built_workpiece.assembly is not None
     scene = SceneModel(cell, modules, built_workpiece)
     assembly.add(built_workpiece.assembly, name="workpiece")
@@ -124,11 +165,13 @@ def build_project(project_dir: Path, level: str = "L0") -> dict:
             )
             or "- No red or yellow checks."
         )
+    warning_lines = "\n".join(f"- {message}" for message in build_warnings) or "- 無。"
     (build_dir / "render_brief.md").write_text(
         f"# {project.name} — {level} render brief\n\n{project.description}\n\n"
-        f"## Stations\n{stations}\n\n## Red / yellow checks\n{risks}\n\n"
-        "## Presentation guidance\nShow inferred geometry in amber, confirmed geometry in blue, "
-        "and preserve engineering identifiers in labels.\n",
+        f"## 建置警告\n{warning_lines}\n\n## Stations\n{stations}\n\n"
+        f"## Red / yellow checks\n{risks}\n\n"
+        "## Presentation guidance\nPreserve engineering part colors; mark inferred geometry "
+        "with only a subtle amber outline or emissive rim, and preserve identifiers in labels.\n",
         encoding="utf-8",
     )
     output_names = [
@@ -145,7 +188,7 @@ def build_project(project_dir: Path, level: str = "L0") -> dict:
         "version": version,
         "level": level,
         "modules": len(modules),
-        "warnings": built_workpiece.warnings,
+        "warnings": build_warnings,
         "duration_s": timeline["duration_s"],
         "step": step_report,
         "checks": checks["summary"] if checks else None,

@@ -10,6 +10,11 @@ truth. Preserve ids and use millimetres, degrees, a right-handed coordinate syst
 Mark estimated poses and dimensions `trust: inferred`; never upgrade them to confirmed without
 evidence.
 
+`ModuleInstance.pose` is always a world pose. A floor-standing module must have geometry reaching
+`z=0` within the build tolerance. For a module physically carried by another module, set
+`mount: <module_id>` or `mount: <module_id>.<frame>`; this is a support declaration for validation
+and does not re-parent or alter the world pose. The referenced module and optional frame must exist.
+
 A Python module exports `build(params) -> cq.Assembly` and a `ModuleDef` (or
 `module_definition(params)`). Name every CadQuery sub-part. Define reusable frames as
 `frames={"mount": Frame(...), "top": Frame(...)}`. A moving mechanism uses `ModuleDef.axes`:

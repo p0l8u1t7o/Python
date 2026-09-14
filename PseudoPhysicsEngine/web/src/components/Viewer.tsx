@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import type { Check, Timeline } from "../types";
 import { applyTimeline, captureRestTransforms, type RestTransforms } from "../viewer-core";
 
@@ -51,14 +52,16 @@ export function Viewer({
   const controlsRef = useRef<OrbitControls>();
   const boundsRef = useRef<ViewBounds>();
   const stationBoundsRef = useRef<Map<string, ViewBounds>>(new Map());
-  const materialColorsRef = useRef<Map<THREE.MeshStandardMaterial, THREE.Color>>(new Map());
   const materialEmissiveRef = useRef<Map<THREE.MeshStandardMaterial, THREE.Color>>(new Map());
+  const materialEmissiveIntensityRef = useRef<Map<THREE.MeshStandardMaterial, number>>(new Map());
   const [time, setTime] = useState(initialTime);
   const [duration, setDuration] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [collision, setCollision] = useState(false);
-  const [trustTint, setTrustTint] = useState(true);
+  const [trustTint, setTrustTint] = useState(
+    () => new URLSearchParams(location.search).get("trust") !== "off",
+  );
   const [error, setError] = useState<string>();
   const [selection, setSelection] = useState<Selection>();
   const [localCheck, setLocalCheck] = useState<Check>();
@@ -114,10 +117,10 @@ export function Viewer({
     ])
       .then(async ([gltf, timeline]) => {
         if (disposed) return;
-        materialColorsRef.current.clear();
         materialEmissiveRef.current.clear();
+        materialEmissiveIntensityRef.current.clear();
         gltf.scene.traverse((object) => {
-          if (object.name === "collision") object.visible = false;
+          if (isCollisionNode(object)) object.visible = false;
           if (object instanceof THREE.Mesh) {
             const wasArray = Array.isArray(object.material);
             const sourceMaterials = (
@@ -129,11 +132,12 @@ export function Viewer({
             object.material = wasArray ? materials : materials[0];
             for (const material of materials) {
               if (!(material instanceof THREE.MeshStandardMaterial)) continue;
-              materialColorsRef.current.set(material, material.color.clone());
               materialEmissiveRef.current.set(material, material.emissive.clone());
+              materialEmissiveIntensityRef.current.set(material, material.emissiveIntensity);
             }
           }
         });
+        addTrustOutlines(gltf.scene);
         modelRef.current = gltf.scene;
         timelineRef.current = timeline;
         restRef.current = captureRestTransforms(gltf.scene);
@@ -238,19 +242,13 @@ export function Viewer({
 
   useEffect(() => {
     modelRef.current?.traverse((object) => {
-      if (object.name === "collision") object.visible = collision;
+      if (isCollisionNode(object)) object.visible = collision;
     });
   }, [collision, loaded]);
 
   useEffect(() => {
     modelRef.current?.traverse((object) => {
-      if (!(object instanceof THREE.Mesh)) return;
-      for (const material of standardMaterials(object)) {
-        const original = materialColorsRef.current.get(material);
-        if (original) material.color.copy(original);
-        if (trustTint && inheritedMetadata(object).trust === "inferred")
-          material.color.lerp(new THREE.Color(0xf6ad55), 0.35);
-      }
+      if (object.name === TRUST_OUTLINE_NAME) object.visible = trustTint;
     });
   }, [trustTint, loaded]);
 
@@ -283,13 +281,16 @@ export function Viewer({
 
   useEffect(() => {
     if (typeof activeCheck?.t === "number") setTime(activeCheck.t);
+  }, [activeCheck]);
+
+  useEffect(() => {
     for (const [material, color] of materialEmissiveRef.current) {
       material.emissive.copy(color);
-      material.emissiveIntensity = 1;
+      material.emissiveIntensity = materialEmissiveIntensityRef.current.get(material) ?? 1;
     }
     const model = modelRef.current;
-    if (!model || !activeCheck?.objects) return;
-    for (const name of activeCheck.objects) {
+    if (!model) return;
+    for (const name of activeCheck?.objects ?? []) {
       model.getObjectByName(name)?.traverse((object) => {
         if (!(object instanceof THREE.Mesh)) return;
         for (const material of standardMaterials(object)) {
@@ -341,7 +342,7 @@ export function Viewer({
         </button>
         <button
           className={trustTint ? "active-trust" : ""}
-          title="琥珀色為 inferred"
+          title="推估物件顯示淡琥珀外框"
           onClick={() => setTrustTint((value) => !value)}
         >
           信任色
@@ -484,6 +485,51 @@ function inheritedMetadata(object: THREE.Object3D): Record<string, unknown> {
     current = current.parent;
   }
   return metadata;
+}
+
+const TRUST_OUTLINE_NAME = "__cellforge_trust_outline";
+
+function addTrustOutlines(root: THREE.Object3D) {
+  const meshes: THREE.Mesh[] = [];
+  root.traverse((object) => {
+    if (
+      object instanceof THREE.Mesh &&
+      inheritedMetadata(object).trust === "inferred" &&
+      !hasCollisionAncestor(object)
+    )
+      meshes.push(object);
+  });
+  for (const mesh of meshes) {
+    const outline = trustOutline(mesh.geometry);
+    outline.name = TRUST_OUTLINE_NAME;
+    outline.raycast = () => undefined;
+    outline.renderOrder = 1;
+    mesh.add(outline);
+  }
+}
+
+function trustOutline(geometry: THREE.BufferGeometry) {
+  const positions = new THREE.BufferGeometry();
+  positions.setAttribute("position", geometry.getAttribute("position").clone());
+  if (geometry.index) positions.setIndex(geometry.index.clone());
+  const welded = mergeVertices(positions);
+  return new THREE.LineSegments(
+    new THREE.EdgesGeometry(welded, 35),
+    new THREE.LineBasicMaterial({ color: 0xf6ad55, transparent: true, opacity: 0.5 }),
+  );
+}
+
+function isCollisionNode(object: THREE.Object3D) {
+  return object.userData.hidden === true;
+}
+
+function hasCollisionAncestor(object: THREE.Object3D) {
+  let current: THREE.Object3D | null = object;
+  while (current) {
+    if (isCollisionNode(current)) return true;
+    current = current.parent;
+  }
+  return false;
 }
 
 function stationBounds(root: THREE.Object3D) {

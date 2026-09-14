@@ -13,6 +13,7 @@ def build(params: dict) -> cq.Assembly:
     width = float(params.get("width_mm", 650))
     depth = float(params.get("depth_mm", 500))
     result = cq.Assembly(name=params.get("name", "lift_rack"))
+    steel = cq.Color(0.42, 0.48, 0.53)
     shelves = []
     for level in range(levels):
         z = 120 + level * pitch
@@ -22,7 +23,7 @@ def build(params: dict) -> cq.Assembly:
     for x in (-width / 2, width / 2):
         for y in (-depth / 2, depth / 2):
             post = cq.Workplane("XY").box(40, 40, height).translate((x, y, height / 2))
-            result.add(post, name=f"post_{len(result.objects)}")
+            result.add(post, name=f"post_{len(result.objects)}", color=steel)
     return result
 
 

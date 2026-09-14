@@ -23,9 +23,9 @@ machines:
           tool: {part: library/force_eoat.py, params: {length_mm: 140}}
         pose: {xyz: [0, 650, 0], rpy_deg: [0, 0, 180], trust: inferred}
       - id: vision_fixture
-        part: library/box.py
-        params: {size: [300, 220, 10], color: [0.3, 0.35, 0.4]}
-        pose: {xyz: [200, 0, 800], rpy_deg: [0, 0, 0], trust: inferred}
+        part: library/fixture_stand.py
+        params: {top_size: [300, 220, 10], top_height_mm: 805}
+        pose: {xyz: [200, 0, 0], rpy_deg: [0, 0, 0], trust: inferred}
       - id: robot_2
         part: library/robot_stub.py
         params: {reach_mm: 905}

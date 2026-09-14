@@ -84,3 +84,15 @@ React viewer 與離線 HTML 都呼叫 `web/src/viewer-core.ts`：先保存 GLB j
 ## D-017：交付報告的檢查截圖選擇（2026-09-14）
 
 報告與簡報若已有檢查時刻截圖，分別選最嚴重的 red、yellow 項目之最近時間 PNG；若沒有帶時間的截圖才沿用舊的總覽／S3 圖。匯出不自行啟動瀏覽器補拍，以免無 Playwright 的交付主機因產 DOCX/PPTX 而失敗。
+
+## D-018：mount 是支撐宣告，不改寫世界姿態（2026-09-15）
+
+`ModuleInstance.pose` 繼續作為唯一的世界姿態來源；`mount: <module_id>` 或 `<module_id>.<frame>` 表示模組由已存在的模組／frame 承載，供懸空檢查判斷，不建立第二套相對變換。未宣告有效 mount 的模組若最低幾何點高於地板 5 mm，或任何模組低於地板 5 mm，建置均產生中文警告。這避免既有 cell.yaml 的 pose 語意被靜默改變，也讓刻意架高的感測器有可稽核的支撐關係。
+
+## D-019：工程配色與信任度提示分離（2026-09-15）
+
+GLB 保留每個 CadQuery 子零件的 `cq.Color`，未指定色彩才使用中性鋼色。`trust: inferred` 不再覆蓋材質底色；線上 viewer 與離線 viewer 先按位置焊接顯示網格，再由 `EdgesGeometry` 畫細琥珀輪廓，檢查物件才使用紅色 emissive 高亮。如此能同時辨識設備／零件配色與資料信任狀態。實拍確認低強度的全表面琥珀 emissive 仍會讓白色手臂偏成紅褐色，而未焊接三角網格的邊線會覆蓋表面，因此兩者均不採用。
+
+## D-020：Viewer 以 GLB extras 辨識碰撞節點（2026-09-15）
+
+GLB 中每個 link 都可有名為 `collision` 的子節點，但 Three.js 載入時會為重名物件自動加上 `_1`、`_2` 後綴。Viewer 因此不再以顯示名稱切換碰撞體，而以 exporter 寫入的 `extras.hidden: true`（載入後為 `userData.hidden`）辨識。這也避免紅色碰撞材質在預設模式覆蓋工程配色。

@@ -3,12 +3,13 @@ import shutil
 from pathlib import Path
 
 import numpy as np
+import trimesh
 from pygltflib import GLTF2
 from scipy.spatial.transform import Rotation
 
 from cellforge.build.glb import export_glb
 from cellforge.build.modules import build_module
-from cellforge.build.pipeline import build_project
+from cellforge.build.pipeline import _module_floor_warnings, build_project
 from cellforge.build.stepio import inspect_step
 from cellforge.kinematics import make_stub_chain
 from cellforge.schema.models import ModuleInstance
@@ -32,14 +33,17 @@ def test_l0_build_round_trips_step_and_names(tmp_path):
     shutil.copytree(SOURCE, project, ignore=shutil.ignore_patterns("build"))
     report = build_project(project)
     assert report["duration_s"] >= 40
+    assert report["warnings"] == []
+    brief = (project / "build" / "render_brief.md").read_text("utf-8")
+    assert "## 建置警告\n- 無。" in brief
     inspection = inspect_step(project / "build" / "scene.step")
     assert [part.part_name for part in inspection.components] == STEP_EXPECTED
     assert [part.instance_name for part in inspection.components] == STEP_EXPECTED
     validation = json.loads((project / "build" / "step_validation.json").read_text("utf-8"))
     assert validation["top_level_part_count"] == 8
-    assert validation["total_component_count"] == 49
+    assert validation["total_component_count"] == 51
     assert validation["assembly_node_count"] == 9
-    assert validation["leaf_part_count"] == 41
+    assert validation["leaf_part_count"] == 43
     assert validation["all_names_preserved"] is True
     assert validation["count_match"] is True
     assert validation["name_match"] is True
@@ -67,6 +71,25 @@ def test_glb_has_named_module_visual_collision_hierarchy(tmp_path):
         assert names[child_name] in gltf.nodes[names[parent_name]].children
     assert names["workpiece.cover_lan"] in gltf.nodes[names["workpiece"]].children
     assert names["infeed_rack.lift"] in gltf.nodes[names["infeed_rack"]].children
+
+    rendered = trimesh.load_scene(project / "build" / "scene.glb")
+    base_colors = np.unique(
+        rendered.geometry["__cf__robot_1__base__visual"].visual.vertex_colors[:, :3], axis=0
+    )
+    arm_colors = np.unique(
+        rendered.geometry["__cf__robot_1__link1__visual"].visual.vertex_colors[:, :3], axis=0
+    )
+    fixture_colors = np.unique(
+        rendered.geometry["__cf__vision_fixture__base__visual"].visual.vertex_colors[:, :3], axis=0
+    )
+    assert not np.array_equal(base_colors, arm_colors)
+    source_fixture = build_module(ModuleInstance(id="fixture", part="library/fixture_stand.py"))
+    expected_colors = {
+        tuple(round(channel * 255) for channel in child.color.toTuple()[:3])
+        for child in source_fixture.assembly.objects.values()
+        if child.color is not None
+    }
+    assert {tuple(int(channel) for channel in row) for row in fixture_colors} == expected_colors
 
 
 def _local_matrix(node, joint_value=0.0):
@@ -212,3 +235,56 @@ def test_vendor_robot_glb_uses_the_same_fk_aligned_connected_geometry(tmp_path):
     export_glb([built], path)
     gltf = GLTF2().load_binary(str(path))
     _assert_robot_geometry_follows_fk(gltf, np.zeros(6), "vendor_robot")
+
+
+def test_floating_module_warning_honors_a_valid_mount_reference():
+    support = build_module(
+        ModuleInstance(
+            id="support",
+            part="library/box.py",
+            params={"size": [500, 500, 500]},
+            pose={"xyz": [0, 0, 250]},
+        )
+    )
+    floating = build_module(
+        ModuleInstance(
+            id="sensor",
+            part="library/box.py",
+            params={"size": [300, 220, 10]},
+            pose={"xyz": [0, 0, 800]},
+        )
+    )
+    assert any(
+        "sensor" in message and "懸空" in message
+        for message in _module_floor_warnings([support, floating])
+    )
+
+    mounted = build_module(floating.instance.model_copy(update={"mount": "support.top"}))
+    assert not any(
+        "sensor" in message and "懸空" in message
+        for message in _module_floor_warnings([support, mounted])
+    )
+
+
+def test_module_below_floor_is_reported_even_when_mounted():
+    module = build_module(
+        ModuleInstance(
+            id="buried",
+            part="library/box.py",
+            params={"size": [100, 100, 100]},
+            pose={"xyz": [0, 0, 0]},
+            mount="support",
+        )
+    )
+    support = build_module(
+        ModuleInstance(
+            id="support",
+            part="library/box.py",
+            params={"size": [100, 100, 100]},
+            pose={"xyz": [0, 0, 50]},
+        )
+    )
+    assert any(
+        "buried" in message and "低於地板" in message
+        for message in _module_floor_warnings([support, module])
+    )

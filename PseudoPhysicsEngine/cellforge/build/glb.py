@@ -39,6 +39,13 @@ def _shape_mesh(shape: cq.Shape) -> trimesh.Trimesh:
     )
 
 
+def _vertex_color(color: cq.Color | None) -> np.ndarray:
+    """Convert a CadQuery assembly color to an sRGB 8-bit vertex color."""
+
+    rgba = color.toTuple() if color is not None else (0.55, 0.62, 0.68, 1.0)
+    return np.asarray([round(channel * 255) for channel in rgba], dtype=np.uint8)
+
+
 def _assembly_meshes(assembly: cq.Assembly) -> list[tuple[str, trimesh.Trimesh]]:
     meshes: list[tuple[str, trimesh.Trimesh]] = []
     for name, child in assembly.objects.items():
@@ -54,6 +61,7 @@ def _assembly_meshes(assembly: cq.Assembly) -> list[tuple[str, trimesh.Trimesh]]
         located = shape.located(child.loc)
         mesh = _shape_mesh(located)
         if len(mesh.vertices):
+            mesh.visual.vertex_colors = np.tile(_vertex_color(child.color), (len(mesh.vertices), 1))
             meshes.append((name.rsplit("/", 1)[-1], mesh))
     return meshes
 
@@ -157,7 +165,6 @@ def export_glb(
     internal_nodes: dict[tuple[str, str, str], str] = {}
     for item in items:
         for link, visual in _group_meshes(item).items():
-            visual.visual.vertex_colors = np.tile([96, 145, 180, 255], (len(visual.vertices), 1))
             collision = _collision_mesh(visual, item.definition.collision)
             collision.visual.vertex_colors = np.tile(
                 [220, 55, 55, 90], (len(collision.vertices), 1)

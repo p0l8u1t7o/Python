@@ -158,6 +158,7 @@ def build(params: dict) -> cq.Assembly:
         result.add(
             custom_tool,
             name="tool",
+            color=cq.Color(0.18, 0.21, 0.24),
             loc=cq.Location((wrist_x + dims.l6_mm, 0, wrist_z), (0, 90, 0)),
         )
     result.metadata = {"tcp_xyz": (tcp_x, 0.0, wrist_z)}

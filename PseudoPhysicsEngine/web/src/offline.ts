@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import type { Check, Timeline } from "./types";
 import { applyTimeline, captureRestTransforms } from "./viewer-core";
 
@@ -61,14 +62,15 @@ new GLTFLoader().parse(
   (gltf) => {
     model = gltf.scene;
     model.traverse((object) => {
-      if (object.name === "collision") object.visible = false;
+      if (object.userData.hidden === true) object.visible = false;
       if (object instanceof THREE.Mesh) {
-        const materials = Array.isArray(object.material) ? object.material : [object.material];
-        object.material = Array.isArray(object.material)
-          ? materials.map((material) => material.clone())
-          : materials[0].clone();
+        const wasArray = Array.isArray(object.material);
+        const source = (wasArray ? object.material : [object.material]) as THREE.Material[];
+        const materials = source.map((material: THREE.Material) => material.clone());
+        object.material = wasArray ? materials : materials[0];
       }
     });
+    addTrustOutlines(model);
     rest = captureRestTransforms(model);
     applyTimeline(model, data.timeline, time, rest);
     scene.add(model);
@@ -116,7 +118,10 @@ function highlight(check: Check) {
     if (!(object instanceof THREE.Mesh)) return;
     const materials = Array.isArray(object.material) ? object.material : [object.material];
     for (const material of materials)
-      if (material instanceof THREE.MeshStandardMaterial) material.emissive.set(0x000000);
+      if (material instanceof THREE.MeshStandardMaterial) {
+        material.emissive.set(0x000000);
+        material.emissiveIntensity = 1;
+      }
   });
   for (const name of check.objects ?? []) {
     model.getObjectByName(name)?.traverse((object) => {
@@ -129,6 +134,49 @@ function highlight(check: Check) {
         }
     });
   }
+}
+
+function inheritedTrust(object: THREE.Object3D): unknown {
+  let current: THREE.Object3D | null = object;
+  while (current) {
+    if (current.userData.trust != null) return current.userData.trust;
+    current = current.parent;
+  }
+  return undefined;
+}
+
+function addTrustOutlines(root: THREE.Object3D) {
+  const meshes: THREE.Mesh[] = [];
+  root.traverse((object) => {
+    if (
+      object instanceof THREE.Mesh &&
+      inheritedTrust(object) === "inferred" &&
+      !hasCollisionAncestor(object)
+    )
+      meshes.push(object);
+  });
+  for (const mesh of meshes) {
+    const positions = new THREE.BufferGeometry();
+    positions.setAttribute("position", mesh.geometry.getAttribute("position").clone());
+    if (mesh.geometry.index) positions.setIndex(mesh.geometry.index.clone());
+    const outline = new THREE.LineSegments(
+      new THREE.EdgesGeometry(mergeVertices(positions), 35),
+      new THREE.LineBasicMaterial({ color: 0xf6ad55, transparent: true, opacity: 0.5 }),
+    );
+    outline.name = "__cellforge_trust_outline";
+    outline.raycast = () => undefined;
+    outline.renderOrder = 1;
+    mesh.add(outline);
+  }
+}
+
+function hasCollisionAncestor(object: THREE.Object3D) {
+  let current: THREE.Object3D | null = object;
+  while (current) {
+    if (current.userData.hidden === true) return true;
+    current = current.parent;
+  }
+  return false;
 }
 
 const segments = document.querySelector<HTMLElement>("#segments")!;
