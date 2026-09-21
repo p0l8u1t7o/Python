@@ -19,6 +19,9 @@ from cellforge.sim.workpiece import BuiltWorkpiece
 from .modules import BuiltModule
 from .transforms import matrix_from_pose
 
+MESH_LINEAR_TOLERANCE_MM = 1.0
+MESH_ANGULAR_TOLERANCE_RAD = 0.2
+
 
 @dataclass(slots=True)
 class SceneItem:
@@ -31,7 +34,10 @@ class SceneItem:
 
 
 def _shape_mesh(shape: cq.Shape) -> trimesh.Trimesh:
-    vertices, triangles = shape.tessellate(1.0, 0.2)
+    vertices, triangles = shape.tessellate(
+        MESH_LINEAR_TOLERANCE_MM,
+        MESH_ANGULAR_TOLERANCE_RAD,
+    )
     return trimesh.Trimesh(
         vertices=np.asarray([[vertex.x, vertex.y, vertex.z] for vertex in vertices], dtype=float),
         faces=np.asarray(triangles, dtype=int),
@@ -46,8 +52,8 @@ def _vertex_color(color: cq.Color | None) -> np.ndarray:
     return np.asarray([round(channel * 255) for channel in rgba], dtype=np.uint8)
 
 
-def _assembly_meshes(assembly: cq.Assembly) -> list[tuple[str, trimesh.Trimesh]]:
-    meshes: list[tuple[str, trimesh.Trimesh]] = []
+def _assembly_link_meshes(assembly: cq.Assembly) -> list[tuple[str, str, trimesh.Trimesh]]:
+    meshes: list[tuple[str, str, trimesh.Trimesh]] = []
     for name, child in assembly.objects.items():
         if name == assembly.name or child.obj is None:
             continue
@@ -62,8 +68,14 @@ def _assembly_meshes(assembly: cq.Assembly) -> list[tuple[str, trimesh.Trimesh]]
         mesh = _shape_mesh(located)
         if len(mesh.vertices):
             mesh.visual.vertex_colors = np.tile(_vertex_color(child.color), (len(mesh.vertices), 1))
-            meshes.append((name.rsplit("/", 1)[-1], mesh))
+            part_name = name.rsplit("/", 1)[-1]
+            link = str((child.metadata or {}).get("link") or part_name)
+            meshes.append((part_name, link, mesh))
     return meshes
+
+
+def _assembly_meshes(assembly: cq.Assembly) -> list[tuple[str, trimesh.Trimesh]]:
+    return [(name, mesh) for name, _link, mesh in _assembly_link_meshes(assembly)]
 
 
 def _rest_transforms(item: SceneItem) -> dict[str, np.ndarray]:
@@ -89,24 +101,31 @@ def _rest_transforms(item: SceneItem) -> dict[str, np.ndarray]:
     return transforms
 
 
-def _group_meshes(item: SceneItem) -> dict[str, trimesh.Trimesh]:
+def _group_mesh_parts(item: SceneItem) -> dict[str, list[trimesh.Trimesh]]:
     child_links = {axis.child or axis.id for axis in item.definition.axes}
     child_links.update(joint.child for joint in item.fixed_joints)
     grouped: dict[str, list[trimesh.Trimesh]] = {"base": []}
     grouped.update({name: [] for name in child_links})
-    for name, mesh in _assembly_meshes(item.assembly):
-        grouped[name if name in child_links else "base"].append(mesh)
+    for name, declared_link, mesh in _assembly_link_meshes(item.assembly):
+        link = declared_link if declared_link in child_links else name
+        grouped[link if link in child_links else "base"].append(mesh)
     rest = _rest_transforms(item)
-    result: dict[str, trimesh.Trimesh] = {}
+    result: dict[str, list[trimesh.Trimesh]] = {}
     for link, meshes in grouped.items():
         if not meshes:
             raise ValueError(f"模組 {item.id} 的 link {link} 沒有可匯出的幾何")
-        merged = trimesh.util.concatenate(meshes)
-        merged.apply_transform(np.linalg.inv(rest[link]))
-        if len(merged.faces) > 50_000:
-            merged = merged.simplify_quadric_decimation(face_count=50_000)
-        result[link] = merged
+        inverse_rest = np.linalg.inv(rest[link])
+        for mesh in meshes:
+            mesh.apply_transform(inverse_rest)
+        result[link] = meshes
     return result
+
+
+def _visual_mesh(meshes: list[trimesh.Trimesh]) -> trimesh.Trimesh:
+    merged = trimesh.util.concatenate(meshes)
+    if len(merged.faces) > 50_000:
+        merged = merged.simplify_quadric_decimation(face_count=50_000)
+    return merged
 
 
 def _collision_mesh(visual: trimesh.Trimesh, mode: str = "box") -> trimesh.Trimesh:
@@ -134,6 +153,7 @@ def _module_item(module: BuiltModule) -> SceneItem:
             "trust": module.instance.trust or pose.trust,
             "station": module.station,
             "vendor": module.instance.vendor,
+            "placeholder": module.definition.meta.placeholder,
         },
         fixed_joints=fixed,
     )
@@ -164,8 +184,11 @@ def export_glb(
     scene = trimesh.Scene(base_frame="world")
     internal_nodes: dict[tuple[str, str, str], str] = {}
     for item in items:
-        for link, visual in _group_meshes(item).items():
-            collision = _collision_mesh(visual, item.definition.collision)
+        for link, meshes in _group_mesh_parts(item).items():
+            visual = _visual_mesh(meshes)
+            collision = trimesh.util.concatenate(
+                [_collision_mesh(mesh, item.definition.collision) for mesh in meshes]
+            )
             collision.visual.vertex_colors = np.tile(
                 [220, 55, 55, 90], (len(collision.vertices), 1)
             )

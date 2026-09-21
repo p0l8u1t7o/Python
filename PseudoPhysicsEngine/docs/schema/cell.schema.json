@@ -166,6 +166,23 @@
           ],
           "default": null,
           "title": "Source"
+        },
+        "link": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Link"
+        },
+        "free_space": {
+          "default": false,
+          "title": "Free Space",
+          "type": "boolean"
         }
       },
       "title": "Pose",

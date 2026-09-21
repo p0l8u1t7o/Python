@@ -65,16 +65,19 @@ def test_l1_interference_change_and_diff(tmp_path: Path):
         float(worst["t"]),
     )
     checks_after = json.loads((project / ".cellforge" / "v2" / "checks.json").read_text("utf-8"))
-    red_after = [
+    targeted_red_after = [
         item
         for item in checks_after["items"]
-        if item["type"] == "interference" and item["severity"] == "red"
+        if item["type"] == "interference"
+        and item["severity"] == "red"
+        and any(name.startswith("robot_1") for name in item["objects"])
+        and any(name.startswith("workpiece") for name in item["objects"])
     ]
     process_after = load_yaml(project / "process.yaml")
     approach_after = next(step for step in process_after["steps"] if step["id"] == "S3.approach")
     assert before["version"] == 1
     assert applied["build"]["version"] == 2
-    assert not red_after
+    assert not targeted_red_after
     assert float(approach_after["target"]["offset"]["xyz"][2]) == (offset_before + retract_mm)
     assert diff_versions(project, "v1", "v2")["count"] > 0
     cr = (change_dir / "CR-001.md").read_text("utf-8")

@@ -12,7 +12,7 @@ import typer
 from cellforge.project import create_project, project_template
 from cellforge.questions import update_questions
 from cellforge.schema.export import export_json_schemas
-from cellforge.validation import ProjectValidationError, validate_project
+from cellforge.validation import ProjectValidationError, placeholder_warnings, validate_project
 from cellforge.yamlio import load_yaml
 
 app = typer.Typer(help="CellForge 自動化機台可行性評估工具", no_args_is_help=True)
@@ -20,8 +20,10 @@ question_app = typer.Typer(help="回答或跳過工程代理問題", no_args_is_
 agent_app = typer.Typer(help="執行工程代理任務", no_args_is_help=True)
 app.add_typer(question_app, name="question")
 vendor_app = typer.Typer(help="Manage traceable vendor assets", no_args_is_help=True)
+part_app = typer.Typer(help="檢查與輸出參數化模組", no_args_is_help=True)
 app.add_typer(agent_app, name="agent")
 app.add_typer(vendor_app, name="vendor")
+app.add_typer(part_app, name="part")
 
 
 def _emit(payload: dict, json_output: bool) -> None:
@@ -29,6 +31,184 @@ def _emit(payload: dict, json_output: bool) -> None:
         typer.echo(json.dumps(payload, ensure_ascii=False))
     else:
         typer.echo(payload.get("message", json.dumps(payload, ensure_ascii=False, indent=2)))
+
+
+@part_app.command("list")
+def part_list(
+    library: bool = typer.Option(False, "--library", help="只列出共用模組庫"),
+    project_parts: bool = typer.Option(False, "--project", help="只列出本案 parts"),
+    project_dir: Path = typer.Option(Path.cwd(), "--project-dir"),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """列出模組庫與案內自建參數化模組。"""
+    from cellforge.part_catalog import list_available_parts
+
+    only_one_source = library or project_parts
+    try:
+        entries = list_available_parts(
+            project_dir.resolve(),
+            include_library=library or not only_one_source,
+            include_project=project_parts or not only_one_source,
+        )
+    except (ImportError, OSError, ValueError) as error:
+        _emit({"status": "failed", "message": str(error)}, json_output)
+        raise typer.Exit(2) from error
+    if json_output:
+        typer.echo(json.dumps({"modules": entries}, ensure_ascii=False))
+        return
+    category_names = {
+        "frame": "機架",
+        "conveying": "輸送",
+        "handling": "搬運",
+        "fixturing": "治具",
+        "vision": "視覺",
+        "safety": "安全",
+        "electrical": "電控",
+        "material_handling": "物料處理",
+        "project": "本案自建",
+    }
+    for entry in entries:
+        source = "模組庫" if entry["source"] == "library" else "本案自建"
+        params = "、".join(entry["params"]) or "無"
+        frames = "、".join(entry["frames"]) or "無"
+        axes = "、".join(entry["axes"]) or "無"
+        typer.echo(
+            f"[{source}] {entry['id']}｜類別：{category_names[entry['category']]}｜"
+            f"參數：{params}｜frames：{frames}｜軸：{axes}"
+        )
+
+
+@part_app.command("new")
+def part_new(
+    module_id: str,
+    category: str = typer.Option(..., "--category"),
+    from_library: str | None = typer.Option(None, "--from"),
+    project: Path = typer.Option(Path.cwd(), "--project"),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """建立案內參數化模組骨架，或複製既有庫模組作為起點。"""
+    from cellforge.module_service import create_part
+
+    try:
+        created = create_part(
+            project.resolve(),
+            module_id,
+            category,
+            from_library=from_library,
+        )
+    except (ImportError, OSError, ValueError) as error:
+        _emit({"status": "failed", "message": str(error)}, json_output)
+        raise typer.Exit(2) from error
+    source_note = f"（由 {from_library} 複製）" if from_library else ""
+    _emit(
+        {
+            "status": "ok",
+            "module": created,
+            "message": f"已建立案內模組 {module_id}{source_note}：{created['path']}",
+        },
+        json_output,
+    )
+
+
+@part_app.command("check")
+def part_check(
+    module_id: str | None = typer.Argument(None),
+    project: Path = typer.Option(Path.cwd(), "--project"),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """以預設參數建置模組並執行十項品質檢查。"""
+    from cellforge.part_check import check_parts
+
+    try:
+        results = check_parts(project.resolve(), module_id)
+    except (ImportError, OSError, ValueError) as error:
+        _emit({"status": "failed", "message": str(error)}, json_output)
+        raise typer.Exit(2) from error
+    if json_output:
+        payload = (
+            results[0].as_dict()
+            if len(results) == 1
+            else {
+                "passed": all(result.passed for result in results),
+                "modules": [result.as_dict() for result in results],
+            }
+        )
+        typer.echo(json.dumps(payload, ensure_ascii=False))
+    else:
+        for result in results:
+            for item in result.items:
+                typer.echo(f"[{item.severity}] {item.index} {result.module_id}：{item.message}")
+    if any(not result.passed for result in results):
+        raise typer.Exit(2)
+
+
+@part_app.command("render")
+def part_render(
+    module_id: str,
+    output: Path = typer.Option(..., "--out"),
+    project: Path = typer.Option(Path.cwd(), "--project"),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """產生單一模組的前、側、上與 ISO 四視圖 PNG。"""
+    from cellforge.part_artifacts import PartArtifactError, render_part, resolve_part_output
+
+    try:
+        target = resolve_part_output(output, module_id, "png")
+        render_part(project.resolve(), module_id, target)
+    except (OSError, PartArtifactError) as error:
+        _emit({"status": "failed", "message": str(error)}, json_output)
+        raise typer.Exit(2) from error
+    _emit(
+        {"status": "ok", "path": str(target), "message": f"已產生模組四視圖：{target}"},
+        json_output,
+    )
+
+
+@part_app.command("preview")
+def part_preview(
+    module_id: str,
+    output: Path = typer.Option(..., "--out"),
+    project: Path = typer.Option(Path.cwd(), "--project"),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """以正式 GLB 管線產生單一模組預覽。"""
+    from cellforge.part_artifacts import PartArtifactError, preview_part, resolve_part_output
+
+    try:
+        target = resolve_part_output(output, module_id, "glb")
+        preview_part(project.resolve(), module_id, target)
+    except (OSError, PartArtifactError) as error:
+        _emit({"status": "failed", "message": str(error)}, json_output)
+        raise typer.Exit(2) from error
+    _emit(
+        {"status": "ok", "path": str(target), "message": f"已產生模組 GLB 預覽：{target}"},
+        json_output,
+    )
+
+
+@part_app.command("promote")
+def part_promote(
+    module_id: str,
+    project: Path = typer.Option(Path.cwd(), "--project"),
+    category: str | None = typer.Option(None, "--category"),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """把通過檢查的案內模組收進共用模組庫。"""
+    from cellforge.module_service import promote_part
+
+    try:
+        entry = promote_part(project.resolve(), module_id, category=category)
+    except (ImportError, OSError, ValueError) as error:
+        _emit({"status": "failed", "message": str(error)}, json_output)
+        raise typer.Exit(2) from error
+    _emit(
+        {
+            "status": "ok",
+            "module": entry,
+            "message": f"已把案內模組 {module_id} 收進共用模組庫",
+        },
+        json_output,
+    )
 
 
 @app.command("init")
@@ -56,11 +236,15 @@ def validate(
 ) -> None:
     """驗證 Schema、id、引用、單位與模組參數。"""
     try:
-        validate_project(project.resolve())
+        _project, _workpiece, cell, _process = validate_project(project.resolve())
     except ProjectValidationError as error:
         _emit({"status": "failed", "message": str(error)}, json_output)
         raise typer.Exit(2) from error
-    _emit({"status": "ok", "message": "驗證通過"}, json_output)
+    warnings = placeholder_warnings(cell)
+    message = "驗證通過"
+    if warnings:
+        message += "\n" + "\n".join(f"[warn] {warning}" for warning in warnings)
+    _emit({"status": "ok", "warnings": warnings, "message": message}, json_output)
 
 
 @app.command("build")

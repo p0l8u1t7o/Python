@@ -21,10 +21,24 @@ def _sample_times(t0: float, t1: float) -> list[float]:
     if t1 <= t0:
         return [t0]
     count = max(1, math.ceil((t1 - t0) / SAMPLE_PERIOD_S))
-    return [t0 + (t1 - t0) * index / count for index in range(count + 1)]
+    # 末點直接沿用原始 t1：以 (t1 - t0) * count / count 反推會有浮點漂移，
+    # 使 ratio 變成 1.0000000000000002 而被 SciPy 的 Slerp 拒絕。
+    times = [t0 + (t1 - t0) * index / count for index in range(count)]
+    times.append(t1)
+    return times
+
+
+def _clamp_ratio(ratio: float) -> float:
+    """把內插比例夾在 [0, 1]，避免呼叫端的浮點誤差讓 Slerp 直接丟例外。"""
+
+    value = float(ratio)
+    if not math.isfinite(value):
+        raise ValueError(f"內插比例必須是有限數值，收到 {ratio!r}")
+    return min(1.0, max(0.0, value))
 
 
 def _interpolate_pose(first: np.ndarray, second: np.ndarray, ratio: float) -> np.ndarray:
+    ratio = _clamp_ratio(ratio)
     result = np.eye(4, dtype=float)
     result[:3, 3] = first[:3, 3] + (second[:3, 3] - first[:3, 3]) * ratio
     rotations = Rotation.from_matrix([first[:3, :3], second[:3, :3]])

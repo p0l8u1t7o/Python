@@ -11,7 +11,7 @@ import numpy as np
 
 from cellforge.build.glb import (
     SceneItem,
-    _assembly_meshes,
+    _assembly_link_meshes,
     _module_item,
     _rest_transforms,
     _workpiece_item,
@@ -64,8 +64,9 @@ def _parts(item: SceneItem, *, dynamic_root: bool) -> list[CollisionPart]:
     child_to_axis.update({joint.child: joint.id for joint in item.fixed_joints})
     dynamic_links = set(child_to_axis)
     output: list[CollisionPart] = []
-    for index, (part_name, mesh) in enumerate(_assembly_meshes(item.assembly)):
-        link = part_name if part_name in dynamic_links else "base"
+    for index, (part_name, declared_link, mesh) in enumerate(_assembly_link_meshes(item.assembly)):
+        link = declared_link if declared_link in dynamic_links else part_name
+        link = link if link in dynamic_links else "base"
         local = mesh.copy()
         local.apply_transform(np.linalg.inv(rest[link]))
         hull = local.convex_hull

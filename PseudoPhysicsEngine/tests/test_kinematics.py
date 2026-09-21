@@ -5,7 +5,7 @@ import numpy as np
 from cellforge.kinematics import Chain, make_stub_chain, solve_ik, transform_error
 from cellforge.kinematics.stub import DEFAULT_JOINT_LIMITS_DEG, write_stub_urdf
 from cellforge.schema import ModuleDef
-from library import box, camera_light, conveyor, flip_fixture, lift_rack
+from library import box, camera_bracket, conveyor, flip_fixture, lift_rack
 
 
 def test_fk_to_ik_recovers_fifty_random_reachable_poses_within_limits():
@@ -60,7 +60,8 @@ def test_library_modules_publish_required_dynamic_frames_and_links():
     assert rack_definition.axes[0].child == "lift"
     assert box.module_definition({"size": [900, 700, 850]}).frames["top"].xyz[2] == 425
     assert flip_fixture.MODULE.axes[0].child == "nest"
-    assert camera_light.MODULE.frames["optical"].rpy_deg == (180, 0, 0)
+    camera_definition = camera_bracket.module_definition({"tilt_deg": 0})
+    assert camera_definition.frames["optical"].rpy_deg == (180, 0, 0)
 
 
 def test_stub_urdf_has_dimensioned_metre_origins_axes_and_manifest_limits(tmp_path):

@@ -22,6 +22,7 @@ export type Project = {
   product: string;
   description: string;
   versions: Version[];
+  first_build_summary?: string | null;
 };
 
 export type InputEntry = {
@@ -90,4 +91,105 @@ export type Check = {
   objects?: string[];
   value?: number | null;
   unit?: string | null;
+};
+
+export type PartCheckItem = {
+  index: string;
+  severity: "fail" | "warn" | "info";
+  code: string;
+  message: string;
+  values: Record<string, unknown>;
+};
+
+export type PartCheckResult = {
+  module_id: string;
+  passed: boolean;
+  items: PartCheckItem[];
+  source: string;
+  params: Record<string, unknown>;
+  cache: { key: string; hit: boolean };
+};
+
+export type ModuleUsage = {
+  machine_id: string;
+  instance_id: string;
+  stations: string[];
+  part: string;
+  params: Record<string, unknown>;
+  trust?: "inferred" | "confirmed" | null;
+};
+
+export type ModuleCheckStatus = {
+  status: "passed" | "failed" | "not_checked";
+  passed?: boolean;
+  counts?: { fail: number; warn: number; info: number };
+  cache_key: string;
+};
+
+export type ModuleSummary = {
+  id: string;
+  source: "project" | "library";
+  file: string;
+  category: string;
+  summary: string;
+  placeholder: boolean;
+  params: Record<string, unknown>;
+  parameter_sets: Record<string, unknown>[];
+  usages: ModuleUsage[];
+  check: ModuleCheckStatus;
+};
+
+export type LibraryModuleSummary = {
+  id: string;
+  file: string;
+  tier: string;
+  category: string;
+  summary: string;
+  basis: string;
+  params: string[];
+  frames: string[];
+  axes: string[];
+  status: "draft" | "production";
+  from_project: string | null;
+};
+
+export type FrameInfo = {
+  xyz: [number, number, number];
+  rpy_deg: [number, number, number];
+  trust: "inferred" | "confirmed";
+  source?: string | null;
+  link?: string | null;
+  free_space?: boolean;
+};
+
+export type ModuleAxisInfo = {
+  id: string;
+  type: "revolute" | "prismatic";
+  parent: string;
+  child?: string | null;
+  origin: { xyz: [number, number, number]; rpy_deg: [number, number, number] };
+  axis: [number, number, number];
+  range_deg?: [number, number] | null;
+  range_mm?: [number, number] | null;
+  max_speed_dps?: number | null;
+  max_speed_mm_s?: number | null;
+};
+
+export type ModuleDetail = {
+  id: string;
+  source: "project" | "library";
+  file: string;
+  module_def: Record<string, unknown>;
+  params: Record<string, unknown>;
+  parameter_sets: Record<string, unknown>[];
+  params_schema: {
+    properties?: Record<
+      string,
+      { title?: string; type?: string; default?: unknown; minimum?: number; maximum?: number }
+    >;
+  };
+  frames: Record<string, FrameInfo>;
+  axes: ModuleAxisInfo[];
+  meta: { basis: string; placeholder: boolean };
+  usages: ModuleUsage[];
 };

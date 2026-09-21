@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
@@ -24,6 +24,17 @@ from cellforge.diffing import diff_versions
 from cellforge.exports import export_project
 from cellforge.intake import prepare_intake
 from cellforge.intake.local import run_local_intake
+
+# D-011：PyMuPDF 必須先於下列會載入 CadQuery/OCP 的模組載入。
+from cellforge.module_cache import cached_check, cached_preview, cached_render
+from cellforge.module_service import (
+    module_detail,
+    module_summary,
+    project_modules,
+    promote_part,
+    promotion_check,
+    resolve_project_module,
+)
 from cellforge.project import (
     create_project,
     resolve_inside,
@@ -119,6 +130,14 @@ def _root(request: Request) -> Path:
     return request.app.state.projects_root
 
 
+def _catalog_root(request: Request) -> Path:
+    return request.app.state.catalog_root
+
+
+def _module_cache_root(request: Request) -> Path:
+    return request.app.state.module_cache_root
+
+
 def _jobs(request: Request):
     return request.app.state.jobs
 
@@ -155,6 +174,55 @@ def _project(request: Request, project_id: str) -> Path:
         return resolve_project(_root(request), project_id)
     except FileNotFoundError as error:
         raise HTTPException(404, f"找不到案子：{project_id}") from error
+
+
+def _module_resource(request: Request, project: Path, module_id: str):
+    try:
+        return resolve_project_module(project, module_id, _catalog_root(request))
+    except KeyError as error:
+        raise HTTPException(404, str(error)) from error
+    except (ImportError, OSError, RuntimeError, ValueError) as error:
+        raise HTTPException(422, str(error)) from error
+
+
+def _check_response(cached) -> dict[str, Any]:
+    return {
+        **cached.result.as_dict(),
+        "params": cached.params,
+        "cache": {
+            "key": cached.key,
+            "hit": cached.hit,
+        },
+    }
+
+
+def _refresh_module_artifacts(resource, cache_root: Path) -> dict[str, Any]:
+    checked = cached_check(
+        resource.source,
+        resource.params,
+        cache_root=cache_root,
+        force=True,
+    )
+    rendered = cached_render(
+        resource.source,
+        resource.params,
+        cache_root=cache_root,
+        force=True,
+    )
+    previewed = cached_preview(
+        resource.source,
+        resource.params,
+        cache_root=cache_root,
+        force=True,
+    )
+    return {
+        "status": "ok",
+        "module_id": resource.id,
+        "check": _check_response(checked),
+        "render": str(rendered.path),
+        "preview": str(previewed.path),
+        "cache_key": checked.key,
+    }
 
 
 def _versions(project: Path) -> list[dict[str, Any]]:
@@ -246,8 +314,220 @@ def post_project(body: ProjectCreate, request: Request) -> dict[str, Any]:
 def get_project(project_id: str, request: Request) -> dict[str, Any]:
     project = _project(request, project_id)
     data = dict(load_yaml(project / "project.yaml"))
+    summary_path = project / "analysis" / "first_build_summary.txt"
     data.update({"id": project_id, "versions": _versions(project)})
+    data["first_build_summary"] = (
+        summary_path.read_text(encoding="utf-8") if summary_path.is_file() else None
+    )
     return data
+
+
+@router.get("/library/modules")
+def get_library_modules(request: Request) -> dict[str, Any]:
+    manifest = _catalog_root(request) / "library" / "manifest.yaml"
+    if not manifest.is_file():
+        raise HTTPException(404, "找不到模組庫 manifest")
+    payload = load_yaml(manifest)
+    if not isinstance(payload, dict):
+        raise HTTPException(500, "模組庫 manifest 格式錯誤")
+    return dict(payload)
+
+
+@router.get("/projects/{project_id}/modules")
+def get_project_modules(project_id: str, request: Request) -> dict[str, Any]:
+    project = _project(request, project_id)
+    try:
+        resources = project_modules(project, _catalog_root(request))
+        modules = [module_summary(resource, _module_cache_root(request)) for resource in resources]
+    except (ImportError, OSError, RuntimeError, ValueError) as error:
+        raise HTTPException(422, str(error)) from error
+    return {"modules": modules}
+
+
+@router.get("/projects/{project_id}/modules/{module_id}")
+def get_project_module_detail(project_id: str, module_id: str, request: Request) -> dict[str, Any]:
+    project = _project(request, project_id)
+    resource = _module_resource(request, project, module_id)
+    try:
+        return module_detail(resource)
+    except (ImportError, OSError, RuntimeError, ValueError) as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@router.get("/projects/{project_id}/modules/{module_id}/check")
+def get_project_module_check(project_id: str, module_id: str, request: Request) -> JSONResponse:
+    project = _project(request, project_id)
+    resource = _module_resource(request, project, module_id)
+    try:
+        checked = cached_check(
+            resource.source,
+            resource.params,
+            cache_root=_module_cache_root(request),
+        )
+    except (ImportError, OSError, RuntimeError, ValueError) as error:
+        raise HTTPException(422, str(error)) from error
+    return JSONResponse(
+        _check_response(checked),
+        headers={"X-CellForge-Cache": "hit" if checked.hit else "miss"},
+    )
+
+
+@router.get("/projects/{project_id}/modules/{module_id}/render.png")
+def get_project_module_render(project_id: str, module_id: str, request: Request) -> FileResponse:
+    project = _project(request, project_id)
+    resource = _module_resource(request, project, module_id)
+    try:
+        rendered = cached_render(
+            resource.source,
+            resource.params,
+            cache_root=_module_cache_root(request),
+        )
+    except (ImportError, OSError, RuntimeError, ValueError) as error:
+        raise HTTPException(422, str(error)) from error
+    return FileResponse(
+        rendered.path,
+        media_type="image/png",
+        headers={"X-CellForge-Cache": "hit" if rendered.hit else "miss"},
+    )
+
+
+@router.get("/projects/{project_id}/modules/{module_id}/preview.glb")
+def get_project_module_preview(project_id: str, module_id: str, request: Request) -> FileResponse:
+    project = _project(request, project_id)
+    resource = _module_resource(request, project, module_id)
+    try:
+        previewed = cached_preview(
+            resource.source,
+            resource.params,
+            cache_root=_module_cache_root(request),
+        )
+    except (ImportError, OSError, RuntimeError, ValueError) as error:
+        raise HTTPException(422, str(error)) from error
+    return FileResponse(
+        previewed.path,
+        media_type="model/gltf-binary",
+        headers={"X-CellForge-Cache": "hit" if previewed.hit else "miss"},
+    )
+
+
+@router.post("/projects/{project_id}/modules/{module_id}/recheck", status_code=202)
+async def recheck_project_module(
+    project_id: str, module_id: str, request: Request
+) -> dict[str, Any]:
+    project = _project(request, project_id)
+    resource = _module_resource(request, project, module_id)
+    cache_root = _module_cache_root(request)
+
+    async def worker(emit):
+        emit("progress", {"progress": 0.05, "message": "正在重新檢查模組"})
+        result = await asyncio.to_thread(_refresh_module_artifacts, resource, cache_root)
+        emit("progress", {"progress": 1.0, "message": "模組檢查與預覽已更新"})
+        return result
+
+    job = _jobs(request).submit(project_id, "module_recheck", worker)
+    return job.public()
+
+
+@router.post("/projects/{project_id}/modules/{module_id}/fix", status_code=202)
+async def fix_project_module(project_id: str, module_id: str, request: Request) -> dict[str, Any]:
+    project = _project(request, project_id)
+    resource = _module_resource(request, project, module_id)
+    try:
+        checked = cached_check(
+            resource.source,
+            resource.params,
+            cache_root=_module_cache_root(request),
+        )
+    except (ImportError, OSError, ValueError) as error:
+        raise HTTPException(422, str(error)) from error
+    findings = [item for item in checked.result.items if item.severity in {"fail", "warn"}]
+    if not findings:
+        raise HTTPException(409, f"模組 {module_id} 沒有需要代理修正的失敗或警告")
+    lines = "\n".join(
+        f"- [{item.severity}] {item.index} {item.code}：{item.message}" for item in findings
+    )
+    change_text = (
+        f"請修正案內模組 {module_id} 的品質檢查結果：\n{lines}\n"
+        f"完成後執行 cell part check {module_id} --project {project} --json。"
+    )
+    change_id = _write_change(
+        project,
+        change_text,
+        source=f"模組品質檢查 / {module_id}",
+    )
+    task = _write_task(
+        project,
+        owner="engineering",
+        text=change_text,
+        created_by=f"module_fix:{module_id}",
+        status="queued",
+    )
+    task_path = project / "tasks" / f"{task['id']}.yaml"
+
+    async def worker(emit):
+        task["status"] = "running"
+        dump_yaml(task_path, task)
+        try:
+            if _local_agent(request):
+                result = {
+                    "status": "ok",
+                    "mode": "local",
+                    "change_id": change_id,
+                    "module_id": module_id,
+                    "task_id": task["id"],
+                }
+            else:
+                result = await _agent(request).run(
+                    "apply_cr",
+                    project,
+                    emit,
+                    context=f"CR: {change_id}\nModule: {module_id}\n{change_text}",
+                )
+            task["status"] = "done"
+            task["result"] = result
+            return result
+        except Exception:
+            task["status"] = "failed"
+            raise
+        finally:
+            dump_yaml(task_path, task)
+            commit_changes(
+                project,
+                f"apply {change_id}",
+                ["parts", "changes", "tasks", ".cellforge"],
+            )
+
+    job = _jobs(request).submit(project_id, "module_fix", worker)
+    return {**job.public(), "change_id": change_id, "task_id": task["id"]}
+
+
+@router.post("/projects/{project_id}/modules/{module_id}/promote", status_code=202)
+async def promote_project_module(
+    project_id: str, module_id: str, request: Request
+) -> dict[str, Any]:
+    project = _project(request, project_id)
+    cache_root = _module_cache_root(request)
+    try:
+        promotion_check(project, module_id, cache_root=cache_root)
+    except (ImportError, OSError, ValueError) as error:
+        raise HTTPException(409, str(error)) from error
+    catalog_root = _catalog_root(request)
+
+    async def worker(emit):
+        emit("progress", {"progress": 0.1, "message": "正在把案內模組收進模組庫"})
+        entry = await asyncio.to_thread(
+            promote_part,
+            project,
+            module_id,
+            catalog_root=catalog_root,
+            cache_root=cache_root,
+        )
+        commit_changes(project, f"promote module {module_id}", ["cell.yaml", "parts"])
+        emit("progress", {"progress": 1.0, "message": "模組已收進共用模組庫"})
+        return {"status": "ok", "module": entry}
+
+    job = _jobs(request).submit(project_id, "module_promote", worker)
+    return job.public()
 
 
 @router.post("/projects/{project_id}/files", status_code=201)
@@ -435,6 +715,11 @@ async def start_build(project_id: str, request: Request) -> dict[str, Any]:
             result.update({"status": "ok", "mode": "local"})
         else:
             result = await _agent(request).run("first_build", project, emit)
+        summary = result.get("summary")
+        if isinstance(summary, str):
+            summary_path = project / "analysis" / "first_build_summary.txt"
+            summary_path.parent.mkdir(parents=True, exist_ok=True)
+            summary_path.write_text(summary, encoding="utf-8")
         versions = _versions(project)
         if not versions:
             raise ValueError("first_build 完成但未產生 .cellforge/vN 版本")
@@ -445,7 +730,11 @@ async def start_build(project_id: str, request: Request) -> dict[str, Any]:
         else:
             astra = await _astra(request).run(project, instruction, emit)
         result["astra"] = astra
-        commit_changes(project, "Astra presentation refresh", ["presentation"])
+        commit_changes(
+            project,
+            "Astra presentation refresh",
+            ["presentation", "analysis/first_build_summary.txt"],
+        )
         emit("progress", {"progress": 1.0, "message": "建置、檢查與 Astra 交付完成"})
         return result
 
@@ -537,6 +826,34 @@ def _write_change(
     return change_id
 
 
+def _write_task(
+    project: Path,
+    *,
+    owner: Literal["engineering", "astra"],
+    text: str,
+    created_by: str,
+    status: str = "open",
+    depends: list[str] | None = None,
+) -> dict[str, Any]:
+    task_id = f"T-{len(list((project / 'tasks').glob('T-*.yaml'))) + 1:03d}"
+    task = {
+        "id": task_id,
+        "owner": owner,
+        "created": datetime.now().astimezone().isoformat(),
+        "created_by": created_by,
+        "status": status,
+        "depends_on": depends or [],
+        "instruction": text,
+        "inputs": [],
+        "outputs": [],
+        "log": f"tasks/logs/{task_id}.jsonl",
+        "result": None,
+    }
+    dump_yaml(project / "tasks" / f"{task_id}.yaml", task)
+    commit_changes(project, f"create {task_id}", ["tasks"])
+    return task
+
+
 @router.get("/projects/{project_id}/changes")
 def get_changes(project_id: str, request: Request) -> list[dict[str, str]]:
     project = _project(request, project_id)
@@ -549,23 +866,13 @@ def get_changes(project_id: str, request: Request) -> list[dict[str, str]]:
 @router.post("/projects/{project_id}/tasks", status_code=201)
 def create_task(project_id: str, body: TaskCreate, request: Request) -> dict[str, Any]:
     project = _project(request, project_id)
-    task_id = f"T-{len(list((project / 'tasks').glob('T-*.yaml'))) + 1:03d}"
-    task = {
-        "id": task_id,
-        "owner": body.owner,
-        "created": datetime.now().astimezone().isoformat(),
-        "created_by": "user",
-        "status": "open",
-        "depends_on": body.depends,
-        "instruction": body.text,
-        "inputs": [],
-        "outputs": [],
-        "log": f"tasks/logs/{task_id}.jsonl",
-        "result": None,
-    }
-    dump_yaml(project / "tasks" / f"{task_id}.yaml", task)
-    commit_changes(project, f"create {task_id}", ["tasks"])
-    return task
+    return _write_task(
+        project,
+        owner=body.owner,
+        text=body.text,
+        created_by="user",
+        depends=body.depends,
+    )
 
 
 @router.get("/projects/{project_id}/tasks")

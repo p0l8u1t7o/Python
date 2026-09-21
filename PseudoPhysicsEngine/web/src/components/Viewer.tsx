@@ -4,7 +4,12 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import type { Check, Timeline } from "../types";
-import { applyTimeline, captureRestTransforms, type RestTransforms } from "../viewer-core";
+import {
+  applyTimeline,
+  captureRestTransforms,
+  findSceneNode,
+  type RestTransforms,
+} from "../viewer-core";
 
 export type { Check } from "../types";
 
@@ -17,6 +22,8 @@ type Selection = {
   position: THREE.Vector3;
 };
 
+const MODULE_FOCUS_PADDING = 2.5;
+
 export function Viewer({
   projectId,
   version,
@@ -28,6 +35,7 @@ export function Viewer({
   initialTime = 0,
   initialCamera = "iso",
   snapshotMode = false,
+  locatedModule,
   onCheckSelect,
   onChangeRequest,
 }: {
@@ -41,6 +49,7 @@ export function Viewer({
   initialTime?: number;
   initialCamera?: string;
   snapshotMode?: boolean;
+  locatedModule?: { instanceId: string; token: number };
   onCheckSelect?: (check: Check) => void;
   onChangeRequest?: (object: string, time: number, instruction: string) => void;
 }) {
@@ -61,6 +70,9 @@ export function Viewer({
   const [collision, setCollision] = useState(false);
   const [trustTint, setTrustTint] = useState(
     () => new URLSearchParams(location.search).get("trust") !== "off",
+  );
+  const [placeholderOutline, setPlaceholderOutline] = useState(
+    () => new URLSearchParams(location.search).get("placeholders") !== "off",
   );
   const [error, setError] = useState<string>();
   const [selection, setSelection] = useState<Selection>();
@@ -138,6 +150,7 @@ export function Viewer({
           }
         });
         addTrustOutlines(gltf.scene);
+        addPlaceholderOutlines(gltf.scene);
         modelRef.current = gltf.scene;
         timelineRef.current = timeline;
         restRef.current = captureRestTransforms(gltf.scene);
@@ -253,6 +266,12 @@ export function Viewer({
   }, [trustTint, loaded]);
 
   useEffect(() => {
+    modelRef.current?.traverse((object) => {
+      if (object.name === PLACEHOLDER_OUTLINE_NAME) object.visible = placeholderOutline;
+    });
+  }, [placeholderOutline, loaded]);
+
+  useEffect(() => {
     if (!playing || !duration) return;
     let previous = performance.now();
     let frame = 0;
@@ -291,7 +310,7 @@ export function Viewer({
     const model = modelRef.current;
     if (!model) return;
     for (const name of activeCheck?.objects ?? []) {
-      model.getObjectByName(name)?.traverse((object) => {
+      findSceneNode(model, name)?.traverse((object) => {
         if (!(object instanceof THREE.Mesh)) return;
         for (const material of standardMaterials(object)) {
           material.emissive.set(0xff1f32);
@@ -299,7 +318,34 @@ export function Viewer({
         }
       });
     }
-  }, [activeCheck, loaded]);
+    if (locatedModule) {
+      const node = findSceneNode(model, locatedModule.instanceId);
+      node?.traverse((object) => {
+        if (!(object instanceof THREE.Mesh) || hasCollisionAncestor(object)) return;
+        for (const material of standardMaterials(object)) {
+          material.emissive.set(0x35c8ff);
+          material.emissiveIntensity = 1.25;
+        }
+      });
+      if (node && cameraRef.current && controlsRef.current) {
+        const focusBounds = boxBounds(new THREE.Box3().setFromObject(node));
+        applyCameraPreset(
+          cameraRef.current,
+          controlsRef.current,
+          { ...focusBounds, span: focusBounds.span * MODULE_FOCUS_PADDING },
+          "iso",
+        );
+        const metadata = inheritedMetadata(node);
+        setSelection({
+          name: locatedModule.instanceId,
+          station: String(metadata.station ?? "—"),
+          trust: String(metadata.trust ?? "—"),
+          vendor: String(metadata.vendor ?? "—"),
+          position: node.getWorldPosition(new THREE.Vector3()),
+        });
+      }
+    }
+  }, [activeCheck, loaded, locatedModule]);
 
   const camera = (preset: string) => {
     if (!cameraRef.current || !controlsRef.current || !boundsRef.current) return;
@@ -346,6 +392,13 @@ export function Viewer({
           onClick={() => setTrustTint((value) => !value)}
         >
           信任色
+        </button>
+        <button
+          className={placeholderOutline ? "active-placeholder" : ""}
+          title="以洋紅虛線標示仍為佔位幾何的模組"
+          onClick={() => setPlaceholderOutline((value) => !value)}
+        >
+          標示佔位模組
         </button>
       </div>
       {selection && (
@@ -479,7 +532,7 @@ function inheritedMetadata(object: THREE.Object3D): Record<string, unknown> {
   const metadata: Record<string, unknown> = {};
   let current: THREE.Object3D | null = object;
   while (current) {
-    for (const key of ["station", "trust", "vendor"])
+    for (const key of ["station", "trust", "vendor", "placeholder"])
       if (metadata[key] === undefined && current.userData[key] != null)
         metadata[key] = current.userData[key];
     current = current.parent;
@@ -488,6 +541,9 @@ function inheritedMetadata(object: THREE.Object3D): Record<string, unknown> {
 }
 
 const TRUST_OUTLINE_NAME = "__cellforge_trust_outline";
+const PLACEHOLDER_OUTLINE_NAME = "__cellforge_placeholder_outline";
+const PLACEHOLDER_DASH_SIZE_MM = 36;
+const PLACEHOLDER_GAP_SIZE_MM = 24;
 
 function addTrustOutlines(root: THREE.Object3D) {
   const meshes: THREE.Mesh[] = [];
@@ -495,6 +551,7 @@ function addTrustOutlines(root: THREE.Object3D) {
     if (
       object instanceof THREE.Mesh &&
       inheritedMetadata(object).trust === "inferred" &&
+      inheritedMetadata(object).placeholder !== true &&
       !hasCollisionAncestor(object)
     )
       meshes.push(object);
@@ -509,14 +566,51 @@ function addTrustOutlines(root: THREE.Object3D) {
 }
 
 function trustOutline(geometry: THREE.BufferGeometry) {
+  const edges = weldedEdges(geometry);
+  return new THREE.LineSegments(
+    edges,
+    new THREE.LineBasicMaterial({ color: 0xf6ad55, transparent: true, opacity: 0.5 }),
+  );
+}
+
+function addPlaceholderOutlines(root: THREE.Object3D) {
+  const meshes: THREE.Mesh[] = [];
+  root.traverse((object) => {
+    if (
+      object instanceof THREE.Mesh &&
+      inheritedMetadata(object).placeholder === true &&
+      !hasCollisionAncestor(object)
+    )
+      meshes.push(object);
+  });
+  for (const mesh of meshes) {
+    const outline = placeholderDashedOutline(mesh.geometry);
+    outline.name = PLACEHOLDER_OUTLINE_NAME;
+    outline.raycast = () => undefined;
+    outline.renderOrder = 2;
+    mesh.add(outline);
+  }
+}
+
+function placeholderDashedOutline(geometry: THREE.BufferGeometry) {
+  const outline = new THREE.LineSegments(
+    weldedEdges(geometry),
+    new THREE.LineDashedMaterial({
+      color: 0xff2bd6,
+      dashSize: PLACEHOLDER_DASH_SIZE_MM,
+      gapSize: PLACEHOLDER_GAP_SIZE_MM,
+    }),
+  );
+  outline.computeLineDistances();
+  return outline;
+}
+
+function weldedEdges(geometry: THREE.BufferGeometry) {
   const positions = new THREE.BufferGeometry();
   positions.setAttribute("position", geometry.getAttribute("position").clone());
   if (geometry.index) positions.setIndex(geometry.index.clone());
   const welded = mergeVertices(positions);
-  return new THREE.LineSegments(
-    new THREE.EdgesGeometry(welded, 35),
-    new THREE.LineBasicMaterial({ color: 0xf6ad55, transparent: true, opacity: 0.5 }),
-  );
+  return new THREE.EdgesGeometry(welded, 35);
 }
 
 function isCollisionNode(object: THREE.Object3D) {

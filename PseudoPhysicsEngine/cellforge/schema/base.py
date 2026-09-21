@@ -18,6 +18,8 @@ class Frame(ForgeModel):
     rpy_deg: tuple[float, float, float] = (0.0, 0.0, 0.0)
     trust: Trust = "inferred"
     source: str | None = None
+    link: str | None = None
+    free_space: bool = False
 
 
 class JointOrigin(ForgeModel):
@@ -64,6 +66,11 @@ class ModuleAxis(ForgeModel):
         return self
 
 
+class ModuleMeta(ForgeModel):
+    basis: str = ""
+    placeholder: bool = False
+
+
 class ModuleDef(ForgeModel):
     id: str
     params_schema: dict[str, Any] = Field(default_factory=dict)
@@ -74,6 +81,7 @@ class ModuleDef(ForgeModel):
     tool_mass_kg: float | None = None
     vendor: str | None = None
     part_no: str | None = None
+    meta: ModuleMeta = Field(default_factory=ModuleMeta)
 
 
 class Pose(Frame):

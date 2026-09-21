@@ -28,6 +28,21 @@ EXPECTED = [
 STEP_EXPECTED = [*EXPECTED, "workpiece"]
 
 
+def _step_tree_counts(components):
+    nodes = assemblies = leaves = 0
+    for component in components:
+        nodes += 1
+        if component["is_assembly"]:
+            assemblies += 1
+        else:
+            leaves += 1
+        child_nodes, child_assemblies, child_leaves = _step_tree_counts(component["children"])
+        nodes += child_nodes
+        assemblies += child_assemblies
+        leaves += child_leaves
+    return nodes, assemblies, leaves
+
+
 def test_l0_build_round_trips_step_and_names(tmp_path):
     project = tmp_path / "project"
     shutil.copytree(SOURCE, project, ignore=shutil.ignore_patterns("build"))
@@ -40,10 +55,11 @@ def test_l0_build_round_trips_step_and_names(tmp_path):
     assert [part.part_name for part in inspection.components] == STEP_EXPECTED
     assert [part.instance_name for part in inspection.components] == STEP_EXPECTED
     validation = json.loads((project / "build" / "step_validation.json").read_text("utf-8"))
-    assert validation["top_level_part_count"] == 8
-    assert validation["total_component_count"] == 51
-    assert validation["assembly_node_count"] == 9
-    assert validation["leaf_part_count"] == 43
+    nodes, assemblies, leaves = _step_tree_counts(validation["components"])
+    assert validation["top_level_part_count"] == len(STEP_EXPECTED)
+    assert validation["total_component_count"] == nodes
+    assert validation["assembly_node_count"] == assemblies + 1  # STEP root assembly
+    assert validation["leaf_part_count"] == leaves
     assert validation["all_names_preserved"] is True
     assert validation["count_match"] is True
     assert validation["name_match"] is True
@@ -65,6 +81,7 @@ def test_glb_has_named_module_visual_collision_hierarchy(tmp_path):
         assert all(name.startswith(f"{module_id}.") for name in child_names[2:])
         assert all(parent_counts[index] == 1 for index in module.children)
         assert module.extras["trust"] == "inferred"
+        assert module.extras["placeholder"] is False
     names = {node.name: index for index, node in enumerate(gltf.nodes) if node.name}
     expected_chain = ["robot_1", *(f"robot_1.j{i}" for i in range(1, 7)), "robot_1.tool"]
     for parent_name, child_name in zip(expected_chain, expected_chain[1:], strict=False):
@@ -90,6 +107,18 @@ def test_glb_has_named_module_visual_collision_hierarchy(tmp_path):
         if child.color is not None
     }
     assert {tuple(int(channel) for channel in row) for row in fixture_colors} == expected_colors
+
+
+def test_glb_module_extras_distinguish_placeholder_geometry(tmp_path):
+    placeholder = build_module(ModuleInstance(id="placeholder", part="library/box.py"))
+    production = build_module(ModuleInstance(id="production", part="library/fixture_stand.py"))
+    path = tmp_path / "placeholder.glb"
+    export_glb([placeholder, production], path)
+
+    gltf = GLTF2().load_binary(str(path))
+    nodes = {node.name: node for node in gltf.nodes if node.name}
+    assert nodes[placeholder.instance.id].extras["placeholder"] is True
+    assert nodes[production.instance.id].extras["placeholder"] is False
 
 
 def _local_matrix(node, joint_value=0.0):

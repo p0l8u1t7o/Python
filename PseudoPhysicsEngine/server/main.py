@@ -18,12 +18,23 @@ def create_app(
     *,
     settings: dict[str, object] | None = None,
 ) -> FastAPI:
+    source_root = Path(__file__).resolve().parents[1]
+    overrides = dict(settings or {})
+    catalog_root = Path(overrides.pop("catalog_root", source_root)).resolve()
+    module_cache_root = Path(
+        overrides.pop(
+            "module_cache_root",
+            source_root / ".cellforge-runtime" / "module-cache",
+        )
+    ).resolve()
     root = projects_root or Path(
         os.environ.get("CELLFORGE_PROJECTS_ROOT", Path.home() / "CellForge" / "projects")
     )
     root.mkdir(parents=True, exist_ok=True)
     app = FastAPI(title="CellForge", version="0.1.0")
     app.state.projects_root = root.resolve()
+    app.state.catalog_root = catalog_root
+    app.state.module_cache_root = module_cache_root
     app.state.jobs = JobRunner(app.state.projects_root)
     app.state.settings = {
         "engineering_agent_mode": os.environ.get("CELLFORGE_ENGINEERING_AGENT_MODE", "claude"),
@@ -35,7 +46,7 @@ def create_app(
         "astra_agent_command": os.environ.get("CELLFORGE_ASTRA_COMMAND", "codex"),
         "astra_agent_model": os.environ.get("CELLFORGE_ASTRA_MODEL", "gpt-6-astra"),
         "astra_agent_timeout_s": 900,
-        **(settings or {}),
+        **overrides,
     }
     app.include_router(router)
 
@@ -43,7 +54,6 @@ def create_app(
     async def unhandled(_request, error: Exception):
         return JSONResponse(status_code=500, content={"detail": f"伺服器錯誤：{error}"})
 
-    source_root = Path(__file__).resolve().parents[1]
     web_dist = source_root / "web" / "dist"
     if not web_dist.is_dir():
         web_dist = source_root / "cellforge" / "_viewer"

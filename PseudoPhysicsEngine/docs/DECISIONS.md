@@ -96,3 +96,73 @@ GLB 保留每個 CadQuery 子零件的 `cq.Color`，未指定色彩才使用中�
 ## D-020：Viewer 以 GLB extras 辨識碰撞節點（2026-09-15）
 
 GLB 中每個 link 都可有名為 `collision` 的子節點，但 Three.js 載入時會為重名物件自動加上 `_1`、`_2` 後綴。Viewer 因此不再以顯示名稱切換碰撞體，而以 exporter 寫入的 `extras.hidden: true`（載入後為 `userData.hidden`）辨識。這也避免紅色碰撞材質在預設模式覆蓋工程配色。
+
+## D-021：保留模組碰撞膨脹比與三角形數門檻（2026-09-20）
+
+依規格 6.6 與 11，先以預設參數實測既有九個 `library/` 模組。碰撞體沿用 GLB 建置管線的 `_collision_mesh`，逐一套用在具名 visual 子零件後加總體積；visual 網格沿用 `_shape_mesh` 的相同線性與角度容差。結果如下：
+
+| 模組 | 碰撞膨脹比 | 三角形數 |
+|---|---:|---:|
+| `box` | 1.000000 | 12 |
+| `camera_light` | 1.341554 | 44 |
+| `conveyor` | 1.000000 | 72 |
+| `fixture_stand` | 1.000000 | 36 |
+| `flip_fixture` | 1.174409 | 272 |
+| `force_eoat` | 1.278758 | 272 |
+| `lift_rack` | 3.620002 | 120 |
+| `robot_stub` | 0.998705 | 1,748 |
+| `safety_fence` | 1.000000 | 36 |
+
+決定保留膨脹比 `> 3.0` 警告、`> 6.0` 失敗，以及三角形數 `> 50,000` 警告、`> 150,000` 失敗。八個箱體層級模組的膨脹比接近 1；`lift_rack` 的多層板被同一具名 compound 的 box 碰撞體包住層間空隙，實測 3.62，正確觸發警告並指出步驟 5 應拆成逐桿件／逐層碰撞體。九個既有模組的三角形數都遠低於預算，不構成調高門檻的依據；保留規格值可讓後續細節升級仍有明確上限。
+
+## D-022：單模組四視圖採共用網格的無頭軟體投影（2026-09-21）
+
+`snapshot_project` 只接受完整案子的 `build/scene.glb` 與 `timeline.json`，現有 viewer 相機只提供 ISO、俯視與站別透視，無法直接產生單模組的前視、側視。為了只做 `cell part render` 而修改前端與已建置 bundle，會把步驟 8～9 的工作提前，且安裝環境若沒有 Playwright Chromium 就完全無法出圖。
+
+因此單模組 render 直接重用 `cellforge.build.glb._assembly_meshes` 的同一份 tessellation 與工程配色，以 Pillow 做四個正投影面板與單張 PNG 合成；不依賴 GPU、瀏覽器、`cell.yaml` 或暫存案子。這項 render 僅供品質目視，不建立第二套 GLB 語意；`cell part preview` 仍原樣呼叫正式 `export_glb`，保留 joint hierarchy、rest TRS、碰撞節點 extras 與材質。
+
+## D-023：以 frame 明示自由空間工作點，並以 assembly metadata 綁定可動 link（2026-09-21）
+
+規格 7.1 要求 `extrusion_frame.inner_center` 位於框架內部中心，但 6.4 又以距最近實體表面超過 20 mm 發出警告；同一規格也明訂光學中心、抓取點等空間點在機構學上合法。刪除 `inner_center` 或把它移到桿件表面都會破壞 frame 的工程語意，也無法達成示範模組零警告的要求。
+
+因此 `Frame` 新增相容的 `free_space: bool = false`。設為 true 時，只豁免 6.4 的表面距離代理警告；frame 仍必須位於整體包圍盒內，且 `link` 仍須存在。`extrusion_frame.inner_center` 與位於底面中心的 `mount` 明確標示為自由空間點，其餘 frame 繼續接受完整表面檢查。
+
+另為落實 7.2 的零位世界座標規則，CadQuery 子零件以既有 assembly `metadata.link` 指定 `base` 或 `door`；GLB 分組與 FCL 幾何讀取此通用標記。門扇仍直接畫在關門時的世界位置，由 GLB 匯出器按 `swing` 的 rest transform 反算 joint-local，不在模組內預平移，避免轉動時整扇門繞錯軸飛離。
+
+## D-024：manifest 結構欄位由 ModuleDef 驗證，未升級模組維持 draft（2026-09-21）
+
+規格要求 `library/manifest.yaml` 保存 params、frames、axes 與 basis，但這些欄位同時存在於 Python `ModuleDef`，若由人工各自維護就會漂移。此外步驟 5a 只完成結構整理，既有九個模組尚未進行 5b 的幾何升級，不應先宣告為 production。
+
+處置為以 `derive_module_fields()` 載入預設參數下的動態 `ModuleDef`，程式化取得 id、file、basis、params、frames、axes；`cell part list` 每次讀 manifest 都逐欄比對，任一漂移即以中文錯誤拒絕，測試也覆蓋所有 library Python 檔。只有已達零警告的兩個示範模組標為 production；既有九個模組（含 placeholder `box`）在 5b 完成前維持 draft。`robot_stub` 是廠商模型不可得時的型錄近似，因此列 Tier V，其餘自建模組列 Tier P。
+
+## D-025：相機與光源拆為三個 library 型別（2026-09-21）
+
+問題：規格 3.2 要求把同時包含相機與漫射光源的 `camera_light` 拆開，但共通約定又要求所有 id 不更名。若保留舊型別並另外新增光源，代理仍可能選到把安裝架與照明綁死的錯誤抽象；若把既有專案 instance id 一併改名，則會破壞 process 與 frame 引用。
+
+處置：移除未被任何 tracked 範例引用的 library 型別 `camera_light`，改為 `camera_bracket`、`light_ring`、`light_bar` 三個各自可參數化且可獨立安裝的型別；`camera_bracket` 保留 `optical` 的功能語意，兩種光源統一提供 `mount` 與 `emit`。全庫搜尋確認沒有 cell.yaml、template 或 process 引用舊型別，測試與現況文件改指向新型別；規格原文及 D-021 的歷史量測表保留不改。
+
+理由：共通約定的 id 穩定性保護的是已落入專案的 module instance、axis 與 frame 引用，不能阻止規格明訂且尚未被專案採用的 library 型別拆分。以三個單一職責型別取代舊整合頭，才能讓相機支架、同軸環燈與條燈依實際站別分別選型，且不需遷移任何既有專案資料。
+
+## D-026：步驟 5c 完成後保留 box 為非 production 佔位模組（2026-09-21）
+
+問題：步驟 5c 明訂新增四個 production 模組，完成後 library 共十七個模組；但規格 9.1 同時要求至少十七個 production 模組。既有 `box` 又依規格 3.2 明訂為 `meta.placeholder: true`，D-024 也要求未達正式工程幾何者維持 draft。若只為湊足數量而把 `box` 標為 production，會讓目錄狀態誤導代理與使用者；另增規格外第五個模組則超出本步驟範圍。
+
+處置：四個新模組均列為 production，`box` 繼續列為 draft，因此目錄為十七個可用模組、十六個 production 模組。規格 9.1 的十七個 production 門檻延後到新增另一個具正式工程幾何的模組時達成，不以佔位盒冒充正式樣板。
+
+理由：manifest 的 status 是品質承諾而非單純計數欄位；維持可追溯的真實狀態，比隱藏一個仍受佔位放寬規則處理的模組更符合工程用途，也遵守本步驟不得修改既有模組的限制。
+
+## D-027：單一模組端點的參數選擇與 promote 類別來源（2026-09-21）
+
+問題：第 8.5 節的模組詳情、check、render 與 preview 路徑只有模組型別 `{id}`，但同一案子可能以不同參數多次使用同一個案內 `parts/` 模組，路徑本身無法指定哪一組參數。另第 4.1 節的 `cell part promote <id>` 沒有 category 參數，而 manifest 又強制 category 必須是規格列舉值；現有 `ModuleDef` 也沒有必填 category 欄位。
+
+處置：庫模組一律依規格使用預設參數；案內模組按 `cell.yaml` 的 machine／module 順序取第一組實際參數作詳情資產，同時在 API 的 `parameter_sets` 與 `usages` 完整回傳所有不同參數組與使用位置，讓後續前端能揭露歧義。promote 優先讀模組頂層 `CATEGORY`，其次讀 `meta.category` 擴充欄位；兩者皆無時採廣義的 `handling`，CLI 另提供可選的 `--category` 明確覆寫。promotion 會移動檔案、更新所有 `cell.yaml` 引用並填入 `from_project`，不留下會漂移的雙份來源。
+
+理由：這保留規格既定的簡潔 URL 與 CLI，同時不隱藏多實例參數；類別來源有明確優先序，既有案內模組不必先改 schema 才能收進庫。未來若 UI 需要逐參數組預覽，可在不破壞目前端點的前提下增加 query parameter。
+
+## D-028：真實代理驗收遇到外部連線失敗時保留失敗結果（2026-09-21）
+
+問題：以 D-001 的十三個真實輸入、`claude`／`sonnet`／`low` 正式設定建立全新驗收案後，兩次 intake 都在第一張視覺頁面達到既定六十秒上限並回報「Claude 視覺判讀超時」；後續 first_build 雖由 API 排入並啟動 Claude Code 2.1.278，仍在一百九十一秒後因 `ConnectionRefused` 退出。這個環境沒有可用的代理服務連線，因此無法產生可供第 9 節驗收的真實線體。
+
+處置：不調高硬逾時、不切換 local runner、不人工改寫 `cell.yaml`、`process.yaml` 或 `parts/`，也不以手寫範例冒充代理輸出。保留兩次 intake 與 first_build 的完整 job log，繼續量測不依賴代理產物的模組庫、前端、快取與品質閘門；依賴新線體或代理修正的項目一律明列未通過。
+
+理由：第 9 節是對真實代理端到端能力的驗收，外部服務不可達本身就是驗收結果。以離線代理或人工產物補齊會重演規格明確禁止的假驗收，且會掩蓋 first_build 路由在 intake 失敗後仍可啟動的實際行為。

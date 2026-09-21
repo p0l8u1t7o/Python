@@ -114,7 +114,8 @@ workpiece                         工件根節點（世界位姿由 timeline 驅
 - `lift_rack`: `slot_0..slot_{n-1}`、`top`，另有 prismatic 軸 `lift`（child link = 可升降的層架組）。
 - `box`: `top`（上表面中心）。
 - `flip_fixture`: `nest`，revolute 軸 `flip`（child = nest 與 flip_axis）。
-- `camera_light`: `optical`（Z 軸朝向被拍物）。
+- `camera_bracket`: `camera_mount`、`optical`（Z 軸朝向被拍物）。
+- `light_ring`／`light_bar`: `mount`、`emit`（emit 的 Z 軸朝向被照物）。
 frame 名稱在 process 中寫成 `<module_id>.<frame>`，例如 `conveyor_1.end`。
 
 ## 4. 模擬引擎與排程

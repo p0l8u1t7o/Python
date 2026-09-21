@@ -7,9 +7,9 @@ from fastapi.testclient import TestClient
 from server.main import create_app
 
 
-def wait_for(client: TestClient, job_id: str, timeout: float = 30) -> dict:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
+def wait_for(client: TestClient, job_id: str, timeout: float | None = 30) -> dict:
+    deadline = None if timeout is None else time.monotonic() + timeout
+    while deadline is None or time.monotonic() < deadline:
         job = client.get(f"/api/jobs/{job_id}").json()
         if job["status"] in {"done", "failed", "cancelled"}:
             return job
@@ -34,6 +34,10 @@ def test_step1_wizard_api_flow(tmp_path: Path):
         )
         assert created.status_code == 201
         project_id = created.json()["id"]
+        summary = "代理最終摘要：仍有一項佔位模組。"
+        summary_path = tmp_path / "projects" / project_id / "analysis" / "first_build_summary.txt"
+        summary_path.write_text(summary, encoding="utf-8")
+        assert client.get(f"/api/projects/{project_id}").json()["first_build_summary"] == summary
         uploaded = client.post(
             f"/api/projects/{project_id}/files",
             files={"file": ("photo.jpg", b"step-1-photo", "image/jpeg")},
@@ -67,7 +71,7 @@ def test_step1_wizard_api_flow(tmp_path: Path):
         assert len(client.get(f"/api/projects/{project_id}/tasks").json()) == 1
 
         build = client.post(f"/api/projects/{project_id}/build")
-        build_job = wait_for(client, build.json()["id"])
+        build_job = wait_for(client, build.json()["id"], timeout=None)
         assert build_job["status"] == "done", build_job
         versions = client.get(f"/api/projects/{project_id}/versions").json()
         assert versions[-1]["step"]["top_level_part_count"] == 8

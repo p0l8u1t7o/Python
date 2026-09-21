@@ -1,0 +1,188 @@
+modules:
+  - id: box
+    file: library/box.py
+    tier: P
+    category: handling
+    summary: 通用包絡佔位方塊
+    basis: 依案內尚未定義的外形包絡需求建立通用佔位體，僅供早期配置與空間預留
+    params: [size, color]
+    frames: [mount, top]
+    axes: []
+    status: draft
+    from_project: null
+  - id: camera_bracket
+    file: library/camera_bracket.py
+    tier: P
+    category: vision
+    summary: 局部加裝單一相機的小型支架；完整落地多相機站改用 camera_station
+    basis: 依一般機器視覺站鋁擠立柱、懸臂橫樑與工業相機調角座比例作工程推估，供 Getac 外觀取像配置
+    params: [height_mm, reach_mm, tilt_deg]
+    frames: [mount, camera_mount, optical]
+    axes: []
+    status: production
+    from_project: null
+  - id: camera_station
+    file: library/camera_station.py
+    tier: P
+    category: vision
+    summary: S2、S3、S4 多相機落地取像站；完整站體用此模組，局部單相機安裝則用 camera_bracket
+    basis: 依 S2、S3、S4 外觀取像站所需的落地剛性，採一般鋁擠立柱、懸臂橫樑與多相機調角橫軌比例作工程推估；此模組用於完整落地站，局部加裝單一相機時改用 camera_bracket。
+    params: [height_mm, reach_mm, tilt_deg, cameras]
+    frames: [mount, cam_0.mount, cam_1.mount]
+    axes: [tilt]
+    status: production
+    from_project: null
+  - id: conveyor
+    file: library/conveyor.py
+    tier: P
+    category: conveying
+    summary: 站間皮帶輸送機
+    basis: 依一般小型裝配線皮帶輸送機的滾筒比例、側導引、可調腳與減速馬達包絡作工程推估；台面高度與寬度範圍涵蓋 Getac 機殼輸送及擋停氣缸安裝需求。
+    params: [length_mm, width_mm, height_mm, speed_mm_s]
+    frames: [mount, start, end, stop, stopper_mount]
+    axes: [belt]
+    status: production
+    from_project: null
+  - id: control_cabinet
+    file: library/control_cabinet.py
+    tier: P
+    category: electrical
+    summary: 落地式工業電控箱，含前門、把手、鉸鏈與通風百葉
+    basis: 依一般產線落地式電控箱的鈑金櫃體、前門、底座、門把及散熱百葉比例作工程推估；外廓尺寸供配置與安全間距檢查，不展開內部電器製造細節。
+    params: [size_mm]
+    frames: [mount, front]
+    axes: []
+    status: production
+    from_project: null
+  - id: extrusion_frame
+    file: library/extrusion_frame.py
+    tier: P
+    category: frame
+    summary: 具 T 槽輪廓、角件與地腳的鋁擠機架
+    basis: 依 40×40 鋁擠型材標準斷面與一般設備機架尺寸，斷面簡化為方廓加四面淺槽
+    params: [size_mm, profile_mm, posts, beam_levels_mm, with_feet]
+    frames: [mount, top_front, top_rear, top_left, top_right, inner_center, rail_80_front, rail_80_rear, rail_80_left, rail_80_right, rail_1780_front, rail_1780_rear, rail_1780_left, rail_1780_right]
+    axes: []
+    status: production
+    from_project: null
+  - id: fixture_stand
+    file: library/fixture_stand.py
+    tier: P
+    category: fixturing
+    summary: 落地式檢測治具台
+    basis: 依一般檢測治具台的工作高度、四腳焊接機架與可換式工具板配置作工程推估；工具板孔陣與定位銷孔供 Getac 機殼治具鎖附，尺寸範圍保留常見人體工學站姿高度。
+    params: [top_size, top_height_mm, column_size, foot_size]
+    frames: [mount, top]
+    axes: []
+    status: production
+    from_project: null
+  - id: flip_fixture
+    file: library/flip_fixture.py
+    tier: P
+    category: fixturing
+    summary: 一百八十度產品翻轉治具
+    basis: 依 Getac 產品翻面檢測需求及一般雙側軸承、氣缸驅動翻轉治具比例作工程推估，額定承載十五公斤
+    params: [width_mm, depth_mm, height_mm]
+    frames: [mount, base, nest]
+    axes: [flip]
+    status: production
+    from_project: null
+  - id: force_eoat
+    file: library/force_eoat.py
+    tier: P
+    category: handling
+    summary: 力控順應式護蓋操作末端工具
+    basis: 依 Getac 護蓋開合檢測需求與一般 ISO 法蘭、力覺感測器及順應撥桿尺寸作工程推估
+    params: [stroke_mm, force_limit_n]
+    frames: [mount, flange, tool_center_point, tip]
+    axes: [compliance]
+    status: production
+    from_project: null
+  - id: lift_rack
+    file: library/lift_rack.py
+    tier: P
+    category: material_handling
+    summary: 多層升降式暫存料架
+    basis: 依一般升降料架的層距、鈑金層板與四柱導引配置作工程推估；尺寸範圍涵蓋 Getac 機殼暫存需求，角鋼托架、背板及螺桿保留可辨識功能但省略製造細節。
+    params: [levels, pitch_mm, width_mm, depth_mm, max_speed_mm_s]
+    frames: [mount, slot_0, slot_1, slot_2, slot_3, slot_4, slot_5, top]
+    axes: [lift]
+    status: production
+    from_project: null
+  - id: light_bar
+    file: library/light_bar.py
+    tier: P
+    category: vision
+    summary: 可調照射角度的 AOI 條形光源
+    basis: 依一般 AOI 條形 LED 光源鋁殼、線性散光面與可調角安裝座比例作工程推估
+    params: [length_mm, angle_deg]
+    frames: [mount, emit]
+    axes: []
+    status: production
+    from_project: null
+  - id: light_ring
+    file: library/light_ring.py
+    tier: P
+    category: vision
+    summary: 具中央通光孔的同軸環形光源
+    basis: 依一般同軸機器視覺環形光源的外徑、中央通光孔與薄型散光罩比例作工程推估
+    params: [outer_d_mm, inner_d_mm]
+    frames: [mount, emit]
+    axes: []
+    status: production
+    from_project: null
+  - id: part_stopper
+    file: library/part_stopper.py
+    tier: P
+    category: conveying
+    summary: 與輸送帶側板配對的氣動擋停與定位缸
+    basis: 依 conveyor.stopper_mount 的六十一點六乘七十毫米安裝板，採五十六乘六十三毫米四孔法蘭與一般側推式氣缸比例；零位擋面位於皮帶線外，伸出時沿負 Y 方向進入輸送區定位產品。
+    params: [stroke_mm]
+    frames: [mount, stop]
+    axes: [stop]
+    status: production
+    from_project: null
+  - id: robot_stub
+    file: library/robot_stub.py
+    tier: V
+    category: handling
+    summary: DENSO VS-087 等級六軸機器人近似模型
+    basis: 依 DENSO VS-087 等級六軸機器人型錄的九百零五毫米臂展與七公斤負載作參數化近似
+    params: [reach_mm, payload_kg, name, tool]
+    frames: [mount, base, flange, tool]
+    axes: [j1, j2, j3, j4, j5, j6]
+    status: production
+    from_project: null
+  - id: safety_door
+    file: library/safety_door.py
+    tier: P
+    category: safety
+    summary: 具鉸鏈與門閂介面的安全圍籬門
+    basis: 依一般工業安全圍籬單扇門比例與鋁框配置作工程推估，網片簡化為半透明薄板
+    params: [width_mm, height_mm, hinge_side, profile_mm, open_angle_deg]
+    frames: [mount, hinge, latch]
+    axes: [swing]
+    status: production
+    from_project: null
+  - id: safety_fence
+    file: library/safety_fence.py
+    tier: P
+    category: safety
+    summary: 工業安全圍籬標準分段
+    basis: 依一般工業安全圍籬的五十毫米級立柱、落地底板與分段鋼網比例作工程推估；高度及分段數可依產線邊界調整，網孔細節以半透明薄板表示以控制模型複雜度。
+    params: [length_mm, segments, height_mm]
+    frames: [mount, base]
+    axes: []
+    status: production
+    from_project: null
+  - id: signal_tower
+    file: library/signal_tower.py
+    tier: P
+    category: electrical
+    summary: 可配置一至三層的紅黃綠工業訊號燈塔
+    basis: 依一般產線三色警示燈的四十五毫米級底座、支桿與層疊透光罩比例作工程推估；燈罩由下而上固定採紅、黃、綠的常用機台狀態順序。
+    params: [tiers]
+    frames: [mount]
+    axes: []
+    status: production
+    from_project: null

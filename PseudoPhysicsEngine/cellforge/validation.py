@@ -74,7 +74,43 @@ def validate_project(project_dir: Path) -> tuple[Project, Workpiece, Cell, Proce
     sequence_path = project_dir / "animation" / "sequence.py"
     if not sequence_path.is_file():
         raise ProjectValidationError("缺少必要檔案：animation/sequence.py")
+    _validate_project_parts(project_dir)
     return project, workpiece, cell, process
+
+
+def placeholder_warnings(cell: Cell) -> list[str]:
+    """Return one non-blocking warning for each placeholder module instance."""
+    messages: list[str] = []
+    for machine in cell.machines:
+        for instance in machine.modules:
+            if instance.vendor or not instance.part:
+                continue
+            module = load_part(instance.part)
+            factory = getattr(module, "module_definition", None)
+            definition = factory(instance.params) if callable(factory) else module.MODULE
+            if definition.meta.placeholder:
+                messages.append(
+                    f"模組 {instance.id} 使用 {definition.id}，仍為佔位幾何；"
+                    "請在工程定案前替換為實際機構。"
+                )
+    return messages
+
+
+def _validate_project_parts(project_dir: Path) -> None:
+    from cellforge.part_check import check_project_parts
+
+    try:
+        results = check_project_parts(project_dir)
+    except (ImportError, OSError, ValueError) as error:
+        raise ProjectValidationError(f"案內 parts 載入失敗：{error}") from error
+    failures = [
+        f"{result.module_id} {item.index} {item.message}"
+        for result in results
+        for item in result.items
+        if item.severity == "fail"
+    ]
+    if failures:
+        raise ProjectValidationError("案內 parts 品質檢查失敗：" + "；".join(failures))
 
 
 def _validate_unique_ids(kind: str, ids: list[str]) -> None:

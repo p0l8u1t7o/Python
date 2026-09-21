@@ -34,6 +34,7 @@ def _linear(keys: list[list[Any]], t: float) -> np.ndarray:
 
 def _pose(keys: list[list[Any]], t: float) -> np.ndarray:
     first, second, ratio = _bracket(keys, t)
+    ratio = min(1.0, max(0.0, float(ratio)))
     translation = (
         np.asarray(first[1:4], dtype=float)
         + (np.asarray(second[1:4], dtype=float) - np.asarray(first[1:4], dtype=float)) * ratio

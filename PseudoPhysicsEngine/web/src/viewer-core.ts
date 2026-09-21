@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import type { Timeline } from "./types";
 
-type RestTransform = {
+export type RestTransform = {
   position: THREE.Vector3;
   quaternion: THREE.Quaternion;
   scale: THREE.Vector3;
@@ -10,6 +10,16 @@ type RestTransform = {
 };
 
 export type RestTransforms = Map<string, RestTransform>;
+
+export function findSceneNode(root: THREE.Object3D, name: string): THREE.Object3D | undefined {
+  const direct = root.getObjectByName(name);
+  if (direct) return direct;
+  let match: THREE.Object3D | undefined;
+  root.traverse((object) => {
+    if (!match && object.userData.name === name) match = object;
+  });
+  return match;
+}
 
 export function captureRestTransforms(root: THREE.Object3D): RestTransforms {
   const rest: RestTransforms = new Map();
@@ -25,7 +35,7 @@ export function captureRestTransforms(root: THREE.Object3D): RestTransforms {
       type: joint.type ?? "fixed",
     });
   });
-  const workpiece = root.getObjectByName("workpiece");
+  const workpiece = findSceneNode(root, "workpiece");
   if (workpiece && !rest.has("workpiece")) {
     rest.set("workpiece", {
       position: workpiece.position.clone(),
@@ -45,7 +55,7 @@ export function applyTimeline(
   rest: RestTransforms,
 ) {
   for (const [name, transform] of rest) {
-    const object = root.getObjectByName(name);
+    const object = findSceneNode(root, name);
     if (!object) continue;
     object.position.copy(transform.position);
     object.quaternion.copy(transform.quaternion);
@@ -56,17 +66,17 @@ export function applyTimeline(
     if (track.joints_deg?.length && track.joint_names?.length) {
       const values = interpolateLinear(track.joints_deg, time);
       track.joint_names.forEach((jointName, index) => {
-        applyJoint(root.getObjectByName(`${name}.${jointName}`), values[index], rest);
+        applyAxisValue(findSceneNode(root, `${name}.${jointName}`), values[index], rest);
       });
     }
     const scalarTrack = track.value_mm ?? track.value_deg ?? track.value;
     if (scalarTrack?.length) {
-      applyJoint(root.getObjectByName(name), interpolateLinear(scalarTrack, time)[0], rest);
+      applyAxisValue(findSceneNode(root, name), interpolateLinear(scalarTrack, time)[0], rest);
     }
   }
 
   const poseTrack = timeline.nodes.workpiece?.pose_quat;
-  const workpiece = root.getObjectByName("workpiece");
+  const workpiece = findSceneNode(root, "workpiece");
   if (workpiece && poseTrack?.length) {
     const pose = interpolatePose(poseTrack, time);
     workpiece.position.fromArray(pose.position);
@@ -75,23 +85,24 @@ export function applyTimeline(
   root.updateMatrixWorld(true);
 }
 
-function applyJoint(
-  object: THREE.Object3D | undefined,
+export function applyAxisValue(
+  node: THREE.Object3D | undefined,
   value: number | undefined,
   rest: RestTransforms,
 ) {
-  if (!object || value === undefined) return;
-  const transform = rest.get(object.name);
+  if (!node || value === undefined) return;
+  const transform = rest.get(node.name);
   if (!transform) return;
+  node.position.copy(transform.position);
+  node.quaternion.copy(transform.quaternion);
+  node.scale.copy(transform.scale);
   if (transform.type === "revolute") {
-    object.quaternion
-      .copy(transform.quaternion)
-      .multiply(
-        new THREE.Quaternion().setFromAxisAngle(transform.axis, THREE.MathUtils.degToRad(value)),
-      );
+    node.quaternion.multiply(
+      new THREE.Quaternion().setFromAxisAngle(transform.axis, THREE.MathUtils.degToRad(value)),
+    );
   } else if (transform.type === "prismatic") {
     const parentDirection = transform.axis.clone().applyQuaternion(transform.quaternion);
-    object.position.copy(transform.position).addScaledVector(parentDirection, value);
+    node.position.addScaledVector(parentDirection, value);
   }
 }
 

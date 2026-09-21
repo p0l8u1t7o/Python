@@ -1,4 +1,10 @@
-import type { Job } from "./types";
+import type {
+  Job,
+  LibraryModuleSummary,
+  ModuleDetail,
+  ModuleSummary,
+  PartCheckResult,
+} from "./types";
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api${path}`, {
@@ -51,4 +57,48 @@ export function inferKind(file: File): string {
   if (/\.(step|stp|iges|igs)$/.test(name)) return "cad";
   if (/\.(md|txt)$/.test(name)) return "text";
   return "other";
+}
+
+function modulePath(projectId: string, moduleId?: string): string {
+  const base = `/projects/${encodeURIComponent(projectId)}/modules`;
+  return moduleId ? `${base}/${encodeURIComponent(moduleId)}` : base;
+}
+
+export function getLibraryModules(): Promise<{ modules: LibraryModuleSummary[] }> {
+  return api("/library/modules");
+}
+
+export function getProjectModules(projectId: string): Promise<{ modules: ModuleSummary[] }> {
+  return api(modulePath(projectId));
+}
+
+export function getModuleDetail(projectId: string, moduleId: string): Promise<ModuleDetail> {
+  return api(modulePath(projectId, moduleId));
+}
+
+export function getModuleCheck(projectId: string, moduleId: string): Promise<PartCheckResult> {
+  return api(`${modulePath(projectId, moduleId)}/check`);
+}
+
+export function recheckModule(projectId: string, moduleId: string): Promise<Job> {
+  return api(`${modulePath(projectId, moduleId)}/recheck`, { method: "POST" });
+}
+
+export function fixModule(
+  projectId: string,
+  moduleId: string,
+): Promise<Job & { change_id: string; task_id: string }> {
+  return api(`${modulePath(projectId, moduleId)}/fix`, { method: "POST" });
+}
+
+export function promoteModule(projectId: string, moduleId: string): Promise<Job> {
+  return api(`${modulePath(projectId, moduleId)}/promote`, { method: "POST" });
+}
+
+export function moduleRenderUrl(projectId: string, moduleId: string): string {
+  return `/api${modulePath(projectId, moduleId)}/render.png`;
+}
+
+export function modulePreviewUrl(projectId: string, moduleId: string): string {
+  return `/api${modulePath(projectId, moduleId)}/preview.glb`;
 }

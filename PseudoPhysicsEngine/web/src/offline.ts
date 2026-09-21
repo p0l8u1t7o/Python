@@ -42,6 +42,7 @@ let time = 0;
 let speed = 1;
 let playing = false;
 let previous = performance.now();
+let placeholderOutlinesVisible = true;
 
 function resize() {
   const width = canvas.clientWidth;
@@ -71,6 +72,7 @@ new GLTFLoader().parse(
       }
     });
     addTrustOutlines(model);
+    addPlaceholderOutlines(model);
     rest = captureRestTransforms(model);
     applyTimeline(model, data.timeline, time, rest);
     scene.add(model);
@@ -105,6 +107,14 @@ document.querySelector("#play")!.addEventListener("click", () => {
 document.querySelector<HTMLSelectElement>("#speed")!.addEventListener("change", (event) => {
   speed = Number((event.target as HTMLSelectElement).value);
 });
+document.querySelector("#placeholders")!.addEventListener("click", (event) => {
+  placeholderOutlinesVisible = !placeholderOutlinesVisible;
+  (event.currentTarget as HTMLButtonElement).classList.toggle("active", placeholderOutlinesVisible);
+  if (model)
+    model.traverse((object) => {
+      if (object.name === PLACEHOLDER_OUTLINE_NAME) object.visible = placeholderOutlinesVisible;
+    });
+});
 
 function updateTime() {
   slider.value = String(time);
@@ -136,10 +146,10 @@ function highlight(check: Check) {
   }
 }
 
-function inheritedTrust(object: THREE.Object3D): unknown {
+function inheritedValue(object: THREE.Object3D, key: string): unknown {
   let current: THREE.Object3D | null = object;
   while (current) {
-    if (current.userData.trust != null) return current.userData.trust;
+    if (current.userData[key] != null) return current.userData[key];
     current = current.parent;
   }
   return undefined;
@@ -150,7 +160,8 @@ function addTrustOutlines(root: THREE.Object3D) {
   root.traverse((object) => {
     if (
       object instanceof THREE.Mesh &&
-      inheritedTrust(object) === "inferred" &&
+      inheritedValue(object, "trust") === "inferred" &&
+      inheritedValue(object, "placeholder") !== true &&
       !hasCollisionAncestor(object)
     )
       meshes.push(object);
@@ -166,6 +177,40 @@ function addTrustOutlines(root: THREE.Object3D) {
     outline.name = "__cellforge_trust_outline";
     outline.raycast = () => undefined;
     outline.renderOrder = 1;
+    mesh.add(outline);
+  }
+}
+
+const PLACEHOLDER_OUTLINE_NAME = "__cellforge_placeholder_outline";
+const PLACEHOLDER_DASH_SIZE_MM = 36;
+const PLACEHOLDER_GAP_SIZE_MM = 24;
+
+function addPlaceholderOutlines(root: THREE.Object3D) {
+  const meshes: THREE.Mesh[] = [];
+  root.traverse((object) => {
+    if (
+      object instanceof THREE.Mesh &&
+      inheritedValue(object, "placeholder") === true &&
+      !hasCollisionAncestor(object)
+    )
+      meshes.push(object);
+  });
+  for (const mesh of meshes) {
+    const positions = new THREE.BufferGeometry();
+    positions.setAttribute("position", mesh.geometry.getAttribute("position").clone());
+    if (mesh.geometry.index) positions.setIndex(mesh.geometry.index.clone());
+    const outline = new THREE.LineSegments(
+      new THREE.EdgesGeometry(mergeVertices(positions), 35),
+      new THREE.LineDashedMaterial({
+        color: 0xff2bd6,
+        dashSize: PLACEHOLDER_DASH_SIZE_MM,
+        gapSize: PLACEHOLDER_GAP_SIZE_MM,
+      }),
+    );
+    outline.computeLineDistances();
+    outline.name = PLACEHOLDER_OUTLINE_NAME;
+    outline.raycast = () => undefined;
+    outline.renderOrder = 2;
     mesh.add(outline);
   }
 }

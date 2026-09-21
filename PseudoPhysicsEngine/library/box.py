@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import cadquery as cq
 
-from cellforge.schema import Frame, ModuleDef
+from cellforge.schema import Frame, ModuleDef, ModuleMeta
+
+BOX_BASIS = "依案內尚未定義的外形包絡需求建立通用佔位體，僅供早期配置與空間預留"
 
 
 def build(params: dict) -> cq.Assembly:
@@ -23,6 +25,7 @@ def module_definition(params: dict) -> ModuleDef:
         params_schema=MODULE.params_schema,
         frames={"mount": Frame(), "top": Frame(xyz=(0, 0, float(size[2]) / 2))},
         collision="box",
+        meta=ModuleMeta(basis=BOX_BASIS, placeholder=True),
     )
 
 
@@ -37,4 +40,5 @@ MODULE = ModuleDef(
     },
     frames={"mount": Frame(), "top": Frame(xyz=(0, 0, 250))},
     collision="box",
+    meta=ModuleMeta(basis=BOX_BASIS, placeholder=True),
 )
