@@ -1,0 +1,18 @@
+# X-Ray_Flip-Chip：Flip-Chip X 光互動標註工具
+#
+# 安裝： pip install -r requirements.txt
+# 啟動： python app.py --port 8002
+#
+# 本目錄自我完備：app.py（網頁層）＋ FlipChipShift.py（演算法核心）＋ static/ templates/。
+#
+# 實測環境：Python 3.12.10 / opencv-python 5.0.0.93 / numpy 2.5.1 / Flask 3.1.3
+
+# 網頁框架（Werkzeug、Jinja2、click、itsdangerous、blinker 由 Flask 自動帶入）
+Flask>=3.0
+
+# 影像處理：讀寫 tif/png/jpg/bmp、等高線擬合、三種去噪（高斯／雙邊／Non-Local Means）
+# 只用到 opencv 主套件的模組，不需要 opencv-contrib-python
+opencv-python>=4.8
+
+# 陣列運算、穩健估計（中位數、相似變換擬合）
+numpy>=1.24
