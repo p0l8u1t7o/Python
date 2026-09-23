@@ -1,0 +1,30 @@
+# 產品執行環境的固定版本依賴 (由 build_release.py 安裝到 versions/<版本>/python/Lib/site-packages)
+# 服務端不需要視窗介面，OpenCV 使用 headless 版本 (API 相同，不含 Qt 等 GUI 相依檔)
+# 更新依賴時請同步執行完整測試與回歸測試
+numpy==2.5.3
+opencv-python-headless==5.0.0.93
+fastapi==0.141.1
+starlette==1.7.0
+pydantic==2.13.5
+pydantic_core==2.46.5
+uvicorn==0.53.0
+python-multipart==0.0.32
+cryptography==50.0.1
+cffi==2.1.1
+pycparser==3.0
+anyio==4.15.1
+h11==0.16.0
+idna==3.20
+click==8.5.0
+colorama==0.4.6
+typing_extensions==4.16.0
+typing-inspection==0.4.4
+annotated-types==0.8.0
+annotated-doc==0.0.5
+# 深度學習推論 (第 5c 階段)：DirectML 版同一套件支援 CPU 與 Windows 上的 GPU，不需另外安裝 CUDA
+onnxruntime-directml==1.24.4
+flatbuffers==25.12.19
+protobuf==7.36.2
+sympy==1.14.0
+mpmath==1.3.0
+packaging==26.3

@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "xrayvision-blob-count"
+version = "1.0.0"
+description = "Example inspection module for the X-ray inspection image analysis platform"
+requires-python = ">=3.11"
+dependencies = ["numpy", "opencv-python-headless"]
+
+# 平台啟動時以此 entry point 載入模組 (群組名稱固定為 xrayvision.inspections)
+[project.entry-points."xrayvision.inspections"]
+blob_count = "xrayvision_blob_count:BlobCount"
+
+[tool.setuptools.packages.find]
+include = ["xrayvision_blob_count*"]

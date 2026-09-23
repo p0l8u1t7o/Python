@@ -1,0 +1,12 @@
+{
+  "recipe_id": "bump_alignment-default",
+  "version": 1,
+  "name": {"zh-TW": "微凸塊對位（預設）", "en": "Micro Bump Alignment (Default)"},
+  "pixel_size_um": null,
+  "calibration_profile": null,
+  "quality_rules": [],
+  "acquisition_limits": {},
+  "modules": [
+    {"module_id": "bump_alignment", "params": {}}
+  ]
+}

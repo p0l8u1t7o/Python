@@ -1,2 +1,10 @@
 data/
 __pycache__/
+temp/
+.pytest_cache/
+*.egg-info/
+.venv/
+calibration/
+tools/keys/
+tools/license_admin/issued.jsonl
+build/
