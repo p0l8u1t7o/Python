@@ -84,7 +84,7 @@ const labels = [];
 function addLabel(text, getPos) { const el = document.createElement('div'); el.className = 'label3d'; el.innerHTML = text; document.getElementById('app').appendChild(el); labels.push({ el, getPos }); return el; }
 const sName = ['<b>S0</b> 進料升降堆料架', '<b>S1</b> 閉合外觀站', '<b>S2</b> 側邊護蓋站', '<b>S3</b> 翻面檢測站', '<b>S4</b> 出料升降堆料架'];
 LAYOUT.stationX.forEach((x, i) => addLabel(sName[i], () => new THREE.Vector3(x, LAYOUT.conveyorTop + (i === 0 || i === 4 ? 1100 : 330), 0)));
-addLabel('六軸手臂＋第七軸滑軌（概念尺寸）', () => new THREE.Vector3(robot.q.rail, 250, LAYOUT.railZ));
+addLabel('DENSO VM-60B1＋第七軸滑軌', () => new THREE.Vector3(robot.q.rail, 250, LAYOUT.railZ));
 addLabel('頂視 20MP＋穹頂光', () => cell.topCamPos.clone().add(new THREE.Vector3(0, 120, 0)));
 addLabel('SN 條碼讀取器', () => cell.snReaderPos.clone().add(new THREE.Vector3(0, -70, 0)));
 addLabel('翻轉夾持治具', () => new THREE.Vector3(LAYOUT.stationX[3] + 380, 1560, -270));
@@ -106,7 +106,7 @@ function applyState(s){
   stackOut.forEach((u,i)=>u.position.set(0,inBase+(i+1)*LAYOUT.palletPitch+s.outStackY,0));
   cell.stackerIn.setPush(s.pushIn);cell.stackerOut.setPush(s.pushOut);cell.stackerIn.setForks(s.inFork);cell.stackerOut.setForks(s.outFork);
   cell.cradle.lift.position.y=top+NB.H/2+s.cradleLift;cell.cradle.rot.rotation.x=Math.PI*s.flip;cell.cradle.setClamp(s.cradleClamp);
-  cell.updateTransport(s.palletX,s.located);
+  cell.updateTransport(s.palletX,s.located);cell.setHead(s.s1Head);
   scene.updateMatrixWorld(true);
 }
 const sequence=createSequence({nb,robot,apply:applyState});
@@ -162,7 +162,7 @@ function exportReport(){
   const url=URL.createObjectURL(new Blob([JSON.stringify(report,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='QC-DEMO-0001.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 ui.exportBtn.onclick=exportReport;
-const signals=[['載具到位',()=>S.located],['載具夾緊',()=>S.clamp>.99],['翻轉夾緊',()=>S.cradleClamp>.99],['升降到位',()=>S.lift===0||S.lift===LAYOUT.flipLift],['所有門關閉',()=>S.doors.every(d=>d.open<.001&&d.latch<.001)],['工具到位',()=>{const e=robot.error();return e.position<1.5&&e.angle<2&&e.rail<1;}]];
+const signals=[['載具到位',()=>S.located],['載具夾緊',()=>S.clamp>.99],['翻轉夾緊',()=>S.cradleClamp>.99],['升降到位',()=>S.lift===0||S.lift===LAYOUT.flipLift],['取像頭退出',()=>S.s1Head<.001],['所有門關閉',()=>S.doors.every(d=>d.open<.001&&d.latch<.001)],['工具到位',()=>{const e=robot.error();return e.position<1.5&&e.angle<2&&e.rail<1;}]];
 signals.forEach(([name])=>{const row=document.createElement('div');row.innerHTML=`<i></i><span>${name}</span>`;ui.signals.appendChild(row);});
 function drawHud(){
   const e=robot.error(),arrived=e.position<(current.step.contact?1:2)&&e.angle<3&&e.rail<2;

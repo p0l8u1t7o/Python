@@ -5,7 +5,7 @@ export const smooth=t=>t*t*t*(10+t*(-15+6*t)); // zero endpoint velocity and acc
 const clone=s=>JSON.parse(JSON.stringify(s));
 
 export function createSequence({nb,robot,apply}){
-  const base={palletX:-2000,lift:0,palletLift:0,flip:0,clamp:0,cradleClamp:0,cradleLift:0,inStackY:0,outStackY:0,inLift:0,outLift:0,pushIn:0,pushOut:550,inFork:1,outFork:1,located:false,
+  const base={palletX:-2000,lift:0,palletLift:0,flip:0,clamp:0,cradleClamp:0,cradleLift:0,inStackY:0,outStackY:0,inLift:0,outLift:0,pushIn:0,pushOut:550,inFork:1,outFork:1,located:false,s1Head:0,
     doors:nb.doors.map(()=>({open:0,latch:0})),force:0,zone:'free',flashTop:0,flashSn:0,flashTool:0,laserTool:0,seamLaser:-1,tower:'yellow',station:0,action:'',sub:''};
   const steps=[],stationStart=[0,0,0,0,0],top=LAYOUT.conveyorTop+6+LAYOUT.palletH+LAYOUT.padH+LAYOUT.footOffset;
   const down=new THREE.Vector3(0,-1,0),v=(x,y,z)=>new THREE.Vector3(x,y,z);
@@ -18,6 +18,7 @@ export function createSequence({nb,robot,apply}){
     for(const [key,value] of Object.entries(values))end[key]=clone(value);
     end.station=st;end.action=action;end.sub=sub;
     const s={station:st,start:time,dur,action,sub,initial,end,pose0:lastPose,motion,...extra};
+    s.ptp=!s.path&&!s.contact&&end.zone==='free';
     // Door world coordinates must be evaluated after installing this endpoint state.
     apply(end);lastPose=motion?motion(1,end):lastPose;s.pose1=lastPose;
     steps.push(s);previous=end;time+=dur;return s;
@@ -42,12 +43,18 @@ export function createSequence({nb,robot,apply}){
   add(0,.7,'四角側夾定位','四個 PU 接觸墊夾住護角，避開側面護蓋',{flashSn:0,clamp:1},null,{done:'locate'});
   add(0,2.4,'輸送至 S1','止擋下降 → 雙帶同步輸送 → 到站減速',{palletX:-1000,located:false});
   add(1,.5,'S1 止擋定位','載具到位感測 ON，止擋上升，等待振動衰減',{located:true});
+  add(1,1.6,'取像頭移入','頂視相機＋穹頂光沿懸臂滑軌移到產品正上方，穹頂底緣距產品 80 mm',{s1Head:1});
   add(1,.7,'頂視外蓋取像','QII §12.1 / 工單前 PI：Logo、麥拉、外蓋掉漆／破損與螺絲',{flashTop:1},null,{done:'lid',exposure:true});
   add(1,.3,'頂光關閉','準備側面相機巡拍',{flashTop:0});
-  const sides=[['左側',[-150,18,0],[-1,0,0]],['後側',[0,18,-107],[0,0,-1]],['右側',[150,18,0],[1,0,0]],['前側',[0,26,108],[0,0,1]]];
-  sides.forEach(([name,p,n],i)=>{
+  add(1,1.6,'取像頭退出','取像頭退回前側，讓出手臂巡拍空間',{s1Head:0});
+  // 前、後側與手臂滑軌平行：VM-60B1 手腕 ±120°，無法水平回頭取像，改由斜上方 35° 取像；
+  // 後側緊鄰肩部，滑軌再錯開 REAR_RAIL，讓肩部離開產品正後方。
+  const oblique=(z)=>[0,Math.sin(35*Math.PI/180),z*Math.cos(35*Math.PI/180)];
+  const REAR_RAIL=500;
+  const sides=[['左側',[-150,18,0],[-1,0,0],'相機與產品保持 150 mm 工作距離',0],['後側',[0,18,-107],oblique(-1),`斜上方 35° 取像，工作距離 150 mm；滑軌錯開 ${REAR_RAIL} mm`,REAR_RAIL],['右側',[150,18,0],[1,0,0],'相機與產品保持 150 mm 工作距離',0],['前側',[0,26,108],oblique(1),'斜上方 35° 取像，工作距離 150 mm',0]];
+  sides.forEach(([name,p,n,note,railShift],i)=>{
     add(1,2.8,'退至上方再轉向：'+name,'工具先離開產品包絡，轉腕後接近下一側',{},()=>park(-1000));
-    add(1,2.6,'側面定位：'+name,'相機與產品保持 150 mm 工作距離',{},(t,s)=>pose('cam',surface(...p,s),v(...n).negate(),-1000));
+    add(1,2.6,'側面定位：'+name,note,{},(t,s)=>pose('cam',surface(...p,s),v(...n).normalize().negate(),-1000+railShift));
     add(1,.6,'側面取像：'+name,'門扣、圖示、按鍵外觀；功能與彈性測試留待後續階段',{flashTool:1},null,{exposure:true,done:i===3?'sides':null});
     add(1,.2,'關閉環形光','曝光完成',{flashTool:0});
   });
@@ -59,7 +66,8 @@ export function createSequence({nb,robot,apply}){
   add(2,.5,'S2 止擋定位','載具到位、相機配方與工單一致',{located:true});
   nb.doors.forEach((d,i)=>{
     const def=d.def,rail=def.side==='L'?-350:def.side==='R'?350:-300;
-    const N=()=>d.normalWorld(),dir=()=>N().negate(),edge=(open,latch,offset=0)=>d.edgeWorldAt(open,latch).addScaledVector(N(),offset);
+    // 面向手臂的護蓋（法線朝滑軌）：線雷射改由斜上方 15° 掃描，避免手腕超過 ±120°。
+    const N=()=>d.normalWorld(),dir=()=>N().negate(),laserDir=()=>{const l=dir();if(N().z<-.5)l.add(v(0,-Math.tan(15*Math.PI/180),0)).normalize();return l;},edge=(open,latch,offset=0)=>d.edgeWorldAt(open,latch).addScaledVector(N(),offset);
     add(2,2.5,def.id+' 上方轉位',def.name+'｜在產品上方轉腕與滑軌移位',{},()=>park(rail));
     add(2,2.5,def.id+' 視覺定位',def.name+'｜相機確認門扣／圖示／封印',{},()=>pose('cam',d.centerWorld(),dir(),rail));
     add(2,.5,def.id+' 門面取像',def.sealed?'封印與外觀檢查；本階段不拆拔模組':'確認門扣關閉、取得視覺修正位置',{flashTool:1},null,{exposure:true,done:def.sealed?def.id:null});
@@ -79,7 +87,7 @@ export function createSequence({nb,robot,apply}){
     add(2,1.2,def.id+' 鉤爪退出換壓頭','先退離再切換壓頭接觸點',{force:0,zone:'slow'},()=>pose('press',edge(0,1,18),dir(),rail));
     add(2,.9,def.id+' 壓頭接觸門扣','PU 壓頭到位後才允許下壓鎖扣',{zone:'contact'},()=>pose('press',edge(0,1),dir(),rail),{contact:true});
     add(2,1,def.id+' 按下鎖定','壓頭隨門扣下行；8 N 峰值為示意值，需實測校正',{doors:doorsAt(i,0,0)},(t,s)=>pose('press',edge(0,s.doors[i].latch),dir(),rail),{path:true,contact:true,forceCurve:t=>8*Math.sin(Math.PI*t)});
-    add(2,2.2,def.id+' 閉合量測定位','壓頭退出，切換線雷射至護蓋外表面',{force:0,zone:'free'},()=>pose('laser',d.centerWorld(),dir(),rail));
+    add(2,2.2,def.id+' 閉合量測定位','壓頭退出，切換線雷射至護蓋外表面',{force:0,zone:'free'},()=>pose('laser',d.centerWorld(),laserDir(),rail));
     add(2,.7,def.id+' 閉合確認','外觀、鎖扣回位、膠條未外露；保留輪廓待配方判定',{laserTool:1},null,{done:def.id,exposure:true});
     add(2,.2,def.id+' 掃描關閉','準備下一個護蓋',{laserTool:0});
   });
@@ -123,7 +131,8 @@ export function createSequence({nb,robot,apply}){
     state.force=s.forceCurve?s.forceCurve(t):state.force;
     apply(state);
     const destination=s.motion?s.motion(t,state):s.pose1;
-    const p=s.path?destination:{origin:s.pose0.origin.clone().lerp(destination.origin,e),rotation:s.pose0.rotation.clone().slerp(destination.rotation,e),rail:THREE.MathUtils.lerp(s.pose0.rail,destination.rail,e),tcp:destination.tcp};
+    // 自由移位走關節插值（PTP）；接近、接觸、減速與掃描走直線。
+    const p=s.path?destination:s.ptp?{ptp:{from:s.pose0,to:s.pose1,e}}:{origin:s.pose0.origin.clone().lerp(destination.origin,e),rotation:s.pose0.rotation.clone().slerp(destination.rotation,e),rail:THREE.MathUtils.lerp(s.pose0.rail,destination.rail,e),tcp:destination.tcp};
     robot.setPose(p);robot.goal.speed=s.contact?50:900;
     const completed=new Set(steps.slice(0,idx).map(s=>s.done).filter(Boolean));if(t===1&&s.done)completed.add(s.done);
     return {state,step:s,index:idx,t,completed};

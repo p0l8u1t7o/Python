@@ -12,7 +12,14 @@ for(const sku of ['V110-STND','V110-RF']){
   scene.add(nb.root,robot.root);robot.root.position.z=LAYOUT.railZ;
   const carrier=new THREE.Group();scene.add(carrier);carrier.add(nb.root);nb.root.position.y=-NB.H/2;
   const top=LAYOUT.conveyorTop+6+LAYOUT.palletH+LAYOUT.padH+LAYOUT.footOffset;
-  const apply=s=>{carrier.position.set(s.palletX,top+s.palletLift+s.lift+NB.H/2,0);carrier.rotation.x=Math.PI*s.flip;cell.pallet.group.position.set(s.palletX,LAYOUT.conveyorTop+6+s.palletLift,0);nb.doors.forEach((d,i)=>d.set(s.doors[i].open,s.doors[i].latch));scene.updateMatrixWorld(true);};
+  const apply=s=>{carrier.position.set(s.palletX,top+s.palletLift+s.lift+NB.H/2,0);carrier.rotation.x=Math.PI*s.flip;cell.pallet.group.position.set(s.palletX,LAYOUT.conveyorTop+6+s.palletLift,0);nb.doors.forEach((d,i)=>d.set(s.doors[i].open,s.doors[i].latch));cell.setHead(s.s1Head);scene.updateMatrixWorld(true);};
+  // Robot vs fixed structures (S1 cantilever and imaging head, S3 gantry): any robot vertex inside a keep-out box (+10 mm) is a collision.
+  const robotMeshes=[];robot.root.traverse(o=>{if(o.isMesh&&!o.material.transparent)robotMeshes.push(o);});
+  const vtx=new THREE.Vector3(),mbox=new THREE.Box3();let minClearance=Infinity;
+  const collisions=()=>{const boxes=cell.keepout.map(m=>[m.name,new THREE.Box3().setFromObject(m).expandByScalar(10)]),hits=new Set();
+    for(const m of robotMeshes){mbox.setFromObject(m);for(const [name,b] of boxes){if(!mbox.intersectsBox(b))continue;const pos=m.geometry.attributes.position;
+      for(let i=0;i<pos.count;i++){vtx.fromBufferAttribute(pos,i).applyMatrix4(m.matrixWorld);if(b.containsPoint(vtx)){hits.add(name);break;}}}}
+    return [...hits];};
   const seq=createSequence({nb,robot,apply});let maxError=0,maxAngle=0,worst='';
   for(const step of seq.steps){
     for(const frac of [.001,.5,.999]){
@@ -21,8 +28,10 @@ for(const sku of ['V110-STND','V110-RF']){
       assert(!(s.flip>0&&s.flip<1)||s.lift===LAYOUT.flipLift,'rotation before lift');
       assert(s.lift===0||s.cradleClamp===1,'unsupported lift');
       if(s.station===2)nb.doors.forEach(d=>{if(d.open>0){const bounds=new THREE.Box3().setFromObject(d.hinge);assert(bounds.min.y>LAYOUT.conveyorTop+6+LAYOUT.palletH+2,'door hits pallet frame');for(const pin of cell.pallet.group.children.filter(m=>m.name==='pallet-guide-pin'))assert(!bounds.intersectsBox(new THREE.Box3().setFromObject(pin)),'door hits guide pin');}});
-      robot.snap();const e=robot.error();if(e.position>maxError){maxError=e.position;worst=step.action;}maxAngle=Math.max(maxAngle,e.angle);
+      // PTP steps interpolate joints between two IK solutions; their feasibility is the end pose's reachability.
+      robot.snap();const e=step.ptp?robot.reach(step.pose1):robot.error();if(e.position>maxError){maxError=e.position;worst=step.action;}maxAngle=Math.max(maxAngle,e.angle);
       if(e.position>2||e.angle>3)failures.push({sku,action:step.action,frac,...e});
+      const hit=collisions();if(hit.length)failures.push({sku,action:step.action,frac,collision:hit});
       if(step.contact){const d=nb.doors.find(d=>step.action.startsWith(d.def.id+' '));if(d)assert(d.def.sealed===undefined);}
       // An arbitrary backward seek must restore exactly the same machine state and goal.
       const before=JSON.stringify(s),target=robot.goal.target.toArray();seq.sample(seq.total-1);seq.sample(0);const after=seq.sample(time).state;
@@ -31,13 +40,14 @@ for(const sku of ['V110-STND','V110-RF']){
   }
   report.push({sku,steps:seq.steps.length,cycle:seq.total,maxError,maxAngle,worst});
   {
-    let time=0,elapsed=0,wait=0,frame=seq.sample(0),maxContactError=0;robot.snap();
+    let time=0,elapsed=0,wait=0,frame=seq.sample(0),maxContactError=0,iteration=0;robot.snap();
     while(time<seq.total&&elapsed<seq.total*4){
       const dt=sku==='V110-STND'?.025:.00625,e=robot.error(),s=frame.step,end=s.start+s.dur;
       const blocked=(time>=end-1e-7||(s.contact&&e.position>3))&&(e.position>1.5||e.angle>3||e.rail>2);
       if(blocked){wait+=dt;if(wait>12){failures.push({sku,continuous:true,action:s.action,time,...e,q:robot.q});break;}}
       else {wait=0;time=time>=end-1e-7?Math.min(seq.total,end+1e-6):Math.min(end,time+dt);frame=seq.sample(time>=end-1e-7&&time<=end?Math.max(s.start,end-1e-8):time);}
       robot.update(dt);elapsed+=dt;
+      if(++iteration%Math.round(.25/dt)===0){const hit=collisions();if(hit.length)failures.push({sku,continuous:true,action:s.action,time,collision:hit});}
       if(s.contact)maxContactError=Math.max(maxContactError,e.position);
     }
     report.push({sku,continuous:true,time,elapsed,maxContactError});

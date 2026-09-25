@@ -13,6 +13,8 @@ export const LAYOUT = {
   railZ: -560,
   flipLift: 210,
   footOffset: 3.25,
+  // S1 頂視取像頭：前側懸臂上的 Z 向滑軌；移入時穹頂光底緣在產品上方 80 mm，退出後讓手臂巡拍四側
+  s1PostZ: 850, s1HeadOut: 780, s1DomeGap: 80, s1DomeR: 200, s1BeamY: 2000,
 };
 
 const matFloor = new THREE.MeshStandardMaterial({ color: 0x1b2027, roughness: 0.95 });
@@ -92,17 +94,18 @@ function createStacker(x, dir) {
   }};
 }
 
-/** 翻轉夾持治具（S3）：龍門立柱、升降滑台、旋轉軸（±X 兩端夾臂，PU 壓塊夾機台橡膠護角） */
+/** 翻轉夾持治具（S3）：龍門立柱、升降滑台、旋轉軸（±X 兩端夾臂，PU 壓塊夾機台橡膠護角）。龍門在輸送線前側，後側留給手臂底部取像。 */
 function createFlipCradle(x) {
   const g = new THREE.Group(); g.position.set(x, 0, 0);
   const top = LAYOUT.conveyorTop;
-  for (const sx of [-1, 1]) { const post = box(60, 1500, 60, matFrame); post.position.set(sx * 380, 750, -270); g.add(post); block(g,[18,900,15],[sx*380,1050,-231],matPin); }
-  const beam = box(840, 60, 60, matFrame); beam.position.set(0, 1500, -270); g.add(beam);
+  const keepout = [];
+  for (const sx of [-1, 1]) { const post = box(60, 1800, 60, matFrame); post.position.set(sx * 380, 900, 270); g.add(post); post.name = sx < 0 ? 'S3 左立柱' : 'S3 右立柱'; keepout.push(post); block(g,[18,900,15],[sx*380,1050,231],matPin); }
+  const beam = box(840, 60, 60, matFrame); beam.position.set(0, 1800, 270); g.add(beam); beam.name = 'S3 橫樑'; keepout.push(beam);
   // 升降滑台（兩側），帶動旋轉軸
   const lift = new THREE.Group(); g.add(lift);
   for (const sx of [-1, 1]) {
-    const slide = box(90, 120, 70, matDark); slide.position.set(sx * 380, 0, -240); lift.add(slide);
-    block(lift,[60,60,240],[sx*380,0,-120],matAlu);
+    const slide = box(90, 120, 70, matDark); slide.position.set(sx * 380, 0, 240); lift.add(slide);
+    block(lift,[60,60,240],[sx*380,0,120],matAlu);
     const motor = cyl(38, 90, matBlue); motor.rotation.z = Math.PI / 2; motor.position.set(sx * 410, 0, 0); lift.add(motor);
   }
   // 旋轉框：兩支夾臂沿 X 伸向機台兩端，夾墊在 z=±85（避開側邊護蓋）
@@ -115,7 +118,7 @@ function createFlipCradle(x) {
     for (const sz of [-1, 1]) { const finger = box(50, 22, 10, matDark); finger.position.set(-sx * 20, 0, sz * 98); arm.add(finger); const pad = box(10, 22, 10, matPU); pad.position.set(-sx * 48, 0, sz * 98); arm.add(pad); }
     arms.push({ arm, sx });
   }
-  return { group: g, lift, rot, arms, setClamp(v) { for (const a of arms) a.arm.position.x = a.sx * (235 - v * 30.5); } };
+  return { group: g, lift, rot, arms, keepout, setClamp(v) { for (const a of arms) a.arm.position.x = a.sx * (235 - v * 30.5); } };
 }
 
 export function createCell(scene) {
@@ -165,19 +168,25 @@ export function createCell(scene) {
   const srStand = box(60, 400, 60, matFrame); srStand.position.y = -230; snReader.add(srStand);
   const snFlash = new THREE.SpotLight(0xff3030, 0, 700, 0.5, 0.6, 1); snFlash.position.set(0, 60, 0); snFlash.target.position.set(0, 400, 0); snReader.add(snFlash, snFlash.target);
 
-  // ---- S1：頂視相機門型架＋穹頂光 ----
-  const s1x = stationX[1];
-  const gantry = new THREE.Group(); gantry.position.set(s1x, 0, 0); g.add(gantry);
-  for (const z of [-420, 420]) { const post = box(60, 1900, 60, matFrame); post.position.set(0, 950, z); gantry.add(post); }
-  const beam1 = box(60, 60, 900, matFrame); beam1.position.set(0, 1900, 0); gantry.add(beam1);
-  const topCam = new THREE.Group(); topCam.position.set(0, 1560, 0); gantry.add(topCam);
-  topCam.add(box(80, 90, 80, matCam));
-  const tcLens = cyl(28, 70, matDark); tcLens.position.y = -80; topCam.add(tcLens);
-  const tcMount = box(30, 300, 30, matFrame); tcMount.position.y = 190; topCam.add(tcMount);
-  const dome = new THREE.Mesh(new THREE.SphereGeometry(190, 32, 16, 0, Math.PI * 2, .16, Math.PI / 2-.16), matDome); dome.position.set(0, 1330, 0); gantry.add(dome);
-  const domeRing = new THREE.Mesh(new THREE.TorusGeometry(192, 8, 8, 48), matDark); domeRing.rotation.x = Math.PI / 2; domeRing.position.y = 1330; gantry.add(domeRing);
-  const topFlash = new THREE.SpotLight(0xffffff, 0, 1200, 0.5, 0.6, 1); topFlash.position.set(0, 1560, 0); topFlash.target.position.set(0, 800, 0); gantry.add(topFlash, topFlash.target);
-
+  // ---- S1：前側懸臂＋頂視取像頭（相機＋穹頂光同一組，沿 Z 滑軌移入／退出）----
+  // 舊版門型架的後立柱落在手臂滑軌通道上，改為單邊懸臂；取像頭退到前側，手臂巡拍時不干涉。
+  const s1x = stationX[1], productTop = top + 6 + LAYOUT.palletH + LAYOUT.padH + LAYOUT.footOffset + NB.H;
+  const domeRim = productTop + LAYOUT.s1DomeGap, beamY = LAYOUT.s1BeamY, keepout = [];
+  const s1 = new THREE.Group(); s1.position.set(s1x, 0, 0); g.add(s1);
+  const s1Post = box(80, beamY + 60, 80, matFrame); s1Post.position.set(0, (beamY + 60) / 2, LAYOUT.s1PostZ); s1.add(s1Post); s1Post.name = 'S1 懸臂立柱'; keepout.push(s1Post);
+  const s1Beam = box(80, 60, LAYOUT.s1PostZ + 140, matFrame); s1Beam.position.set(0, beamY + 30, (LAYOUT.s1PostZ - 100) / 2); s1.add(s1Beam); s1Beam.name = 'S1 懸臂橫樑'; keepout.push(s1Beam);
+  block(s1, [30, 12, LAYOUT.s1PostZ + 100], [0, beamY - 6, (LAYOUT.s1PostZ - 100) / 2], matPin);
+  const head = new THREE.Group(); s1.add(head);
+  const headCar = box(120, 50, 140, matDark); headCar.position.y = beamY - 37; head.add(headCar); headCar.name = 'S1 取像頭滑座'; keepout.push(headCar);
+  const hanger = box(40, beamY - 62 - (domeRim + 405), 40, matFrame); hanger.position.y = (beamY - 62 + domeRim + 405) / 2; head.add(hanger); hanger.name = 'S1 取像頭吊臂'; keepout.push(hanger);
+  const topCam = new THREE.Group(); topCam.position.y = domeRim + 360; head.add(topCam);
+  const camBody = box(80, 90, 80, matCam); topCam.add(camBody); camBody.name = 'S1 頂視相機'; keepout.push(camBody);
+  const tcLens = cyl(28, 70, matDark); tcLens.position.y = -80; topCam.add(tcLens); tcLens.name = 'S1 頂視鏡頭'; keepout.push(tcLens);
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(LAYOUT.s1DomeR, 32, 16, 0, Math.PI * 2, .16, Math.PI / 2 - .16), matDome); dome.position.y = domeRim; dome.castShadow = true; head.add(dome); dome.name = 'S1 穹頂光'; keepout.push(dome);
+  const domeRing = new THREE.Mesh(new THREE.TorusGeometry(LAYOUT.s1DomeR + 2, 8, 8, 48), matDark); domeRing.rotation.x = Math.PI / 2; domeRing.position.y = domeRim; head.add(domeRing);
+  const topFlash = new THREE.SpotLight(0xffffff, 0, 1200, 0.5, 0.6, 1); topFlash.position.set(0, domeRim + 250, 0); topFlash.target.position.set(0, productTop - 100, 0); head.add(topFlash, topFlash.target);
+  const setHead = v => { head.position.z = (1 - v) * LAYOUT.s1HeadOut; };
+  setHead(0);
   // ---- S3：翻轉夾持治具 ----
   const cradle = createFlipCradle(stationX[3]);
   g.add(cradle.group);
@@ -220,7 +229,8 @@ export function createCell(scene) {
       for(const y of [-p.height/2+25,p.height/2-25])cylinder(column,3,2,[side*p.width*.27,y,p.depth/2+1],matPin,'z',6);
     }
   }
-  return { group:g,occluders:occ,pallet:palletApi,stackerIn,stackerOut,cradle,topFlash,snFlash,tower:towerApi,stops,
+  // keepout：手臂不得進入的固定結構（S1 懸臂與取像頭、S3 龍門），供驗證做碰撞檢查
+  return { group:g,occluders:occ,pallet:palletApi,stackerIn,stackerOut,cradle,topFlash,snFlash,tower:towerApi,stops,setHead,keepout:[...keepout,...cradle.keepout],
     updateTransport(x,located){beltMarks.position.x=((x%110)+110)%110;for(const s of stops){const hit=Math.abs(x-s.x)<2;s.st.position.y=top-14+(hit&&located?28:0);s.led.material.emissiveIntensity=hit?1.4:0;}},
-    topCamPos:new THREE.Vector3(s1x,1560,0),snReaderPos:snReader.position.clone() };
+    get topCamPos(){return topCam.getWorldPosition(new THREE.Vector3());},snReaderPos:snReader.position.clone() };
 }

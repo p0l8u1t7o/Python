@@ -31,31 +31,35 @@ export function createRobot() {
   for(let x=-1300;x<=1300;x+=140)for(const z of [-80,80])cylinder(root,4,3,[x,146,z],matJoint);
 
   // ---- 手臂連桿 ----
-  const L = { base: 160, shoulderZ: 0, upper: 600, fore: 570, wrist1: 110, wrist2: 90, flange: 40 };
+  // DENSO VM-60B1 型錄：臂長 520＋590、J1–J2 偏移 180、J3 偏移 100。基座高度與 J5 以後的手腕長度型錄未列，仍為概念值。
+  // riser：手臂立座。VM-60B1 手腕 ±120°，肩部太低時俯拍與側拍都會超限。
+  const L = { riser: 600, base: 160, shoulderX: 180, upper: 520, fore: 590, foreOffset: 100, wrist1: 110, wrist2: 90, flange: 40 };
   const j = {};  // joints groups
 
-  const base = cyl(120, 140, L.base, matArm); base.position.y = 60 + L.base / 2; carriage.add(base);
-  const baseRing = cyl(128, 128, 14, matJoint); baseRing.position.y = 60 + L.base - 7; carriage.add(baseRing);
+  const riser = box(300, L.riser, 300, matArmD); riser.position.y = 60 + L.riser / 2; carriage.add(riser);
+  const base = cyl(120, 140, L.base, matArm); base.position.y = 60 + L.riser + L.base / 2; carriage.add(base);
+  const baseRing = cyl(128, 128, 14, matJoint); baseRing.position.y = 60 + L.riser + L.base - 7; carriage.add(baseRing);
 
-  j.j1 = new THREE.Group(); j.j1.position.y = 60 + L.base; carriage.add(j.j1);          // J1 繞 Y
+  j.j1 = new THREE.Group(); j.j1.position.y = 60 + L.riser + L.base; carriage.add(j.j1);          // J1 繞 Y
   const shoulderHouse = cyl(100, 110, 140, matArm); shoulderHouse.position.y = 70; j.j1.add(shoulderHouse);
-  const shoulderSide = box(110, 190, 220, matArm); shoulderSide.position.set(0, 165, 0); j.j1.add(shoulderSide);
+  const shoulderSide = box(L.shoulderX + 110, 190, 220, matArm); shoulderSide.position.set(L.shoulderX / 2, 165, 0); j.j1.add(shoulderSide);
 
-  j.j2 = new THREE.Group(); j.j2.position.set(0, 210, 0); j.j1.add(j.j2);               // J2 繞 Z（pitch）
+  j.j2 = new THREE.Group(); j.j2.position.set(L.shoulderX, 210, 0); j.j1.add(j.j2);               // J2 繞 Z（pitch）
   const j2disc = cyl(95, 95, 250, matJoint); j2disc.rotation.x = Math.PI / 2; j.j2.add(j2disc);
   const upperArm = box(130, L.upper, 150, matArm); upperArm.position.y = L.upper / 2; j.j2.add(upperArm);
   const upperArmCap = cyl(75, 75, 152, matArm); upperArmCap.rotation.x = Math.PI / 2; upperArmCap.position.y = L.upper; j.j2.add(upperArmCap);
 
   j.j3 = new THREE.Group(); j.j3.position.set(0, L.upper, 0); j.j2.add(j.j3);           // J3 繞 Z（pitch）
   const j3disc = cyl(72, 72, 200, matJoint); j3disc.rotation.x = Math.PI / 2; j.j3.add(j3disc);
-  const foreArm = box(L.fore, 100, 110, matArm); foreArm.position.set(L.fore / 2 - 30, 0, 0); j.j3.add(foreArm);   // 前臂沿 +X
-  const foreCap = cyl(60, 60, 120, matArm); foreCap.rotation.x = Math.PI / 2; foreCap.position.set(L.fore - 30, 0, 0); j.j3.add(foreCap);
+  const elbow = box(150, L.foreOffset + 60, 120, matArm); elbow.position.y = L.foreOffset / 2; j.j3.add(elbow);
+  const foreArm = box(L.fore - L.wrist1 + 30, 100, 110, matArm); foreArm.position.set((L.fore - L.wrist1 - 30) / 2, L.foreOffset, 0); j.j3.add(foreArm);   // 前臂沿 +X，J4 軸高於 J3 軸 foreOffset
+  const foreCap = cyl(60, 60, 120, matArm); foreCap.rotation.x = Math.PI / 2; foreCap.position.set(L.fore - L.wrist1, L.foreOffset, 0); j.j3.add(foreCap);
   tube(j.j2,[[0,40,-94],[45,150,-94],[50,390,-94],[0,475,-94]],9,matJoint);
-  tube(j.j3,[[0,0,-90],[80,70,-84],[275,65,-75],[355,5,-65]],7,matJoint);
+  tube(j.j3,[[0,20,-90],[80,120,-84],[300,160,-75],[420,110,-65]],7,matJoint);
   decal(j.j2,80,160,[0,220,76],[0,0,0],['6 AXIS','VISION','QC CELL'],{color:'#444c55',center:true});
   for(const joint of [j.j2,j.j3])for(let k=0;k<6;k++)cylinder(joint,4,3,[45*Math.cos(k*Math.PI/3),45*Math.sin(k*Math.PI/3),104],matRail,'z',6);
 
-  j.j4 = new THREE.Group(); j.j4.position.set(L.fore - 30, 0, 0); j.j3.add(j.j4);       // J4 繞 X（前臂軸 roll）
+  j.j4 = new THREE.Group(); j.j4.position.set(L.fore - L.wrist1, L.foreOffset, 0); j.j3.add(j.j4);       // J4 繞 X（前臂軸 roll）
   const w1 = cyl(52, 52, L.wrist1, matArm); w1.rotation.z = Math.PI / 2; w1.position.x = L.wrist1 / 2; j.j4.add(w1);
 
   j.j5 = new THREE.Group(); j.j5.position.set(L.wrist1, 0, 0); j.j4.add(j.j5);          // J5 繞 Z（pitch）
@@ -85,23 +89,24 @@ export function createRobot() {
   const hookTip = box(10, 4, 20, matPU); hookTip.position.set(-62, -38, 190); tool.add(hookTip);
   const pressPad = cyl(11, 11, 8, matPU); pressPad.rotation.x = Math.PI / 2; pressPad.position.set(-62, -30, 189); tool.add(pressPad);
 
-  // 3D 線雷射輪廓儀（左側）
+  // 3D 線雷射輪廓儀（左側）：Gocator 2520 CD 47.5 mm、MR 25 mm，TCP 取量測範圍中央
   const profiler = box(70, 40, 90, matArmD); profiler.position.set(64, 20, 90); tool.add(profiler);
-  const profWin = box(40, 4, 60, matLaser); profWin.position.set(64, -1, 100); tool.add(profWin);
-  const laserPlane = new THREE.Mesh(new THREE.PlaneGeometry(90, 320), new THREE.MeshBasicMaterial({ color: 0xff2a2a, transparent: true, opacity: 0.0, side: THREE.DoubleSide, depthWrite: false }));
-  laserPlane.position.set(64, 0, 260); tool.add(laserPlane);
+  const profWin = box(40, 20, 4, matLaser); profWin.position.set(64, 20, 136); tool.add(profWin);
+  const laserPlane = new THREE.Mesh(new THREE.PlaneGeometry(30, 70), new THREE.MeshBasicMaterial({ color: 0xff2a2a, transparent: true, opacity: 0.0, side: THREE.DoubleSide, depthWrite: false }));
+  laserPlane.rotation.x = Math.PI / 2; laserPlane.position.set(64, 20, 170); tool.add(laserPlane);
 
   // TCP 定義：相機 TCP（鏡頭前方工作距離 150 mm）、鉤爪 TCP、雷射 TCP
   const tcpCam = new THREE.Object3D(); tcpCam.position.set(0, 0, 145 + 150); tool.add(tcpCam);
   const tcpHook = new THREE.Object3D(); tcpHook.position.set(-62, -38, 200); tool.add(tcpHook);
   const tcpPress = new THREE.Object3D(); tcpPress.position.set(-62,-30,193); tool.add(tcpPress);
-  const tcpLaser = new THREE.Object3D(); tcpLaser.position.set(64, 0, 330); tool.add(tcpLaser);
+  const tcpLaser = new THREE.Object3D(); tcpLaser.position.set(64, 20, 195); tool.add(tcpLaser);
 
 
   // ---- 關節狀態 ----
   const q = { rail: 0, j1: -90 * D2R, j2: -30 * D2R, j3: 0 * D2R, j4: 0, j5: -50 * D2R, j6: 0 };
-  // Concept arm limits; replace with the selected OEM model before commissioning.
-  const limits = { j1: [-170, 170], j2: [-120, 120], j3: [-150, 150], j4: [-360, 360], j5: [-170, 170], j6: [-360, 360] };
+  // VM-60B1 型錄範圍：J1 ±170、J2 +135/−90、J3 +168/−80、J4 ±185、J5 ±120、J6 ±360。
+  // 換算到本模型座標（假設 DENSO J2 零點為上臂垂直、J3=90° 為前臂水平；正向相反）：j2 = −J2、j3 = 90° − J3。採用前以 DENSO CAD 核對。
+  const limits = { j1: [-170, 170], j2: [-135, 90], j3: [-78, 170], j4: [-185, 185], j5: [-120, 120], j6: [-360, 360] };
   const home = { ...q };
   const tcps={cam:tcpCam,hook:tcpHook,press:tcpPress,laser:tcpLaser};
 
@@ -119,7 +124,6 @@ export function createRobot() {
   const ik=createIK({q,j,tool,apply,limits});
 
   const _p = new THREE.Vector3();
-  function clampJ(name,v){const [lo,hi]=limits[name];return THREE.MathUtils.clamp(v,lo*D2R,hi*D2R);}
 
   /** 依工具軸方向建立工具座標系（z = dir，y 盡量朝上） */
   const _R = new THREE.Matrix4(), _x = new THREE.Vector3(), _y = new THREE.Vector3(), _z = new THREE.Vector3(), _up = new THREE.Vector3();
@@ -135,8 +139,18 @@ export function createRobot() {
   const curRotation=new THREE.Quaternion();tool.getWorldQuaternion(curRotation);
   const tcpWorld = new THREE.Vector3();
 
+  const JOINTS=['j1','j2','j3','j4','j5','j6'];
+  // PTP 模式：關節各自以限速逼近目標關節角，笛卡兒追蹤狀態同步到目前工具位姿，切回直線移動時不跳動。
+  function syncCur(){cur.tcp=goal.tcp;getTcpWorld(cur.tcp,cur.target);tool.getWorldQuaternion(curRotation);cur.dir.set(0,0,1).applyQuaternion(curRotation);}
   function update(dt) {
     if(dt<=0)return getTcpWorld(cur.tcp,tcpWorld);
+    if(goal.joints){
+      // 同步 PTP：各軸與滑軌依同一比例前進、同時到位，路徑為關節空間直線（與實機同步插值一致）。
+      let f=1;for(const name of JOINTS){const d=Math.abs(goal.joints[name]-q[name]);if(d>1e-9)f=Math.min(f,1.8*dt/d);}
+      const dr=Math.abs(goal.joints.rail-q.rail);if(dr>1e-9)f=Math.min(f,400*dt/dr);
+      for(const name of [...JOINTS,'rail'])q[name]+=(goal.joints[name]-q[name])*f;
+      apply();syncCur();return getTcpWorld(goal.tcp,tcpWorld);
+    }
     if(cur.tcp!==goal.tcp){cur.target.copy(getTcpWorld(goal.tcp));cur.tcp=goal.tcp;}
     // 目標點以限速逼近（mm/s），滑軌獨立
     const d = _p.copy(goal.target).sub(cur.target); const dist = d.length();
@@ -148,32 +162,64 @@ export function createRobot() {
     q.rail += Math.abs(dr) > rs ? Math.sign(dr) * rs : dr;
     apply();
     const previous={...q};ik.solve(tcps[cur.tcp],cur.target,curRotation,14);
-    for(const name of ['j1','j2','j3','j4','j5','j6'])q[name]=previous[name]+THREE.MathUtils.clamp(q[name]-previous[name],-1.8*dt,1.8*dt);
+    for(const name of JOINTS)q[name]=previous[name]+THREE.MathUtils.clamp(q[name]-previous[name],-1.8*dt,1.8*dt);
     apply();tcps[cur.tcp].getWorldPosition(tcpWorld);
     return tcpWorld;
   }
 
   function getTcpWorld(name, out = new THREE.Vector3()) { return tcps[name].getWorldPosition(out); }
-  function seed(){
+  // 幾何初始解：肘部上下 × 手腕翻轉共四組，角度折回限位內；snap 逐組求解，取誤差最小者。
+  function wrapJ(name,v){const [lo,hi]=limits[name].map(x=>x*D2R);for(const k of [0,2*Math.PI,-2*Math.PI])if(v+k>=lo&&v+k<=hi)return v+k;return THREE.MathUtils.clamp(v,lo,hi);}
+  function seeds(){
     const dir=new THREE.Vector3(0,0,1).applyQuaternion(goal.quaternion);
     const origin=goal.target.clone().sub(tcps[goal.tcp].position.clone().applyQuaternion(goal.quaternion));
-    const wrist=origin.addScaledVector(dir,-L.wrist2-L.flange).sub(new THREE.Vector3(q.rail,144+60+L.base+210,root.position.z));
-    const radial=Math.hypot(wrist.x,wrist.z),a=L.upper,b=L.fore-30+L.wrist1;
-    q.j1=Math.atan2(-wrist.z,wrist.x);
-    const beta=-Math.acos(THREE.MathUtils.clamp((radial*radial+wrist.y*wrist.y-a*a-b*b)/(2*a*b),-1,1));
-    q.j2=Math.atan2(wrist.y,radial)-Math.atan2(b*Math.sin(beta),a+b*Math.cos(beta))-Math.PI/2;
-    q.j3=beta+Math.PI/2;
-    const shoulder=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),q.j1).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),q.j2+q.j3));
-    const relative=shoulder.invert().multiply(goal.quaternion).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),-Math.PI/2));
-    const m=new THREE.Matrix4().makeRotationFromQuaternion(relative).elements;
-    q.j5=Math.acos(THREE.MathUtils.clamp(m[0],-1,1));
-    if(Math.sin(q.j5)>.00001){q.j4=Math.atan2(m[2],m[1]);q.j6=Math.atan2(m[8],-m[4]);}
-    else{q.j4=0;q.j6=Math.atan2(m[6],m[5]);}
-    for(const name in limits)q[name]=clampJ(name,q[name]);apply();
+    const wrist=origin.addScaledVector(dir,-L.wrist2-L.flange).sub(new THREE.Vector3(q.rail,144+60+L.riser+L.base+210,root.position.z));
+    const radial=Math.hypot(wrist.x,wrist.z)-L.shoulderX,a=L.upper,b=Math.hypot(L.fore,L.foreOffset),phi=Math.atan2(L.foreOffset,L.fore);
+    const j1=Math.atan2(-wrist.z,wrist.x),elbow=Math.acos(THREE.MathUtils.clamp((radial*radial+wrist.y*wrist.y-a*a-b*b)/(2*a*b),-1,1)),out=[];
+    for(const beta of [-elbow,elbow]){
+      const j2=Math.atan2(wrist.y,radial)-Math.atan2(b*Math.sin(beta),a+b*Math.cos(beta))-Math.PI/2,j3=beta+Math.PI/2-phi;
+      const shoulder=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),j1).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),j2+j3));
+      const relative=shoulder.invert().multiply(goal.quaternion).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),-Math.PI/2));
+      const m=new THREE.Matrix4().makeRotationFromQuaternion(relative).elements;
+      const j5=Math.acos(THREE.MathUtils.clamp(m[0],-1,1));
+      let j4=0,j6=Math.atan2(m[6],m[5]);if(Math.sin(j5)>.00001){j4=Math.atan2(m[2],m[1]);j6=Math.atan2(m[8],-m[4]);}
+      for(const [w4,w5,w6] of [[j4,j5,j6],[j4+Math.PI,-j5,j6+Math.PI]]){
+        const c={j1,j2,j3,j4:w4,j5:w5,j6:w6};for(const name in limits)c[name]=wrapJ(name,c[name]);out.push(c);
+      }
+    }
+    return out;
   }
-  function snap(){Object.assign(q,home);q.rail=THREE.MathUtils.clamp(goal.rail,-1100,1100);cur.target.copy(goal.target);cur.dir.copy(goal.dir);curRotation.copy(goal.quaternion);cur.tcp=goal.tcp;seed();ik.solve(tcps[goal.tcp],goal.target,goal.quaternion,100);return getTcpWorld(goal.tcp);}
+  function solveIK(){
+    Object.assign(q,home);q.rail=THREE.MathUtils.clamp(goal.rail,-1100,1100);cur.target.copy(goal.target);cur.dir.copy(goal.dir);curRotation.copy(goal.quaternion);cur.tcp=goal.tcp;
+    let best=null,score=Infinity;
+    for(const c of seeds()){Object.assign(q,c);apply();ik.solve(tcps[goal.tcp],goal.target,goal.quaternion,100);const e=error(),v=e.position+e.angle*10;if(v<score){score=v;best={...q};}if(v<.05)break;}
+    Object.assign(q,best);apply();
+  }
+  function snap(){
+    if(goal.joints){Object.assign(q,goal.joints);apply();syncCur();return getTcpWorld(goal.tcp);}
+    solveIK();return getTcpWorld(goal.tcp);
+  }
+  // 位姿→關節角（快取於位姿物件）；同一位姿永遠得到同一組解，倒退／跳站結果一致。
+  const jointCache=new WeakMap();
+  function solveJoints(pose){
+    let c=jointCache.get(pose);if(c)return c;
+    const saved={...q},savedGoal={target:goal.target.clone(),quaternion:goal.quaternion.clone(),dir:goal.dir.clone(),tcp:goal.tcp,rail:goal.rail,joints:goal.joints};
+    const curSaved={target:cur.target.clone(),rotation:curRotation.clone(),dir:cur.dir.clone(),tcp:cur.tcp};
+    setGoal(pose);solveIK();const e=error();c={...q,position:e.position,angle:e.angle};
+    Object.assign(q,saved);Object.assign(goal,savedGoal);cur.target.copy(curSaved.target);curRotation.copy(curSaved.rotation);cur.dir.copy(curSaved.dir);cur.tcp=curSaved.tcp;apply();
+    jointCache.set(pose,c);return c;
+  }
+  function reach(pose){const c=solveJoints(pose);return {position:c.position,angle:c.angle};}
   function poseFor(tcp,target,dir,rail=0){const rotation=new THREE.Quaternion().setFromRotationMatrix(frameFor(dir));return {origin:target.clone().sub(tcps[tcp].position.clone().applyQuaternion(rotation)),rotation,rail,tcp};}
-  function setPose(pose){goal.tcp=pose.tcp;goal.quaternion.copy(pose.rotation);goal.dir.set(0,0,1).applyQuaternion(pose.rotation);goal.target.copy(pose.origin).add(tcps[pose.tcp].position.clone().applyQuaternion(pose.rotation));goal.rail=pose.rail;}
+  function setGoal(pose){goal.joints=null;goal.tcp=pose.tcp;goal.quaternion.copy(pose.rotation);goal.dir.set(0,0,1).applyQuaternion(pose.rotation);goal.target.copy(pose.origin).add(tcps[pose.tcp].position.clone().applyQuaternion(pose.rotation));goal.rail=pose.rail;}
+  function setPose(pose){
+    if(!pose.ptp)return setGoal(pose);
+    const a=solveJoints(pose.ptp.from),b=solveJoints(pose.ptp.to),e=pose.ptp.e,joints={rail:THREE.MathUtils.lerp(a.rail,b.rail,e)};
+    for(const name of JOINTS)joints[name]=THREE.MathUtils.lerp(a[name],b[name],e);
+    const saved={...q};Object.assign(q,joints);apply();
+    goal.tcp=pose.ptp.to.tcp;getTcpWorld(goal.tcp,goal.target);tool.getWorldQuaternion(goal.quaternion);goal.dir.set(0,0,1).applyQuaternion(goal.quaternion);goal.rail=joints.rail;goal.joints=joints;
+    Object.assign(q,saved);apply();
+  }
   function error(){const position=getTcpWorld(goal.tcp).distanceTo(goal.target);const axis=new THREE.Vector3(0,0,1).applyQuaternion(tool.getWorldQuaternion(new THREE.Quaternion()));return {position,angle:THREE.MathUtils.radToDeg(axis.angleTo(goal.dir)),rail:Math.abs(q.rail-THREE.MathUtils.clamp(goal.rail,-1100,1100))};}
 
   function setForceColor(f) {
@@ -183,5 +229,5 @@ export function createRobot() {
   function setFlash(on) { flash.intensity = on ? 360 : 0; ringLightMat.emissiveIntensity = on ? .65 : 0.05; }
   function setLaser(on) { laserPlane.material.opacity = on ? 0.35 : 0; profWin.material.emissiveIntensity = on ? 3 : 1.5; }
 
-  return { root,q,home,goal,cur,update,apply,getTcpWorld,setForceColor,setFlash,setLaser,tool,tcpCam,tcpHook,tcpPress,tcpLaser,snap,error,poseFor,setPose };
+  return { root,q,home,goal,cur,update,apply,getTcpWorld,setForceColor,setFlash,setLaser,tool,tcpCam,tcpHook,tcpPress,tcpLaser,snap,error,poseFor,setPose,reach };
 }
