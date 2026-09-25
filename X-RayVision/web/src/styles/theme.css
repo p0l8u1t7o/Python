@@ -203,8 +203,46 @@ table.table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
 .chart-legend { display: flex; gap: var(--sp-3); flex-wrap: wrap; font-size: var(--fs-xs); color: var(--text-2); }
 .chart-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
 
+/* ---- 檢測紀錄：清單＋預覽 ---- */
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.seg button { border: 0; background: var(--surface); color: var(--text-2); font: inherit; font-size: var(--fs-sm); padding: 5px var(--sp-3); cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.tag { display: inline-block; font-size: var(--fs-xs); color: var(--text-2); border: 1px solid var(--border); border-radius: 4px; padding: 0 6px; white-space: nowrap; }
+.runs-page { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.runs-filters { padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--border); background: var(--surface); flex-wrap: wrap; align-items: flex-end; }
+.runs-page > .alert { margin: var(--sp-3) var(--sp-4) 0; }
+.runs-table-scroll { flex: 1; min-height: 0; overflow: auto; padding: var(--sp-4); }
+.table tr.superseded td { color: var(--text-2); }
+.browse-layout { flex: 1; min-height: 0; display: grid; grid-template-columns: 360px 1fr 340px; }
+.browse-list { overflow: auto; border-right: 1px solid var(--border); background: var(--surface); }
+.browse-list-h { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--border); font-size: var(--fs-xs); position: sticky; top: 0; background: var(--surface); z-index: 1; }
+.browse-item { display: flex; gap: var(--sp-2); align-items: flex-start; padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--border); border-left: 3px solid transparent; cursor: pointer; }
+.browse-item:hover { background: var(--bg); }
+.browse-item.active { background: var(--accent-soft); border-left-color: var(--accent); }
+.browse-item.superseded .browse-name, .browse-item.superseded .browse-meta { opacity: 0.6; }
+.browse-item input { margin-top: 3px; }
+.browse-item-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.browse-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); }
+.browse-meta { display: flex; gap: var(--sp-2); flex-wrap: wrap; align-items: center; font-size: var(--fs-xs); color: var(--text-2); }
+.browse-viewer { position: relative; background: var(--viewer-bg); min-height: 0; }
+.browse-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #aaa; }
+.browse-info { border-left: 1px solid var(--border); background: var(--surface); overflow: auto; padding: var(--sp-4); min-height: 0; }
+
+/* ---- 配方試跑 ---- */
+.trial-layout { display: grid; grid-template-columns: 1fr 360px; gap: var(--sp-4); }
+.trial-viewer { position: relative; height: 520px; border-radius: var(--radius); overflow: hidden; background: var(--viewer-bg); }
+.progress { height: 8px; border-radius: 999px; background: var(--border); overflow: hidden; }
+.progress > div { height: 100%; background: var(--accent); }
+
 @media (max-width: 1280px) {
   .review-layout { grid-template-columns: 1fr 380px; }
+  .browse-layout { grid-template-columns: 300px 1fr 300px; }
+}
+@media (max-width: 900px) {
+  .browse-layout { grid-template-columns: 1fr; grid-template-rows: 40vh 50vh auto; overflow: auto; }
+  .browse-info { border-left: 0; border-top: 1px solid var(--border); }
+  .trial-layout { grid-template-columns: 1fr; }
 }
 
 /* ---- 列印 (報告) ---- */

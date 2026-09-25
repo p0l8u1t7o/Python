@@ -128,6 +128,7 @@ C:\Program Files\X-RayVision\              安裝目錄 (XRAYVISION_HOME)
   launcher\launcher.py、launcher.json      啟動器與設定 (資料目錄、連接埠)
   launcher\python\                         啟動器專用執行環境；進版時不替換
   service\XRayVisionService.exe、.xml      Windows 服務包裝 (WinSW 2.12，MIT 授權)
+  service\*-service.cmd、service-control.ps1  啟動／停止／重新啟動／查詢服務的腳本
   versions\<版本>\python\                  產品執行環境 (Python 3.12 embeddable＋固定版本依賴)
   versions\<版本>\app\xrayvision\          程式
   versions\<版本>\app\web\dist\            前端
@@ -148,6 +149,7 @@ C:\ProgramData\X-RayVision\                資料目錄
 - 服務包裝程式執行啟動器；啟動器啟動目前版本的平台服務（`python -m xrayvision serve`），監看其狀態，異常結束時依 2、4、8…最多 60 秒退避重新啟動。啟動器本身異常結束時，服務包裝程式於 10／30／60 秒後重新啟動。
 - 停止服務：服務包裝程式送出 Ctrl+C 給啟動器，啟動器對平台服務送出 CTRL_BREAK 正常關閉（停止佇列與分析子行程），30 秒內未結束則結束整個行程樹。服務包裝程式的停止逾時為 90 秒。
 - 平台服務只綁定 `127.0.0.1:8600`，不需開放防火牆。
+- 服務控制腳本：`service\start-service.cmd`、`stop-service.cmd`、`restart-service.cmd`、`service-status.cmd` 呼叫 `service-control.ps1`，透過服務包裝程式啟動／停止，未提升權限時以 UAC 要求提升；啟動後等待 `/api/health` 回應（最長 180 秒）。顯示文字依 Windows 顯示語言為繁體中文或英文。開始功能表有對應捷徑。
 
 ### 5.3 更新檔 `.xrvupd`
 

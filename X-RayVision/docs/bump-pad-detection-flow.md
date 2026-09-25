@@ -1,7 +1,7 @@
-# Micro Bump／Pad 偏移檢測流程（BumpPadShift）
+# Micro Bump／Pad 偏移檢測流程
 
-本文說明 `BumpPadShift.py` 的檢測邏輯與使用流程，只描述概念，不談程式細節。
-目前這支程式是獨立的命令列工具，**還沒有整合進 `app.py` 網頁**；最後一節列出整合的選項。
+本文說明微凸塊對位模組（`xrayvision/inspections/bump_alignment/`）的檢測邏輯與使用流程，只描述概念，不談程式細節。
+此邏輯最初寫在批次工具 `BumpPadShift.py`，已整合為平台的檢測模組，舊工具已移除。
 
 ---
 
@@ -123,11 +123,11 @@ Flip-chip 封裝在 X 光俯視影像中，晶片上的 micro bump 應該正好�
 
 | 檔案 | 內容 |
 |---|---|
-| `<影像>_overlay.jpg` | 疊圖：紅圈＝bump、綠圈＝pad、黃線＝偏移（放大 10 倍）、陣列框與大箭頭（放大 40 倍）、紫色 ×＝被剔除的點與原因 |
-| `<影像>_sites.csv` | 每顆一列：bump／pad 圓心與半徑、偏移、擬合品質、所屬陣列、是否採用 |
-| `<影像>_arrays.csv` | 每個陣列一列：平移、旋轉、縮放、內點數、標準誤、等級 |
-| `summary.csv` | 每張影像一列 |
-| `report.md` | 整批報告：各影像與陣列的偏移、同視野重拍比對、輪廓線高度的敏感度 |
+| `<影像>.overlay.jpg` | 疊圖：凸塊圓、焊墊圓、偏移向量（放大顯示）、陣列框與整體偏移箭頭、被剔除的點與原因 |
+| `<影像>.result.json` | 完整結果：逐點量測、陣列平移／旋轉／縮放與標準誤、成像品質、判定 |
+| `summary.csv`、`quality.csv` | 每張影像一列的結果摘要與成像品質 |
+
+透過網頁服務分析時，同樣的內容顯示在影像檢閱頁與報告中。
 
 可信度等級依可用點數、內點比例與標準誤分為 high／mid／low。
 
@@ -136,24 +136,25 @@ Flip-chip 封裝在 X 光俯視影像中，晶片上的 micro bump 應該正好�
 ## 5. 使用流程
 
 ```
-python BumpPadShift.py image/Batch1 image/Batch2 --out temp/output --sweep
+python -m xrayvision analyze image/Batch1 image/Batch2 --recipe recipes/bump_alignment_default.json --out temp/out
+python -m xrayvision validate image/Batch2/1.tiff image/Batch2/2.tiff --recipe recipes/bump_alignment_default.json --out temp/val
 ```
 
-1. 把同一批影像放在同一個資料夾（例如 `image/Batch2/`）。
-2. 執行上面的指令，可一次給多個資料夾。
-3. 先看 `report.md` 的總表，找出偏移大或等級低的影像。
-4. 打開該影像的 `_overlay.jpg`，確認紅圈、綠圈有沒有抓對，以及被剔除的點是否合理。
-5. 需要逐顆數據時，再看 `_sites.csv`。
+1. 把同一批影像放在同一個資料夾（例如 `image/Batch2/`），可一次給多個資料夾。
+2. 先看 `summary.csv`，找出偏移大或判定為需複判的影像。
+3. 打開該影像的 `.overlay.jpg`，確認凸塊圓、焊墊圓有沒有抓對，以及被剔除的點是否合理。
+4. 同視野重拍的重複性以 `validate` 指令比較。
+5. 產線上改由網頁服務的匯入或資料夾監看執行，結果在影像檢閱頁查看。
 
-常用參數：
+常用設定：
 
-| 參數 | 用途 |
+| 配方參數 | 用途 |
 |---|---|
-| `--px-um 數值` | 提供每像素微米數，結果會多列 µm |
-| `--sweep` | 另用兩組輪廓線高度重算，列出結果的敏感度 |
-| `--bump-level` / `--pad-level` | 調整兩條輪廓線的高度（預設 0.75 / 0.25） |
-| `--lobe auto／on／off` | 露出弧模式（預設 auto：只用於 8-bit 影像） |
-| `--workers N` | 平行處理的數量 |
+| `pixel_size_um` | 每像素微米數，結果會多列 µm |
+| `bump_level` / `pad_level` | 兩條輪廓線的高度（預設 0.75 / 0.25）；以不同高度各跑一次可看敏感度 |
+| `lobe_mode` | 露出弧模式（預設 auto：只用於 8-bit 影像） |
+
+命令列 `--workers N` 指定平行處理的數量。
 
 ---
 
@@ -176,24 +177,3 @@ python BumpPadShift.py image/Batch1 image/Batch2 --out temp/output --sweep
 3. **Batch1 是轉存影像**：灰階非線性、雜訊大，單顆數據較不可靠，整體趨勢較可信。
 4. **斜射視差**：若 X 光不是正射，bump 與 pad 高度不同也會產生固定方向的錯開，單張影像無法和真正的晶片偏移區分。
 5. **疊在大球上的 bump 不量**：有些區域可用點數因此偏少。
-
----
-
-## 8. 與網頁工具（app.py）的關係與整合選項
-
-目前網頁 `app.py` 仍使用舊的 `FlipChipShift.py`：
-
-- 16-bit 影像會先被壓成 8-bit 再量。
-- 用的是 8-bit 的舊方法。
-
-所以網頁結果會和本工具不同。
-
-可選的整合方式：
-
-| 選項 | 做法 | 優點 | 代價 |
-|---|---|---|---|
-| A. 並存，可切換 | 匯入時選「舊方法／新方法」，16-bit 預設新方法 | 保留既有標註流程與舊結果可比對 | 前端要同時支援兩種結果格式 |
-| B. 全面改用新方法 | 網頁只呼叫 `BumpPadShift` | 程式單純、結果一致 | 舊方法的晶片矩形、圓尺寸表等需改寫或移除 |
-| C. 維持分開 | 網頁照舊，新方法只用命令列批次跑 | 不用改網頁 | 兩套結果並存，16-bit 影像在網頁上量不準 |
-
-不論選哪一種整合方式，網頁的顯示圖都應改從 16-bit 原始值產生，避免壓縮失真。

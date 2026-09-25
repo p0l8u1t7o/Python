@@ -4,6 +4,7 @@ import { get, send, upload } from "../api/client";
 import type { ModelRow, ModuleValidation, RecipeRow, RecipeSummary } from "../api/types";
 import { useApp } from "../app/context";
 import { Layout } from "../components/Layout";
+import { ReleaseDialog } from "../components/RecipeRelease";
 import { Card, Empty, ErrorBox, Modal, fmt, fmtTime, useLoad } from "../components/ui";
 
 export function Recipes() {
@@ -13,7 +14,8 @@ export function Recipes() {
   const [showRetired, setShowRetired] = useState(false);
   const [list, error, reload] = useLoad(() => get<RecipeSummary[]>("/api/recipes", { include_retired: showRetired ? "true" : "" }), [showRetired]);
   const [actionError, setActionError] = useState<unknown>(null);
-  const [confirm, setConfirm] = useState<{ pk: number; what: "release" | "retire" | "delete"; name: string } | null>(null);
+  const [confirm, setConfirm] = useState<{ pk: number; what: "retire" | "delete"; name: string } | null>(null);
+  const [release, setRelease] = useState<{ pk: number; name: string } | null>(null);
   const [newModule, setNewModule] = useState<boolean>(false);
 
   const act = async () => {
@@ -30,11 +32,10 @@ export function Recipes() {
     }
   };
 
-  const newVersionFrom = async (pk: number) => {
+  // 修改：以該版本內容建立下一版草稿 (已有草稿時開啟該草稿)
+  const revise = async (pk: number) => {
     try {
-      const src = await get<RecipeRow>(`/api/recipes/${pk}`);
-      const body = { ...src.body, modules: src.body.modules.map(({ module_version: _v, ...m }) => m) };
-      const row = await send<RecipeRow>("POST", "/api/recipes", { body, note: `from v${src.version}` });
+      const row = await send<RecipeRow>("POST", `/api/recipes/${pk}/revise`);
       nav(`/recipes/${row.id}`);
     } catch (e) {
       setActionError(e);
@@ -64,10 +65,10 @@ export function Recipes() {
                     <td><div className="row" style={{ justifyContent: "flex-end" }}>
                       <button className="btn small" onClick={() => nav(`/recipes/${v.id}`)}>{v.status === "draft" && edit ? t("ui.edit") : t("ui.view")}</button>
                       {edit && v.status === "draft" && <>
-                        <button className="btn small primary" onClick={() => setConfirm({ pk: v.id, what: "release", name: `${r.recipe_id} v${v.version}` })}>{t("ui.recipe.release")}</button>
+                        <button className="btn small primary" onClick={() => setRelease({ pk: v.id, name: `${r.recipe_id} v${v.version}` })}>{t("ui.recipe.release")}</button>
                         <button className="btn small danger" onClick={() => setConfirm({ pk: v.id, what: "delete", name: `${r.recipe_id} v${v.version}` })}>{t("ui.delete")}</button>
                       </>}
-                      {edit && v.status !== "draft" && <button className="btn small" onClick={() => newVersionFrom(v.id)}>{t("ui.recipe.new_version")}</button>}
+                      {edit && v.status !== "draft" && <button className="btn small" onClick={() => revise(v.id)}>{t("ui.recipe.revise")}</button>}
                       {edit && v.status === "released" && <button className="btn small" onClick={() => setConfirm({ pk: v.id, what: "retire", name: `${r.recipe_id} v${v.version}` })}>{t("ui.recipe.retire")}</button>}
                     </div></td>
                   </tr>
@@ -87,6 +88,7 @@ export function Recipes() {
           <p className="muted">{t(`ui.recipe.confirm_${confirm.what}_hint`)}</p>
         </Modal>
       )}
+      {release && <ReleaseDialog pk={release.pk} name={release.name} onClose={() => setRelease(null)} onReleased={() => reload()} />}
       {newModule && (
         <Modal title={t("ui.recipe.new")} onClose={() => setNewModule(false)}>
           <div className="stack">

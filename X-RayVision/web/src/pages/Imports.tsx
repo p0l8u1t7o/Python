@@ -1,12 +1,13 @@
 import { useRef, useState } from "react";
 import { get, send, upload } from "../api/client";
-import type { ImportResult, Job, RecipeSummary } from "../api/types";
+import type { ImportResult, Job, ReanalysisProgress, RecipeSummary } from "../api/types";
 import { useApp, usePolling } from "../app/context";
 import { Layout } from "../components/Layout";
 import { Card, Empty, ErrorBox, fmtTime, useLoad } from "../components/ui";
 
 export function Imports() {
-  const { t } = useApp();
+  const { t, can } = useApp();
+  const [progress, setProgress] = useState<ReanalysisProgress | null>(null);
   const [recipes] = useLoad(() => get<RecipeSummary[]>("/api/recipes"), []);
   const released = (recipes || []).flatMap((r) =>
     r.versions.filter((v) => v.status === "released").map((v) => ({ ...v, recipe_id: r.recipe_id })));
@@ -21,7 +22,18 @@ export function Imports() {
   const [status, setStatus] = useState("");
   const input = useRef<HTMLInputElement>(null);
 
-  const refreshJobs = () => get<Job[]>("/api/jobs", { status, limit: 200 }).then(setJobs).catch(setError);
+  const refreshJobs = () => {
+    get<ReanalysisProgress>("/api/jobs/reanalysis").then(setProgress).catch(() => setProgress(null));
+    return get<Job[]>("/api/jobs", { status, limit: 200 }).then(setJobs).catch(setError);
+  };
+  const cancelReanalysis = async () => {
+    try {
+      await send("POST", "/api/jobs/reanalysis/cancel");
+      refreshJobs();
+    } catch (e) {
+      setError(e);
+    }
+  };
   usePolling(refreshJobs, 3000, [status]);
 
   const doUpload = async (files: FileList | File[]) => {
@@ -96,6 +108,22 @@ export function Imports() {
             )}
           </div>
         </Card>
+        {progress?.active && (
+          <Card title={t("ui.reanalysis.progress")}
+            actions={can("import") ? <button className="btn small" onClick={cancelReanalysis}>{t("ui.reanalysis.cancel_rest")}</button> : undefined}>
+            <div className="stack">
+              <div className="progress"><div style={{ width: `${Math.round((((progress.done || 0) + (progress.failed || 0) + (progress.cancelled || 0)) / Math.max(1, progress.total || 0)) * 100)}%` }} /></div>
+              <div className="muted" style={{ fontSize: "var(--fs-sm)" }}>
+                {t("ui.reanalysis.progress_text")
+                  .replace("{done}", String((progress.done || 0) + (progress.failed || 0)))
+                  .replace("{total}", String((progress.total || 0) - (progress.cancelled || 0)))
+                  .replace("{queued}", String(progress.queued || 0))
+                  .replace("{running}", String(progress.running || 0))
+                  .replace("{failed}", String(progress.failed || 0))}
+              </div>
+            </div>
+          </Card>
+        )}
         <Card title={t("ui.jobs")} bodyClass=""
           actions={<select value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="">{t("ui.all")}</option>

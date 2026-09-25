@@ -10,6 +10,7 @@
     launcher/launcher.py               啟動器 (只用標準函式庫)
     launcher/python/                   啟動器專用執行環境 (進版時不替換)
     service/XRayVisionService.exe,.xml Windows 服務包裝
+    service/*-service.cmd、service-control.ps1  啟動／停止服務腳本
     versions/<版本>/python/            產品執行環境 (embeddable Python＋固定版本依賴)
     versions/<版本>/app/               程式 (xrayvision/) 與前端 (web/dist/)
     versions/<版本>/version.json
@@ -171,6 +172,9 @@ def stage_tree(stage, version, cache, web_dist, notes):
     shutil.copy2(fetch(WINSW_URL, cache), os.path.join(sdir, SERVICE_EXE + ".exe"))
     with open(os.path.join(sdir, SERVICE_EXE + ".xml"), "w", encoding="utf-8") as f:
         f.write(SERVICE_XML)
+    # 啟動／停止／重新啟動／查詢服務的腳本 (開始功能表捷徑指向這些檔案)
+    for name in sorted(os.listdir(os.path.join(ROOT, "installer", "scripts"))):
+        shutil.copy2(os.path.join(ROOT, "installer", "scripts", name), sdir)
     with open(os.path.join(stage, "current.json"), "w", encoding="utf-8") as f:
         json.dump(dict(version=version, switched_at=time.strftime("%Y-%m-%dT%H:%M:%S")), f, indent=1)
 

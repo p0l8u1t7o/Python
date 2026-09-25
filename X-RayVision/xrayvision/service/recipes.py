@@ -2,11 +2,12 @@
 配方版本管理
 
 - 同一配方代碼 (recipe_id) 可有多個版本；每個版本狀態為 draft (草稿)、released (已發布)、retired (停用)。
-- 只有草稿可修改；發布後內容不可變 (資料庫觸發器強制)，要修改須另存新版本。
+- 只有草稿可修改；發布後內容不可變 (資料庫觸發器強制)，「修改」會以該版本內容建立下一版草稿 (revise)。
 - 分析只使用已發布的版本；資料夾監看使用該配方代碼的最新已發布版本。
 - 每個版本內容以完整 JSON 保存，並鎖定檢測模組版本 (發布時記錄當時的模組版本)。
 """
 import json
+import re
 
 from ..core import plugin
 from ..core.pipeline import Recipe, RecipeError
@@ -30,6 +31,33 @@ def _row(r):
     r["name"] = json.loads(r.pop("name_json"))
     r["body"] = json.loads(r.pop("body_json"))
     return r
+
+
+_DIFF_SKIP = {"version", "module_version"}
+
+
+def _flatten(obj, prefix=""):
+    out = {}
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k in _DIFF_SKIP:
+                continue
+            p = f"{prefix}.{k}" if prefix else str(k)
+            if isinstance(v, dict):                     # 空的 dict 與未設定視為相同
+                out.update(_flatten(v, p))
+            else:
+                out[p] = v
+    return out
+
+
+def body_diff(old, new):
+    """配方內容差異；模組以 module_id 對應，區域、品質規則等清單整體比較"""
+    def norm(b):
+        b = dict(b)
+        b["modules"] = {m["module_id"]: m for m in b.get("modules", [])}
+        return _flatten(b)
+    a, b = norm(old), norm(new)
+    return [dict(path=k, old=a.get(k), new=b.get(k)) for k in sorted(set(a) | set(b)) if a.get(k) != b.get(k)]
 
 
 class RecipeStore:
@@ -136,6 +164,45 @@ class RecipeStore:
             raise RecipeStoreError("recipe_not_draft", pk)
         self.db.execute("DELETE FROM recipes WHERE id = ?", (pk,))
         self.db.audit(actor, "recipe.delete_draft", "recipe", pk, recipe_id=cur["recipe_id"], version=cur["version"])
+
+    def revise(self, pk, actor):
+        """
+        「修改」：已發布／停用的版本以其內容建立下一版草稿；同一配方已有草稿時直接回傳該草稿 (不產生第二份)。
+        草稿的 note 記錄來源版本 (from vN)，供差異比對。
+        """
+        src = self.get(pk)
+        if src is None:
+            raise RecipeStoreError("recipe_not_found", pk)
+        if src["status"] == "draft":
+            return src
+        cur = _row(self.db.one("SELECT * FROM recipes WHERE recipe_id = ? AND status = 'draft' ORDER BY version DESC "
+                               "LIMIT 1", (src["recipe_id"],)))
+        if cur is not None:
+            return cur
+        body = dict(src["body"], modules=[{k: v for k, v in m.items() if k != "module_version"}
+                                          for m in src["body"]["modules"]])
+        return self.create_draft(body, actor, note=f"from v{src['version']}")
+
+    def base_of(self, row):
+        """草稿的比對基準：note 記錄的來源版本，沒有時取較早的最新發布版本"""
+        m = re.match(r"from v(\d+)", row.get("note") or "")
+        if m:
+            base = self.get_version(row["recipe_id"], int(m.group(1)))
+            if base is not None:
+                return base
+        return _row(self.db.one("SELECT * FROM recipes WHERE recipe_id = ? AND version < ? AND status != 'draft' "
+                                "ORDER BY version DESC LIMIT 1", (row["recipe_id"], row["version"])))
+
+    def diff(self, pk):
+        """與比對基準的差異：[dict(path, old, new)]；path 以點號分隔 (模組以 module_id 表示)"""
+        row = self.get(pk)
+        if row is None:
+            raise RecipeStoreError("recipe_not_found", pk)
+        base = self.base_of(row)
+        if base is None:
+            return dict(base=None, changes=[])
+        return dict(base=dict(id=base["id"], version=base["version"], status=base["status"]),
+                    changes=body_diff(base["body"], row["body"]))
 
     def to_recipe(self, row):
         """

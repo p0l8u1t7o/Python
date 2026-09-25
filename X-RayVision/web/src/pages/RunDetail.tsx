@@ -1,15 +1,27 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { get, send } from "../api/client";
-import type { Finding, Judgment, ModuleResult, RecipeSummary, RunDetail as RunDetailT } from "../api/types";
+import type { Finding, HistoryItem, Judgment, ModuleResult, RunDetail as RunDetailT } from "../api/types";
 import { reasonText, useApp } from "../app/context";
 import { FindingTable, SummaryKV } from "../components/ModuleSummary";
 import { DiagnosticsDialog } from "../components/DiagnosticsDialog";
 import { ImageViewer, buildShapes, layersOf, pickFinding } from "../components/ImageViewer";
 import { Layout } from "../components/Layout";
-import { ErrorBox, JudgmentBadge, Modal, QualityBadge, fmt, fmtSigned, fmtTime, useLoad } from "../components/ui";
+import { ReanalyzeDialog } from "../components/ReanalyzeDialog";
+import { ErrorBox, JudgmentBadge, QualityBadge, fmt, fmtSigned, fmtTime, useLoad } from "../components/ui";
+import { RUNS_NAV_KEY } from "./Runs";
 
-type Tab = "result" | "quality" | "groups" | "object" | "acq" | "review";
+type Tab = "result" | "quality" | "groups" | "object" | "acq" | "history" | "review";
+
+// 紀錄頁當時的清單順序 (上一張／下一張、返回原位置)
+function runsNav(): { ids: number[]; query: string } | null {
+  try {
+    const v = JSON.parse(sessionStorage.getItem(RUNS_NAV_KEY) || "null");
+    return v && Array.isArray(v.ids) ? v : null;
+  } catch {
+    return null;
+  }
+}
 
 export function RunDetail() {
   const { id } = useParams();
@@ -26,6 +38,7 @@ export function RunDetail() {
   const [picked, setPicked] = useState<{ moduleId: string; finding: Finding } | null>(null);
   const [showDiag, setShowDiag] = useState(false);
   const [showReanalyze, setShowReanalyze] = useState(false);
+  useEffect(() => setPicked(null), [runId]);          // 上一張／下一張切換時清除點選的物件
 
   const shapes = useMemo(() => (data ? buildShapes(data.result, modules, vscale, t("ui.group")) : []),
     [data, modules, vscale, t]);
@@ -36,10 +49,20 @@ export function RunDetail() {
   }
   const { run, result, reviews } = data;
   const imgSrc = `/api/runs/${runId}/image?max_size=4096`;
+  const navList = runsNav();
+  const idx = navList ? navList.ids.indexOf(runId) : -1;
+  const prevId = idx > 0 ? navList!.ids[idx - 1] : null;
+  const nextId = idx >= 0 && idx + 1 < navList!.ids.length ? navList!.ids[idx + 1] : null;
+  const backTo = `/runs?${navList?.query ? navList.query + "&" : ""}sel=${runId}`;
 
   return (
     <Layout full title={`${run.file_name}`}
       actions={<>
+        <Link className="btn" to={backTo}>{t("ui.back_to_runs")}</Link>
+        {idx >= 0 && <>
+          <button className="btn" disabled={!prevId} onClick={() => prevId && nav(`/runs/${prevId}`)}>{t("ui.prev_image")}</button>
+          <button className="btn" disabled={!nextId} onClick={() => nextId && nav(`/runs/${nextId}`)}>{t("ui.next_image")}</button>
+        </>}
         <Link className="btn" to={`/runs/${runId}/report`}>{t("ui.report")}</Link>
         {can("import") && <button className="btn" onClick={() => setShowReanalyze(true)}>{t("ui.reanalyze")}</button>}
         {result.modules.some((m) => m.module_id === "void") && (
@@ -93,6 +116,10 @@ export function RunDetail() {
               <span className="muted" style={{ fontSize: "var(--fs-xs)" }}>{t("ui.quality")}</span>
               <QualityBadge value={run.quality_level} />
             </div>
+            {run.superseded_by && (
+              <div className="alert info">{t("ui.run.superseded")}{" "}
+                <Link to={`/runs/${run.superseded_by}`}>{t("ui.run.goto_current")}</Link></div>
+            )}
             {result.reference_only && <div className="alert info">{t("note.non_raw_image")}</div>}
             {result.notes.includes("regions_scaled") && <div className="alert info">{t("note.regions_scaled")}</div>}
             <dl className="kv">
@@ -103,7 +130,7 @@ export function RunDetail() {
             </dl>
           </div>
           <div className="tabs">
-            {(["result", "quality", "groups", "object", "acq", "review"] as Tab[]).filter((k) => k !== "review" || can("review")).map((k) => (
+            {(["result", "quality", "groups", "object", "acq", "history", "review"] as Tab[]).filter((k) => k !== "review" || can("review")).map((k) => (
               <button key={k} className={tab === k ? "active" : ""} onClick={() => setTab(k)}>{t(`ui.tab.${k}`)}</button>
             ))}
           </div>
@@ -113,12 +140,13 @@ export function RunDetail() {
             {tab === "groups" && <GroupsTab modules={result.modules} />}
             {tab === "object" && <ObjectTab picked={picked} />}
             {tab === "acq" && <AcqTab data={data} />}
+            {tab === "history" && <HistoryTab items={data.history} current={runId} />}
             {tab === "review" && <ReviewTab runId={runId} reviews={reviews} current={run.final_judgment} onDone={reload} />}
           </div>
         </aside>
       </div>
       {showDiag && <DiagnosticsDialog runIds={[runId]} onClose={() => setShowDiag(false)} />}
-      {showReanalyze && <ReanalyzeDialog imageId={run.image_id} onClose={() => setShowReanalyze(false)} onQueued={() => nav("/imports")} />}
+      {showReanalyze && <ReanalyzeDialog runIds={[runId]} onClose={() => setShowReanalyze(false)} />}
     </Layout>
   );
 }
@@ -324,32 +352,29 @@ function ReviewTab({ runId, reviews, current, onDone }:
   );
 }
 
-function ReanalyzeDialog({ imageId, onClose, onQueued }: { imageId: number; onClose: () => void; onQueued: () => void }) {
+// 分析歷程：同一影像的所有紀錄；舊紀錄的人工複判不沿用到新結果，僅供參考
+function HistoryTab({ items, current }: { items: HistoryItem[]; current: number }) {
   const { t } = useApp();
-  const [recipes] = useLoad(() => get<RecipeSummary[]>("/api/recipes"), []);
-  const [pk, setPk] = useState<number | null>(null);
-  const [error, setError] = useState<unknown>(null);
-  const released = (recipes || []).flatMap((r) => r.versions.filter((v) => v.status === "released").map((v) => ({ ...v, recipe_id: r.recipe_id })));
   return (
-    <Modal title={t("ui.reanalyze")} onClose={onClose}
-      footer={<>
-        <button className="btn" onClick={onClose}>{t("ui.cancel")}</button>
-        <button className="btn primary" disabled={!pk} onClick={async () => {
-          try {
-            await send("POST", `/api/images/${imageId}/reanalyze`, { recipe_pk: pk });
-            onQueued();
-          } catch (e) {
-            setError(e);
-          }
-        }}>{t("ui.reanalyze")}</button>
-      </>}>
-      <label className="field">{t("ui.recipe")}
-        <select value={pk ?? ""} onChange={(e) => setPk(Number(e.target.value) || null)}>
-          <option value="">{t("ui.select")}</option>
-          {released.map((v) => <option key={v.id} value={v.id}>{v.recipe_id} v{v.version}</option>)}
-        </select>
-      </label>
-      <ErrorBox error={error} />
-    </Modal>
+    <div className="stack">
+      <div className="muted">{t("ui.history.hint")}</div>
+      {items.map((h, i) => (
+        <div key={h.id} className="stack" style={{ gap: 4, paddingBottom: "var(--sp-3)", borderBottom: "1px solid var(--border)" }}>
+          <div className="row">
+            {h.id === current ? <b>#{h.id}</b> : <Link to={`/runs/${h.id}`}>#{h.id}</Link>}
+            <span className="muted">{fmtTime(h.created_at)}</span>
+            <span>{h.recipe_id} v{h.recipe_version}</span>
+            <span className="spacer" />
+            {i === 0 ? <span className="tag">{t("ui.history.current")}</span> : <span className="tag">{t("ui.run.superseded_tag")}</span>}
+            <JudgmentBadge value={h.final_judgment} />
+          </div>
+          {h.reviews.map((r, j) => (
+            <div key={j} className="muted" style={{ fontSize: "var(--fs-xs)" }}>
+              {t("ui.history.review")}：{t(`judgment.${r.judgment}`)}　{r.reviewer}　{fmtTime(r.created_at)}{r.comment ? `　${r.comment}` : ""}
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
   );
 }

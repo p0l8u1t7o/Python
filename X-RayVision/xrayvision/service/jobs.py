@@ -4,6 +4,8 @@
 - 匯入：檢查影像可讀、計算雜湊值、複製封存 (可設定)、讀取拍攝參數 (於原始檔位置尋找參數檔)、建立工作。
 - 佇列：工作存於資料庫；服務重啟時把「執行中」的工作放回佇列，不會遺失。
 - 執行：分析在子行程中以較低優先權執行 (與設備控制軟體共用電腦)；單張失敗不影響其他工作。
+- 重新分析：同一張影像可多次分析，最新一筆紀錄為「目前結果」，較早的紀錄保留為歷程 (PLAN-003)。
+- 試跑：以未發布的配方內容分析一張影像，結果不寫入紀錄 (TrialRunner)。
 """
 import json
 import logging
@@ -11,6 +13,7 @@ import os
 import threading
 import time
 from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 
 from ..core import acquisition, runtime, serialize
 from ..core.calibration import CalibrationError
@@ -97,13 +100,53 @@ def run_analysis(payload):
                                acquisition_record=payload["acquisition"], validated=payload.get("validated"),
                                models=payload.get("models"), gpu=payload.get("gpu", False))
         data = serialize.to_jsonable(res)
-        os.makedirs(os.path.dirname(payload["result_path"]), exist_ok=True)
-        serialize.dump(res, payload["result_path"])
+        if payload.get("result_path"):                            # 試跑不寫出結果檔
+            os.makedirs(os.path.dirname(payload["result_path"]), exist_ok=True)
+            serialize.dump(res, payload["result_path"])
         return dict(ok=True, result=data)
     except (ImageFormatError, CalibrationError) as e:
         return dict(ok=False, error=e.code)
     except Exception as e:                                        # noqa: BLE001
         return dict(ok=False, error="analysis_exception", detail=repr(e))
+
+
+def image_path(img):
+    """分析用的影像檔：優先使用封存檔，其次原始位置；都不存在時回傳 None"""
+    for p in (img["archive_path"], img["original_path"]):
+        if p and os.path.isfile(p):
+            return p
+    return None
+
+
+def build_payload(settings, db, img, recipe_dict, acquisition_record, result_path):
+    """分析子行程的輸入 (佇列工作與試跑共用)"""
+    return dict(image_path=image_path(img) or img["original_path"], recipe=recipe_dict,
+                calibration_root=settings.calibration_dir, acquisition=acquisition_record,
+                validated=modules.validated_set(db), models=model_store.resolve(db, recipe_dict),
+                gpu=bool(maintenance.get_settings(db)["gpu_inference"]), result_path=result_path)
+
+
+def queue_reanalysis(db, items, actor, source="reanalyze"):
+    """
+    建立重新分析工作。items：[(image_id, recipe_pk)]；同一影像只建立一個工作。
+    沿用該影像最近一次工作的拍攝參數。回傳 dict(job_ids, skipped=[檔名])，影像檔已不存在者略過。
+    """
+    job_ids, skipped, seen = [], [], set()
+    for image_id, recipe_pk in items:
+        if image_id in seen:
+            continue
+        seen.add(image_id)
+        img = db.one("SELECT * FROM images WHERE id = ?", (image_id,))
+        if img is None:
+            continue
+        if image_path(img) is None:
+            skipped.append(img["file_name"])
+            continue
+        last = db.one("SELECT acquisition_json FROM jobs WHERE image_id = ? ORDER BY id DESC LIMIT 1", (image_id,))
+        job_ids.append(db.insert("jobs", image_id=image_id, recipe_pk=recipe_pk, status="queued", priority=1,
+                                 acquisition_json=last["acquisition_json"] if last else "{}", source=source,
+                                 created_at=now()))
+    return dict(job_ids=job_ids, skipped=skipped)
 
 
 def summarize(result):
@@ -180,13 +223,9 @@ class JobQueue:
         for m in recipe.modules:
             if m.enabled and not self.module_allowed(m.module_id):
                 raise RecipeStoreError("module_not_licensed", m.module_id)
-        path = img["archive_path"] if img["archive_path"] and os.path.isfile(img["archive_path"]) else img["original_path"]
         day = time.strftime("%Y%m%d")
-        return dict(image_path=path, recipe=recipe.to_dict(), calibration_root=self.settings.calibration_dir,
-                    acquisition=json.loads(job["acquisition_json"]), validated=modules.validated_set(db),
-                    models=model_store.resolve(db, recipe.to_dict()),
-                    gpu=bool(maintenance.get_settings(db)["gpu_inference"]),
-                    result_path=os.path.join(self.settings.results_dir, day, f"job{job_id}.json"))
+        return build_payload(self.settings, db, img, recipe.to_dict(), json.loads(job["acquisition_json"]),
+                             os.path.join(self.settings.results_dir, day, f"job{job_id}.json"))
 
     def _loop(self):
         while not self._stop.is_set():
@@ -269,6 +308,15 @@ class JobQueue:
             self.db.audit(actor, "job.cancel", "job", job_id)
         return bool(n)
 
+    def cancel_queued(self, actor, source=None):
+        """取消所有排隊中的工作 (可限定來源，例如重新分析)；回傳取消數量"""
+        where, args = ("AND source = ?", [source]) if source else ("", [])
+        n = self.db.execute(f"UPDATE jobs SET status = 'cancelled', finished_at = ? WHERE status = 'queued' {where}",
+                            (now(), *args)).rowcount
+        if n:
+            self.db.audit(actor, "job.cancel_all", "job", "", source=source or "", count=n)
+        return n
+
     def retry(self, job_id, actor):
         n = self.db.execute("UPDATE jobs SET status = 'queued', attempts = 0, error = '' WHERE id = ? "
                             "AND status IN ('failed', 'cancelled')", (job_id,)).rowcount
@@ -288,3 +336,53 @@ class JobQueue:
                 return True
             time.sleep(0.2)
         return False
+
+
+# ---------------------------------------------------------------------------
+# 試跑 (配方編輯器)：同步分析一張影像，不寫入紀錄；同時只允許一個
+# ---------------------------------------------------------------------------
+class TrialBusy(Exception):
+    pass
+
+
+class TrialRunner:
+    def __init__(self, timeout_s=180):
+        self.timeout_s = timeout_s
+        self._pool = None
+        self._busy = threading.Lock()
+
+    def run(self, payload):
+        """回傳 run_analysis 的輸出；已有試跑進行中時拋出 TrialBusy，逾時回傳 error=trial_timeout"""
+        if not self._busy.acquire(blocking=False):
+            raise TrialBusy()
+        try:
+            if self._pool is None:
+                self._pool = ProcessPoolExecutor(1, initializer=_init_worker)
+            fut = self._pool.submit(run_analysis, payload)
+            try:
+                return fut.result(timeout=self.timeout_s)
+            except FutureTimeout:
+                self._kill()
+                return dict(ok=False, error="trial_timeout")
+            except Exception as e:                                # noqa: BLE001  子行程異常終止
+                self._kill()
+                return dict(ok=False, error="worker_crashed", detail=repr(e))
+        finally:
+            self._busy.release()
+
+    def _kill(self):
+        """中止卡住的試跑子行程並丟棄行程池 (下次試跑重新建立)"""
+        pool, self._pool = self._pool, None
+        if pool is None:
+            return
+        for p in list(getattr(pool, "_processes", {}).values()):
+            try:
+                p.terminate()
+            except Exception:                                     # noqa: BLE001
+                pass
+        pool.shutdown(wait=False, cancel_futures=True)
+
+    def stop(self):
+        if self._pool is not None:
+            self._pool.shutdown(wait=False, cancel_futures=True)
+            self._pool = None

@@ -49,6 +49,8 @@
 | 2026-09-23 | Batch1／Batch2 的錫球與凸塊沒有可見空洞；錫球內的亮斑是與焊墊重疊，不是空洞（空洞在吸收量影像中是較暗的區域） |
 | 2026-09-23 | 5a 取捨：空洞蓋住焊墊時寧可需複判也不可判合格（擴大估計誤差）；空洞最小相對深度 0.07；複合凸塊等非目標結構以配方半徑範圍與檢測區域排除 |
 | 2026-09-23 | 5c 同意：產品加入 ONNX Runtime（DirectML 版）、開發機裝 PyTorch CPU 訓練示範模型；5c～5e 一次做完，待辦寫在 README，開發完一起檢討 |
+| 2026-09-24 | 使用情境為產線 QC 站抽檢，非連續生產；不需為即時檢測調整佇列優先權 |
+| 2026-09-24 | PLAN-003：紀錄頁左清單＋右預覽；已發布配方以「修改」建新版本、發布時挑選重跑範圍（預設舊版本全部影像）；新結果成為目前結果、舊結果標示已被取代；不沿用人工複判；配方編輯器草稿試跑 |
 
 ## 目前狀態
 
@@ -104,10 +106,17 @@
     - 5d：資料庫 5 `annotations`（只新增）、`service/annotations.py`、權限 `annotate`、標註頁 `web/src/pages/Annotate.tsx`、訓練資料匯出（可附原始影像作為驗證資料集）。
     - 5e：`core/module_validation.py` + `validate-module` 指令、`inspections/void/validate.py`、`tools/model_training/make_synthetic_dataset.py`、`examples/module_template/`、外部模組 `translations` 併入語系。
   - **全部開發完成，待辦與檢討事項整理在 README 最後一節**；等使用者一起檢討後再決定下一步。
+- **PLAN-003（檢測紀錄快速檢視與配方調整重新分析）已完成**（2026-09-24），規劃書 [docs/review-and-recipe-iteration-plan.md](docs/review-and-recipe-iteration-plan.md) 第 12 節有完成紀錄：
+  - 目前結果＝同一影像最新一筆紀錄（`api.CURRENT`、`superseded_by`、`current_only`）；總覽只計目前結果、日期依影像匯入時間；資料庫結構 6 只加索引。
+  - 紀錄頁左清單＋右預覽（`Runs.tsx`、`RunPreview.tsx`）；檢閱頁上一張／下一張（sessionStorage `xrv.runs.nav`）、分析歷程分頁。
+  - 配方「修改」（`RecipeStore.revise`，note `from vN` 記來源版本）、差異（`body_diff`）、發布並重新分析（`reanalyze`: all_previous／lot／none）、批次重新分析（`jobs.queue_reanalysis`）。
+  - 試跑（`jobs.TrialRunner`，`POST /api/recipes/trial`，不寫紀錄）。重新分析不沿用人工複判。
+  - `tests/test_iteration.py` 4 項；全部 103 項（不含 slow）通過。
+  - 截圖腳本：Edge 無頭模式要用絕對路徑的 `--user-data-dir`，並加 `--no-first-run --disable-sync --disable-extensions`；`edge.kill()` 只結束主程序，殘留程序要另外清掉，否則會拖慢之後的截圖。
 - **第 0 階段（平台基礎）已完成**：
   - `xrayvision/` 套件：平台核心、檢測模組介面、微凸塊對位模組、命令列、語系檔。
   - 模組介面規格見 [docs/inspection-module-interface.md](docs/inspection-module-interface.md)（SPEC-001）。
-  - 新引擎與舊 `BumpPadShift.py` 逐顆比對 4304 個位點，差異僅為四捨五入（≤0.0005 px）。
+  - 新引擎與舊版批次工具 `BumpPadShift.py` 逐顆比對 4304 個位點，差異僅為四捨五入（≤0.0005 px）。舊版工具（`BumpPadShift.py`、`FlipChipShift.py`、Flask `app.py`）已於 2026-09-24 移除。
   - 24 項測試通過，包含合成影像的曝光不變性測試，以及 Batch1／Batch2 回歸基準（`tests/regression/baseline.json`）。
 - 尚待確認事項見規劃書第 15.1 節（Q1～Q4、Q13、Q16、Q17，多為需現場提供的資料）。
 
@@ -125,16 +134,15 @@
 | `xrayvision/i18n/` | 語系檔；所有原因代碼與顯示文字都要有 zh-TW 與 en |
 | `xrayvision/service/`、`store/`、`ingest/` | 平台服務：API、帳號、授權、更新、保留、佇列、配方、回報包；SQLite；資料夾監看 |
 | `xrayvision/keys/`、`selftest/` | 公鑰（目前為開發用）；內建標準影像與預期結果（進版自我檢查） |
-| `web/` | React＋TypeScript 前端；`web/dist/` 由後端提供 |
+| `web/` | React＋TypeScript 前端；`web/dist/` 由後端提供（紀錄清單＋預覽、配方修改／發布／試跑元件見 PLAN-003） |
 | `launcher/launcher.py` | 啟動器（Windows 服務主程式）：啟動平台服務、進版、退版 |
 | `installer/xrayvision.iss` | Inno Setup 安裝腳本（由 build_release.py 呼叫） |
+| `installer/scripts/` | 安裝版服務控制腳本（`service-control.ps1` 與 `start-service.cmd` 等），建置時複製到安裝目錄 `service\`，開始功能表有捷徑 |
 | `tools/release/` | 原廠端發行建置與更新檔工具；`runtime-requirements.txt` 為產品執行環境的固定版本依賴 |
 | `tools/license_admin/`、`tools/diag_replay/` | 原廠端授權簽發、問題回報包重現；`tools/keys/` 開發用私鑰（不納入版控） |
 | `recipes/` | 配方 JSON（第 2 階段改由資料庫管理） |
 | `tests/` | 單元測試、合成影像測試、`regression/`（回歸基準與比對） |
-| `BumpPadShift.py` | 舊版批次命令列（演算法已移入 `xrayvision`）；保留其重拍比對與敏感度報告，待平台報告功能完成後移除 |
-| `FlipChipShift.py` | 舊量測方法（8-bit），`app.py` 網頁目前仍使用它 |
-| `app.py`、`templates/`、`static/` | Flask 互動標註工具（工程用） |
+| `scripts/` | 開發用啟動／停止服務腳本（`start.cmd`、`stop.cmd`、`status.cmd`）；`start.cmd` 以 `dev_license.py` 自動簽發開發授權（開發私鑰，產品不變） |
 | `image/Batch1` | 8-bit RGBA 轉存影像（非原始），10 張 |
 | `image/Batch2` | 16-bit 原始影像，9 張；1.tiff 與 2.tiff 為同視野重拍，可做重複性驗證 |
 | `temp/` | 暫存與輸出（不納入版控） |
@@ -145,8 +153,8 @@
 .venv\Scripts\python -m xrayvision analyze image/Batch1 image/Batch2 --recipe recipes/bump_alignment_default.json --out temp/phase0
 .venv\Scripts\python -m pytest                              # 全部測試（約 40 秒）
 .venv\Scripts\python -m tests.regression.regress            # 回歸比對；演算法有意變更並經審閱後才加 --update
-.venv\Scripts\python BumpPadShift.py image/Batch1 image/Batch2 --out temp/output --sweep   # 舊版報告
-.venv\Scripts\python app.py --port 8002                     # 舊版標註工具
+scripts\start.cmd                                            # 背景啟動開發服務（資料 temp\dev-data，埠 8600）
+scripts\stop.cmd                                             # 停止開發服務
 .venv\Scripts\python -m pytest -m "not slow"                # 不含端到端進版測試（約 1 分鐘）
 .venv\Scripts\python -m pytest -m slow                      # 端到端進版／退版（實際啟動啟動器，約 3 分鐘）
 .venv\Scripts\python tools\release\build_release.py --update-key tools\keys\update_private_DEV.pem   # 發行建置

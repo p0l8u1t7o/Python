@@ -10,7 +10,9 @@ HTTP API (JSON)。前端 (React) 與工程工具透過此介面操作平台。
 import json
 import os
 import shutil
+import threading
 import time
+from collections import OrderedDict
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
@@ -33,7 +35,7 @@ from . import auth, diagnostics
 from . import modules as module_validation
 from . import models as model_store
 from . import annotations
-from .jobs import ImportFailed, import_image
+from .jobs import ImportFailed, TrialBusy, build_payload, image_path, import_image, queue_reanalysis
 from . import license as lic
 from . import maintenance
 from . import archive_import, updates
@@ -41,6 +43,9 @@ from .platform import Platform
 from .recipes import RecipeStore, RecipeStoreError
 
 REVIEW_JUDGMENTS = (JUDGE_PASS, JUDGE_FAIL, JUDGE_REVIEW)
+# 目前結果：同一影像最新一筆紀錄 (SQL 條件，紀錄別名 r)
+CURRENT = "r.id = (SELECT MAX(r2.id) FROM runs r2 WHERE r2.image_id = r.image_id)"
+IMG_CACHE_ITEMS = 24                     # 預覽影像快取筆數 (PNG，每筆約 1～8 MB)
 WEB_DIST = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "web", "dist")
 
 
@@ -66,6 +71,21 @@ class PathImport(BaseModel):
 
 class Reanalyze(BaseModel):
     recipe_pk: int
+
+
+class BatchReanalyze(BaseModel):
+    run_ids: List[int]
+    recipe_pk: Optional[int] = None          # 未指定時使用各紀錄所用配方的最新發布版本
+
+
+class ReleaseBody(BaseModel):
+    reanalyze: str = "none"                  # all_previous／lot／none (PLAN-003 第 5.2 節)
+    lot_no: str = ""
+
+
+class TrialBody(BaseModel):
+    body: dict                               # 配方內容 (可為尚未儲存的編輯內容)
+    run_id: int                              # 以該紀錄的影像與拍攝參數試跑
 
 
 class ModuleValidationBody(BaseModel):
@@ -188,6 +208,7 @@ def create_app(settings, workers=None, watch=True, start=True, enforce_license=T
         return JSONResponse(status_code=exc.status, content=dict(error=exc.code, detail=exc.detail))
 
     db = plat.db
+    img_cache, img_cache_lock = OrderedDict(), threading.Lock()
 
     @app.exception_handler(auth.AuthError)
     async def _auth_error(request, exc):
@@ -401,16 +422,103 @@ def create_app(settings, workers=None, watch=True, start=True, enforce_license=T
         except RecipeStoreError as e:
             raise _recipe_err(e)
 
+    @app.post("/api/recipes/{pk}/revise")
+    def revise_recipe(pk: int, who: str = Depends(require("recipe_edit"))):
+        try:
+            return recipes.revise(pk, who)
+        except RecipeStoreError as e:
+            raise _recipe_err(e)
+
+    @app.get("/api/recipes/{pk}/diff")
+    def recipe_diff(pk: int, _u: str = Depends(require("view"))):
+        try:
+            return recipes.diff(pk)
+        except RecipeStoreError as e:
+            raise _recipe_err(e)
+
+    def _scope_images(row, lot_no=""):
+        """發布並重新分析的範圍：目前結果使用同一配方代碼其他版本的影像 (可限定批號)"""
+        sql = ("SELECT i.*, l.lot_no FROM runs r JOIN images i ON i.id = r.image_id "
+               "LEFT JOIN lots l ON l.id = i.lot_id JOIN recipes rc ON rc.id = r.recipe_pk "
+               f"WHERE {CURRENT} AND rc.recipe_id = ? AND r.recipe_pk != ?")
+        args = [row["recipe_id"], row["id"]]
+        if lot_no:
+            sql += " AND l.lot_no = ?"
+            args.append(lot_no)
+        return db.all(sql + " ORDER BY i.id", args)
+
+    @app.get("/api/recipes/{pk}/reanalysis-scope")
+    def reanalysis_scope(pk: int, _u: str = Depends(require("view"))):
+        row = recipes.get(pk)
+        if row is None:
+            raise ApiError(404, "recipe_not_found", pk)
+        imgs = _scope_images(row)
+        lots = {}
+        for i in imgs:
+            if i["lot_no"]:
+                lots[i["lot_no"]] = lots.get(i["lot_no"], 0) + 1
+        avg = db.one("SELECT AVG(elapsed_s) AS s FROM (SELECT elapsed_s FROM runs ORDER BY id DESC LIMIT 50)")["s"]
+        return dict(total=len(imgs), skipped=sum(1 for i in imgs if image_path(i) is None),
+                    lots=[dict(lot_no=k, n=v) for k, v in sorted(lots.items())],
+                    avg_elapsed_s=avg, workers=plat.queue.workers)
+
     @app.post("/api/recipes/{pk}/release")
-    def release_recipe(pk: int, who: str = Depends(require("recipe_edit"))):
+    def release_recipe(pk: int, b: Optional[ReleaseBody] = None, who: str = Depends(require("recipe_edit"))):
+        b = b or ReleaseBody()
+        if b.reanalyze not in ("none", "all_previous", "lot"):
+            raise ApiError(400, "invalid_request", b.reanalyze)
         row = recipes.get(pk)
         for m in (row or {}).get("body", {}).get("modules", []):
             if not plat.module_allowed(m["module_id"]):
                 raise ApiError(403, "module_not_licensed", m["module_id"])
+        if b.reanalyze != "none":
+            _require_license()
         try:
-            return recipes.release(pk, who)
+            out = recipes.release(pk, who)
         except RecipeStoreError as e:
             raise _recipe_err(e)
+        if b.reanalyze != "none":
+            imgs = _scope_images(out, b.lot_no if b.reanalyze == "lot" else "")
+            q = queue_reanalysis(db, [(i["id"], pk) for i in imgs], who)
+            db.audit(who, "recipe.release_reanalyze", "recipe", pk, recipe_id=out["recipe_id"], version=out["version"],
+                     scope=b.reanalyze, lot_no=b.lot_no, queued=len(q["job_ids"]), skipped=len(q["skipped"]),
+                     job_ids=f"{q['job_ids'][0]}-{q['job_ids'][-1]}" if q["job_ids"] else "")
+            plat.queue.notify()
+            out["reanalysis"] = dict(queued=len(q["job_ids"]), skipped=q["skipped"])
+        return out
+
+    @app.post("/api/recipes/trial")
+    def trial_recipe(b: TrialBody, who: str = Depends(require("recipe_edit"))):
+        """草稿試跑：以尚未儲存的配方內容分析一張影像；結果不寫入紀錄 (PLAN-003 第 7 節)"""
+        _require_license()
+        body = dict(b.body)
+        body["recipe_id"] = str(body.get("recipe_id") or "trial").strip() or "trial"
+        body["version"] = body.get("version") or 1
+        try:
+            recipe = RecipeStore._validate(body)
+        except RecipeStoreError as e:
+            raise _recipe_err(e)
+        for m in recipe.modules:
+            if m.enabled and not plat.module_allowed(m.module_id):
+                raise ApiError(403, "module_not_licensed", m.module_id)
+        r = db.one("SELECT r.image_id, j.acquisition_json FROM runs r JOIN jobs j ON j.id = r.job_id WHERE r.id = ?",
+                   (b.run_id,))
+        if r is None:
+            raise ApiError(404, "run_not_found", b.run_id)
+        img = db.one("SELECT * FROM images WHERE id = ?", (r["image_id"],))
+        if image_path(img) is None:
+            raise ApiError(410, "image_unavailable", img["file_name"])
+        payload = build_payload(settings, db, img, recipe.to_dict(), json.loads(r["acquisition_json"] or "{}"), None)
+        t0 = time.time()
+        try:
+            out = plat.trial.run(payload)
+        except TrialBusy:
+            raise ApiError(409, "trial_busy")
+        db.audit(who, "recipe.trial", "recipe", body["recipe_id"], run_id=b.run_id, image_id=img["id"],
+                 ok=bool(out["ok"]), elapsed_s=round(time.time() - t0, 1))
+        if not out["ok"]:
+            raise ApiError(422, out["error"], out.get("detail", ""))
+        return dict(result=out["result"])
 
     @app.post("/api/recipes/{pk}/retire")
     def retire_recipe(pk: int, who: str = Depends(require("recipe_edit"))):
@@ -494,18 +602,60 @@ def create_app(settings, workers=None, watch=True, start=True, enforce_license=T
         rc = recipes.get(b.recipe_pk)
         if rc is None or rc["status"] != "released":
             raise ApiError(400, "recipe_not_released", b.recipe_pk)
-        last = db.one("SELECT acquisition_json FROM jobs WHERE image_id = ? ORDER BY id DESC LIMIT 1", (image_id,))
-        job_id = db.insert("jobs", image_id=image_id, recipe_pk=b.recipe_pk, status="queued", priority=1,
-                           acquisition_json=last["acquisition_json"] if last else "{}", source="reanalyze",
-                           created_at=now())
-        db.audit(who, "image.reanalyze", "image", image_id, job_id=job_id, recipe_pk=b.recipe_pk)
+        q = queue_reanalysis(db, [(image_id, b.recipe_pk)], who)
+        if not q["job_ids"]:
+            raise ApiError(410, "image_unavailable", img["file_name"])
+        db.audit(who, "image.reanalyze", "image", image_id, job_id=q["job_ids"][0], recipe_pk=b.recipe_pk)
         plat.queue.notify()
-        return dict(job_id=job_id)
+        return dict(job_id=q["job_ids"][0])
+
+    @app.post("/api/runs/reanalyze")
+    def reanalyze_runs(b: BatchReanalyze, who: str = Depends(require("import"))):
+        """批次重新分析 (紀錄頁勾選)；同一影像只建立一個工作"""
+        _require_license()
+        if b.recipe_pk is not None:
+            rc = recipes.get(b.recipe_pk)
+            if rc is None or rc["status"] != "released":
+                raise ApiError(400, "recipe_not_released", b.recipe_pk)
+        items, no_recipe = [], []
+        for rid in b.run_ids:
+            r = db.one("SELECT r.image_id, rc.recipe_id, i.file_name FROM runs r JOIN recipes rc ON rc.id = r.recipe_pk "
+                       "JOIN images i ON i.id = r.image_id WHERE r.id = ?", (rid,))
+            if r is None:
+                continue
+            pk = b.recipe_pk
+            if pk is None:
+                latest = recipes.latest_released(r["recipe_id"])
+                if latest is None:
+                    no_recipe.append(r["file_name"])
+                    continue
+                pk = latest["id"]
+            items.append((r["image_id"], pk))
+        q = queue_reanalysis(db, items, who)
+        db.audit(who, "runs.reanalyze", "run", "", runs=len(b.run_ids), queued=len(q["job_ids"]),
+                 skipped=len(q["skipped"]), recipe_pk=b.recipe_pk)
+        plat.queue.notify()
+        return dict(queued=len(q["job_ids"]), skipped=q["skipped"], no_recipe=no_recipe)
+
+    @app.get("/api/jobs/reanalysis")
+    def reanalysis_progress(_u: str = Depends(require("view"))):
+        """進行中的重新分析批次：從最早一筆未完成的重新分析工作起算"""
+        m = db.one("SELECT MIN(id) AS m FROM jobs WHERE source = 'reanalyze' AND status IN ('queued', 'running')")["m"]
+        if m is None:
+            return dict(active=False)
+        counts = {x["status"]: x["n"] for x in db.all(
+            "SELECT status, COUNT(*) AS n FROM jobs WHERE source = 'reanalyze' AND id >= ? GROUP BY status", (m,))}
+        return dict(active=True, total=sum(counts.values()), **counts)
+
+    @app.post("/api/jobs/reanalysis/cancel")
+    def cancel_reanalysis(who: str = Depends(require("import"))):
+        return dict(cancelled=plat.queue.cancel_queued(who, source="reanalyze"))
 
     # ---- 分析紀錄 ----
     RUN_SELECT = ("SELECT r.id, r.created_at, r.quality_level, r.reference_only, r.auto_judgment, r.final_judgment, "
                   "r.summary_json, r.elapsed_s, r.software_version, r.image_id, r.job_id, i.file_name, i.sample_no, "
-                  "i.kind, i.width, i.height, l.lot_no, rc.recipe_id, rc.version AS recipe_version, r.recipe_pk "
+                  "i.kind, i.width, i.height, l.lot_no, rc.recipe_id, rc.version AS recipe_version, r.recipe_pk, "
+                  "(SELECT MAX(r2.id) FROM runs r2 WHERE r2.image_id = r.image_id) AS latest_run_id "
                   "FROM runs r JOIN images i ON i.id = r.image_id LEFT JOIN lots l ON l.id = i.lot_id "
                   "JOIN recipes rc ON rc.id = r.recipe_pk ")
 
@@ -513,13 +663,15 @@ def create_app(settings, workers=None, watch=True, start=True, enforce_license=T
         r = dict(r)
         r["summary"] = json.loads(r.pop("summary_json"))
         r["reference_only"] = bool(r["reference_only"])
+        latest = r.pop("latest_run_id")
+        r["superseded_by"] = latest if latest != r["id"] else None     # 已被同一影像較新的紀錄取代
         return r
 
     @app.get("/api/runs")
     def list_runs(judgment: Optional[str] = None, lot_no: Optional[str] = None, recipe_id: Optional[str] = None,
-                  date_from: Optional[str] = None, date_to: Optional[str] = None,
+                  date_from: Optional[str] = None, date_to: Optional[str] = None, current_only: bool = True,
                   limit: int = Query(100, le=1000), offset: int = 0, _u: str = Depends(require("view"))):
-        cond, args = [], []
+        cond, args = ([CURRENT] if current_only else []), []
         for col, v in (("r.final_judgment = ?", judgment), ("l.lot_no = ?", lot_no), ("rc.recipe_id = ?", recipe_id),
                        ("r.created_at >= ?", date_from), ("r.created_at <= ?", date_to)):
             if v:
@@ -533,11 +685,13 @@ def create_app(settings, workers=None, watch=True, start=True, enforce_license=T
 
     @app.get("/api/runs/export.csv")
     def export_runs_csv(judgment: Optional[str] = None, lot_no: Optional[str] = None, recipe_id: Optional[str] = None,
-                        date_from: Optional[str] = None, date_to: Optional[str] = None, locale: str = "zh-TW", _u: str = Depends(require("view"))):
+                        date_from: Optional[str] = None, date_to: Optional[str] = None, current_only: bool = True,
+                        locale: str = "zh-TW", _u: str = Depends(require("view"))):
         import csv
         import io
         from ..i18n import t
-        rows = list_runs(judgment, lot_no, recipe_id, date_from, date_to, limit=1000000, offset=0, _u=_u)["items"]
+        rows = list_runs(judgment, lot_no, recipe_id, date_from, date_to, current_only, limit=1000000, offset=0,
+                         _u=_u)["items"]
         cols = ["id", "created_at", "lot_no", "sample_no", "file_name", "recipe_id", "recipe_version", "kind",
                 "quality_level", "auto_judgment", "final_judgment", "module", "die_shift_dx_px", "die_shift_dy_px",
                 "die_shift_se_px", "die_shift_dx_um", "die_shift_dy_um", "sites_used", "software_version"]
@@ -565,7 +719,14 @@ def create_app(settings, workers=None, watch=True, start=True, enforce_license=T
         with open(row["result_path"], encoding="utf-8") as f:
             result = json.load(f)
         reviews = db.all("SELECT * FROM reviews WHERE run_id = ? ORDER BY id", (run_id,))
-        return dict(run=_run_row(r), result=result, reviews=reviews)
+        # 分析歷程：同一影像的所有紀錄 (新到舊)，附各筆的人工複判供參考
+        history = db.all("SELECT r.id, r.created_at, r.auto_judgment, r.final_judgment, r.quality_level, "
+                         "rc.recipe_id, rc.version AS recipe_version FROM runs r JOIN recipes rc ON rc.id = r.recipe_pk "
+                         "WHERE r.image_id = ? ORDER BY r.id DESC", (r["image_id"],))
+        for h in history:
+            h["reviews"] = db.all("SELECT judgment, comment, reviewer, created_at FROM reviews WHERE run_id = ? "
+                                  "ORDER BY id", (h["id"],))
+        return dict(run=_run_row(r), result=result, reviews=reviews, history=history)
 
     @app.get("/api/runs/{run_id}/image")
     def run_image(run_id: int, max_size: int = Query(2048, ge=256, le=8192), low: float = 0.5, high: float = 99.5, _u: str = Depends(require("view"))):
@@ -576,6 +737,14 @@ def create_app(settings, workers=None, watch=True, start=True, enforce_license=T
         path = r["archive_path"] if r["archive_path"] and os.path.isfile(r["archive_path"]) else r["original_path"]
         if not os.path.isfile(path):
             raise ApiError(410, "image_unavailable", os.path.basename(path))
+        key = (path, os.path.getmtime(path), max_size, low, high)
+        with img_cache_lock:
+            hit = img_cache.get(key)
+            if hit is not None:
+                img_cache.move_to_end(key)
+        if hit is not None:
+            return Response(hit[0], media_type="image/png", headers={"X-Image-Scale": f"{hit[1]:.6f}",
+                                                                     "Cache-Control": "private, max-age=3600"})
         try:
             img = load_image(path)
         except ImageFormatError as e:
@@ -586,6 +755,10 @@ def create_app(settings, workers=None, watch=True, start=True, enforce_license=T
         if s < 1.0:
             disp = cv2.resize(disp, (int(round(w * s)), int(round(h * s))), interpolation=cv2.INTER_AREA)
         ok, buf = cv2.imencode(".png", disp)
+        with img_cache_lock:
+            img_cache[key] = (buf.tobytes(), s)
+            while len(img_cache) > IMG_CACHE_ITEMS:
+                img_cache.popitem(last=False)
         return Response(buf.tobytes(), media_type="image/png", headers={"X-Image-Scale": f"{s:.6f}",
                                                                          "Cache-Control": "private, max-age=3600"})
 
@@ -611,11 +784,13 @@ def create_app(settings, workers=None, watch=True, start=True, enforce_license=T
     @app.get("/api/stats")
     def stats(days: int = Query(30, ge=1, le=3650), _u: str = Depends(require("view"))):
         since = time.strftime("%Y-%m-%dT00:00:00", time.localtime(time.time() - (days - 1) * 86400))
-        by_day = db.all("SELECT substr(created_at, 1, 10) AS day, final_judgment AS judgment, COUNT(*) AS n "
-                        "FROM runs WHERE created_at >= ? GROUP BY day, judgment ORDER BY day", (since,))
-        totals = db.all("SELECT final_judgment AS judgment, COUNT(*) AS n FROM runs WHERE created_at >= ? "
-                        "GROUP BY judgment", (since,))
-        pending = db.one("SELECT COUNT(*) AS n FROM runs WHERE final_judgment = ?", (JUDGE_REVIEW,))["n"]
+        # 只計各影像的目前結果；日期依影像匯入時間，重新分析不會把舊影像算進今天
+        base = f"FROM runs r JOIN images i ON i.id = r.image_id WHERE {CURRENT} AND i.imported_at >= ? "
+        by_day = db.all("SELECT substr(i.imported_at, 1, 10) AS day, r.final_judgment AS judgment, COUNT(*) AS n "
+                        + base + "GROUP BY day, judgment ORDER BY day", (since,))
+        totals = db.all("SELECT r.final_judgment AS judgment, COUNT(*) AS n " + base + "GROUP BY judgment", (since,))
+        pending = db.one(f"SELECT COUNT(*) AS n FROM runs r WHERE {CURRENT} AND r.final_judgment = ?",
+                         (JUDGE_REVIEW,))["n"]
         return dict(since=since, by_day=by_day, totals=totals, review_pending=pending)
 
     # ---- 資料夾監看 ----

@@ -77,6 +77,9 @@ python -m xrayvision serve --data D:\XRV                                        
   - 主版.次版相同（只有修訂版號不同）：配方照常使用。
   - 主版或次版不同（量測結果可能改變）：分析會停止並回報「模組版本不相容」，需由工程師建立新配方版本、驗證後發布。
 - 資料夾監看使用該配方代碼的**最新已發布版本**。
+- 「修改」（`POST /api/recipes/{pk}/revise`）：以該版本內容建立下一版草稿，note 記錄來源版本（`from vN`）；同一配方已有草稿時回傳該草稿。`GET /api/recipes/{pk}/diff` 回傳與來源版本的差異。
+- 發布並重新分析：`POST /api/recipes/{pk}/release` 可帶 `{"reanalyze": "all_previous" | "lot" | "none", "lot_no"}`；範圍為目前結果使用同一配方代碼其他版本的影像（`GET /api/recipes/{pk}/reanalysis-scope` 回傳影像數、略過數、批號、平均分析時間）。
+- 試跑：`POST /api/recipes/trial`（配方內容＋紀錄編號）以該紀錄的影像與拍攝參數同步分析，結果不寫入紀錄；獨立的低優先權子行程，同時只允許一個，逾時 180 秒中止；寫入稽核紀錄。
 
 ---
 
@@ -97,7 +100,9 @@ python -m xrayvision serve --data D:\XRV                                        
 - 工作存於資料庫，依優先權與建立順序執行。
 - 服務重啟時，「分析中」的工作自動放回佇列，不會遺失。
 - 子行程異常終止或分析發生例外時，自動重試一次；仍失敗則標示失敗與原因，可由介面重新執行。
-- 同一影像可用另一個配方重新分析（建立新工作，舊紀錄保留）。
+- 同一影像可用另一個配方重新分析（建立新工作，舊紀錄保留）。沿用該影像最近一次的拍攝參數；影像檔（封存與原始位置）都已不存在時略過。
+- **目前結果**：同一影像最新一筆紀錄；較早的紀錄標示為已被取代（`superseded_by`）。紀錄清單與 CSV 預設只列目前結果（`current_only`），總覽統計只計目前結果且日期依影像匯入時間。新結果重新自動判定，不沿用舊紀錄的人工複判。資料庫結構 6 新增索引 `runs(image_id, id)`。
+- 批次重新分析：`POST /api/runs/reanalyze`（紀錄編號清單，配方版本未指定時用各紀錄配方的最新發布版本）；同一影像只建立一個工作。`GET /api/jobs/reanalysis` 回傳進行中的重新分析進度，`POST /api/jobs/reanalysis/cancel` 取消剩餘排隊工作。
 
 ---
 
@@ -174,10 +179,10 @@ python -m xrayvision serve --data D:\XRV                                        
 | 分類 | 端點 |
 |---|---|
 | 系統 | `GET /api/system`、`GET /api/i18n/{locale}`、`GET /api/modules` |
-| 配方 | `GET/POST /api/recipes`、`GET/PUT/DELETE /api/recipes/{pk}`、`POST /api/recipes/{pk}/release`、`POST /api/recipes/{pk}/retire`、`GET /api/recipe-template/{module_id}` |
+| 配方 | `GET/POST /api/recipes`、`GET/PUT/DELETE /api/recipes/{pk}`、`POST /api/recipes/{pk}/release`、`POST /api/recipes/{pk}/retire`、`POST /api/recipes/{pk}/revise`、`GET /api/recipes/{pk}/diff`、`GET /api/recipes/{pk}/reanalysis-scope`、`POST /api/recipes/trial`、`GET /api/recipe-template/{module_id}` |
 | 匯入 | `POST /api/imports`（上傳）、`POST /api/imports/path`（本機路徑） |
-| 工作 | `GET /api/jobs`、`POST /api/jobs/{id}/cancel`、`POST /api/jobs/{id}/retry`、`POST /api/images/{id}/reanalyze` |
-| 分析紀錄 | `GET /api/runs`（篩選：判定、批號、配方、日期）、`GET /api/runs/{id}`、`GET /api/runs/{id}/image`、`POST /api/runs/{id}/review` |
+| 工作 | `GET /api/jobs`、`POST /api/jobs/{id}/cancel`、`POST /api/jobs/{id}/retry`、`POST /api/images/{id}/reanalyze`、`GET /api/jobs/reanalysis`、`POST /api/jobs/reanalysis/cancel` |
+| 分析紀錄 | `GET /api/runs`（篩選：判定、批號、配方、日期、`current_only`）、`GET /api/runs/{id}`（含 `history`）、`GET /api/runs/{id}/image`（伺服器端快取最近 24 張）、`POST /api/runs/{id}/review`、`POST /api/runs/reanalyze` |
 | 統計 | `GET /api/stats`、`GET /api/lots` |
 | 資料夾監看 | `GET/POST /api/watch-folders`、`PATCH /api/watch-folders/{id}`、`POST /api/watch-folders/scan` |
 | 問題回報 | `POST/GET /api/diagnostics`、`GET /api/diagnostics/files/{name}` |

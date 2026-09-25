@@ -7,7 +7,7 @@ import time
 
 from ..ingest.watcher import FolderWatcher
 from ..store.db import Database
-from .jobs import JobQueue
+from .jobs import JobQueue, TrialRunner
 from .license import LicenseManager, collect_hardware
 from .maintenance import Maintenance
 
@@ -43,6 +43,7 @@ class Platform:
         self.watcher = FolderWatcher(settings, lambda: self.db, on_import=self.queue.notify,
                                      can_import=self.analysis_allowed) if watch else None
         self.maintenance = Maintenance(settings, lambda: self.db)
+        self.trial = TrialRunner()
 
     # ---- 授權 (快取 30 秒，避免每個請求都重新檢查) ----
     def license_status(self, refresh=False):
@@ -71,4 +72,5 @@ class Platform:
         if self.watcher:
             self.watcher.stop()
         self.queue.stop()
+        self.trial.stop()
         logging.getLogger("xrayvision").info("platform stopped")

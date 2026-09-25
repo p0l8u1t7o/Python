@@ -182,6 +182,7 @@ export interface RunRow {
   recipe_id: string;
   recipe_version: number;
   recipe_pk: number;
+  superseded_by: number | null;   // 已被同一影像較新的紀錄取代時為該紀錄編號
 }
 
 export interface Geometry {
@@ -273,6 +274,42 @@ export interface RunDetail {
   run: RunRow;
   result: AnalysisResult;
   reviews: Review[];
+  history: HistoryItem[];
+}
+
+// 分析歷程：同一影像的所有紀錄 (新到舊)
+export interface HistoryItem {
+  id: number;
+  created_at: string;
+  auto_judgment: Judgment;
+  final_judgment: Judgment;
+  quality_level: QualityLevel;
+  recipe_id: string;
+  recipe_version: number;
+  reviews: { judgment: Judgment; comment: string; reviewer: string; created_at: string }[];
+}
+
+export interface RecipeDiff {
+  base: { id: number; version: number; status: RecipeRow["status"] } | null;
+  changes: { path: string; old: unknown; new: unknown }[];
+}
+
+export interface ReanalysisScope {
+  total: number;
+  skipped: number;
+  lots: { lot_no: string; n: number }[];
+  avg_elapsed_s: number | null;
+  workers: number;
+}
+
+export interface ReanalysisProgress {
+  active: boolean;
+  total?: number;
+  queued?: number;
+  running?: number;
+  done?: number;
+  failed?: number;
+  cancelled?: number;
 }
 
 export interface Job {

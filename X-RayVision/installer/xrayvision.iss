@@ -68,6 +68,10 @@ en.InstallingService=Registering the Windows service...
 en.StartingService=Starting the service and running the self-test...
 en.ServiceNotReady=The service did not respond within the expected time. It may still be starting. If the page cannot be opened later, restart the computer or export a diagnostic package from the installation log folder:%n%n%1
 en.OpenApp=Open {#AppName}
+en.StartService=Start Service
+en.StopService=Stop Service
+en.RestartService=Restart Service
+en.ServiceStatus=Service Status
 en.DataKept=The data directory has been retained:%n%1%n%nIt contains inspection records, images, the license and settings. Delete it manually only when the data is no longer needed.
 #ifdef HasZh
 zh_TW.AlreadyInstalled=本電腦已安裝 %1 版本 %2。%n%n如需安裝新版本，請以系統管理員登入後使用「系統管理 > 軟體更新」。如需重新安裝，請先解除安裝現有版本；檢測資料會保留。
@@ -75,6 +79,10 @@ zh_TW.InstallingService=正在註冊 Windows 服務…
 zh_TW.StartingService=正在啟動服務並執行自我檢查…
 zh_TW.ServiceNotReady=服務未在預期時間內回應，可能仍在啟動中。若稍後仍無法開啟網頁，請重新啟動電腦，或參考以下記錄檔目錄：%n%n%1
 zh_TW.OpenApp=開啟 {#AppName}
+zh_TW.StartService=啟動服務
+zh_TW.StopService=停止服務
+zh_TW.RestartService=重新啟動服務
+zh_TW.ServiceStatus=服務狀態
 zh_TW.DataKept=資料目錄已保留：%n%1%n%n內含檢測紀錄、影像、授權與設定。確定不再需要時，請自行刪除。
 #endif
 
@@ -92,6 +100,10 @@ Filename: "{app}\{#AppName}.url"; Section: "InternetShortcut"; Key: "URL"; Strin
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppName}.url"
+Name: "{group}\{cm:StartService}"; Filename: "{app}\service\start-service.cmd"; WorkingDir: "{app}\service"
+Name: "{group}\{cm:StopService}"; Filename: "{app}\service\stop-service.cmd"; WorkingDir: "{app}\service"
+Name: "{group}\{cm:RestartService}"; Filename: "{app}\service\restart-service.cmd"; WorkingDir: "{app}\service"
+Name: "{group}\{cm:ServiceStatus}"; Filename: "{app}\service\service-status.cmd"; WorkingDir: "{app}\service"
 Name: "{group}\{cm:UninstallProgram,{#AppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppName}.url"; Tasks: desktopicon
 

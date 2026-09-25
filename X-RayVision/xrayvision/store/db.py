@@ -247,6 +247,10 @@ MIGRATIONS = [
     CREATE TRIGGER annotations_no_update BEFORE UPDATE ON annotations
     BEGIN SELECT RAISE(ABORT, 'annotations are append-only'); END;
     """,
+    # 6：目前結果 (同一影像最新一筆紀錄) 的查詢索引 (PLAN-003)
+    """
+    CREATE INDEX runs_image_latest ON runs (image_id, id);
+    """,
 ]
 
 
