@@ -1,7 +1,10 @@
 // 實驗桌、設備與器皿（樣品瓶、瓶蓋、滴定杯、移液模組、吸頭）
 import * as THREE from 'three';
+import { finish } from './finish.js';
+import { perforated } from './perforated.js';
 import { block, cylinder, decal, tube } from './detail.js';
 import { Y0, BENCH, ST, BEAKER, BOTTLES, CAP, PIPETTE, SAMPLES } from './layout.js';
+import { glass, glassRim, liquidMaterial, glassVessel, glassBottle, graduations, createLiquid, rim, screw, flowLine, tipFillHeight } from './render-details.js';
 
 const M = {
   bench: new THREE.MeshStandardMaterial({ color: 0x3a4048, roughness: 0.75, metalness: 0.1 }),
@@ -17,12 +20,10 @@ const M = {
   blue: new THREE.MeshStandardMaterial({ color: 0x2f6fb5, roughness: 0.5 }),
   cap: new THREE.MeshStandardMaterial({ color: 0x2c6fcf, roughness: 0.55 }),
   capRed: new THREE.MeshStandardMaterial({ color: 0xd24a3c, roughness: 0.55 }),
-  glass: new THREE.MeshPhysicalMaterial({ color: 0xdfefff, roughness: 0.05, transmission: 0.85, transparent: true, opacity: 0.32, depthWrite: false }),
+  glass,
   shield: new THREE.MeshPhysicalMaterial({ color: 0xcfe6ff, roughness: 0.05, transparent: true, opacity: 0.18, depthWrite: false }),
-  tip: new THREE.MeshStandardMaterial({ color: 0xf6f6f2, roughness: 0.35, transparent: true, opacity: 0.72 }),
-  liquid: new THREE.MeshStandardMaterial({ color: 0xf2d98a, roughness: 0.15, transparent: true, opacity: 0.78 }),
-  liquidT: new THREE.MeshStandardMaterial({ color: 0xf0c6d8, roughness: 0.15, transparent: true, opacity: 0.8 }),
-  water: new THREE.MeshStandardMaterial({ color: 0x9fd0ff, roughness: 0.15, transparent: true, opacity: 0.55 }),
+  tip: new THREE.MeshPhysicalMaterial({ color: 0xe5eeee, roughness: .21, clearcoat: .6, transparent: true, opacity: .28, depthWrite: false, side: THREE.DoubleSide }),
+  liquid: liquidMaterial,
   laser: new THREE.MeshBasicMaterial({ color: 0xff3030, transparent: true, opacity: 0.8 }),
   zoneWarn: new THREE.MeshBasicMaterial({ color: 0xffb020, transparent: true, opacity: 0.1, depthWrite: false, side: THREE.DoubleSide }),
   zoneStop: new THREE.MeshBasicMaterial({ color: 0xff4d4d, transparent: true, opacity: 0.12, depthWrite: false, side: THREE.DoubleSide }),
@@ -30,8 +31,11 @@ const M = {
   led: new THREE.MeshStandardMaterial({ color: 0x3dd68c, emissive: 0x3dd68c, emissiveIntensity: 0.9 }),
 };
 
+for (const name of ['white','grey','metrohm','metrohmDark','pom','cap','capRed']) finish(M[name],'polymer',.02);
+finish(M.steel,'metal',.008); finish(M.benchTop,'polymer',.035);
 // 空心圓筒（器皿壁）
 function vessel(parent, r, h, material, bottom = 2) {
+  if (material === M.glass) return glassVessel(parent, r, h, bottom);
   const g = new THREE.Group(); parent.add(g);
   const wall = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 36, 1, true), material); wall.position.y = h / 2; g.add(wall);
   const floor = new THREE.Mesh(new THREE.CylinderGeometry(r, r, bottom, 36), material); floor.position.y = bottom / 2; g.add(floor);
@@ -65,7 +69,7 @@ export function createLab(scene) {
   floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; root.add(floor);
   const grid = new THREE.GridHelper(9000, 90, 0x2c3440, 0x222831); grid.position.y = 1; root.add(grid);
   const [bx0, bx1] = BENCH.x, [bz0, bz1] = BENCH.z, bw = bx1 - bx0, bd = bz1 - bz0;
-  K('bench', block(root, [bw, 40, bd], [0, Y0 - 20, 0], M.benchTop));
+  const bench=perforated(root,[bw,40,bd],[0,Y0-20,0],[[ST.dock.x,ST.dock.z,22],[ST.tipChute.x,ST.tipChute.z,34],[ST.funnel.x,ST.funnel.z,10]],M.benchTop);bench.name='bench-with-service-bores';K('bench',bench);
   block(root, [bw - 40, 30, bd - 40], [0, Y0 - 55, 0], M.frame);
   for (const x of [bx0 + 40, 0, bx1 - 40]) for (const z of [bz0 + 40, bz1 - 40]) block(root, [50, Y0 - 70, 50], [x, (Y0 - 70) / 2, z], M.frame);
   block(root, [bw - 80, 20, bd - 120], [0, 180, 0], M.frame);                                   // 下層板
@@ -85,6 +89,8 @@ export function createLab(scene) {
   const panel = liveText(64, 30, 320, 150); panel.mesh.position.set(ch.x[1] + 70, Y0 + 41, cz); panel.mesh.rotation.set(-Math.PI / 2 + 0.35, Math.PI / 2, 0, 'YXZ'); balance.add(panel.mesh);
   cylinder(balance, 45, 3, [B.x, Y0 + B.pan - 1.5, B.z], M.steel, 'y', 36);                     // 秤盤 Ø90
   cylinder(balance, 8, B.pan - ch.y[0], [B.x, Y0 + (B.pan + ch.y[0]) / 2, B.z], M.steel);
+  rim(balance, 43.5, Y0 + B.pan, M.steel, .5).position.set(B.x, Y0+B.pan, B.z);
+  for (const x of [ch.x[0]+15,ch.x[1]-15]) for (const z of [ch.z[0]+15,ch.z[1]-15]) screw(balance,x,Y0+ch.y[0]+.6,z,M.steel);
   const hWall = ch.y[1] - ch.y[0], wy = Y0 + (ch.y[0] + ch.y[1]) / 2;
   // 防風罩：前後左右玻璃＋框（手臂從上方進出）
   K('balance-wall', block(balance, [6, hWall, cd], [ch.x[0], wy, cz], M.shield));
@@ -124,19 +130,21 @@ export function createLab(scene) {
   const F = ST.funnel;
   const funnel = new THREE.Mesh(new THREE.CylinderGeometry(52, 10, F.top - 10, 32, 1, true), new THREE.MeshStandardMaterial({ color: 0xf4f1e8, roughness: 0.6, side: THREE.DoubleSide }));
   funnel.position.set(F.x, Y0 + 10 + (F.top - 10) / 2, F.z); root.add(K('funnel', funnel));
-  cylinder(root, 60, 10, [F.x, Y0 + 5, F.z], M.steel, 'y', 32);
+  ring(root,10,60,10,[F.x,Y0,F.z],M.steel);
   const S = ST.tipChute, strip = new THREE.Group(); strip.position.set(S.x, Y0, S.z); root.add(strip);
   // 局部 +Z 朝手臂：支柱在遠端，叉口開向手臂
-  ring(strip, 34, 44, 5, [0, 0, 0], M.dark); cylinder(strip, 34, 1, [0, 0.5, 0], M.screen, 'y', 28);          // 落料孔（通桌下廢料桶）
+  ring(strip, 34, 44, 5, [0, 0, 0], M.dark); // 真正落料孔，不以實心黑片封住
   K('chute', ring(strip, 44, 48, 12, [0, 0, 0], M.steel));
   decal(strip, 70, 16, [0, 1, 62], [-Math.PI / 2, 0, 0], '吸頭廢料口', { color: '#e6edf3', center: true, bold: true });
   const TR = ST.tipRack, tipRack = new THREE.Group(); root.add(tipRack);
   const trx = TR.x0 + (TR.n - 1) * TR.pitch / 2, trz = (TR.z[0] + TR.z[1]) / 2;
-  K('tiprack', block(tipRack, [TR.n * TR.pitch + 16, TR.top - 20, 70], [trx, Y0 + (TR.top - 20) / 2, trz], M.blue));
-  block(tipRack, [TR.n * TR.pitch + 16, 6, 70], [trx, Y0 + TR.top - 17, trz], M.white);
+  const tipHoles=TR.z.flatMap(z=>Array.from({length:TR.n},(_,i)=>[TR.x0+i*TR.pitch-trx,z-trz,PIPETTE.tipR+.6]));
+  const rackBody=perforated(tipRack,[TR.n*TR.pitch+16,TR.top-35,70],[trx,Y0+15+(TR.top-35)/2,trz],tipHoles,M.blue);rackBody.name='tiprack-bored-body';K('tiprack',rackBody);
+  block(tipRack,[TR.n*TR.pitch+16,15,70],[trx,Y0+7.5,trz],M.blue);
+  perforated(tipRack,[TR.n*TR.pitch+16,6,70],[trx,Y0+TR.top-17,trz],tipHoles,M.white);
   const D = ST.dock, dock = new THREE.Group(); dock.position.set(D.x, Y0, D.z); root.add(dock);
   const ddir = new THREE.Vector3(D.x, 0, D.z).normalize();
-  cylinder(dock, 26, 4, [0, 2, 0], M.dark, 'y', 32); cylinder(dock, 18, 1, [0, 4.5, 0], M.screen, 'y', 24);   // 桌面孔（吸頭伸入桌下套管）
+  ring(dock,22,26,4,[0,0,0],M.dark); // 吸頭可穿過桌面孔
   K('dock', block(dock, [30, D.collar - 6, 30], [ddir.x * 55, (D.collar - 6) / 2, ddir.z * 55], M.steel));
   const fork = ring(dock, 21, 34, 8, [0, D.collar - 23, 0], M.pom); K('dock', fork);
   decal(dock, 70, 16, [ddir.x * 55 - ddir.z * 16, 120, ddir.z * 55 + ddir.x * 16], [0, Math.atan2(-ddir.z, ddir.x), 0], '移液模組座', { color: '#e6edf3', center: true, bold: true });
@@ -170,7 +178,10 @@ export function createLab(scene) {
   K('sampler', block(sampler, [H.x[1] - H.x[0], H.h, H.z[1] - H.z[0]], [(H.x[0] + H.x[1]) / 2, Y0 + H.h / 2, (H.z[0] + H.z[1]) / 2], M.metrohm));
   decal(sampler, 150, 26, [(H.x[0] + H.x[1]) / 2, Y0 + 40, H.z[1] + 0.6], [0, 0, 0], 'Metrohm', { color: '#1b4f8a', center: true, bold: true });
   const rack = new THREE.Group(); rack.position.set(SP.x, Y0, SP.z); sampler.add(rack);
+  for (const x of [H.x[0]+16,H.x[1]-16]) for (const z of [H.z[0]+16,H.z[1]-16]) screw(sampler,x,Y0+H.h+.7,z,M.steel);
   K('sampler', cylinder(rack, 205, SP.plate - H.h, [0, H.h + (SP.plate - H.h) / 2, 0], M.metrohmDark, 'y', 64));
+  cylinder(rack,24,8,[0,SP.plate+4,0],M.steel,'y',48);
+  for(let i=0;i<6;i++){const a=i*Math.PI/3;screw(rack,Math.cos(a)*17,SP.plate+8.6,Math.sin(a)*17,M.steel);}
   const slotPos = s => { const a = s * 2 * Math.PI / SP.slots; return [Math.cos(a) * SP.r, Math.sin(a) * SP.r]; };
   for (let s = 0; s < SP.slots; s++) {
     const [lx, lz] = slotPos(s); ring(rack, BEAKER.d / 2 + 2, BEAKER.d / 2 + 8, 26, [lx, SP.plate, -lz], M.pom);
@@ -182,10 +193,15 @@ export function createLab(scene) {
   const headX = SP.x + SP.r, headDown = SP.plate + 12;                                         // 下降時元件底端在杯底上 12 mm
   K('sampler-head', block(head, [towerX - headX + 40, 36, 60], [(towerX + headX) / 2, headDown + 210, SP.z], M.metrohm));
   K('sampler-head', cylinder(head, 36, 60, [headX, headDown + 180, SP.z], M.metrohmDark, 'y', 28));
-  const probes = [['電極', 6, 0, -14, 0x9fb6c8], ['滴定管尖', 2, 14, 8, 0xe8e8e8], ['加水管', 2, -12, 10, 0xe8e8e8], ['噴洗嘴', 3, 4, -20, 0xbfc6cc]];
-  for (const [, r, dx, dz, c] of probes) cylinder(head, r, 170, [headX + dx, headDown + 85 + (r === 6 ? 0 : 20), SP.z + dz], new THREE.MeshStandardMaterial({ color: c, roughness: 0.3 }));
-  cylinder(head, 2.5, 150, [headX + 12, headDown + 95, SP.z + 14], M.steel);                  // 攪拌棒
-  const prop = block(head, [22, 3, 6], [headX + 12, headDown + 22, SP.z + 14], M.steel);
+  const probes = [['電極', 6, 0, -14, 0x9fb6c8], ['滴定管尖', 2, 14, 8, 0xe8e8e8], ['加水管', 2, -12, 10, 0xe8e8e8], ['噴洗嘴', 3, -16, -14, 0xbfc6cc]];
+  for (const [name, r, dx, dz, c] of probes) {const m=cylinder(head, r, 170, [headX + dx, headDown + 85 + (r === 6 ? 0 : 20), SP.z + dz], new THREE.MeshStandardMaterial({ color: c, roughness: 0.3 }));m.name='probe-'+name;}
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(5.5,24,16),glassRim);bulb.position.set(headX,headDown+4,SP.z-14);head.add(bulb);
+  for (const [,r,dx,dz] of probes) cylinder(head,r+1.4,8,[headX+dx,headDown+160,SP.z+dz],M.dark,'y',24);
+  // Separate colour coded fluid lines and electrode cable, attached to the moving head.
+  const tubing=[[-12,10,0xd5e7ef],[14,8,0xf0e7c6],[0,-14,0x41484e]];
+  for(const [dx,dz,color] of tubing) tube(head,[[headX+dx,headDown+190,SP.z+dz],[headX+dx-20,headDown+265,SP.z+dz],[towerX-45,headDown+300,SP.z+dz],[towerX,headDown+330,SP.z+dz]],2,new THREE.MeshStandardMaterial({color,roughness:.42}));
+  cylinder(head, 2.5, 172, [headX + 12, headDown + 84, SP.z + 14], M.steel); // 延伸到浸入液體的槳葉
+  const prop = block(head, [22, 3, 6], [headX + 12, headDown - 2, SP.z + 14], M.steel);
   // 滴定儀（Titrando 級）＋ 2 支 Dosino（NaOH 滴定液、純水）＋液瓶
   const T = ST.titrator, titr = new THREE.Group(); titr.position.set(T.x, Y0, T.z); root.add(titr);
   K('titrator', block(titr, [170, 120, 290], [0, 60, 0], M.metrohm));
@@ -204,6 +220,7 @@ export function createLab(scene) {
   K('pc', block(pc, [400, 250, 24], [0, 300, -30], M.dark));
   const screen = liveText(384, 234, 1000, 610); screen.mesh.position.set(0, 300, -17.5); pc.add(screen.mesh);
   block(pc, [300, 12, 90], [-20, 6, 45], M.dark);
+  for(let row=0;row<4;row++) for(let col=0;col<14;col++) block(pc,[16,1.2,14],[-153+col*20,12.5,15+row*19],M.grey);
   // 安全雷射掃描器（地面）＋減速區／停止區
   const scan = new THREE.Group(); scan.position.set(0, 0, bz1 + 60); root.add(scan);
   block(scan, [110, 150, 110], [0, 75, 0], new THREE.MeshStandardMaterial({ color: 0xf2c200, roughness: 0.5 }));
@@ -214,13 +231,14 @@ export function createLab(scene) {
   const items = {};
   function bottleMesh(i) {
     const s = SAMPLES[i], b = BOTTLES[s.size], g = new THREE.Group(); root.add(g);
-    vessel(g, b.d / 2, b.h - 30, M.glass, 4);
-    const shoulder = new THREE.Mesh(new THREE.CylinderGeometry(b.neck / 2 + 2, b.d / 2, 30, 36, 1, true), M.glass); shoulder.position.y = b.h - 15; g.add(shoulder);
-    const neck = new THREE.Mesh(new THREE.CylinderGeometry(b.neck / 2 - 1, b.neck / 2 - 1, b.neckH, 32, 1, true), M.glass); neck.position.y = b.h + b.neckH / 2 - 2; g.add(neck);
-    const liquid = new THREE.Mesh(new THREE.CylinderGeometry(b.d / 2 - 3, b.d / 2 - 3, 1, 32), M.liquid); g.add(liquid);
+    glassBottle(g,b);
+    const fluid = createLiquid(g,b.d/2-3,4), liquid=fluid.body;
+    graduations(g,b.d/2,b.h-30,4,b.d/2-3,s.size===500?50:10,s.size);
     const label = decal(g, Math.min(70, b.d * 0.8), b.h * 0.42, [0, b.h * 0.42, b.d / 2 + 0.8], [0, 0, 0], [s.barcode, `樣品 ${i + 1}`], { color: '#111', bg: '#f4f4ee', center: true, barcode: true });
     label.material.transparent = false;
-    g.userData = { kind: 'bottle', i, liquid, r: b.d / 2 - 3, capY: b.h + b.neckH - CAP.h + 4 };
+    const labelArc=Math.min(70,b.d*.8)/(b.d/2+.4);
+    label.geometry.dispose();label.geometry=new THREE.CylinderGeometry(b.d/2+.4,b.d/2+.4,b.h*.42,40,1,true,-labelArc/2,labelArc);label.position.z=0;label.renderOrder=5;
+    g.userData = { kind: 'bottle', i, liquid, fluid, r: b.d / 2 - 3, capY: b.h + b.neckH - CAP.h + 4 };
     return g;
   }
   function capMesh(i) {
@@ -231,11 +249,12 @@ export function createLab(scene) {
   }
   function beakerMesh(k) {
     const g = new THREE.Group(); root.add(g);
-    vessel(g, BEAKER.d / 2, BEAKER.h, M.glass, 3);
-    const lip = ring(g, BEAKER.d / 2 - 1, BEAKER.d / 2 + 2, 3, [0, BEAKER.h - 3, 0], M.glass);
-    const liquid = new THREE.Mesh(new THREE.CylinderGeometry(BEAKER.d / 2 - 2, BEAKER.d / 2 - 2, 1, 32), M.liquid); g.add(liquid);
-    decal(g, 34, 12, [0, 55, BEAKER.d / 2 + 0.8], [0, 0, 0], `#${k + 1}`, { color: '#1b2a3a', bg: '#ffffffcc', center: true, bold: true });
-    g.userData = { kind: 'beaker', k, liquid, r: BEAKER.d / 2 - 2, lip }; return g;
+    const vessel=glassVessel(g, BEAKER.d / 2, BEAKER.h, 3, true),lip=vessel.children[1];
+    const fluid = createLiquid(g,BEAKER.d/2-2,3), liquid=fluid.body;
+    graduations(g,BEAKER.d/2,BEAKER.h,3,BEAKER.d/2-2,25,200);
+    const label=decal(g,34,12,[0,55,0],[0,0,0],`#${k+1}`,{color:'#1b2a3a',bg:'#ffffffcc',center:true,bold:true});
+    const rr=BEAKER.d/2+.2,arc=34/rr;label.geometry.dispose();label.geometry=new THREE.CylinderGeometry(rr,rr,12,32,1,true,-arc/2,arc);label.renderOrder=5;
+    g.userData = { kind: 'beaker', k, liquid, fluid, r: BEAKER.d / 2 - 2, lip }; return g;
   }
   function pipetteMesh() {
     const g = new THREE.Group(); root.add(g); const p = PIPETTE;
@@ -255,12 +274,18 @@ export function createLab(scene) {
     const cone = new THREE.Mesh(new THREE.CylinderGeometry(p.tipR - 1, 1.2, p.tipLen - 20, 20, 1, true), M.tip); cone.position.y = -20 - (p.tipLen - 20) / 2; g.add(cone);
     const collar = new THREE.Mesh(new THREE.CylinderGeometry(p.tipR, p.tipR - 1, 20, 20, 1, true), M.tip); collar.position.y = -10; g.add(collar);
     const liquid = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 14), M.liquid); liquid.visible = false; g.add(liquid);
-    g.userData = { kind: 'tip', i, liquid }; return g;
+    cone.renderOrder=collar.renderOrder=3;liquid.renderOrder=2;
+    g.userData = { kind: 'tip', i, liquid, unitVertices: liquid.geometry.attributes.position.array.slice() }; return g;
   }
   SAMPLES.forEach((s, i) => { items[`bottle${i}`] = bottleMesh(i); items[`cap${i}`] = capMesh(i); });
   for (let t = 0; t < 12; t++) items[`tip${t}`] = tipMesh(t);
   for (let k = 0; k < 12; k++) items[`beaker${k}`] = beakerMesh(k);
   items.pip = pipetteMesh();
+  const pipFlow=flowLine(root,.6),waterFlow=flowLine(root,.8);
+  const doseDrop=new THREE.Mesh(new THREE.SphereGeometry(.85,16,12),liquidMaterial);doseDrop.renderOrder=2;root.add(doseDrop);
+  const sprayLines=Array.from({length:3},()=>flowLine(root,.25));
+  const serviceLines=tubing.map(([dx,dz,color])=>({dz,mesh:tube(root,[[towerX,Y0+700,SP.z+dz],[towerX+32,Y0+630,SP.z+dz],[towerX+30,Y0+560,SP.z+dz],[towerX,Y0+500,SP.z+dz]],2,new THREE.MeshStandardMaterial({color,roughness:.42}))}));
+  let lastDrop=null;
 
   // ---------------------------------------------------------------- 狀態套用
   const _v = new THREE.Vector3(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), UP = new THREE.Vector3(0, 1, 0);
@@ -281,24 +306,46 @@ export function createLab(scene) {
       worldOf(id, s.loc, ctx, tmp); g.position.copy(tmp.p); g.quaternion.copy(tmp.q);
       const u = g.userData;
       if (u.kind === 'bottle' || u.kind === 'beaker') {
-        const v = s.vol[id] || 0, h = v * 1000 / (Math.PI * u.r * u.r);
-        u.liquid.visible = v > 0.05; u.liquid.scale.y = Math.max(h, 0.1); u.liquid.position.y = (u.kind === 'bottle' ? 4 : 3) + h / 2;
-        if (u.kind === 'beaker') u.liquid.material = s.titrated?.[id] ? M.liquidT : s.water?.[id] ? M.water : M.liquid;
+        u.fluid.set(s.vol[id]||0,ctx.time,ctx.stir&&id===`beaker${ctx.job?.beaker}`);
       }
       if (u.kind === 'tip') {
-        const v = s.tipVol?.[id] || 0, h = v / PIPETTE.tipMax * 110;
-        u.liquid.visible = v > 0.01; u.liquid.scale.set(1 + h / 25, Math.max(h, 0.1), 1 + h / 25); u.liquid.position.y = -PIPETTE.tipLen + 4 + h / 2;
+        const v=s.tipVol?.[id]||0;u.liquid.visible=v>.01;
+        if(u.lastVolume!==v){u.lastVolume=v;const h=tipFillHeight(v),p=u.liquid.geometry.attributes.position;
+          for(let n=0;n<p.count;n++){const y=u.unitVertices[n*3+1]+.5,r=.7+7.5*y*h/140;
+            p.setXYZ(n,u.unitVertices[n*3]*r,y*h,u.unitVertices[n*3+2]*r);}
+          p.needsUpdate=true;u.liquid.geometry.computeVertexNormals();u.liquid.geometry.computeBoundingSphere();}
+        u.liquid.position.y=-PIPETTE.tipLen+2;
       }
     }
     door.position.x = -B.doorTravel * s.door;
     for (const jg of jaws) jg.position.z = jg.userData.side * (s.clampGap / 2 + 13);
     rack.rotation.y = ctx.rackAngle;
-    head.position.y = Y0 - 190 * (1 - ctx.headDrop);
-    prop.rotation.y = ctx.stir ? performanceNow() * 0.02 : 0;
+    head.position.y = Y0 + 190 * (1 - ctx.headDrop);
+    prop.rotation.y = ctx.stir ? (ctx.time-ctx.job.start) * 12 : 0;
+    if(lastDrop!==ctx.headDrop){lastDrop=ctx.headDrop;
+      for(const line of serviceLines){const y=head.position.y+headDown+330,z=SP.z+line.dz;
+        const curve=new THREE.CatmullRomCurve3([new THREE.Vector3(towerX,Y0+700,z),new THREE.Vector3(towerX+32,Y0+650,z),new THREE.Vector3(towerX+30,y+50,z),new THREE.Vector3(towerX,y,z)]);
+        line.mesh.geometry.dispose();line.mesh.geometry=new THREE.TubeGeometry(curve,28,2,8,false);}}
+    root.updateMatrixWorld(true);
+    pipFlow.mesh.visible=waterFlow.mesh.visible=doseDrop.visible=false;sprayLines.forEach(l=>l.mesh.visible=false);
+    if(ctx.step.label.startsWith('吐出')&&ctx.progress<1){
+      const tipId=ctx.step.touch?.find(id=>id.startsWith('tip')&&items[id]),tip=items[tipId];
+      if(tip?.visible){const a=tip.localToWorld(new THREE.Vector3(0,-PIPETTE.tipLen,0)),b=a.clone();
+        const beakerId=ctx.step.touch?.find(id=>id.startsWith('beaker'));
+        b.y=beakerId?items[beakerId].position.y+items[beakerId].userData.fluid.surface.position.y:Y0+15;
+        pipFlow.set(a,b,a.y>b.y);}}
+    if(ctx.job){
+      const cup=items[`beaker${ctx.job.beaker}`],surfaceY=cup.position.y+cup.userData.fluid.surface.position.y;
+      const a=new THREE.Vector3(headX-12,head.position.y+headDown+20,SP.z+10);
+      waterFlow.set(a,new THREE.Vector3(a.x,surfaceY,a.z),ctx.time>=ctx.job.start&&ctx.time<ctx.job.start+15);
+      if(ctx.time>=ctx.job.start+35&&ctx.time<ctx.job.end-20){
+        const top=head.position.y+headDown+20,phase=((ctx.time-ctx.job.start)*2)%1;
+        doseDrop.visible=top>surfaceY;doseDrop.position.set(headX+14,top-(top-surfaceY)*phase*phase,SP.z+8);doseDrop.scale.set(.7,1.3,.7);}
+      if(ctx.spray)for(let i=0;i<3;i++){
+        const from=new THREE.Vector3(headX-16,head.position.y+headDown+20,SP.z-14),to=new THREE.Vector3(headX+(i-1)*3,head.position.y+headDown+3,SP.z-14);
+        sprayLines[i].set(from,to,true);}}
     beam.visible = beamPlane.visible = !!ctx.scanning;
     panel.draw(s.balText, (g, w, h) => { g.fillStyle = '#0a1a10'; g.fillRect(0, 0, w, h); g.fillStyle = s.balStable ? '#6dff9c' : '#c9f7d5'; g.font = 'bold 64px Consolas, monospace'; g.textAlign = 'right'; g.fillText(s.balText, w - 16, 92); g.font = '28px Arial'; g.textAlign = 'left'; g.fillText(s.balStable ? '穩定' : '', 14, 138); });
   }
-  const performanceNow = () => (typeof performance !== 'undefined' ? performance.now() : 0);
-
-  return { root, items, keepout, setState, worldOf, screen, tscreen, slotPos, headX, balanceDoor: door, jaws, zones: [zoneW, zoneS] };
+  return { root, items, keepout, setState, worldOf, screen, tscreen, slotPos, headX, head, prop, pipFlow, waterFlow, doseDrop, sprayLines, balanceDoor: door, jaws, zones: [zoneW, zoneS] };
 }

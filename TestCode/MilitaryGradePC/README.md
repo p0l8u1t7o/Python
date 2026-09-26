@@ -100,3 +100,26 @@ python tools/render_server.py
 
 本次成片驗證：186.000 秒、5,580 格、固定 30/1 fps、92,962,618 bytes；完整解碼零錯誤。關鍵工序抽格與動作差異檢查通過，紀錄位於 review/video/verification.json。
 
+
+## 近拍與實際鏡頭視角
+
+- 補上塑膠／橡膠細紋、金屬粗糙度與跟隨產品的局部陰影；校正環境反射，保留深色外殼層次。
+- HDMI／COM 使用梯形金屬殼，USB-C 使用圓角開口；接口有中空金屬壁、內部舌片及端子。
+- 「手臂取景」從工具鏡頭前端取像，維持 3:2 全視野，隱藏 ROI／軌跡等輔助線。點按時會暫停到下一個手臂取像步驟；時間軸仍可查看移動中的真實朝向。
+- [接口取像](http://127.0.0.1:8765/?pause&step=48&view=sensor)、[底面 Docking](http://127.0.0.1:8765/?pause&step=186&view=sensor)。
+- 鏡頭以 12 mm、13.2 × 8.8 mm 感光面建模，屬示意光學參數，須按實機鏡頭校正；不代表已產生實測檢查結果。
+- 新增相機驗證：`node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-camera.mjs`，涵蓋兩種 SKU 共 50 個光軸位置與 20 個接口遮擋檢查。
+## 干涉修正與驗證
+
+本輪干涉位置、幾何／路徑修正及驗證範圍見[四站干涉修正紀錄](../interference-review.md)。
+
+新增驗證：`node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-clearance.mjs`。
+
+
+## 相機視覺標記
+
+相機畫面新增可開關的檢測框、中心標記及對應結果；依當前取像與 3D 模型更新，所有數值均為模擬。詳見 [標記內容、預覽與驗證](../vision-review.md)。
+
+## 成本估算
+
+[成本試算表](docs/cost-estimate.xlsx)｜[估價範圍與摘要](docs/cost-estimate.md)。含設備、工程人日、選配、預備費、上下限及含稅預算；正式價格以供應商報價為準。

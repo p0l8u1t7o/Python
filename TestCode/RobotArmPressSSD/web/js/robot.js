@@ -73,21 +73,23 @@ export function createRobot() {
   const singlePad = new THREE.Group(); single.add(singlePad);
   cylinder(singlePad, 2, 10, [0, 0, 84], matTool, 'z', 10);
   block(singlePad, [8, 4, 6], [0, 0, TOOL.padTip - 3], matPU);
-  const spring = new THREE.Group(); spring.position.z=69; single.add(spring);
-  const coil=[]; for(let i=0;i<=144;i++) { const a=i/144*Math.PI*12; coil.push([3.1*Math.cos(a),3.1*Math.sin(a),i/144*17]); }
+  const spring = new THREE.Group(); spring.name='single-spring';spring.position.z=69.5; single.add(spring);
+  const coil=[]; for(let i=0;i<=144;i++) { const a=i/144*Math.PI*12; coil.push([3.8*Math.cos(a),3.8*Math.sin(a),i/144*16.5]); }
   tube(spring,coil,.38,matTool,144);
   // 標準 8 頭整排壓墊：同一快拆介面，片距 21 mm；每頭獨立彈簧，各自吃掉接頭翹起的高低差
   const bar = new THREE.Group(); tool.add(bar);
   block(bar, [184, 22, 30], [0, 0, 58], matTool);
-  const barPads = [];
+  const barPads = [],barSprings=[];
   for (let i = 0; i < TOOL.barPads; i++) {
     const x = (i - (TOOL.barPads - 1) / 2) * TOOL.barPitch;
     cylinder(bar, 2.6, 10, [x, 0, 78], matAnod, 'z', 10);
     const pad = new THREE.Group(); pad.position.x = x; bar.add(pad);
     cylinder(pad, 1.6, 8, [0, 0, 84], matTool, 'z', 8);
     block(pad, [7, 9, 6], [0, 0, TOOL.padTip - 3], matPU);
-    const coil = []; for (let k = 0; k <= 96; k++) { const a = k / 96 * Math.PI * 8; coil.push([2.4 * Math.cos(a), 2.4 * Math.sin(a), 74 + k / 96 * 9]); }
-    tube(pad, coil, .3, matTool, 96);                                                      // 各頭獨立壓縮彈簧
+    // Upper seat stays on the bar; only the lower seat follows pad compression.
+    const spring=new THREE.Group();spring.name=`bar-spring-${i}`;spring.position.set(x,0,73.5);bar.add(spring);barSprings.push(spring);
+    const coil = []; for (let k = 0; k <= 96; k++) { const a = k / 96 * Math.PI * 8; coil.push([3.3 * Math.cos(a), 3.3 * Math.sin(a), k / 96 * 9.5]); }
+    tube(spring, coil, .3, matTool, 96);
     barPads.push(pad);
   }
   // 20MP 斜視相機（45°、光軸朝下並朝 −Y）＋100 mm 條形光
@@ -255,7 +257,8 @@ export function createRobot() {
   function setPadCompression(list) {
     const c = i => -Math.min(TOOL.padStroke, Math.max(0, Array.isArray(list) ? list[i] || 0 : list));
     singlePad.position.z = c(0); barPads.forEach((p, i) => { p.position.z = c(i); });
-    spring.scale.z = (17+c(0))/17;
+    spring.scale.z = (16.5+c(0))/16.5;
+    barSprings.forEach((s,i)=>{s.scale.z=(9.5+c(i))/9.5;});
   }
   setInsert('single');
   // 壓頭是預期接觸產品的部位，驗證時接觸步驟允許它們進入產品包絡

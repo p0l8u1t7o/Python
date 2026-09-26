@@ -97,6 +97,9 @@ export function createRobot() {
 
   // TCP 定義：相機 TCP（鏡頭前方工作距離 150 mm）、鉤爪 TCP、雷射 TCP
   const tcpCam = new THREE.Object3D(); tcpCam.position.set(0, 0, 145 + 150); tool.add(tcpCam);
+  // A 12 mm lens on a 13.2 × 8.8 mm sensor; illustrative optical specification.
+  const inspectionCam=new THREE.PerspectiveCamera(2*Math.atan(8.8/24)*180/Math.PI,1.5,.3,3000);
+  inspectionCam.position.set(0,0,146.1);inspectionCam.rotation.y=Math.PI;tool.add(inspectionCam);
   const tcpHook = new THREE.Object3D(); tcpHook.position.set(-62, -38, 200); tool.add(tcpHook);
   const tcpPress = new THREE.Object3D(); tcpPress.position.set(-62,-30,193); tool.add(tcpPress);
   const tcpLaser = new THREE.Object3D(); tcpLaser.position.set(64, 20, 195); tool.add(tcpLaser);
@@ -229,5 +232,5 @@ export function createRobot() {
   function setFlash(on) { flash.intensity = on ? 360 : 0; ringLightMat.emissiveIntensity = on ? .65 : 0.05; }
   function setLaser(on) { laserPlane.material.opacity = on ? 0.35 : 0; profWin.material.emissiveIntensity = on ? 3 : 1.5; }
 
-  return { root,q,home,goal,cur,update,apply,getTcpWorld,setForceColor,setFlash,setLaser,tool,tcpCam,tcpHook,tcpPress,tcpLaser,snap,error,poseFor,setPose,reach };
+  return { root,q,home,goal,cur,update,apply,getTcpWorld,setForceColor,setFlash,setLaser,tool,tcpCam,tcpHook,tcpPress,tcpLaser,inspectionCam,snap,error,poseFor,setPose,reach };
 }

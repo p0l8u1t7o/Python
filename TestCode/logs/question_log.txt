@@ -48,6 +48,7 @@ PCB-CopperAssembly\docs下資料為用戶提供，用戶產品為PCB銅箔基板
 每片銅箔基板放置完畢預估要花1分鐘，所以片銅箔基板用相機定位、機構吸取散熱板後的視覺拍照補償都要分站別製作，爭取時間。
 
 擺放可以用伺服XYZ、Theda軸，也可以用DENSO機械手臂，請自行設計。設計完直接實作
+有問題請用選項對話與我討論
 
 =====================================================================
 請閱讀AutomaticAcid-BaseTitration下的文件，幫我規劃一套使用DENSO機械手臂完整的自動化系統，仿造MilitaryGradePC一樣，給我完整的3D動畫展示規劃，皆在PCB-CopperAssembly資料夾下作業。
@@ -55,3 +56,4 @@ PCB-CopperAssembly\docs下資料為用戶提供，用戶產品為PCB銅箔基板
 可以參考https://www.youtube.com/watch?v=QmJUKAL5Z_M，影片中要做的功能跟該次專案類似。
 
 系統中的滴定分析儀和電腦系統使用瑞士美創軟體(Metrohm)，需進行整合。
+有問題請用選項對話與我討論

@@ -3,6 +3,12 @@
   --fg:#e6edf3;--muted:#8b98a8;--accent:#4aa8ff;--ok:#3dd68c;--warn:#ffb020;--bad:#ff4d4d;
   --font:"Noto Sans TC","Microsoft JhengHei","PingFang TC",system-ui,sans-serif;
 }
+/* Complete 3:2 optical frame, with controls outside the image. */
+#app #pipFrame{height:auto;max-width:calc(100vw - 36px)}
+#app #pipImage{width:100%;height:auto;aspect-ratio:3/2;flex:none}
+#app #pipFrame .pipTitle{padding-right:55px;min-height:28px}
+#app #pipFrame.expanded{width:min(600px,calc(100vw - 370px),calc((100vh - 350px)*1.5))}
+.pipExpand{position:absolute;right:5px;top:3px;pointer-events:auto;cursor:pointer;border:1px solid #486070;background:#192936;color:#d8e9f1;border-radius:4px;font:11px sans-serif;padding:3px 6px}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:var(--font);overflow:hidden}
 #app{position:relative;width:100%;height:100%}

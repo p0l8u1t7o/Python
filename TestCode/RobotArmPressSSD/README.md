@@ -124,3 +124,24 @@ node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-c
 最近一次結果在 `review/verification.json`；模型計算誤差並非設備精度。
 
 相機驗證另檢查 28 個全局／手臂取像位置的 USB 幾何是否完整位於視野內、S3 捷徑是否停在取像步驟、移動時畫面來源，以及不同面板尺寸是否維持完整感光元件比例。
+
+## 相機近拍更新
+
+- 相機子畫面新增「放大／縮小」，保持 3:2 完整視野；可用 `cameraSize=large` 直接開啟。
+- 子畫面移除 3D ROI 輔助框，結果仍列在影像下方；採較低曝光，保留銀腳／外殼高光細節。
+- 銀腳增加細微金屬粗糙度，錫膏使用不規則細紋，仍維持未迴焊外觀及原有接觸位置。
+- [放大相機預覽](http://127.0.0.1:8767/?pause&st=3&view=inspect&cameraSize=large)。
+## 干涉修正與驗證
+
+本輪干涉位置、幾何／路徑修正及驗證範圍見[四站干涉修正紀錄](../interference-review.md)。
+
+新增驗證：`node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-clearance.mjs`。
+
+
+## 相機視覺標記
+
+相機畫面新增可開關的檢測框、中心標記及對應結果；依當前取像與 3D 模型更新，所有數值均為模擬。詳見 [標記內容、預覽與驗證](../vision-review.md)。
+
+## 成本估算
+
+[成本試算表](docs/cost-estimate.xlsx)｜[估價範圍與摘要](docs/cost-estimate.md)。含設備、工程人日、選配、預備費、上下限及含稅預算；正式價格以供應商報價為準。

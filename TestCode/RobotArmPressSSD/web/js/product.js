@@ -1,6 +1,7 @@
 // 產品：依配方建出載盤、板子與接頭。接頭可翹起（以插頭尖端底緣為支點），銀腳端抬高即為未貼合。
 // 座標：產品根節點在載盤底面中心；單位 mm。尺寸為照片目測或假設，實際以圖面校正。
 import * as THREE from 'three';
+import { finish } from './finish.js';
 import { block, decal, cylinder, rounded } from './detail.js';
 import { microTexture, pcbSurface, batchStatic } from './surfaces.js';
 import { CONNECTOR_TYPES } from './recipes.js';
@@ -14,6 +15,8 @@ const matShell = new THREE.MeshStandardMaterial({ color: 0xc9cdd2, roughness: 0.
 const matHole = new THREE.MeshStandardMaterial({ color: 0x15181b, roughness: 0.6 });
 const matLead = new THREE.MeshStandardMaterial({ color: 0xe6e8ea, roughness: 0.2, metalness: 1 });
 const matPaste = new THREE.MeshStandardMaterial({ color: 0x9da5a4, roughness: .75, metalness: .45 });
+finish(matPaste,'polymer',.005);
+finish(matLead,'metal',.002); matLead.roughness=.34;
 const matEdge = new THREE.MeshStandardMaterial({ color: 0x929b68, roughness: .83 });
 const matTongues = new Map();
 const COMP = {

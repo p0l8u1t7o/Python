@@ -1,5 +1,10 @@
 // 主程式：場景、配方選擇、時間軸（動作序列）、UI、相機子畫面（手臂相機／全局相機）
 import * as THREE from 'three';
+import { createVisionOverlay } from './vision-overlay.js';
+import { ssdResults } from './vision-results.js';
+const vision = createVisionOverlay();
+import { cameraPanel } from './camera-panel.js';
+cameraPanel();
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { createStation } from './station.js';
@@ -234,6 +239,7 @@ function render() {
   drawHud();
   const w = canvas.clientWidth, h = canvas.clientHeight;
   renderer.setScissorTest(false); renderer.setViewport(0, 0, w, h); renderer.render(scene, camera);
+  vision.hide();
   if (ui.showPip.checked) {
     // 子畫面：目前使用中的相機實際看到的畫面（位置對齊 #pipFrame）
     const c = canvas.getBoundingClientRect(), f = document.getElementById('pipImage').getBoundingClientRect();
@@ -242,10 +248,15 @@ function render() {
     // Preserve the full sensor field of view; text belongs outside the image.
     cam.aspect = SENSOR_ASPECT; cam.updateProjectionMatrix();
     const vis = [cell.occluders.visible, trail.visible]; cell.occluders.visible = false; trail.visible = false;
+    const roiVisible=roiBoxes.map(b=>b.visible);roiBoxes.forEach(b=>b.visible=false);
+    const exposure=renderer.toneMappingExposure;renderer.toneMappingExposure=.88;
     renderer.setScissorTest(true); renderer.setScissor(f.left-c.left,c.bottom-f.bottom,f.width,f.height);
     renderer.setClearColor(0x080d13,1); renderer.clear();
     renderer.setScissorTest(true); renderer.setScissor(x, y, pw, ph); renderer.setViewport(x, y, pw, ph); renderer.render(scene, cam);
+    const global=useGlobalView(),shotReady=S.flashTool>0&&arrived();
+    vision.draw(cam,{left:f.left+box.x,top:f.top+box.y,width:pw,height:ph},{title:global?'USB 定位':'銀腳貼合',state:global?(S.station===1&&S.detected>0?'定位示意':'預覽'):shotReady?`本幀取像 · ≤ ${recipe.gapLimit} mm`:'待取像',time:T,marks:ssdResults(product,recipe,{global,detected:S.station===1&&S.detected>0,exposure:shotReady,ids:shotIds(),gaps:st.state.gap})});
     renderer.setClearColor(scene.background,1);
+    renderer.toneMappingExposure=exposure;roiBoxes.forEach((b,i)=>b.visible=roiVisible[i]);
     renderer.setScissorTest(false); renderer.setViewport(0, 0, w, h); [cell.occluders.visible, trail.visible] = vis;
   }
 }

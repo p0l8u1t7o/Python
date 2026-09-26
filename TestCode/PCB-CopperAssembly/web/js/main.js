@@ -1,5 +1,10 @@
 // 主程式：場景、節拍時間軸、UI、相機子畫面
 import * as THREE from 'three';
+import { createVisionOverlay } from './vision-overlay.js';
+import { copperResults } from './vision-results.js';
+const vision = createVisionOverlay();
+import { cameraPanel } from './camera-panel.js';
+cameraPanel();
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { LAYOUT, PRODUCT, RECIPES, setRecipe, smooth } from './layout.js';
@@ -11,14 +16,17 @@ const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: qp.get('aa') !== '0', powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = qp.get('shadow') !== '0'; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.2; renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05; renderer.outputColorSpace = THREE.SRGBColorSpace;
 const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0d1117); scene.fog = new THREE.Fog(0x0d1117, 6000, 13000);
-scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
-const camera = new THREE.PerspectiveCamera(40, 1, 2, 30000);
-const controls = new OrbitControls(camera, canvas); controls.enableDamping = true; controls.dampingFactor = 0.08; controls.maxPolarAngle = Math.PI * 0.49; controls.minDistance = 30; controls.maxDistance = 9000;
+const room = new RoomEnvironment(renderer), pmrem = new THREE.PMREMGenerator(renderer);
+room.traverse(o => { if (o.isPointLight) o.intensity = 240; });
+scene.environment = pmrem.fromScene(room, .04).texture; room.dispose(); pmrem.dispose();
+const camera = new THREE.PerspectiveCamera(40, 1, .1, 30000);
+const controls = new OrbitControls(camera, canvas); controls.enableDamping = true; controls.dampingFactor = 0.08; controls.maxPolarAngle = Math.PI * 0.49; controls.minDistance = 7; controls.maxDistance = 9000;
 scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x2a2f36, 0.6));
 const sun = new THREE.DirectionalLight(0xffffff, 1.5); sun.position.set(-1500, 3500, 2200); sun.castShadow = qp.get('shadow') !== '0'; sun.shadow.mapSize.set(2048, 2048);
 Object.assign(sun.shadow.camera, { left: -2200, right: 2200, top: 2200, bottom: -2200, near: 500, far: 9000 }); sun.shadow.bias = -0.0003; scene.add(sun);
+sun.shadow.normalBias = .05;
 const fill = new THREE.DirectionalLight(0x9fb8ff, 0.5); fill.position.set(1800, 1500, -1800); scene.add(fill);
 
 const sim = createSim(scene), plan = sim.plan, M = sim.machine;
@@ -43,18 +51,48 @@ for (const [key, tag] of STATUS) { const t = document.createElement('div'); t.cl
 const STNAMES = ['上料', '基板定位', '放置', '檢查', '下料'];
 STNAMES.forEach((n, i) => { const b = document.createElement('button'); b.className = 'st'; b.dataset.st = i; b.innerHTML = `<span class="idx">S${i}</span>${n}`; b.onclick = () => setView(['load', 's1', 's2', 's3', 'unload'][i]); ui.stations.appendChild(b); });
 const X = LAYOUT.stations;
+const holeSelect = document.getElementById('holeSelect');
+for (const h of plan.holes) { const o = document.createElement('option'); o.value = h.id; o.textContent = `#${h.id + 1} · 第 ${h.col + 1} 排 / 第 ${h.row + 1} 孔`; holeSelect.appendChild(o); }
+holeSelect.value = plan.holes.reduce((a, b) => a.placeT < b.placeT ? a : b).id;
+if (qp.has('hole') && plan.holes.some(h => h.id === +qp.get('hole') - 1)) holeSelect.value = +qp.get('hole') - 1;
+const selectedHole = () => plan.holes[+holeSelect.value];
+const dimension = p => p.shape === 'round' ? `Ø${p.w}` : `${p.w} × ${p.l}`;
+document.getElementById('productDims').innerHTML = `<b>350 × 350</b><span>基板厚 ${PRODUCT.board.t}</span><span>孔洞 ${dimension(PRODUCT.hole)}</span><span>散熱片 ${dimension(PRODUCT.coin)} × ${PRODUCT.coin.t}</span>`;
+function focusPoint(hole = true) {
+  const h = selectedHole();
+  return sim.boards.s1.group.localToWorld(new THREE.Vector3(hole ? h.x : 0, PRODUCT.board.adhesive + PRODUCT.board.t, hole ? h.z : 0));
+}
+function closeView(hole) {
+  const t = focusPoint(hole), span = Math.max(PRODUCT.hole.l * 3, 23);
+  // Keep the board overview below the gantry beam, including when the A beam crosses the board.
+  return [t.clone().add(hole ? new THREE.Vector3(span * .4, span * .72, span) : new THREE.Vector3(200, 235, 450)).toArray(), t.toArray()];
+}
 const views = {
+  board: () => closeView(false), hole: () => closeView(true),
   iso: [[-2300, 2100, 2300], [0, 950, 0]], s2: [[650, 1650, 1250], [0, 1000, 0]], head: [[40, 1060, 260], [-90, 958, 90]],
   feeder: [[-330, 1230, 560], [-300, 960, 330]], s1: [[X[1], 1550, 700], [X[1], 960, 0]], s3: [[X[3], 1550, 700], [X[3], 960, 0]],
   load: [[X[0] - 300, 1500, 1350], [X[0], 950, 280]], unload: [[X[4] + 300, 1500, 1350], [X[4], 950, 280]], top: [[0, 3800, 300], [0, 950, 0]],
 };
-let camAnim = null;
+let camAnim = null, currentView = '', lastFocus = null;
 function setView(name, instant = false) {
-  if (!views[name]) return; const [p, t] = views[name].map(a => new THREE.Vector3(...a));
+  if (!views[name]) return;
+  currentView = name; lastFocus = ['board', 'hole'].includes(name) ? focusPoint(name === 'hole') : null;
+  camera.near = name === 'hole' ? .2 : 5; camera.updateProjectionMatrix();
+  const [p, t] = (typeof views[name] === 'function' ? views[name]() : views[name]).map(a => new THREE.Vector3(...a));
   if (instant) { camAnim = null; camera.position.copy(p); controls.target.copy(t); controls.update(); } else camAnim = { p0: camera.position.clone(), t0: controls.target.clone(), p, t, u: 0 };
   document.querySelectorAll('.views button').forEach(b => b.classList.toggle('selected', b.dataset.view === name));
 }
 document.querySelectorAll('.views button').forEach(b => b.onclick = () => setView(b.dataset.view));
+holeSelect.onchange = () => setView('hole');
+function inspectHole(state) {
+  playing = false; ui.playBtn.textContent = '▶ 播放';
+  const h = selectedHole();
+  seekTo(state === 'empty' ? 2.8 : h.placeT + (state === 'before' ? -.06 : .25));
+  setView('hole', true); render();
+}
+document.getElementById('emptyHole').onclick = () => inspectHole('empty');
+document.getElementById('beforeInsert').onclick = () => inspectHole('before');
+document.getElementById('afterInsert').onclick = () => inspectHole('after');
 
 // 3D 標籤
 const labels = [];
@@ -66,28 +104,31 @@ addLabel('龍門 A（4 吸嘴）', [0, 1350, 360]); addLabel('龍門 B（4 吸�
 
 // ---------------------------------------------------------------- 時間
 let T = 0, playing = !qp.has('pause'), speed = 1, info = null;
-function lastUpcam(H) { let e = null; for (const x of plan.events) { if (x.t > T) break; if (x.type === 'upcam' && x.H === H) e = x; } return e; }
 function pipSource() {
   const sel = ui.pipSel.value; if (sel !== 'auto') return sel;
-  const a = plan.heads.A.tr.sample(T);
+  const a = plan.heads.A.tr.sample(T), b = plan.heads.B.tr.sample(T);
   if (a.seg?.flyby && !a.done) return 'upA';
+  if (b.seg?.flyby && !b.done) return 'upB';
   const s1 = plan.s1.tr.sample(T); if (s1.label.startsWith('拍攝') || s1.label.startsWith('移至第')) return 's1';
   if (a.seg?.flash && !a.done) return 'downA';
+  if (b.seg?.flash && !b.done) return 'downB';
+  const s3=plan.s3.tr.sample(T);if(s3.seg?.flash&&!s3.done)return 's3';
+  const feedB=plan.feeders.B.tr.sample(T);if(feedB.seg?.flash&&!feedB.done)return 'feedB';
   return 'feedA';
 }
 function pipInfo(src) {
   if (src === 'upA' || src === 'upB') {
-    const H = src.slice(-1), e = lastUpcam(H);
-    if (!e) return [`仰視相機 ${H}`, '—'];
+    const H = src.slice(-1), e = plan.events.filter(e=>e.type==='upcam'&&e.H===H&&Math.abs(e.t-T)<.03).sort((a,b)=>Math.abs(a.t-T)-Math.abs(b.t-T))[0];
+    if (!e) return [`仰視相機 ${H} · 即時畫面`, '等待吸嘴通過取像中心 · 無本幀量測'];
     const hold = plan.heads[H].hold[e.k].find(x => x.t0 <= e.t && e.t < x.t1), o = hold?.coin.pickOffset;
     return [`仰視相機 ${H} · 飛越取像 · 400 mm/s`, o ? `吸嘴 ${e.k + 1}：偏移 x ${o.dx >= 0 ? '+' : ''}${o.dx.toFixed(3)} · z ${o.dz >= 0 ? '+' : ''}${o.dz.toFixed(3)} mm · θ ${o.dt >= 0 ? '+' : ''}${o.dt.toFixed(1)}° → <span class="ok">放置時補償</span>` : '—'];
   }
   if (src === 's1') return ['S1 基板定位相機 · 20MP · 視野約 111 × 74 mm', `孔位量測 ${info.mapped} / ${N}`];
-  if (src === 's3') return ['S3 檢查相機 · 20MP', `檢查 ${info.inspected} / ${N} · <span class="ok">全數在孔內</span>`];
-  if (src === 'feedA') return ['供料相機 A · 找出正面朝上的銅片', `盤面：${plan.feeders.A.coins.filter(c => c.t0 <= T && T < c.t1 && c.good).length} 顆可取`];
-  return ['A 頭下視相機 · 基準點', '板邊工具孔 → 修正 S1 孔位圖'];
+  if (src === 's3') return ['S3 檢查相機 · 20MP', `模擬檢查 ${info.inspected} / ${N}${info.inspected === N ? ' · <span class="ok">檢查完成</span>' : ''}`];
+  if (src.startsWith('feed')) {const H=src.slice(-1);return [`供料相機 ${H} · 正反面與方向`, `盤面：${plan.feeders[H].coins.filter(c => c.t0 <= T && T < c.t1 && c.good).length} 顆可取`];}
+  return [src.slice(-1)+' 頭下視相機 · 基準點', '板邊工具孔 → 修正 S1 孔位圖'];
 }
-const pipCams = { upA: () => M.upCams.A.cam, upB: () => M.upCams.B.cam, s1: () => M.scanners.S1.cam.cam, s3: () => M.scanners.S3.cam.cam, feedA: () => M.feeders.A.cam.cam, downA: () => M.heads.A.downCam.cam };
+const pipCams = { feedB: () => M.feeders.B.cam.cam, downB: () => M.heads.B.downCam.cam, upA: () => M.upCams.A.cam, upB: () => M.upCams.B.cam, s1: () => M.scanners.S1.cam.cam, s3: () => M.scanners.S3.cam.cam, feedA: () => M.feeders.A.cam.cam, downA: () => M.heads.A.downCam.cam };
 
 function seekTo(t) { T = THREE.MathUtils.clamp(t, 0, total); render(); }
 ui.playBtn.onclick = () => { if (T >= total) T = 0; playing = !playing; ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放'; };
@@ -106,6 +147,15 @@ ui.exportBtn.onclick = () => {
 
 function drawHud() {
   info = sim.apply(T);
+  if (lastFocus) {
+    const now = focusPoint(currentView === 'hole'), delta = now.clone().sub(lastFocus);
+    camera.position.add(delta); controls.target.add(delta);
+    if (camAnim) for (const key of ['p0', 't0', 'p', 't']) camAnim[key].add(delta);
+    lastFocus = now;
+    camera.lookAt(controls.target);
+  }
+  const h = selectedHole();
+  document.getElementById('holeState').textContent = `#${h.id + 1} · ${T >= h.placeT ? '已放入' : '待放入'} · 名義單邊間隙 ${((PRODUCT.hole.w - PRODUCT.coin.w) / 2).toFixed(2)} mm`;
   const pl = info.placed, tot = pl.A + pl.B;
   ui.pA.style.width = pl.A / nA * 100 + '%'; ui.pB.style.width = pl.B / nB * 100 + '%'; ui.pT.style.width = tot / N * 100 + '%';
   ui.nA.textContent = `${pl.A} / ${nA}`; ui.nB.textContent = `${pl.B} / ${nB}`; ui.nT.textContent = `${tot} / ${N}`;
@@ -127,13 +177,17 @@ function resize() { const w = canvas.clientWidth, h = canvas.clientHeight; rende
 window.addEventListener('resize', resize);
 function render() {
   const src = drawHud(), w = canvas.clientWidth, h = canvas.clientHeight;
+  const marks=document.getElementById('showMarks').checked;Object.values(sim.boards).forEach(b=>b.setAnnotations(marks));
   renderer.setScissorTest(false); renderer.setViewport(0, 0, w, h); renderer.render(scene, camera);
+  vision.hide();
   if (ui.showPip.checked) {
-    const c = canvas.getBoundingClientRect(), f = ui.pipFrame.getBoundingClientRect(), cam = pipCams[src]();
-    cam.aspect = f.width / f.height; cam.updateProjectionMatrix();
+    const c = canvas.getBoundingClientRect(), f = document.getElementById('pipImage').getBoundingClientRect(), cam = pipCams[src]();
+    cam.aspect = 1.5; cam.updateProjectionMatrix();
     const vis = M.occluders.visible; M.occluders.visible = false;
+    Object.values(sim.boards).forEach(b=>b.setAnnotations(false));
     renderer.setScissorTest(true); renderer.setScissor(f.left - c.left, c.bottom - f.bottom, f.width, f.height); renderer.setViewport(f.left - c.left, c.bottom - f.bottom, f.width, f.height);
-    renderer.render(scene, cam); renderer.setScissorTest(false); renderer.setViewport(0, 0, w, h); M.occluders.visible = vis;
+    renderer.render(scene, cam); vision.draw(cam,f,copperResults(src,T,plan,M,sim.boards)); renderer.setScissorTest(false); renderer.setViewport(0, 0, w, h); M.occluders.visible = vis;
+    Object.values(sim.boards).forEach(b=>b.setAnnotations(marks));
   }
 }
 const clock = new THREE.Clock();
@@ -143,8 +197,9 @@ function frame() {
   if (camAnim) { camAnim.u = Math.min(1, camAnim.u + dt * 1.4); camera.position.lerpVectors(camAnim.p0, camAnim.p, smooth(camAnim.u)); controls.target.lerpVectors(camAnim.t0, camAnim.t, smooth(camAnim.u)); if (camAnim.u === 1) camAnim = null; }
   controls.update(); render();
 }
-setView(qp.get('view') || 'iso', true); resize(); ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放';
+resize(); ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放';
 if (qp.has('t')) { playing = false; T = +qp.get('t') || 0; ui.playBtn.textContent = '▶ 播放'; }
 if (qp.has('pip')) ui.pipSel.value = qp.get('pip');
+T = THREE.MathUtils.clamp(T, 0, total); sim.apply(T); setView(qp.get('view') || 'iso', true);
 window.sim = { plan, seekTo, get T() { return T; }, setView };
 document.getElementById('loading').classList.add('hide'); render(); frame();

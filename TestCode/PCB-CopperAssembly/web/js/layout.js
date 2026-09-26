@@ -5,7 +5,7 @@
 export const RECIPES = {
   'obround-138': {
     name: '長圓孔基板 · 138 孔（照片）', short: '長圓 138', source: '照片目測：6 排 × 23 個長圓孔',
-    hole: { shape: 'obround', w: 3.4, l: 7.4 }, coin: { shape: 'obround', w: 3.0, l: 7.0, t: 1.5 },   // 銅片與孔單邊間隙 0.2 mm
+    hole: { shape: 'obround', w: 3.4, l: 7.4, radius: .85 }, coin: { shape: 'obround', w: 3.0, l: 7.0, t: 1.5, radius: .65 },   // 單邊間隙 0.2 mm；照片圓角長條外觀，圓角尺寸為示意
     columnsX: [-137.5, -82.5, -27.5, 27.5, 82.5, 137.5], rows: 23, rowPitch: 14,
     nozzleR: 1.2, feederCount: 14, feederGap: 10,                                                    // 吸嘴 Ø2.4；供料盤每次攤開 14 顆
   },
@@ -41,7 +41,7 @@ export const LAYOUT = {
   railInner: 178,                                             // 輸送邊軌內側 |z|
   stackZ: 560,                                                // 上料／收料料倉在前側
   // S2 雙龍門：A 在前（+z）、B 在後（−z）；吸嘴裝在橫樑內側，懸伸 87 mm
-  gantry: { railX: 520, beamY: 1250, beamDepth: 120, overhang: 87, nozzleDX: [-33, -11, 11, 33], minBeamGap: 140 },
+  gantry: { railX: 520, beamY: 1250, beamDepth: 120, overhang: 87, downCamDX:95, downCamOut:10, nozzleDX: [-33, -11, 11, 33], minBeamGap: 140 },
   feeder: { A: { x: -300, z: 330 }, B: { x: 300, z: -330 }, w: 150, d: 110, top: 955 },   // 柔性供料盤（中心、尺寸、盤面高度）
   upCam: { A: { x: -120, z: 250 }, B: { x: 120, z: -250 }, lensY: 880, flyV: 400, flySpan: 110 },
   scan: { cols: [-131.25, -43.75, 43.75, 131.25], rows: [-140, -70, 0, 70, 140], fov: [110, 73] }, // S1／S3 掃描格：20 張

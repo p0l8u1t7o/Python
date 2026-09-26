@@ -45,14 +45,15 @@ export function buildPlan(seed = 20260911) {
 
   // ---- S1 基板視覺定位：20 張拍攝建立孔位圖 ----
   const scanTrack = (name, stLabel, verb) => {
-    const tr = new Track(name, { x: -175, z: -175 }); tr.until(T_LIFT_UP, '等待換站');
+    const homeX=name==='S1'?-175:175; // Park away from the neighbouring S2 gantry.
+    const tr = new Track(name, { x: homeX, z: -175 }); tr.until(T_LIFT_UP, '等待換站');
     const shots = [];
     SC.rows.forEach((z, ri) => (ri % 2 ? [...SC.cols].reverse() : SC.cols).forEach(x => {
       const d = Math.max(Math.abs(x - tr.pose.x), Math.abs(z - tr.pose.z));
       tr.move(moveTime(d) + MOTION.settle, { x, z }, `移至第 ${shots.length + 1} 格`);
       shots.push({ t: tr.t, x, z }); tr.wait(MOTION.scanShot, `${verb} ${shots.length}／20`, { flash: true });
     }));
-    tr.wait(0.3, stLabel).move(moveTime(200), { x: -175, z: -175 }, '回原點');
+    tr.wait(0.3, stLabel).move(moveTime(Math.max(Math.abs(homeX-tr.pose.x),Math.abs(-175-tr.pose.z))),{x:homeX,z:-175},'回原點');
     return { tr, shots };
   };
   const s1 = scanTrack('S1', `建立 ${holes.length} 孔位圖（位置、角度、孔徑）`, '拍攝');
@@ -111,7 +112,7 @@ export function buildPlan(seed = 20260911) {
         tr.move(zTime(LAYOUT.safeTip - FEED_COIN_TOP), { [`y${k}`]: LAYOUT.safeTip }, `吸嘴 ${k + 1} 上升`);
       });
       // 供料盤：頭離開後震動、補料、重新攤開、拍照找正面銅片
-      const tv = tr.t; fr.until(tv, '待命').move(0.6, { vib: 1 }, '震動攤料＋補料').move(0.01, { vib: 0 }, '').wait(0.12, '供料相機拍照', { flash: true });
+      const tv = tr.t; fr.until(tv, '待命').move(0.6, { vib: 1 }, '震動攤料＋補料').move(0.01, { vib: 0 }, '等待視野淨空');
       for (const c of avail) if (c.t1 === Infinity) c.t1 = tv + 0.6;
       avail = spread(tv + 0.6, avail.filter(c => c.t1 === tv + 0.6).map(c => ({ id: c.id })));
       // 2) 飛越仰視相機：等速通過，四支吸嘴依序觸發頻閃
@@ -123,7 +124,7 @@ export function buildPlan(seed = 20260911) {
       if (j === 0) {
         tr.until(T_LIFT_UP, '等待換站與頂升');
         const fids = PRODUCT.fiducials.filter(([, z]) => (H === 'A' ? z > 0 : z < 0));
-        for (const [fx, fz] of fids) { xyMove(fx, fz, null, '移至基準點'); tr.wait(MOTION.fidShot, `下視相機拍基準點（${fx}, ${fz}）`, { flash: true }); ev(tr.t, 'fid', { H }); }
+        for (const [fx, fz] of fids) { const side=H==='A'?1:-1;xyMove(fx-side*G.downCamDX,fz-side*G.downCamOut,null,'移至基準點'); tr.wait(MOTION.fidShot, `下視相機拍基準點（${fx}, ${fz}）`, { flash: true }); ev(tr.t, 'fid', { H, x:fx, z:fz }); }
       }
       trip.forEach((h, k) => {
         // 仰視相機量到銅片在吸嘴上的偏移（dx, dz, dθ），放置時由吸嘴位置與角度反向補償
@@ -131,6 +132,7 @@ export function buildPlan(seed = 20260911) {
         const offX = c.pickOffset.dx * Math.cos(a) + c.pickOffset.dz * Math.sin(a), offZ = -c.pickOffset.dx * Math.sin(a) + c.pickOffset.dz * Math.cos(a);
         const tx = h.ax + h.ex - offX - G.nozzleDX[k], tz = h.az + h.ez - offZ;
         xyMove(tx, tz, [0, 1, 2, 3].map(i => (i === k ? th : tr.pose[`t${i}`])), `吸嘴 ${k + 1} 對位孔 #${h.id + 1}（仰視補償＋孔位圖）`);
+        if(k===0&&j<trips.length-1)fr.until(tr.t,'等待橫樑讓出供料視野').wait(.12,'供料相機拍照',{flash:true});
         tr.move(zTime(LAYOUT.safeTip - COIN_SEAT_TOP), { [`y${k}`]: COIN_SEAT_TOP }, `吸嘴 ${k + 1} 放入孔內`);
         tr.wait(MOTION.press, `輕壓 3 N 貼上黏紙`);
         h.placeT = tr.t; h.by = { H, k, trip: j }; hold[k][hold[k].length - 1].t1 = tr.t; hold[k][hold[k].length - 1].hole = h.id;

@@ -23,7 +23,7 @@ export function createSim(scene) {
     }
     const reading = s.balPan - s.balTare + s.balJit;
     s.balText = `${reading.toFixed(4)} g`;
-    lab.setState(s, { robot, rackAngle: smp.angle, headDrop: smp.drop, stir: smp.stir, scanning: f.step.sig === 'scan' });
+    lab.setState(s, { robot, rackAngle: smp.angle, headDrop: smp.drop, stir: smp.stir, scanning: f.step.sig === 'scan', time:T, job:smp.job, spray:smp.spray, step:f.step, progress:f.e });
     // 樣品表（整合軟體）：秤重來自狀態快照，滴定結果來自排程
     const table = s.rec.map((r, k) => {
       const j = plan.jobs.find(x => x.k === k);

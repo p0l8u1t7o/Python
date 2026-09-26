@@ -29,8 +29,12 @@
       <button data-view="decap">開蓋</button>
       <button data-view="pipette">移液</button>
       <button data-view="sampler">進樣器</button>
+      <button data-view="titration">滴定特寫</button>
+      <button data-view="liquid">液面近看</button>
+      <button data-view="meniscus">液面俯拍</button>
       <button data-view="follow">跟隨手臂</button>
       <button data-view="top">俯視</button>
+      <select id="detailShot" aria-label="細節示範"><option value="">細節示範…</option><option value="bottles">樣品瓶與刻度</option><option value="dispense">移液注入杯中</option><option value="water">滴定前加水</option><option value="dose">滴液與攪拌</option></select>
       <select id="mode" aria-label="Metrohm 整合方式">
         <option value="tiamo">整合：tiamo＋Titrando（主案）</option>
         <option value="omnis">整合：OMNIS（備案）</option>
@@ -69,10 +73,11 @@
 
     <section class="card small">
       <h3>顯示</h3>
-      <label class="displayOption"><input id="showLabels" type="checkbox" checked>顯示設備標籤</label>
+      <label class="displayOption"><input id="showLabels" type="checkbox">顯示設備標籤</label>
       <label class="displayOption"><input id="showZones" type="checkbox" checked>顯示安全掃描區</label>
       <button id="exportBtn">匯出紀錄</button>
       <p class="scopeNote">匯出樣品表、滴定排程與通訊紀錄（模擬值，非實測）。</p>
+      <p class="scopeNote">器皿、刻度及液體流動為外觀示意。液體淡色僅供辨識，終點以模擬 pH 曲線呈現。</p>
     </section>
   </aside>
 

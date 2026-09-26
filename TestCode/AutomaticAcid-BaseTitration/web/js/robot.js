@@ -13,7 +13,12 @@ const matLed   = new THREE.MeshStandardMaterial({ color: 0x3dd6c4, emissive: 0x3
 const D2R = Math.PI / 180;
 
 function cyl(r1, r2, h, mat, seg = 36) { const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r2, h, seg), mat); m.castShadow = m.receiveShadow = true; return m; }
-function box(w, h, d, mat) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.castShadow = m.receiveShadow = true; return m; }
+function box(w, h, d, mat) {
+  const b=Math.min(7,w/8,h/8,d/8),s=new THREE.Shape();
+  s.moveTo(-w/2+b,-h/2+b);s.lineTo(w/2-b,-h/2+b);s.lineTo(w/2-b,h/2-b);s.lineTo(-w/2+b,h/2-b);s.closePath();
+  const geo=new THREE.ExtrudeGeometry(s,{depth:d-2*b,bevelEnabled:true,bevelSize:b,bevelThickness:b,bevelSegments:3,steps:1});geo.translate(0,0,-d/2+b);
+  const m = new THREE.Mesh(geo, mat); m.castShadow = m.receiveShadow = true; return m;
+}
 
 // 夾爪幾何（排程與驗證共用）
 export const TOOL = {
@@ -39,6 +44,7 @@ export function createRobot() {
   j.j2 = new THREE.Group(); j.j2.position.set(L.shoulderX, L.shoulderY, 0); j.j1.add(j.j2);          // J2 繞 Z
   const j2disc = cyl(80, 80, 200, matArm); j2disc.rotation.x = Math.PI / 2; j.j2.add(j2disc);
   const j2cap = cyl(62, 62, 204, matJoint); j2cap.rotation.x = Math.PI / 2; j.j2.add(j2cap);
+  for(const side of [-1,1])for(let k=0;k<6;k++){const a=k*Math.PI/3;cylinder(j.j2,3,1,[Math.cos(a)*48,Math.sin(a)*48,side*102.5],matTool,'z',12);}
   const upper = box(110, L.upper, 120, matArm); upper.position.y = L.upper / 2; j.j2.add(upper);
   const upperCap = cyl(66, 66, 150, matArm); upperCap.rotation.x = Math.PI / 2; upperCap.position.y = L.upper; j.j2.add(upperCap);
   const ledUp = cyl(67, 67, 6, matLed); ledUp.rotation.x = Math.PI / 2; ledUp.position.set(0, L.upper, 70); j.j2.add(ledUp);

@@ -131,3 +131,5 @@ button,select{font-family:var(--font)}select,button{color:var(--fg);background:#
 .sigs .on{color:#dfeee8}.sigs .on i{background:#6edbb0;box-shadow:0 0 7px #65d4ad}
 .sigs .on.warn i{background:#ffb020;box-shadow:0 0 7px #ffb020}
 @media(max-width:1300px){#left{display:none}#c{left:0;width:calc(100% - 332px)}#bottombar{left:16px}}
+/* Detail views remain reachable without covering the 3D viewport. */
+.views{overflow-x:auto;min-width:0}.views button{flex:none;padding:7px 9px}.views select{flex:none;min-width:155px;max-width:220px}.views #detailShot{margin-left:8px}

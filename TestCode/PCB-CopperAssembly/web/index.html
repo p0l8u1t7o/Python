@@ -27,6 +27,8 @@
       <button data-view="iso">全景</button>
       <button data-view="s2">放置站</button>
       <button data-view="head">吸嘴特寫</button>
+      <button data-view="board">基板近看</button>
+      <button data-view="hole">孔位細節</button>
       <button data-view="feeder">供料盤</button>
       <button data-view="s1">基板定位</button>
       <button data-view="load">上下料</button>
@@ -34,12 +36,21 @@
       <select id="recipe" aria-label="機種配方"></select>
       <select id="pipSel" aria-label="子畫面相機">
         <option value="auto">子畫面：自動</option><option value="upA">仰視相機 A</option><option value="upB">仰視相機 B</option>
-        <option value="s1">S1 定位相機</option><option value="s3">S3 檢查相機</option><option value="feedA">供料相機 A</option><option value="downA">A 頭下視相機</option>
+        <option value="s1">S1 定位相機</option><option value="s3">S3 檢查相機</option><option value="feedA">供料相機 A</option><option value="feedB">供料相機 B</option><option value="downA">A 頭下視相機</option><option value="downB">B 頭下視相機</option>
       </select>
     </div>
   </header>
 
   <aside id="side">
+    <section class="card productCard">
+      <h3>基板與散熱片 <span class="hint">尺寸示意・mm</span></h3>
+      <div id="productDims"></div>
+      <label class="holeLabel" for="holeSelect">觀察孔位</label>
+      <select id="holeSelect" aria-label="觀察孔位"></select>
+      <div class="detailSteps"><button id="emptyHole">空孔</button><button id="beforeInsert">放入中</button><button id="afterInsert">放入後</button></div>
+      <div id="holeState" aria-live="polite"></div>
+      <small>孔壁、底部黏紙與周邊間隙按比例呈現。孔徑、板厚與圓角依現有配方示意，待圖面確認。</small>
+    </section>
     <section class="card identity"><span class="eyebrow">ENGINEERING SIMULATION</span><div id="phase">HOLD</div><p>五片基板同時在五站作業：上料、孔位定位、放置、檢查、下料</p><small>尺寸依照片目測；運動參數、誤差模型與供料良率為設計假設，待實機驗證。</small></section>
 
     <section class="card">
@@ -65,12 +76,13 @@
       <label class="displayOption"><input id="showPip" type="checkbox" checked>顯示相機子畫面</label>
       <label class="displayOption"><input id="showGuards" type="checkbox" checked>顯示外罩</label>
       <label class="displayOption"><input id="showLabels" type="checkbox">顯示設備標籤</label>
+      <label class="displayOption"><input id="showMarks" type="checkbox">顯示孔位輔助標記</label>
       <button id="exportBtn">匯出紀錄</button>
       <p class="scopeNote">匯出每顆的模擬放置誤差與時間；無實拍影像、無實測值。</p>
     </section>
   </aside>
 
-  <div id="pipFrame" hidden><div class="pipTitle" id="pipTitle"></div><div id="pipResult" class="pipResult"></div></div>
+  <div id="pipFrame" hidden><div class="pipTitle" id="pipTitle"></div><div id="pipImage"></div><div id="pipResult" class="pipResult"></div></div>
 
   <footer id="bottombar">
     <div class="ctl">

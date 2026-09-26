@@ -3,6 +3,12 @@
   --fg:#e6edf3;--muted:#8b98a8;--accent:#4aa8ff;--ok:#3dd68c;--warn:#ffb020;--bad:#ff4d4d;
   --font:"Noto Sans TC","Microsoft JhengHei","PingFang TC",system-ui,sans-serif;
 }
+/* Complete 3:2 optical frame, with controls outside the image. */
+#app #pipFrame{height:auto;max-width:calc(100vw - 36px)}
+#app #pipImage{width:100%;height:auto;aspect-ratio:3/2;flex:none}
+#app #pipFrame .pipTitle{padding-right:55px;min-height:28px}
+#app #pipFrame.expanded{width:min(600px,calc(100vw - 370px),calc((100vh - 350px)*1.5))}
+.pipExpand{position:absolute;right:5px;top:3px;pointer-events:auto;cursor:pointer;border:1px solid #486070;background:#192936;color:#d8e9f1;border-radius:4px;font:11px sans-serif;padding:3px 6px}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:var(--font);overflow:hidden}
 #app{position:relative;width:100%;height:100%}
@@ -163,3 +169,12 @@ body.capture #c{height:calc(100% - 132px)}body.capture #bottombar{display:none}
 .stationStatus .tag{font-weight:700;color:var(--accent)}
 .stationStatus .txt{color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .views select{max-width:170px}
+/* Product detail and unobstructed 3:2 camera image. */
+.views{overflow-x:auto;min-width:0}.views button{flex:none;padding:7px 9px}.views select{min-width:170px;flex:none}
+#productDims{display:grid;grid-template-columns:1fr 1fr;gap:7px;font-size:11px;color:#cdb39c}#productDims b{font-size:16px;color:#e4c3a5}#productDims span:nth-child(2){align-self:center;color:#a0adb6}
+.holeLabel{display:block;font-size:11px;color:#9dabb7;margin:12px 0 5px}#holeSelect{width:100%;font-size:12px}.detailSteps{display:flex;gap:6px;margin-top:8px}.detailSteps button{flex:1;font-size:12px}
+#holeState{font-size:11px;color:#8bcfc2;margin-top:10px}.productCard small{display:block;color:#91a1ad;font-size:10px;line-height:1.65;margin-top:9px}
+#pipFrame{height:auto;width:300px;display:flex;flex-direction:column;overflow:hidden;background:transparent}#pipFrame[hidden]{display:none}
+#pipFrame .pipTitle,#pipFrame .pipResult{position:static;flex:none;background:#111c28;font-size:10px;min-height:24px}
+#pipImage{width:100%;aspect-ratio:3/2;flex:none}
+@media(max-width:1100px){#pipFrame{width:220px}}

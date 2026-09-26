@@ -1,9 +1,12 @@
 // Reference reconstruction, millimetres. Positions are estimates, not OEM CAD.
 import * as THREE from 'three';
+import { finish } from './finish.js';
 import { block, cylinder, rounded, profile, decal } from './detail.js';
 export const NB = { W: 300, D: 210, H: 36 };
 const material=(color,roughness=.7,metalness=.2)=>new THREE.MeshStandardMaterial({color,roughness,metalness});
 const body=material(0x242829),lid=material(0x393e3e),rubber=material(0x111416,.94,0),doorMat=material(0x252a2b),steel=material(0x8b9294,.32,.85),dark=material(0x080b0d),gold=material(0xd0aa53,.32,.8),blue=material(0x1476a3);
+for (const m of [body,lid,doorMat]) finish(m,'polymer',.025);
+finish(rubber,'polymer',.045); finish(steel,'metal',.008);
 const standard=[
   {id:'D1',side:'L',u:-42,w:78,h:23,name:'HDMI / USB 3.1 ×2',ports:['hdmi','usb','usb'],icon:'HDMI   SS   SS'},
   {id:'D2',side:'L',u:22,w:36,h:23,name:'AC 電源',ports:['ac'],icon:'DC IN'},
@@ -27,10 +30,27 @@ function port(type){
   const g=new THREE.Group();
   if(['usb','hdmi','typec','com','lan','card'].includes(type)){
     const sizes={usb:[13,6],hdmi:[15,6],typec:[9,4],com:[22,9],lan:[14,12],card:[40,3]},[w,h]=sizes[type];
-    block(g,[w+2,h+2,2],[0,0,0],steel);block(g,[w,h,1],[0,0,1.2],dark);
-    if(type==='usb'||type==='typec')block(g,[w-2,1,1],[0,0,2],type==='usb'?blue:dark);
+    // Stamped shell has an actual opening and inner walls, not a black face on a solid box.
+    const outline=(ww,hh)=>{
+      const s=new THREE.Shape(),r=type==='typec'?hh/2:Math.min(.7,hh/3);
+      if(type==='hdmi'||type==='com'){
+        s.moveTo(-ww/2,hh/2);s.lineTo(ww/2,hh/2);s.lineTo(ww/2-2,-hh/2);s.lineTo(-ww/2+2,-hh/2);s.closePath();
+      }else{
+        s.moveTo(-ww/2+r,-hh/2);s.lineTo(ww/2-r,-hh/2);s.quadraticCurveTo(ww/2,-hh/2,ww/2,-hh/2+r);
+        s.lineTo(ww/2,hh/2-r);s.quadraticCurveTo(ww/2,hh/2,ww/2-r,hh/2);s.lineTo(-ww/2+r,hh/2);
+        s.quadraticCurveTo(-ww/2,hh/2,-ww/2,hh/2-r);s.lineTo(-ww/2,-hh/2+r);s.quadraticCurveTo(-ww/2,-hh/2,-ww/2+r,-hh/2);
+      }return s;
+    };
+    const shell=outline(w+1.2,h+1.2);shell.holes.push(new THREE.Path(outline(w,h).getPoints(16)));
+    const metalShell=new THREE.Mesh(new THREE.ExtrudeGeometry(shell,{depth:2.8,bevelEnabled:false,curveSegments:12}),steel);
+    metalShell.position.z=-.8;metalShell.castShadow=metalShell.receiveShadow=true;g.add(metalShell);
+    block(g,[w,h,.25],[0,0,-.7],dark);
+    if(type==='usb'||type==='typec')block(g,[w-2,1,2],[0,0,.25],type==='usb'?blue:dark);
     if(type==='com'){for(let row=0;row<2;row++)for(let i=0;i<(row?4:5);i++)cylinder(g,.5,2,[-6+i*3+row*1.5,1.5-row*3,2],gold,'z',8);}
-    else for(let i=0;i<(type==='lan'?8:9);i++)block(g,[.45,1.2,.3],[-w*.36+i*w*.08,-h*.2,2.3],gold);
+    else {
+      const count={usb:9,hdmi:19,typec:12,lan:8,card:8}[type];
+      for(let i=0;i<count;i++)block(g,[Math.min(.45,w*.7/count*.55),type==='lan'?3:.2,1.2],[-w*.35+i*w*.7/(count-1),type==='usb'||type==='typec'?.57:-h*.22,.8],gold);
+    }
     if(type==='com')for(const x of [-15,15])cylinder(g,2,3,[x,0,0],steel,'z',6);
     if(type==='lan')block(g,[6,2,2],[0,-6,1.5],dark);
   }else if(type==='ac'||type==='audio'){
@@ -49,8 +69,9 @@ function makeDoor(def){
   const latchPivot=new THREE.Group();latchPivot.position.set(0,def.h-2,4);hinge.add(latchPivot);
   block(latchPivot,[Math.min(22,def.w*.4),3,2],[0,0,0],steel);block(latchPivot,[Math.min(19,def.w*.35),1.2,2.3],[0,1,1],rubber);
   for(const x of [-def.w/2+5,def.w/2-5])cylinder(group,1.5,8,[x,0,1],steel,'x');
-  const cavity=block(group,[def.w-2,def.h-2,1],[0,def.h/2,-.3],dark);
-  const portGroup=new THREE.Group();portGroup.position.set(0,def.h/2,.5);group.add(portGroup);
+  const cavity=block(group,[def.w-2,def.h-2,1],[0,def.h/2,-4.625],dark);
+  // Recess the ports behind the closed door's inner face (z=.55).
+  const portGroup=new THREE.Group();portGroup.position.set(0,def.h/2,-3.2);group.add(portGroup);
   def.ports.forEach((p,i)=>{const m=port(p);m.position.x=(i-(def.ports.length-1)/2)*(def.w-14)/def.ports.length;portGroup.add(m);});
   if(def.side==='L'){group.position.set(-NB.W/2-.5,3,def.u);group.rotation.y=-Math.PI/2;}
   if(def.side==='R'){group.position.set(NB.W/2+.5,3,def.u);group.rotation.y=Math.PI/2;}

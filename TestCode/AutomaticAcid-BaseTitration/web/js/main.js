@@ -1,5 +1,8 @@
 // 主程式：場景、批次時間軸、樣品表、滴定曲線、交握訊號、通訊紀錄
 import * as THREE from 'three';
+import { createVisionOverlay } from './vision-overlay.js';
+import { liquidResults } from './vision-results.js';
+const vision = createVisionOverlay();
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { createSim } from './sim.js';
@@ -10,15 +13,22 @@ const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: qp.get('aa') !== '0', powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = qp.get('shadow') !== '0'; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.15; renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0; renderer.outputColorSpace = THREE.SRGBColorSpace;
 const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0d1117); scene.fog = new THREE.Fog(0x0d1117, 6000, 14000);
-scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+const room=new RoomEnvironment(renderer),pmrem=new THREE.PMREMGenerator(renderer);
+room.traverse(o=>{if(o.isPointLight)o.intensity=240;});
+scene.environment=pmrem.fromScene(room,.04).texture;room.dispose();pmrem.dispose();
 const camera = new THREE.PerspectiveCamera(40, 1, 2, 30000);
 const controls = new OrbitControls(camera, canvas); controls.enableDamping = true; controls.dampingFactor = 0.08; controls.maxPolarAngle = Math.PI * 0.49; controls.minDistance = 30; controls.maxDistance = 9000;
 scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x2a2f36, 0.6));
-const sun = new THREE.DirectionalLight(0xffffff, 1.5); sun.position.set(-1400, 3600, 2000); sun.castShadow = qp.get('shadow') !== '0'; sun.shadow.mapSize.set(2048, 2048);
+const sun = new THREE.DirectionalLight(0xfff8ef, 1.25); sun.position.set(-1400, 3600, 2000); sun.castShadow = qp.get('shadow') !== '0'; sun.shadow.mapSize.set(2048, 2048);
 Object.assign(sun.shadow.camera, { left: -1800, right: 1800, top: 1800, bottom: -1800, near: 500, far: 9000 }); sun.shadow.bias = -0.0003; scene.add(sun);
+sun.shadow.normalBias=.08;
 const fill = new THREE.DirectionalLight(0x9fb8ff, 0.5); fill.position.set(1800, 1500, -1800); scene.add(fill);
+const cupLight=new THREE.DirectionalLight(0xfffbf3,.5);cupLight.position.set(590,1530,260);cupLight.target.position.set(810,990,60);
+cupLight.castShadow=renderer.shadowMap.enabled;cupLight.shadow.mapSize.set(1024,1024);
+Object.assign(cupLight.shadow.camera,{left:-130,right:130,top:180,bottom:-180,near:50,far:1000});
+cupLight.shadow.normalBias=.025;cupLight.shadow.bias=-.00001;scene.add(cupLight,cupLight.target);
 
 const sim = createSim(scene), plan = sim.plan, lab = sim.lab, total = plan.total;
 const $ = id => document.getElementById(id);
@@ -50,14 +60,24 @@ const flowBtns = FLOW.map(([ph, idx, name]) => {
 
 // ---------------------------------------------------------------- 視角
 const views = {
+  titration: [[680,1105,270],[810,1003,60]], liquid: [[90,1020,-190],[-20,905,-370]], bottles:[[-260,1140,650],[-500,970,300]],
   iso: [[-1450, 2550, 2450], [80, 930, -20]], balance: [[-80, 1720, 820], [-560, 1000, -40]], decap: [[-470, 1420, 60], [-180, 1030, -330]],
   pipette: [[120, 1560, -980], [90, 1000, -300]], sampler: [[330, 1650, 760], [690, 960, 40]], top: [[0, 3700, 250], [0, 850, 0]],
 };
-let camAnim = null, follow = false;
+let camAnim = null, follow = false, liquidTrack = null, visionView='iso';
+function liquidFocus(){
+  const cup=lab.items[`beaker${info?.sampler.job?.beaker??0}`],fluid=cup.userData.fluid;
+  return cup.localToWorld(new THREE.Vector3(0,fluid.surface.position.y,0));
+}
 function setView(name, instant = false) {
+  liquidTrack=null;visionView=name;
   follow = name === 'follow';
   document.querySelectorAll('.views button').forEach(b => b.classList.toggle('selected', b.dataset.view === name));
   if (follow) return;
+  if(name==='meniscus'){
+    info=sim.apply(T);liquidTrack=liquidFocus();camAnim=null;
+    controls.target.copy(liquidTrack);camera.position.copy(liquidTrack).add(new THREE.Vector3(-75,115,90));controls.update();return;
+  }
   if (!views[name]) return; const [p, t] = views[name].map(a => new THREE.Vector3(...a));
   if (instant) { camAnim = null; camera.position.copy(p); controls.target.copy(t); controls.update(); } else camAnim = { p0: camera.position.clone(), t0: controls.target.clone(), p, t, u: 0 };
 }
@@ -137,6 +157,13 @@ const pause = () => { playing = false; ui.playBtn.textContent = '▶ 播放'; };
 function seekTo(t) { T = THREE.MathUtils.clamp(t, 0, total); render(); }
 ui.playBtn.onclick = () => { if (T >= total) T = 0; playing = !playing; ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放'; };
 ui.restartBtn.onclick = () => seekTo(0);
+const closeShots={
+  dose:{view:'titration',time:()=>plan.jobs[0].start+90},
+  water:{view:'titration',time:()=>plan.jobs[0].start+7},
+  dispense:{view:'liquid',time:()=>{const s=plan.steps.find(s=>s.label==='吐出 5 mL＋吹出');return s.start+s.dur*.55;}},
+  bottles:{view:'bottles',time:()=>0},
+};
+$('detailShot').onchange=e=>{const shot=closeShots[e.target.value];if(shot){pause();seekTo(shot.time());setView(shot.view,true);}e.target.value='';};
 ui.timeline.oninput = () => { pause(); seekTo(+ui.timeline.value); };
 const jumpMs = d => { pause(); const ms = plan.events; let i = ms.findIndex(m => m.t > T + 1e-6); if (d < 0) { i = -1; ms.forEach((m, j) => { if (m.t < T - 0.5) i = j; }); } if (i >= 0) seekTo(ms[i].t); };
 ui.previous.onclick = () => jumpMs(-1); ui.next.onclick = () => jumpMs(1);
@@ -157,6 +184,7 @@ ui.exportBtn.onclick = () => {
 
 function drawHud() {
   info = sim.apply(T);
+  if(liquidTrack){const p=liquidFocus(),delta=p.clone().sub(liquidTrack);camera.position.add(delta);controls.target.add(delta);liquidTrack=p;camera.lookAt(controls.target);}
   const f = info, s = f.state, smp = f.sampler;
   ui.act.textContent = s.act; ui.stepLabel.textContent = `${f.step.label}${f.step.idle ? '' : `（${f.step.dur.toFixed(1)} s）`}`;
   ui.phase.textContent = T >= total ? 'CYCLE COMPLETE · 批次完成' : playing ? `AUTO · ${smp.phase === '待機' ? '前處理中' : 'Metrohm ' + smp.phase}` : 'HOLD · 暫停';
@@ -197,7 +225,9 @@ function drawHud() {
 }
 function resize() { const w = canvas.clientWidth, h = canvas.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 window.addEventListener('resize', resize);
-function render() { drawHud(); renderer.render(scene, camera); }
+function render() { drawHud(); renderer.render(scene, camera);
+  if(['meniscus','titration','liquid','bottles','balance','decap','pipette','sampler','follow'].includes(visionView))vision.draw(camera,canvas.getBoundingClientRect(),liquidResults(lab,info,T,visionView));else vision.hide();
+}
 const clock = new THREE.Clock();
 function frame() {
   requestAnimationFrame(frame); const dt = Math.min(clock.getDelta(), 0.05);

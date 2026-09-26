@@ -37,6 +37,7 @@
       <button data-view="flip">翻面站</button>
       <button data-view="top">俯視</button>
       <button data-view="product">產品特寫</button>
+      <button data-view="sensor">手臂取景</button>
       <select id="sku" aria-label="SKU 配方"><option value="V110-STND">V110-STND · 工單配方</option><option value="V110-RF">RF · 擴充示意（非本工單）</option></select>
     </div>
   </header>
@@ -95,6 +96,7 @@
   </footer>
 
   <div id="loading">載入 3D 場景中…</div>
+  <div id="sensorCaption" hidden></div>
   <output id="diagnostics" hidden></output>
 </div>
 <script type="module" src="js/main.js"></script>

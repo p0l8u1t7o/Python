@@ -1,6 +1,8 @@
 // 機台：底座、邊軌輸送線（S1–S3 頂升真空台）、S0／S4 料倉與上下料、S1／S3 相機龍門、
 // S2 雙龍門（4 吸嘴頭，Z＋θ）、柔性供料盤、仰視相機、外罩與三色燈。座標同 layout.js。
 import * as THREE from 'three';
+import { finish } from './finish.js';
+import { perforated } from './perforated.js';
 import { block, cylinder, decal } from './detail.js';
 import { LAYOUT, PRODUCT, HOLES, BOARD_TOP } from './layout.js';
 import { createCoin } from './board.js';
@@ -15,8 +17,17 @@ const matBelt = new THREE.MeshStandardMaterial({ color: 0x2e7d56, roughness: 0.7
 const matYellow = new THREE.MeshStandardMaterial({ color: 0xf2b21b, roughness: 0.6 });
 const matPC = new THREE.MeshPhysicalMaterial({ color: 0xcfe3ff, roughness: 0.1, transmission: 0.3, transparent: true, opacity: 0.1, depthWrite: false, side: THREE.DoubleSide });
 const matFeeder = new THREE.MeshStandardMaterial({ color: 0xe8eef2, roughness: 0.7, emissive: 0x9fb8c8, emissiveIntensity: 0.25 });
+finish(matAlu,'metal',.008); finish(matFrame,'metal',.012); finish(matBase,'polymer',.025);
 const glow = () => new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.05 });
 const top = LAYOUT.conveyorTop, ST = LAYOUT.stations, G = LAYOUT.gantry;
+function annulus(parent, outer, inner, y, material) {
+  const mesh = new THREE.Mesh(new THREE.RingGeometry(inner, outer, 40), material);
+  mesh.rotation.x = Math.PI / 2; mesh.position.y = y; parent.add(mesh); return mesh;
+}
+function bolt(parent, x, y, z) {
+  cylinder(parent, 3.4, 2, [x, y, z], matAlu, 'y', 20);
+  cylinder(parent, 1.5, .12, [x, y + 1.05, z], matDark, 'y', 6);
+}
 
 /** 相機外形（朝向 dir：'down' 或 'up'），回傳 { group, ring, cam（視角） } */
 function camera(parent, pos, dir, { fov = 20, ringR = 34, power = 600 } = {}) {
@@ -24,6 +35,10 @@ function camera(parent, pos, dir, { fov = 20, ringR = 34, power = 600 } = {}) {
   const s = dir === 'down' ? 1 : -1;
   block(g, [44, 47, 34], [0, s * 60, 0], matDark);
   cylinder(g, 15, 36, [0, s * 18, 0], matDark);
+  for (const y of [7, 13, 25]) cylinder(g, 15.5, 1.4, [0, s * y, 0], matAlu, 'y', 40);
+  // Optical front sits behind the camera origin so it cannot obscure its own image.
+  const glass = cylinder(g, 11, .5, [0, s * 1, 0], new THREE.MeshPhysicalMaterial({ color: 0x203b50, metalness: .3, roughness: .09 }), 'y', 40);
+  glass.castShadow = false;
   const ringMat = glow(); const ring = new THREE.Mesh(new THREE.TorusGeometry(ringR, 5, 8, 36), ringMat); ring.rotation.x = Math.PI / 2; g.add(ring);
   const light = new THREE.SpotLight(0xffffff, 0, 900, 0.6, 0.5, 1); light.target.position.set(0, -s * 500, 0); g.add(light, light.target);
   // 相機預設朝本地 −z；繞 x 轉 ∓90° 改為朝下／朝上（群組只有平移，直接設旋轉即可）
@@ -43,6 +58,7 @@ export function createMachine(scene) {
   const beltMarks = new THREE.Group(); g.add(beltMarks);
   for (const s of [-1, 1]) {
     block(g, [3400, 40, 16], [0, top - 12, s * (LAYOUT.railInner + 8)], matAlu);
+    for (let x = -1640; x <= 1640; x += 140) bolt(g, x, top + 9, s * (LAYOUT.railInner + 8));
     block(g, [3380, 2, 8], [0, top - 1, s * (LAYOUT.railInner - 4)], matBelt);
     for (let x = -1680; x < 1680; x += 60) block(beltMarks, [3, 0.6, 7], [x, top + 0.3, s * (LAYOUT.railInner - 4)], matAlu);
     for (const x of [-1600, -1000, -300, 300, 1000, 1600]) block(g, [40, top - 820, 40], [x, (top + 820) / 2 - 20, s * (LAYOUT.railInner + 8)], matFrame);
@@ -79,13 +95,15 @@ export function createMachine(scene) {
   const scanners = {};
   for (const [key, i] of [['S1', 1], ['S3', 3]]) {
     const x0 = ST[i];
-    for (const s of [-1, 1]) { ko(block(g, [40, 480, 40], [x0 + s * 250, 1060, -260], matFrame), key + '立柱'); ko(block(g, [40, 480, 40], [x0 + s * 250, 1060, 260], matFrame), key + '立柱'); block(g, [30, 30, 560], [x0 + s * 250, 1300, 0], matAlu); }
+    // Cantilever the inner end; its posts must stay outside S2's full-width moving beams.
+    for (const dx of (key==='S1'?[-250,90]:[-90,250])) { ko(block(g,[40,600,40],[x0+dx,1120,-260],matFrame),key+'立柱');ko(block(g,[40,600,40],[x0+dx,1120,260],matFrame),key+'立柱');block(g,[30,30,560],[x0+dx,1420,0],matAlu); }
     const beam = new THREE.Group(); g.add(beam);
-    block(beam, [540, 40, 50], [x0, 1330, 0], matAlu);
+    block(beam, [540, 40, 50], [x0, 1450, 0], matAlu);
     const car = new THREE.Group(); beam.add(car);
-    block(car, [70, 90, 70], [0, 1290, 0], matDark);
-    const cam = camera(car, [0, 1180, 0], 'down', { fov: 2 * Math.atan(8.8 / 2 / 27) * 180 / Math.PI, ringR: 45 });   // 20MP＋27 mm，WD 約 228 mm → 視野約 111 × 74 mm
-    decal(g, 150, 24, [x0, 1405, 0], [0, 0, 0], key === 'S1' ? 'S1 基板視覺定位' : 'S3 放置後檢查', { bg: '#122d3c', color: '#9fd8ff', center: true });
+    block(car, [70, 90, 70], [0, 1410, 0], matDark);
+    block(car,[20,140,20],[0,1300,0],matAlu);
+    const cam = camera(car,[0,1150,0],'down',{fov:2*Math.atan(8.8/2/23.5)*180/Math.PI,ringR:45}); // WD 約 198 mm，保留約 111 × 74 mm 視野
+    decal(g,150,24,[x0,1525,0],[0,0,0],key==='S1'?'S1 基板視覺定位':'S3 放置後檢查',{bg:'#122d3c',color:'#9fd8ff',center:true});
     scanners[key] = { beam, car, cam, x0 };
   }
 
@@ -98,17 +116,24 @@ export function createMachine(scene) {
   for (const H of ['A', 'B']) {
     const side = H === 'A' ? 1 : -1;
     const beam = new THREE.Group(); g.add(beam);
-    block(beam, [2 * G.railX + 70, 80, G.beamDepth], [0, G.beamY + 40, 0], H === 'A' ? matBlue : matAlu);
+    block(beam,[2*G.railX+70,80,G.beamDepth],[0,G.beamY+50,0],H==='A'?matBlue:matAlu).name='moving-gantry-beam';
     decal(beam, 160, 30, [0, G.beamY + 40, side * (G.beamDepth / 2 + 1)], [0, side < 0 ? Math.PI : 0, 0], `龍門 ${H}`, { bg: '#102635', color: '#65d7b8', center: true });
     const head = new THREE.Group(); beam.add(head);
-    block(head, [120, 180, 60], [0, G.beamY - 50, -side * (G.beamDepth / 2 + 10)], matDark);    // 頭座（在橫樑內側）
-    block(head, [110, 40, G.overhang + 10], [0, G.beamY - 160, -side * (G.overhang / 2 + 25)], matAlu);
-    const downCam = camera(head, [0, 1090, -side * (G.overhang + 40)], 'down', { fov: 22, ringR: 16 });
+    const bodyZ=-side*(G.beamDepth/2+10),bracketZ=-side*(G.overhang+32)/2;
+    const guide=perforated(head,[120,180,60],[0,G.beamY-50,bodyZ],G.nozzleDX.map(x=>[x,-side*G.overhang-bodyZ,6]),matDark);guide.name='spindle-guide';
+    const bracket=perforated(head,[110,40,G.overhang-8],[0,G.beamY-160,bracketZ],G.nozzleDX.map(x=>[x,-side*G.overhang-bracketZ,10.3]),matAlu);bracket.name='spindle-bracket';
+    // Side mount keeps both lenses out of the shared corridor between the heads.
+    const camZ=-side*(G.overhang-G.downCamOut);
+    block(head,[70,12,34],[side*77.5,1120.5,camZ],matAlu).name='camera-side-mount';
+    const downCam = camera(head, [side*G.downCamDX,1090,camZ], 'down', { fov: 22, ringR: 16 });
     const nozzles = G.nozzleDX.map(dx => {
       const n = new THREE.Group(); n.position.set(dx, 0, -side * G.overhang); head.add(n);
       const spindle = new THREE.Group(); n.add(spindle);
-      cylinder(spindle, 5, 150, [0, 75, 0], matAlu, 'y', 12);           // 主軸（尖端在 y=0）
-      cylinder(spindle, PRODUCT.nozzleR, 6, [0, 3, 0], matDark, 'y', 10); // 吸嘴尖（依配方快換：長圓 Ø2.4、圓形 Ø4），小於孔寬，放入時不碰孔邊
+      cylinder(spindle, 5, 144, [0, 78, 0], matAlu, 'y', 32); // 主軸從 y=6 起，讓細吸嘴露出
+      const tip = new THREE.Mesh(new THREE.CylinderGeometry(PRODUCT.nozzleR, PRODUCT.nozzleR, 6, 40, 1, true), matDark);
+      tip.position.y = 3; tip.castShadow = true; spindle.add(tip);
+      annulus(spindle, PRODUCT.nozzleR, PRODUCT.nozzleR * .43, 0, matDark);
+      for (const y of [7, 12, 95]) cylinder(spindle, 5.5, 2, [0, y, 0], matDark, 'y', 32);
       block(spindle, [14, 30, 14], [0, 120, 0], matDark);                // θ 馬達
       const coin = createCoin(); coin.position.y = -PRODUCT.coin.t; coin.visible = false; spindle.add(coin);
       return { n, spindle, coin };
@@ -124,8 +149,11 @@ export function createMachine(scene) {
     const plate = block(fg, [LAYOUT.feeder.w, 4, LAYOUT.feeder.d], [0, LAYOUT.feeder.top - 2, 0], matFeeder);
     block(fg, [80, 60, 60], [LAYOUT.feeder.w / 2 + 60, LAYOUT.feeder.top + 10, 0], matAlu);    // 料斗
     decal(g, 140, 22, [f.x, LAYOUT.feeder.top - 60, f.z + (H === 'A' ? 76 : -76)], [0, H === 'A' ? 0 : Math.PI, 0], `柔性供料 ${H}`, { bg: '#122d3c', color: '#9fd8ff', center: true });
-    ko(block(g, [30, 1220 - 850, 30], [f.x + (H === 'A' ? -110 : 110), 1035, f.z], matFrame), '供料相機支架');
-    const fcam = camera(g, [f.x, 1220, f.z], 'down', { fov: 2 * Math.atan(8.8 / 2 / 16) * 180 / Math.PI, ringR: 40 });
+    // The former 1220 mm lens sat inside the moving head. Mount above its swept volume.
+    const postX=H==='A'?-620:620,camY=1460,mountY=1555;
+    ko(block(g,[30,mountY-850,30],[postX,(mountY+850)/2,f.z],matFrame),'供料相機支架 '+H);
+    ko(block(g,[Math.abs(postX-f.x)+30,24,40],[(postX+f.x)/2,mountY,f.z],matFrame),'供料相機懸臂 '+H);
+    const fcam = camera(g,[f.x,camY,f.z],'down',{fov:2*Math.atan(8.8/2/32)*180/Math.PI,ringR:40});
     const coins = Array.from({ length: 40 }, () => { const c = createCoin(); c.visible = false; g.add(c); return c; });
     const backs = Array.from({ length: 40 }, () => { const c = createCoin(true); c.visible = false; g.add(c); return c; });
     feeders[H] = { group: fg, plate, cam: fcam, coins, backs };

@@ -1,5 +1,8 @@
 // 主程式：場景、時間軸（動作序列）、UI
 import * as THREE from 'three';
+import { createVisionOverlay } from './vision-overlay.js';
+import { notebookResults } from './vision-results.js';
+const vision = createVisionOverlay();
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { createNotebook, NB, SKUS, selectSku } from './notebook.js';
@@ -17,14 +20,15 @@ const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: qp.get('aa') !== '0', powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = qp.get('shadow') !== '0'; renderer.shadowMap.type = qp.get('shadow') ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
-renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.25;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0d1117);
 scene.fog = new THREE.Fog(0x0d1117, 7000, 14000);
 const pmrem = new THREE.PMREMGenerator(renderer);
-scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+const room=new RoomEnvironment(renderer);room.traverse(o=>{if(o.isPointLight)o.intensity=240;});
+scene.environment = pmrem.fromScene(room, 0.04).texture;room.dispose();pmrem.dispose();
 
 const camera = new THREE.PerspectiveCamera(42, 1, 10, 30000);
 const controls = new OrbitControls(camera, canvas);
@@ -35,6 +39,10 @@ const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(-2500, 4
 sun.castShadow = qp.get('shadow') !== '0'; sun.shadow.mapSize.set(+(qp.get('shadow') || 2048), +(qp.get('shadow') || 2048));
 Object.assign(sun.shadow.camera, { left: -3500, right: 3500, top: 3500, bottom: -3500, near: 500, far: 12000 }); sun.shadow.bias = -0.0004;
 scene.add(sun);
+sun.shadow.normalBias=.08;
+const detailLight=new THREE.DirectionalLight(0xfff8ef,.65);detailLight.castShadow=renderer.shadowMap.enabled;
+detailLight.shadow.mapSize.set(2048,2048);Object.assign(detailLight.shadow.camera,{left:-240,right:240,top:230,bottom:-230,near:50,far:1500});
+detailLight.shadow.bias=-.00001;detailLight.shadow.normalBias=.035;scene.add(detailLight,detailLight.target);
 const fill = new THREE.DirectionalLight(0x9fb8ff, 0.5); fill.position.set(2500, 2000, -2500); scene.add(fill);
 
 // ---------------------------------------------------------------- 物件
@@ -128,7 +136,9 @@ const views={
 };
 let selectedView='iso',camAnim=null,viewDoorId='';
 function setView(name,instant=false){
-  if(!views[name])return;selectedView=name;
+  if(!views[name]&&name!=='sensor')return;selectedView=name;controls.enabled=name!=='sensor';
+  document.querySelectorAll('.views button').forEach(b=>b.classList.toggle('selected',b.dataset.view===name));
+  if(name==='sensor'){camAnim=null;return;}
   let [p,t]=views[name].map(a=>new THREE.Vector3(...a));
   if(name==='door'||name==='product'){p.x+=S.palletX;t.x+=S.palletX;p.y+=S.lift;t.y+=S.lift;}
   if(name==='door'){
@@ -139,7 +149,14 @@ function setView(name,instant=false){
   else camAnim={p0:camera.position.clone(),t0:controls.target.clone(),p,t,u:0};
   document.querySelectorAll('.views button').forEach(b=>b.classList.toggle('selected',b.dataset.view===name));
 }
-document.querySelectorAll('.views button').forEach(b=>b.onclick=()=>setView(b.dataset.view));
+document.querySelectorAll('.views button').forEach(b=>b.onclick=()=>{
+  if(b.dataset.view==='sensor'){playing=false;ui.playBtn.textContent='▶ 播放';}
+  if(b.dataset.view==='sensor'&&!S.flashTool){
+    const exposures=sequence.steps.filter(s=>s.exposure&&s.end.flashTool);
+    const e=exposures.find(s=>s.start>=T)||exposures[0];if(e){playing=false;seekTo(e.start+e.dur*.5);}
+  }
+  setView(b.dataset.view);
+});
 function seekTo(sec,snap=true){
   T=Number.isFinite(sec)?THREE.MathUtils.clamp(sec,0,total):0;current=sequence.sample(T);
   if(snap)robot.snap();waiting=0;fault='';trailCount=0;trailGeo.setDrawRange(0,0);roiTimer=0;
@@ -196,7 +213,21 @@ function drawHud(){
 }
 function resize(){const w=canvas.clientWidth,h=canvas.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}
 window.addEventListener('resize',resize);
-function render(){drawHud();renderer.render(scene,camera);}
+function render(){
+  drawHud();detailLight.target.position.copy(carrier.position);detailLight.position.copy(carrier.position).add(new THREE.Vector3(-260,700,320));
+  const caption=document.getElementById('sensorCaption'),sensor=selectedView==='sensor';caption.hidden=!sensor;
+  const w=canvas.clientWidth,h=canvas.clientHeight;renderer.setScissorTest(false);renderer.setViewport(0,0,w,h);
+  vision.hide();
+  if(!sensor){renderer.render(scene,camera);return;}
+  caption.textContent=`手臂鏡頭 · 3:2 完整視野 · ${S.flashTool?'取像位置':'即時預覽／移動中'} · 模擬影像`;
+  const hidden=[roiBox,zoneSlow,zoneSlowE,zoneKeep,trail],visible=hidden.map(o=>o.visible);hidden.forEach(o=>o.visible=false);
+  labels.forEach(l=>l.el.style.display='none');
+  const ph=Math.min(h,w/1.5),pw=ph*1.5;renderer.clear();renderer.setViewport((w-pw)/2,(h-ph)/2,pw,ph);
+  renderer.render(scene,robot.inspectionCam);
+  const rect=canvas.getBoundingClientRect(),e=robot.error(),exposure=S.flashTool>0&&e.position<2&&e.angle<3&&e.rail<2;
+  vision.draw(robot.inspectionCam,{left:rect.left+(w-pw)/2,top:rect.top+(h-ph)/2,width:pw,height:ph},notebookResults(nb,S,exposure,T));
+  renderer.setViewport(0,0,w,h);hidden.forEach((o,i)=>o.visible=visible[i]);
+}
 const clock=new THREE.Clock();
 function tick(dt){
   // Work at bounded substeps, so changing playback speed changes every axis equally.
