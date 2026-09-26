@@ -1,0 +1,56 @@
+{
+  "clearanceMethod": "conservative oriented mesh bounds; mm",
+  "maxSampleInterval": 0.025,
+  "report": [
+    {
+      "recipe": "usb-2x8",
+      "insert": "bar",
+      "samples": 869,
+      "gap": 9.829936981201108,
+      "arm": "flange",
+      "camera": "camera-cable",
+      "time": 18.61,
+      "action": "出板"
+    },
+    {
+      "recipe": "usb-2x8",
+      "insert": "single",
+      "samples": 1317,
+      "gap": 9.829936981201094,
+      "arm": "flange",
+      "camera": "camera-cable",
+      "time": 27.86999999999998,
+      "action": "出板"
+    },
+    {
+      "recipe": "usb-2x8-r90",
+      "insert": "bar",
+      "samples": 819,
+      "gap": 9.82993698120113,
+      "arm": "flange",
+      "camera": "camera-cable",
+      "time": 9.740000000000002,
+      "action": "移至 A4–A1"
+    },
+    {
+      "recipe": "usb-2x8-r90",
+      "insert": "single",
+      "samples": 1319,
+      "gap": 9.82993698120113,
+      "arm": "flange",
+      "camera": "camera-cable",
+      "time": 20.499999999999986,
+      "action": "移至 A4–A1"
+    },
+    {
+      "recipe": "ssd35-usbc",
+      "insert": "single",
+      "samples": 725,
+      "gap": 9.829936981201136,
+      "arm": "flange",
+      "camera": "camera-cable",
+      "time": 5.449999999999999,
+      "action": "移至 S1"
+    }
+  ]
+}

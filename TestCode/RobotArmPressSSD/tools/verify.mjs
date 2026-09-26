@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { createStation } from '../web/js/station.js';
 import { createSequence, SPEC } from '../web/js/sequence.js';
 import { RECIPES } from '../web/js/recipes.js';
+import { cameraArmClearance } from './self-clearance.mjs';
 globalThis.document = { createElement: () => ({ width: 1024, height: 512, getContext: () => ({ fillRect() {}, fillText() {} }) }) };
 const failures = [], report = [];
 const cases = [];
@@ -63,7 +64,11 @@ for (const [key, insert, ngHold] of cases) {
     else { wait = 0; time = time >= end - 1e-7 ? Math.min(seq.total, end + 1e-6) : Math.min(end, time + dt); frame = seq.sample(time >= end - 1e-7 && time <= end ? Math.max(s.start, end - 1e-8) : time); }
     robot.update(dt); elapsed += dt;
     if (s.contact) maxContactError = Math.max(maxContactError, e.position);
-    if (++iteration % 25 === 0) { const hit = collisions(s.contact || s.near); if (hit.length) failures.push({ mode, continuous: true, action: s.action, time, collision: hit }); }
+    if (++iteration % 25 === 0) {
+      const hit = collisions(s.contact || s.near); if (hit.length) failures.push({ mode, continuous: true, action: s.action, time, collision: hit });
+      const clearance = cameraArmClearance(robot);
+      if (clearance.gap < 5) failures.push({ mode, continuous: true, action: s.action, time, selfClearance: clearance });
+    }
   }
   report.push({ mode, continuous: true, time: +time.toFixed(2), elapsed: +elapsed.toFixed(2), maxContactError: +maxContactError.toFixed(3) });
   if (time < seq.total && !failures.some(f => f.continuous && f.mode === mode)) failures.push({ mode, continuous: true, time, reason: 'did not finish' });

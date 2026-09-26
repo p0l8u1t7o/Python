@@ -72,11 +72,11 @@
         },
         {
           "shot": "up:S1",
-          "maxNdc": 0.705
+          "maxNdc": 0.703
         },
         {
           "shot": "up:S2",
-          "maxNdc": 0.705
+          "maxNdc": 0.703
         },
         {
           "shot": "down:checkS",
@@ -84,11 +84,11 @@
         },
         {
           "shot": "up:L1",
-          "maxNdc": 0.831
+          "maxNdc": 0.826
         },
         {
           "shot": "up:L2",
-          "maxNdc": 0.832
+          "maxNdc": 0.828
         },
         {
           "shot": "down:checkL",
@@ -182,11 +182,11 @@
         },
         {
           "shot": "up:S1",
-          "maxNdc": 0.705
+          "maxNdc": 0.703
         },
         {
           "shot": "up:S2",
-          "maxNdc": 0.705
+          "maxNdc": 0.703
         },
         {
           "shot": "down:checkS",
@@ -194,15 +194,15 @@
         },
         {
           "shot": "up:L1",
-          "maxNdc": 0.831
+          "maxNdc": 0.826
         },
         {
           "shot": "up:L2x",
-          "maxNdc": 0.839
+          "maxNdc": 0.834
         },
         {
           "shot": "up:L2",
-          "maxNdc": 0.832
+          "maxNdc": 0.828
         },
         {
           "shot": "down:checkL",

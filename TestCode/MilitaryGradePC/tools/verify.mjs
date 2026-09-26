@@ -4,6 +4,7 @@ import {createNotebook,NB,selectSku} from '../web/js/notebook.js';
 import {createCell,LAYOUT} from '../web/js/cell.js';
 import {createRobot} from '../web/js/robot.js';
 import {createSequence} from '../web/js/sequence.js';
+import {minimumGap} from '../../tools/geometry-clearance.mjs';
 // Texture canvas is irrelevant to the geometry/kinematics verification.
 globalThis.document={createElement:()=>({width:1024,height:512,getContext:()=>({fillRect(){},fillText(){}})})};
 const failures=[],report=[];
@@ -12,13 +13,16 @@ for(const sku of ['V110-STND','V110-RF']){
   scene.add(nb.root,robot.root);robot.root.position.z=LAYOUT.railZ;
   const carrier=new THREE.Group();scene.add(carrier);carrier.add(nb.root);nb.root.position.y=-NB.H/2;
   const top=LAYOUT.conveyorTop+6+LAYOUT.palletH+LAYOUT.padH+LAYOUT.footOffset;
-  const apply=s=>{carrier.position.set(s.palletX,top+s.palletLift+s.lift+NB.H/2,0);carrier.rotation.x=Math.PI*s.flip;cell.pallet.group.position.set(s.palletX,LAYOUT.conveyorTop+6+s.palletLift,0);nb.doors.forEach((d,i)=>d.set(s.doors[i].open,s.doors[i].latch));cell.setHead(s.s1Head);scene.updateMatrixWorld(true);};
+  const apply=s=>{carrier.position.set(s.palletX,top+s.palletLift+s.lift+NB.H/2,0);carrier.rotation.x=Math.PI*s.flip;cell.pallet.group.position.set(s.palletX,LAYOUT.conveyorTop+6+s.palletLift,0);nb.doors.forEach((d,i)=>d.set(s.doors[i].open,s.doors[i].latch));cell.setHead(s.s1Head);
+    cell.cradle.lift.position.y=top+NB.H/2+s.cradleLift;cell.cradle.rot.rotation.x=Math.PI*s.flip;cell.cradle.setClamp(s.cradleClamp);
+    scene.updateMatrixWorld(true);};
+  const movingCradle=[];cell.cradle.lift.traverse(m=>{if(m.isMesh)movingCradle.push(m);});
   // Robot vs fixed structures (S1 cantilever and imaging head, S3 gantry): any robot vertex inside a keep-out box (+10 mm) is a collision.
   const robotMeshes=[];robot.root.traverse(o=>{if(o.isMesh&&!o.material.transparent)robotMeshes.push(o);});
   const vtx=new THREE.Vector3(),mbox=new THREE.Box3();let minClearance=Infinity;
   const collisions=()=>{const boxes=cell.keepout.map(m=>[m.name,new THREE.Box3().setFromObject(m).expandByScalar(10)]),hits=new Set();
     for(const m of robotMeshes){mbox.setFromObject(m);for(const [name,b] of boxes){if(!mbox.intersectsBox(b))continue;const pos=m.geometry.attributes.position;
-      for(let i=0;i<pos.count;i++){vtx.fromBufferAttribute(pos,i).applyMatrix4(m.matrixWorld);if(b.containsPoint(vtx)){hits.add(name);break;}}}}
+      for(let i=0;i<pos.count;i++){vtx.fromBufferAttribute(pos,i).applyMatrix4(m.matrixWorld);if(b.containsPoint(vtx)){hits.add(name+' × '+(m.name||m.geometry.type));break;}}}}
     return [...hits];};
   const seq=createSequence({nb,robot,apply});let maxError=0,maxAngle=0,worst='';
   for(const step of seq.steps){
@@ -47,7 +51,15 @@ for(const sku of ['V110-STND','V110-RF']){
       if(blocked){wait+=dt;if(wait>12){failures.push({sku,continuous:true,action:s.action,time,...e,q:robot.q});break;}}
       else {wait=0;time=time>=end-1e-7?Math.min(seq.total,end+1e-6):Math.min(end,time+dt);frame=seq.sample(time>=end-1e-7&&time<=end?Math.max(s.start,end-1e-8):time);}
       robot.update(dt);elapsed+=dt;
-      if(++iteration%Math.round(.25/dt)===0){const hit=collisions();if(hit.length)failures.push({sku,continuous:true,action:s.action,time,collision:hit});}
+      if(++iteration%Math.round(.25/dt)===0){
+        const hit=collisions();if(hit.length)failures.push({sku,continuous:true,action:s.action,time,collision:hit});
+        const gap=minimumGap(robot.clearanceParts.arm,robot.clearanceParts.tool);
+        if(gap.gap<5)failures.push({sku,continuous:true,action:s.action,time,selfClearance:gap});
+        const productGap=minimumGap(robot.clearanceParts.optics,nb.root.children.slice(0,3));
+        if(productGap.gap<2)failures.push({sku,continuous:true,action:s.action,time,opticsChassis:productGap});
+        const cradleGap=minimumGap(robot.clearanceParts.tool,movingCradle);
+        if(cradleGap.gap<5)failures.push({sku,continuous:true,action:s.action,time,toolCradle:cradleGap});
+      }
       if(s.contact)maxContactError=Math.max(maxContactError,e.position);
     }
     report.push({sku,continuous:true,time,elapsed,maxContactError});

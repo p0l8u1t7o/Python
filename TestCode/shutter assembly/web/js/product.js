@@ -2,6 +2,7 @@
 // 本體座標：原點在本體頂面中心，x 沿寬（18 mm）、z 沿深（17 mm，+z 朝作業員）、y 向上。單位 mm。
 // 尺寸依工程圖（2-φ0.80 銷、A 4.05 厚、O 0.20）與照片目測；葉片外形與孔位依照片描繪，非 CAD。
 import * as THREE from 'three';
+import { microTexture } from './surfaces.js';
 
 export const PART = {
   base: { w: 18.0, d: 17.0, h: 4.05, chamfer: 0.8, chamber: [15.2, 14.2, 1.5], depth: 0.6, aperture: [9.4, 8.4, 1.0], holes: [8.1, 7.6, 0.55] },
@@ -9,13 +10,14 @@ export const PART = {
   pin: { pivotR: 0.40, driveR: 0.30, pivotTop: -0.05, driveTop: -0.10 },               // φ0.80 樞軸銷、φ0.60 撥桿銷（撥桿銷徑為假設）
   blade: { t: 0.06, pitch: 0.08, gap: 0.02, holeR: 0.43, slot: { x: -2.1, z: -0.15, len: 1.0, r: 0.33 }, pick: { x: 0.3, z: 5.5 } },
   cover: { w: 17.8, d: 16.8, t: 0.2, float: 0.5 },   // 壓合前卡勾頂在本體邊緣，上蓋浮高 0.5 mm
+  coverPads: { x: [-3.1, 3.1], z: [-6.7, 6.7], w: 2.4, d: 1.6 }, // 避開沖孔的四個真空接觸面
   wire: { len: 32 },
 };
 
 // 葉片外形（樞軸孔在原點；P1 位置時長邊沿 +z、C 形開口朝 −x 包住光圈）
 const OUTLINE = {
-  small: [[-3.3, -1.0], [0.6, -1.5], [1.3, -0.6], [1.3, 10.8], [0.6, 11.4], [-7.0, 11.4], [-7.4, 10.7], [-7.0, 10.0], [-0.5, 10.0], [-0.5, 1.3], [-3.4, 0.9]],
-  large: [[-3.3, -1.0], [0.6, -1.5], [1.3, -0.6], [1.3, 10.9], [0.6, 11.6], [-9.0, 11.6], [-9.5, 10.9], [-9.1, 9.6], [-1.1, 9.6], [-1.1, 1.3], [-3.4, 0.9]],
+  small: [[-3.3,-1],[-1.3,-1.5],[.6,-1.4],[1.3,-.6],[1.3,2.4],[1.3,7.9],[.9,10.6],[.3,11.4],[-6.7,11.4],[-7.4,10.7],[-7,10],[-1.1,10],[-.5,9.3],[-.5,2.1],[-1.2,1.1],[-3.4,.9]],
+  large: [[-3.3,-1],[-1.3,-1.5],[.6,-1.4],[1.3,-.6],[1.3,2.4],[1.3,8.4],[.8,10.9],[.1,11.6],[-8.7,11.6],[-9.5,10.9],[-9.1,9.6],[-1.9,9.6],[-1.1,8.8],[-1.1,2.1],[-1.7,1.1],[-3.4,.9]],
 };
 /** 4 片葉片：疊放順序即組裝順序（小 A → 小 B → 大 A → 大 B） */
 export const BLADES = [
@@ -25,14 +27,15 @@ export const BLADES = [
   { id: 'L2', name: '大葉片 B', kind: 'large', pivot: 'P2', layer: 3 },
 ];
 
-const matBase = new THREE.MeshStandardMaterial({ color: 0xb7bdc3, roughness: 0.34, metalness: 0.85 });
+const matBase = new THREE.MeshStandardMaterial({ color: 0xaeb4ba, roughness: 0.43, metalness: 0.88, bumpMap: microTexture('brushed'), bumpScale: .003 });
 const matFloor = new THREE.MeshStandardMaterial({ color: 0x17191c, roughness: 0.55, metalness: 0.35 });
 const matPin = new THREE.MeshStandardMaterial({ color: 0xe1e5ea, roughness: 0.18, metalness: 0.95 });
 const matRotor = new THREE.MeshStandardMaterial({ color: 0x2b2f35, roughness: 0.4, metalness: 0.6 });
-const matCopper = new THREE.MeshStandardMaterial({ color: 0xb87333, roughness: 0.35, metalness: 0.9 });
-const matBladeS = new THREE.MeshStandardMaterial({ color: 0x5f6a67, roughness: 0.78, metalness: 0.15 });
-const matBladeL = new THREE.MeshStandardMaterial({ color: 0x1a1c1f, roughness: 0.7, metalness: 0.2 });
-const matCover = new THREE.MeshStandardMaterial({ color: 0x141619, roughness: 0.62, metalness: 0.3 });
+const matCopper = new THREE.MeshStandardMaterial({ color: 0xc4834a, roughness: 0.28, metalness: 0.86 });
+const matBladeS = new THREE.MeshStandardMaterial({ color: 0x39413f, roughness: 0.72, metalness: 0.22, bumpMap: microTexture('grain'), bumpScale: .0015 });
+const matBladeL = new THREE.MeshStandardMaterial({ color: 0x181c20, roughness: 0.64, metalness: 0.28, bumpMap: microTexture('grain'), bumpScale: .0015 });
+const matCover = new THREE.MeshStandardMaterial({ color: 0x161b20, roughness: 0.5, metalness: 0.55, bumpMap: microTexture('brushed'), bumpScale: .002 });
+const matCut = new THREE.MeshStandardMaterial({ color: 0x70777d, roughness: .42, metalness: .8 });
 const matRed = new THREE.MeshStandardMaterial({ color: 0xc8261e, roughness: 0.55 });
 const matBlack = new THREE.MeshStandardMaterial({ color: 0x1b1b1b, roughness: 0.55 });
 const matConn = new THREE.MeshStandardMaterial({ color: 0xf1efe6, roughness: 0.6 });
@@ -40,6 +43,20 @@ export const PART_MATERIALS = { matBladeS, matBladeL };
 
 // ---- 2D 形狀工具（輸入為 (x, z)；擠出方向 +y）----
 function toShape(points, Cls = THREE.Shape) { const s = new Cls(); points.forEach(([x, z], i) => (i ? s.lineTo(x, -z) : s.moveTo(x, -z))); s.closePath(); return s; }
+// Rounded stamped contour. The vision overlay samples this same path.
+function bladeShape(kind) {
+  const points = OUTLINE[kind], s = new THREE.Shape();
+  points.forEach(([x,z], i) => {
+    const prev = points[(i + points.length - 1) % points.length], next = points[(i + 1) % points.length];
+    const a = [.8*x + .2*prev[0], .8*z + .2*prev[1]], b = [.8*x + .2*next[0], .8*z + .2*next[1]];
+    if (i) s.lineTo(a[0], -a[1]); else s.moveTo(a[0], -a[1]);
+    s.quadraticCurveTo(x, -z, b[0], -b[1]);
+  });
+  s.closePath(); return s;
+}
+function windowPath(x, z, w, d, r) {
+  return toShape(roundRectPath(w,d,r).getPoints(6).map(p => [p.x+x, -p.y+z]), THREE.Path);
+}
 function chamferRect(w, d, c) { const x = w / 2, z = d / 2; return [[-x + c, -z], [x - c, -z], [x, -z + c], [x, z - c], [x - c, z], [-x + c, z], [-x, z - c], [-x, -z + c]]; }
 function roundRectPath(w, d, r, Cls = THREE.Path) {
   // Shape 座標為 (x, −z)；逆時針畫圓角矩形
@@ -87,9 +104,16 @@ export function createBase() {
   const corners = [[hx, hz], [-hx, hz], [hx, -hz], [-hx, -hz]];
   // 下層本體：光圈與四角孔貫穿
   const low = toShape(outer); low.holes.push(roundRectPath(...B.aperture)); corners.forEach(([x, z]) => low.holes.push(circlePath(x, z, hr)));
-  g.add(extrude(low, -B.h, -B.depth - 0.04, matBase, 12));
+  g.add(extrude(low, -B.h, -2, matBase, 12));
+  // Two recessed actuator winding pockets, visible in the assembly reference.
+  const coils = [{ x: -1.4, z: -5.9 }, { x: 1.4, z: 5.9 }];
+  const middle = toShape(outer); middle.holes.push(roundRectPath(...B.aperture));
+  corners.forEach(([x,z]) => middle.holes.push(circlePath(x,z,hr)));
+  coils.forEach(({x,z}) => middle.holes.push(windowPath(x,z,8.7,1.7,.25)));
+  g.add(extrude(middle, -2, -B.depth - .04, matBase, 12));
   // 黑色底板（葉片滑動面）：葉片腔形狀，含光圈
   const floorShape = roundRectPath(...B.chamber, THREE.Shape); floorShape.holes.push(roundRectPath(...B.aperture));
+  coils.forEach(({x,z}) => floorShape.holes.push(windowPath(x,z,8.7,1.7,.25)));
   g.add(extrude(floorShape, -B.depth - 0.04, -B.depth, matFloor, 12));
   // 上層框：外框減葉片腔
   const rim = toShape(outer); rim.holes.push(roundRectPath(...B.chamber)); corners.forEach(([x, z]) => rim.holes.push(circlePath(x, z, hr)));
@@ -100,26 +124,48 @@ export function createBase() {
     cyl(g, 1.55, -B.depth - 0.005, -B.depth + 0.005, P.x, P.z, matRotor, 24);
     cyl(g, PART.pin.pivotR, -B.depth, PART.pin.pivotTop, P.x, P.z, matPin, 16).name = 'pivot-' + key;
     cyl(g, PART.pin.driveR, -B.depth, PART.pin.driveTop, D.x, D.z, matPin, 14).name = 'drive-' + key;
+    const bearing = new THREE.Mesh(new THREE.TorusGeometry(1.13,.10,6,28),matCut);
+    bearing.rotation.x = Math.PI/2; bearing.scale.z=.1; bearing.position.set(P.x,-B.depth+.006,P.z); g.add(bearing);
+  }
+  // Lathed fine ridges represent lacquered copper turns without hundreds of separate rings.
+  for (const [i,{x,z}] of coils.entries()) {
+    const profile = [];
+    for(let n=0;n<=144;n++) profile.push(new THREE.Vector2(.52 + .035*Math.cos(n*Math.PI/2), -3.7+n*7.4/144));
+    const winding = new THREE.Mesh(new THREE.LatheGeometry(profile,16),matCopper);
+    winding.rotation.z = Math.PI/2; winding.position.set(x,-1.27,z); winding.name = 'actuator-winding-'+i;
+    winding.castShadow = winding.receiveShadow = true; g.add(winding);
+    for(const side of [-1,1]) {
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(.64,.64,.28,20),matRotor);
+      cap.rotation.z=Math.PI/2; cap.position.set(x+side*3.9,-1.27,z); g.add(cap);
+    }
   }
   // 側面 M1.6 螺孔（工程圖 B：4-M1.6）
   for (const x of [-B.w / 2 - 0.01, B.w / 2 + 0.01]) for (const y of [-1.2, -2.9]) {
     const h = new THREE.Mesh(new THREE.CircleGeometry(0.42, 16), matFloor); h.position.set(x, y, 0); h.rotation.y = x > 0 ? Math.PI / 2 : -Math.PI / 2; g.add(h);
   }
   // 線圈座（−x 側）與紅黑導線、白色端子
-  const coil = new THREE.Mesh(new THREE.BoxGeometry(1.6, 2.2, 5.0), matCopper); coil.position.set(-B.w / 2 - 0.5, -2.2, 2.8); g.add(coil);
+  const terminal = new THREE.Mesh(new THREE.BoxGeometry(1.6, 2.2, 5.0), matRotor); terminal.position.set(-B.w / 2 - 0.5, -2.2, 2.8); g.add(terminal);
+  for(const z of [2.2,3.4]) {
+    const pad = new THREE.Mesh(new THREE.SphereGeometry(.37,12,8),matPin);
+    pad.scale.set(.55,.8,1); pad.position.set(-B.w/2-1.28,-2.2,z); g.add(pad);
+  }
   const L = PART.wire.len;
   [[matRed, 2.2], [matBlack, 3.4]].forEach(([mat, z]) => {
     const pts = [[-B.w / 2 - 1.2, -2.2, z], [-B.w / 2 - 6, -2.6, z + 0.2], [-B.w / 2 - 14, -3.0, z - 0.6], [-B.w / 2 - L + 4, -3.1, 2.8 + (z - 2.8) * 0.4]].map(p => new THREE.Vector3(...p));
     const m = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 24, 0.32, 6, false), mat); m.castShadow = true; g.add(m);
   });
   const conn = new THREE.Mesh(new THREE.BoxGeometry(4.2, 2.4, 3.2), matConn); conn.position.set(-B.w / 2 - L + 2, -3.1, 2.8); g.add(conn);
+  for(const z of [2.05,3.55]) {
+    const socket = new THREE.Mesh(new THREE.PlaneGeometry(.95,1.2),matBlack);
+    socket.rotation.y=-Math.PI/2; socket.position.set(-B.w/2-L-.105,-3.1,z); g.add(socket);
+  }
   return g;
 }
 
 const bladeGeoCache = {};
 function bladeGeometry(kind) {
   if (bladeGeoCache[kind]) return bladeGeoCache[kind];
-  const B = PART.blade, s = toShape(OUTLINE[kind]);
+  const B = PART.blade, s = bladeShape(kind);
   s.holes.push(circlePath(0, 0, B.holeR), slotPath(B.slot.x, B.slot.z, B.slot.len, B.slot.r));
   const g = new THREE.ExtrudeGeometry(s, { depth: B.t, bevelEnabled: false, curveSegments: 10 });
   g.rotateX(-Math.PI / 2); g.translate(-B.pick.x, -B.t, -B.pick.z);   // 原點＝吸取點、頂面
@@ -132,14 +178,22 @@ export function createBlade(kind) {
   return g;
 }
 /** 葉片外形（群組座標，(x, z)），供相機標記描邊 */
-export function bladeOutline(kind) { const B = PART.blade; return OUTLINE[kind].map(([x, z]) => ({ x: x - B.pick.x, z: z - B.pick.z })); }
+export function bladeOutline(kind) { const B = PART.blade; return bladeShape(kind).getPoints(6).map(p => ({ x: p.x - B.pick.x, z: -p.y - B.pick.z })); }
 /** 葉片本地的樞軸孔、長孔中心（群組座標） */
 export function bladeHoles() { const B = PART.blade; return { pivot: { x: -B.pick.x, z: -B.pick.z }, slot: { x: B.slot.x - B.pick.x, z: B.slot.z - B.pick.z } }; }
 
 export function createCover() {
   const g = new THREE.Group(); g.name = 'cover';
   const C = PART.cover, s = toShape(chamferRect(C.w, C.d, 0.8)); s.holes.push(roundRectPath(...PART.base.aperture));
-  g.add(extrude(s, -C.t, 0, matCover, 12));
+  // Photo: diagonal elongated access holes, pilot holes and two pressed slots.
+  for(const side of [-1,1]) {
+    s.holes.push(windowPath(side*6.1,-side*5.1,1.25,2.5,.55));
+    s.holes.push(circlePath(side*6.6,-side*2.9,.38));
+    s.holes.push(windowPath(side*7.6,side*6.9,.85,1.2,.35));
+  }
+  s.holes.push(windowPath(6.35,.2,1.65,.42,.18));
+  s.holes.push(windowPath(6.35,1.7,.42,1.25,.18));
+  const plate = extrude(s, -C.t, 0, [matCover,matCut], 12); plate.name='stamped-cover'; g.add(plate);
   // 4 個卡勾：折向下、卡入本體側邊
   for (const [x, z, rx] of [[C.w / 2, -5.2, 1], [C.w / 2, 5.2, 1], [-C.w / 2, -5.2, -1], [-C.w / 2, 5.2, -1]]) {
     const tab = new THREE.Mesh(new THREE.BoxGeometry(C.t, 1.3, 2.2), matCover); tab.position.set(x + rx * C.t / 2, -C.t - 0.6, z); tab.castShadow = true; g.add(tab);

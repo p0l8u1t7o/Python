@@ -2,6 +2,7 @@
 // 世界座標：x 向右、y 向上、z 朝作業員。工具本地：原點在花鍵軸法蘭，y 向上（工具在 −y），隨 J4 轉動。單位 mm。
 import * as THREE from 'three';
 import { block, cylinder, decal, bevelBox, screw, tube } from './detail.js';
+import { PART } from './product.js';
 
 const D2R = Math.PI / 180;
 const matArm = new THREE.MeshStandardMaterial({ color: 0xeef0f1, roughness: 0.4, metalness: 0.1 });
@@ -87,15 +88,20 @@ export function createRobot() {
   // T1 葉片吸嘴：真空管、軟性緩衝、多孔吸盤（長 5 mm、寬 1.4 mm）
   const t1 = slide('T1');
   cylinder(t1, 4, 24, [0, -66, 0], matTool, 'y', 16);
-  const t1shaft = cylinder(t1, 1.8, 18, [0, -87, 0], matShaft, 'y', 12);   // 細長吸嘴桿：取料時伸入吸塑盤格內
-  const t1body = cylinder(t1, 2.6, 6, [0, -94, 0], matAnod, 'y', 12);
+  const t1shaft = cylinder(t1, 1.8, 10, [0, -83, 0], matShaft, 'y', 16);
+  const t1body = cylinder(t1, 2.6, 6, [0, -85, 0], matAnod, 'y', 16);
+  // Below the white plate, only a narrow vacuum stem fits behind the blade.
+  // The former 5.2 mm collar obscured the real contour in the up-camera image.
+  const t1stem = cylinder(t1, .45, 8.8, [0, -92.4, 0], matShaft, 'y', 16);
+  t1stem.name = 'T1-vacuum-stem';
   const t1tip = block(t1, [1.4, 1.2, 5.0], [0, -97.4, 0], matPad); t1tip.name = 'T1-pad';
   tube(t1, [[4, -60, 0], [9, -52, 4], [12, -30, 8]], .9, matGlass, 12);
   // 白色背景板：上視相機拍葉片時形成剪影（黑色葉片對白底），同時遮住上方的工具頭
-  const backdrop = new THREE.Mesh(new THREE.CylinderGeometry(10, 10, 0.8, 36), new THREE.MeshStandardMaterial({ color: 0xf4f6f7, roughness: 0.9, emissive: 0xffffff, emissiveIntensity: 0.25 }));
+  const backdrop = new THREE.Mesh(new THREE.CylinderGeometry(16, 16, 0.8, 48), new THREE.MeshStandardMaterial({ color: 0xf4f6f7, roughness: 0.9, emissive: 0xffffff, emissiveIntensity: 0.25 }));
+  backdrop.name = 'T1-camera-backdrop';
   backdrop.position.y = -89.6; backdrop.castShadow = true; t1.add(backdrop);
-  contact.push(t1tip, t1shaft, t1body);
-  // T2 上蓋吸盤：荷重元＋彈簧＋外框吸盤（外框 17.8 × 16.8、框寬 2.6）
+  contact.push(t1tip, t1stem, t1shaft, t1body);
+  // T2：外框均壓背板＋四個真空接觸墊，避開上蓋的沖孔。
   const t2 = slide('T2');
   cylinder(t2, 9, 6, [0, -61, 0], matAnod, 'y', 24);                // 荷重元
   decal(t2, 10, 3, [0, -61, 9.05], [0, 0, 0], 'LOAD', { color: '#d6e1ea', center: true });
@@ -106,7 +112,11 @@ export function createRobot() {
   const frame = new THREE.Group(); t2.add(frame);
   const fw = 17.8, fd = 16.8, band = 2.6, fy = -96.5, fh = 3;
   for (const [w, d, x, z] of [[fw, band, 0, -(fd - band) / 2], [fw, band, 0, (fd - band) / 2], [band, fd - 2 * band, -(fw - band) / 2, 0], [band, fd - 2 * band, (fw - band) / 2, 0]]) {
-    const m = block(frame, [w, fh, d], [x, fy, z], matPad); contact.push(m);
+    block(frame, [w, 1, d], [x, fy + 1, z], matAnod);
+  }
+  for(const x of PART.coverPads.x) for(const z of PART.coverPads.z) {
+    const pad = block(frame, [PART.coverPads.w, fh, PART.coverPads.d], [x, fy, z], matPad);
+    pad.name = 'T2-vacuum-pad'; contact.push(pad);
   }
   block(frame, [4, 4, 4], [0, -92, 0], matAnod);
   // T3 本體夾爪：平行夾爪，ESD 夾指夾本體 ±z 側面

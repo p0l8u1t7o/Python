@@ -133,3 +133,7 @@ node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-r
 ## 成本估算
 
 [成本試算表](docs/cost-estimate.xlsx)｜[估價範圍與摘要](docs/cost-estimate.md)。含設備、工程人日、選配、預備費、上下限及含稅預算；正式價格以供應商報價為準。
+
+## 防干涉回歸
+
+新增夾爪對手臂的全批次淨空檢查（移動每 50 ms 以內、含步驟端點），以及攪拌軸／槳葉對電極與管路的檢查。四站統一執行方式及報告見 [檢查工具](../tools/README.md)。

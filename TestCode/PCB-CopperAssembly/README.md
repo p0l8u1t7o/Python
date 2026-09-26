@@ -127,3 +127,7 @@ node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-g
 ## 成本估算
 
 [成本試算表](docs/cost-estimate.xlsx)｜[估價範圍與摘要](docs/cost-estimate.md)。含設備、工程人日、選配、預備費、上下限及含稅預算；正式價格以供應商報價為準。
+
+## 防干涉回歸
+
+後側外罩與立柱移至 Z=-680 mm，避開龍門橫樑完整行程。碰撞檢查新增外罩、仰視相機與各動作端點，保留原有 2 ms 路徑取樣；兩個配方皆需通過。四站統一執行方式及報告見 [檢查工具](../tools/README.md)。

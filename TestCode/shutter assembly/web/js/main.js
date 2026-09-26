@@ -41,15 +41,15 @@ controls.enableDamping = true; controls.dampingFactor = 0.08; controls.maxPolarA
 scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x2a2f36, 0.6));
 const sun = new THREE.DirectionalLight(0xffffff, 1.5); sun.position.set(-1500, 3200, 1800);
 sun.castShadow = renderer.shadowMap.enabled; sun.shadow.mapSize.set(2048, 2048);
-Object.assign(sun.shadow.camera, { left: -1200, right: 1200, top: 1200, bottom: -1200, near: 500, far: 8000 }); sun.shadow.bias = -0.0003;
+Object.assign(sun.shadow.camera, { left: -1200, right: 1200, top: 1200, bottom: -1200, near: 500, far: 8000 }); sun.shadow.bias = -0.00004; sun.shadow.normalBias = .08;
 scene.add(sun);
 const fill = new THREE.DirectionalLight(0x9fb8ff, 0.5); fill.position.set(1800, 1500, -1800); scene.add(fill);
 // 作業區局部光：治具與相機附近的小零件需要細緻陰影
 const taskLight = new THREE.DirectionalLight(0xfff5e7, 1.2);
-taskLight.position.set(120, 1400, 300); taskLight.target.position.set(0, 920, 20);
+taskLight.position.set(-25, 994, 120); taskLight.target.position.set(0, 929, 80);
 taskLight.castShadow = renderer.shadowMap.enabled; taskLight.shadow.mapSize.set(2048, 2048);
-Object.assign(taskLight.shadow.camera, { left: -120, right: 120, top: 120, bottom: -120, near: 200, far: 700 });
-taskLight.shadow.bias = -.00002; taskLight.shadow.normalBias = .02;
+Object.assign(taskLight.shadow.camera, { left: -28, right: 28, top: 28, bottom: -28, near: 10, far: 140 });
+taskLight.shadow.bias = -.00001; taskLight.shadow.normalBias = .004;
 scene.add(taskLight, taskLight.target);
 
 // ---------------------------------------------------------------- 物件
@@ -224,6 +224,9 @@ function resize() { const w = canvas.clientWidth, h = canvas.clientHeight; rende
 window.addEventListener('resize', resize);
 function render() {
   drawHud();
+  // Keep sub-millimetre contact shadows on the actual moving product.
+  taskLight.target.position.copy(st.pose('base').p);
+  taskLight.position.copy(st.pose('base').p).add(V(-25,65,40));
   const w = canvas.clientWidth, h = canvas.clientHeight;
   renderer.setScissorTest(false); renderer.setViewport(0, 0, w, h); renderer.render(scene, camera);
   vision.hide();

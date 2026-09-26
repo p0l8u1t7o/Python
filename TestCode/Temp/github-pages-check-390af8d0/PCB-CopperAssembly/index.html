@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>散熱銅片植入機 — 3D 設備模擬</title>
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">
+{ "imports": {
+    "three": "./vendor/three.module.js",
+    "three/addons/controls/OrbitControls.js": "./vendor/OrbitControls.js",
+    "three/addons/environments/RoomEnvironment.js": "./vendor/RoomEnvironment.js"
+} }
+</script>
+</head>
+<body>
+<div id="app">
+  <canvas id="c"></canvas>
+
+  <header id="topbar">
+    <div class="brand">
+      <div class="title">PCB 銅箔基板・散熱銅片植入機</div>
+      <div class="sub" id="subtitle"></div>
+    </div>
+    <nav id="stations"></nav>
+    <div class="views">
+      <button data-view="iso">全景</button>
+      <button data-view="s2">放置站</button>
+      <button data-view="head">吸嘴特寫</button>
+      <button data-view="board">基板近看</button>
+      <button data-view="hole">孔位細節</button>
+      <button data-view="feeder">供料盤</button>
+      <button data-view="s1">基板定位</button>
+      <button data-view="load">上下料</button>
+      <button data-view="top">俯視</button>
+      <select id="recipe" aria-label="機種配方"></select>
+      <select id="pipSel" aria-label="子畫面相機">
+        <option value="auto">子畫面：自動</option><option value="upA">仰視相機 A</option><option value="upB">仰視相機 B</option>
+        <option value="s1">S1 定位相機</option><option value="s3">S3 檢查相機</option><option value="feedA">供料相機 A</option><option value="feedB">供料相機 B</option><option value="downA">A 頭下視相機</option><option value="downB">B 頭下視相機</option>
+      </select>
+    </div>
+  </header>
+
+  <aside id="side">
+    <section class="card productCard">
+      <h3>基板與散熱片 <span class="hint">尺寸示意・mm</span></h3>
+      <div id="productDims"></div>
+      <label class="holeLabel" for="holeSelect">觀察孔位</label>
+      <select id="holeSelect" aria-label="觀察孔位"></select>
+      <div class="detailSteps"><button id="emptyHole">空孔</button><button id="beforeInsert">放入中</button><button id="afterInsert">放入後</button></div>
+      <div id="holeState" aria-live="polite"></div>
+      <small>孔壁、底部黏紙與周邊間隙按比例呈現。孔徑、板厚與圓角依現有配方示意，待圖面確認。</small>
+    </section>
+    <section class="card identity"><span class="eyebrow">ENGINEERING SIMULATION</span><div id="phase">HOLD</div><p>五片基板同時在五站作業：上料、孔位定位、放置、檢查、下料</p><small>尺寸依照片目測；運動參數、誤差模型與供料良率為設計假設，待實機驗證。</small></section>
+
+    <section class="card">
+      <h3>放置進度 <span class="hint" id="cycleHint"></span></h3>
+      <div class="prog"><span>A 頭</span><div class="pbar"><i id="pA"></i></div><b id="nA">0</b></div>
+      <div class="prog"><span>B 頭</span><div class="pbar"><i id="pB"></i></div><b id="nB">0</b></div>
+      <div class="prog total"><span>合計</span><div class="pbar"><i id="pT"></i></div><b id="nT">—</b></div>
+    </section>
+
+    <section class="card">
+      <h3>放置精度 <span class="hint">模擬誤差・規格 ±6 mil</span></h3>
+      <div class="gauge"><div id="errBar" class="bar"></div><div class="tick warn" style="left:99%"></div></div>
+      <div class="gaugeRow"><span id="errVal">—</span><span class="lim" id="errLim"></span></div>
+    </section>
+
+    <section class="card">
+      <h3>各站動作</h3>
+      <div id="stationStatus" class="stationStatus"></div>
+    </section>
+
+    <section class="card small">
+      <h3>顯示</h3>
+      <label class="displayOption"><input id="showPip" type="checkbox" checked>顯示相機子畫面</label>
+      <label class="displayOption"><input id="showGuards" type="checkbox" checked>顯示外罩</label>
+      <label class="displayOption"><input id="showLabels" type="checkbox">顯示設備標籤</label>
+      <label class="displayOption"><input id="showMarks" type="checkbox">顯示孔位輔助標記</label>
+      <button id="exportBtn">匯出紀錄</button>
+      <p class="scopeNote">匯出每顆的模擬放置誤差與時間；無實拍影像、無實測值。</p>
+    </section>
+  </aside>
+
+  <div id="pipFrame" hidden><div class="pipTitle" id="pipTitle"></div><div id="pipImage"></div><div id="pipResult" class="pipResult"></div></div>
+
+  <footer id="bottombar">
+    <div class="ctl">
+      <button id="playBtn" class="primary">⏸ 暫停</button>
+      <button id="restartBtn">↺ 重播</button>
+      <label>速度 <input id="speed" type="range" min="0.05" max="4" step="0.05" value="1"><span id="speedVal">1.0×</span></label>
+      <label class="chk"><input id="loop" type="checkbox" checked> 循環播放</label>
+    </div>
+    <div class="stepRow"><button id="previous" aria-label="上一個節點">‹</button><select id="stepSelect" aria-label="節點"></select><button id="next" aria-label="下一個節點">›</button><span id="cycleTime"></span></div>
+    <input id="timeline" aria-label="節拍時間" type="range" min="0" max="1" step="0.01" value="0">
+    <div class="progress"><div id="progBar"></div></div>
+    <div id="clock" class="clock">00:00.0</div>
+  </footer>
+
+  <div id="loading">載入 3D 場景中…</div>
+  <output id="diagnostics" hidden></output>
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

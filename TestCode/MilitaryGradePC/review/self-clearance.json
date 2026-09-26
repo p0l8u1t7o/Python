@@ -1,0 +1,58 @@
+{
+  "method": "conservative oriented mesh bounds, mm; exact step endpoints and <= 50 ms intervals",
+  "report": [
+    {
+      "sku": "V110-STND",
+      "samples": 6822,
+      "ringProfiler": 7,
+      "closest": {
+        "gap": 19.03102105645985,
+        "first": "forearm-cap",
+        "second": "force-sensor",
+        "time": 230.54999999999998,
+        "action": "BAT2 側面預備點"
+      },
+      "productGap": {
+        "gap": 49.52497397273676,
+        "first": "lens-glass",
+        "second": "ExtrudeGeometry",
+        "time": 48.45000000000001,
+        "action": "沿外蓋後緣掃描"
+      },
+      "cradleGap": {
+        "gap": 56.66759857557372,
+        "first": "force-sensor",
+        "second": "CylinderGeometry",
+        "time": 155.90000000000003,
+        "action": "D4 上方轉位"
+      }
+    },
+    {
+      "sku": "V110-RF",
+      "samples": 6822,
+      "ringProfiler": 7,
+      "closest": {
+        "gap": 19.03102105645985,
+        "first": "forearm-cap",
+        "second": "force-sensor",
+        "time": 230.54999999999998,
+        "action": "BAT2 側面預備點"
+      },
+      "productGap": {
+        "gap": 49.52497397273676,
+        "first": "lens-glass",
+        "second": "ExtrudeGeometry",
+        "time": 48.45000000000001,
+        "action": "沿外蓋後緣掃描"
+      },
+      "cradleGap": {
+        "gap": 56.66759857557372,
+        "first": "force-sensor",
+        "second": "CylinderGeometry",
+        "time": 155.90000000000003,
+        "action": "D4 上方轉位"
+      }
+    }
+  ],
+  "failures": []
+}

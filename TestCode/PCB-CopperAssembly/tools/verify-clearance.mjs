@@ -8,11 +8,17 @@ for(const recipe of Object.keys(RECIPES)){
  const parts=H=>{const a=[];heads[H].beam.traverse(m=>{if(m.isMesh&&!m.material.transparent)a.push({m,b:new THREE.Box3()});});return a;};
  const A=parts('A'),B=parts('B'),hits=new Map(),fixed=[];
  for(const H of ['A','B'])sim.machine.feeders[H].cam.group.traverse(m=>{if(m.isMesh)fixed.push({m,b:new THREE.Box3(),name:'feeder-camera-'+H});});
+ for(const H of ['A','B'])sim.machine.upCams[H].group.traverse(m=>{if(m.isMesh)fixed.push({m,b:new THREE.Box3(),name:'up-camera-'+H});});
+ sim.machine.occluders.traverse(m=>{if(m.isMesh)fixed.push({m,b:new THREE.Box3(),name:'enclosure-'+m.geometry.type});});
  for(const m of sim.machine.keepout)fixed.push({m,b:new THREE.Box3(),name:m.name});
  for(const sc of Object.values(sim.machine.scanners))sc.beam.traverse(m=>{if(m.isMesh&&!m.material.transparent)fixed.push({m,b:new THREE.Box3(),name:'scanner-'+m.geometry.type});});
  const visible=m=>{for(let o=m;o;o=o.parent)if(!o.visible)return false;return true;};
  let samples=0;
- for(let t=0;t<=sim.plan.cycle;t+=.002){sim.apply(t);samples++;
+ const times=new Set([0,sim.plan.cycle]);
+ for(let t=0;t<sim.plan.cycle;t+=.002)times.add(t);
+ for(const tr of [sim.plan.conveyor,sim.plan.s0,sim.plan.s4,sim.plan.s1.tr,sim.plan.s3.tr,...Object.values(sim.plan.heads).map(h=>h.tr)])
+  for(const s of tr.segs){times.add(s.t0);times.add(s.t1);}
+ for(const t of [...times].sort((a,b)=>a-b)){sim.apply(t);samples++;
   for(const p of [...A,...B])p.b.setFromObject(p.m).expandByScalar(.25);
   for(const a of A)for(const b of B){if(!visible(a.m)||!visible(b.m)||!a.b.intersectsBox(b.b))continue;
    const key=[a.m.name||a.m.geometry.type,b.m.name||b.m.geometry.type].join(' / ');

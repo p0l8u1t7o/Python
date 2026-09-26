@@ -112,6 +112,7 @@ python serve.py --no-open
 ```powershell
 node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify.mjs
 node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-camera.mjs
+node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-self-clearance.mjs
 ```
 
 三個配方 × 可用的壓墊 × OK／NG 示意，共 8 種組合，每種都檢查：
@@ -137,6 +138,14 @@ node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-c
 
 新增驗證：`node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-clearance.mjs`。
 
+### 起始相機與手臂干涉修正
+
+待命時原本朝內的相機機身會進入 J2 肩部。起始及回待命姿態現改為相機朝外，並把相機線纜移至工具板外側，避開手腕轉動範圍；壓合及取像 TCP、鏡頭位置與視野設定維持原規格。
+
+`verify-self-clearance.mjs` 先重現舊姿態的肩部干涉，再對三個配方、五種可用壓墊組合逐步抽樣（間隔不超過 25 ms，包含起點與終點），檢查相機、鏡頭、光源、支架及線纜對手臂的有向包圍盒淨空。門檻為 5 mm；本次 5,049 個樣本的保守淨空下限為 9.83 mm。連續播放測試也增加相同自干涉檢查。
+
+結果見 [相機自干涉驗證](review/self-clearance.json)、[修正後起始姿態](review/start-camera-clearance.png)。這是動畫幾何包絡與離散抽樣驗證，實機仍須以原廠 CAD、實際線纜彎曲及安全距離校核。
+
 
 ## 相機視覺標記
 
@@ -145,3 +154,7 @@ node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-c
 ## 成本估算
 
 [成本試算表](docs/cost-estimate.xlsx)｜[估價範圍與摘要](docs/cost-estimate.md)。含設備、工程人日、選配、預備費、上下限及含稅預算；正式價格以供應商報價為準。
+
+## 防干涉回歸
+
+相機自干涉、彈簧行程、完整動作、相機取像與視覺標記五組驗證已納入 [四站統一檢查工具](../tools/README.md)，改動幾何或路徑後可一次重跑。

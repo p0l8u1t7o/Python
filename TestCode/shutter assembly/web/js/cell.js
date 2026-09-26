@@ -46,7 +46,7 @@ const matBlue = new THREE.MeshStandardMaterial({ color: 0x2f5f9e, roughness: 0.5
 const matYellow = new THREE.MeshStandardMaterial({ color: 0xf2b21b, roughness: 0.6 });
 const matESDmat = new THREE.MeshStandardMaterial({ color: 0x2d6b56, roughness: 0.9 });
 const matNest = new THREE.MeshStandardMaterial({ color: 0x2b3038, roughness: 0.35, metalness: 0.55 });
-const matPOM = new THREE.MeshStandardMaterial({ color: 0xe8e4d8, roughness: 0.6 });
+  const matPOM = new THREE.MeshStandardMaterial({ color: 0xe8e4d8, roughness: 0.6 });
 const matTray = new THREE.MeshPhysicalMaterial({ color: 0xcfe6f2, roughness: 0.15, transmission: 0.2, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide });
 const matTrayEdge = new THREE.MeshStandardMaterial({ color: 0x9fc4d6, roughness: 0.3, transparent: true, opacity: 0.55 });
 const matPC = new THREE.MeshPhysicalMaterial({ color: 0xcfe3ff, roughness: 0.1, transmission: 0.3, transparent: true, opacity: 0.12, depthWrite: false, side: THREE.DoubleSide });
@@ -70,6 +70,12 @@ export function createCell(scene, { k = 9, ng = false } = {}) {
   block(g, [2 * ex, top - 20, z1 - z0], [0, (top - 20) / 2, (z0 + z1) / 2], matCab);
   block(g, [2 * ex, 20, z1 - z0], [0, top - 10, (z0 + z1) / 2], matPlate);
   for (const x of [-480, -160, 160, 480]) block(g, [300, 640, 2], [x, 400, z1 + 1], matCab);
+  for (const x of [-480, -160, 160, 480]) {
+    // Cabinet seams, flush latches and ventilation below the moving workspace.
+    for(const side of [-1,1]) block(g,[1.5,640,.5],[x+side*150,400,z1+2.1],matDark);
+    block(g,[9,64,8],[x+119,455,z1+6],matDark);
+    for(let i=0;i<7;i++) block(g,[95,3,.7],[x,180+i*12,z1+2.3],matDark);
+  }
   decal(g, 560, 80, [0, 700, z1 + 2.5], [0, 0, 0], ['RC8A 手臂控制器 · KV-X PLC · 視覺 IPC', 'SIMULATION'], { bg: '#102635', color: '#65d7b8' });
   // 中央 ESD 墊（治具與相機區）
   block(g, [440, 1.2, 330], [0, top + 0.6, -10], matESDmat);
@@ -77,6 +83,7 @@ export function createCell(scene, { k = 9, ng = false } = {}) {
   // ---- 組裝治具：精密槽（−x／−z 為基準邊）、側推夾緊、導線槽、夾指避讓槽、真空 ----
   const N = LAYOUT.nest, nest = new THREE.Group(); nest.position.set(N.x, 0, N.z); g.add(nest);
   ko(block(nest, [110, N.floor - top - 1.2, 90], [0, (N.floor + top + 1.2) / 2, 0], matAlu), '治具座');
+  for(const x of [-43,43]) for(const z of [-32,32]) ko(screw(nest,[x,N.floor+.25,z],2.2),'治具固定螺絲');
   const bw = PART.base.w + 0.3, bd = PART.base.d + 0.3, wallH = N.top - N.floor, wy = (N.floor + N.top) / 2, W = 12;
   // 槽壁（x 範圍、z 範圍）：−x 側留導線槽（z 0.3～5.3）、+x 側留推塊孔、±z 側中央留夾指避讓槽
   const X0 = -bw / 2, X1 = bw / 2, Z0 = -bd / 2, Z1 = bd / 2;
