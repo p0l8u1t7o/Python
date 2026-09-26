@@ -2,7 +2,8 @@
 // 固定全局相機、機台底櫃、手臂座、外罩、三色燈、HMI。
 // 座標：x 沿流向（上游 −x → 下游 +x）、y 向上、z 橫向（手臂在 −z 後側，作業員在 +z 前側）。單位 mm。
 import * as THREE from 'three';
-import { block, cylinder, decal } from './detail.js';
+import { block, cylinder, decal, screw } from './detail.js';
+import { microTexture } from './surfaces.js';
 
 export const LAYOUT = {
   conveyorTop: 900,                   // SMT 輸送面（載盤底面）
@@ -23,7 +24,7 @@ export function palletPlacement(recipe) {
 }
 
 const matFrame = new THREE.MeshStandardMaterial({ color: 0x6b7480, roughness: 0.5, metalness: 0.6 });
-const matAlu   = new THREE.MeshStandardMaterial({ color: 0xb9c0c8, roughness: 0.35, metalness: 0.8 });
+const matAlu   = new THREE.MeshStandardMaterial({ color: 0xb9c0c8, roughness: 0.4, metalness: 0.8, bumpMap: microTexture('brushed'), bumpScale: .025 });
 const matBelt  = new THREE.MeshStandardMaterial({ color: 0x2e7d56, roughness: 0.75 });
 const matDark  = new THREE.MeshStandardMaterial({ color: 0x1e2226, roughness: 0.5, metalness: 0.4 });
 const matCab   = new THREE.MeshStandardMaterial({ color: 0xd9dcdf, roughness: 0.6, metalness: 0.2 });
@@ -51,6 +52,8 @@ export function createCell(scene, recipe) {
       const z = railZ[side];
       const rail = block(g, [len, 50, 20], [cx, top - 13, z.rail], matAlu);
       const lip = block(g, [len, 3, 6], [cx, top + LAYOUT.liftStroke + 7.5, z.lip], matAlu);
+      for(let x=x0+65;x<x1-25;x+=130) screw(g,[x,top+12.3,z.rail],3.2);
+      block(g,[len-4,1.4,.3],[cx,top-7,z.rail+(side==='front'?10.05:-10.05)],matDark);
       block(g, [len - 30, 2, 8], [cx, top - 1, z.belt], matBelt);
       for (const x of [x0 + 15, x1 - 15]) cylinder(g, 14, 10, [x, top - 15, z.belt], matDark, 'z');
       if (station) { ko(rail, side === 'rear' ? '後軌' : '前軌'); ko(lip, side === 'rear' ? '後軌壓邊' : '前軌壓邊'); }

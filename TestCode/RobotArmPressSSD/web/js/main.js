@@ -6,28 +6,34 @@ import { createStation } from './station.js';
 import { createSequence, smooth, STATIONS, SPEC } from './sequence.js';
 import { RECIPES, DEFAULT_RECIPE } from './recipes.js';
 import { LAYOUT } from './cell.js';
+import { cameraSource, stationPreviewTime, sensorViewport, SENSOR_ASPECT } from './camera-view.js';
 
 const qp = new URLSearchParams(location.search);
 const RECIPE_KEY = RECIPES[qp.get('recipe')] ? qp.get('recipe') : DEFAULT_RECIPE, recipe = RECIPES[RECIPE_KEY];
-const INSERT = qp.get('insert') === 'bar' && recipe.multiPad ? 'bar' : 'single';
+// 壓墊預設取配方的標準；有整排接頭的機種可切換單點逐顆作比較
+const INSERT = qp.get('insert') === 'single' ? 'single' : qp.get('insert') === 'bar' && recipe.multiPad ? 'bar' : recipe.insert;
 
 // ---------------------------------------------------------------- 場景
 const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: qp.get('aa') !== '0', powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = qp.get('shadow') !== '0'; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.2;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0d1117);
 scene.fog = new THREE.Fog(0x0d1117, 5000, 11000);
 const pmrem = new THREE.PMREMGenerator(renderer);
-scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+const environmentRoom = new RoomEnvironment(renderer);
+environmentRoom.traverse(o=>{if(o.isPointLight) o.intensity=220;});
+const environmentTarget = pmrem.fromScene(environmentRoom, 0.04);
+scene.environment = environmentTarget.texture;
+environmentRoom.dispose(); pmrem.dispose();
 
 const camera = new THREE.PerspectiveCamera(40, 1, 2, 20000);
 const controls = new OrbitControls(camera, canvas);
-controls.enableDamping = true; controls.dampingFactor = 0.08; controls.maxPolarAngle = Math.PI * 0.49; controls.minDistance = 40; controls.maxDistance = 7000;
+controls.enableDamping = true; controls.dampingFactor = 0.08; controls.maxPolarAngle = Math.PI * 0.49; controls.minDistance = 8; controls.maxDistance = 7000;
 
 scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x2a2f36, 0.6));
 const sun = new THREE.DirectionalLight(0xffffff, 1.5); sun.position.set(-1500, 3200, 1800);
@@ -35,6 +41,12 @@ sun.castShadow = qp.get('shadow') !== '0'; sun.shadow.mapSize.set(2048, 2048);
 Object.assign(sun.shadow.camera, { left: -1800, right: 1800, top: 1800, bottom: -1800, near: 500, far: 8000 }); sun.shadow.bias = -0.0003;
 scene.add(sun);
 const fill = new THREE.DirectionalLight(0x9fb8ff, 0.5); fill.position.set(1800, 1500, -1800); scene.add(fill);
+const taskLight = new THREE.DirectionalLight(0xfff5e7, 1.3);
+taskLight.position.set(180,1350,160); taskLight.target.position.set(0,900,0);
+taskLight.castShadow=renderer.shadowMap.enabled; taskLight.shadow.mapSize.set(2048,2048);
+Object.assign(taskLight.shadow.camera,{left:-190,right:190,top:180,bottom:-180,near:10,far:850});
+taskLight.shadow.bias=-.000015; taskLight.shadow.normalBias=.025;
+scene.add(taskLight,taskLight.target);
 
 // ---------------------------------------------------------------- 物件
 const st = createStation(scene, recipe, INSERT);
@@ -49,6 +61,7 @@ ui.insert.querySelector('[value=bar]').disabled = !recipe.multiPad;
 const reload = () => { const q = new URLSearchParams(location.search); q.set('recipe', ui.recipe.value); q.set('insert', ui.insert.value); q.delete('step'); q.delete('st'); location.search = q.toString(); };
 ui.recipe.onchange = reload; ui.insert.onchange = reload;
 ui.recipeNote.textContent = `${recipe.name}：${recipe.source}。壓合力、允收間隙與翹起角為示意值，待實機量測校正。`;
+document.getElementById('forceHint').textContent = INSERT === 'bar' ? 'ATI Axia80 · 整排合力對高度' : 'ATI Axia80 · 每顆記錄力對高度';
 ui.forceLim.textContent = INSERT === 'bar' ? `整排 ${recipe.press.bar} N・上限 ${SPEC.forceLimit} N` : `每顆 ${recipe.press.single} N・上限 ${SPEC.forceLimit} N`;
 
 // ROI 框（取像、全局辨識）
@@ -70,7 +83,7 @@ const labels = [];
 function addLabel(text, getPos) { const el = document.createElement('div'); el.className = 'label3d'; el.innerHTML = text; document.getElementById('app').appendChild(el); labels.push({ el, getPos }); }
 const top = LAYOUT.conveyorTop;
 addLabel('<b>DENSO</b> VS-068', () => new THREE.Vector3(...LAYOUT.robot).add(new THREE.Vector3(0, 120, -110)));
-addLabel(INSERT === 'bar' ? '快拆 8 頭壓墊' : '單點彈簧壓頭', () => robot.getTcpWorld('press').add(new THREE.Vector3(0, 50, 0)));
+addLabel(INSERT === 'bar' ? '8 頭整排壓墊（獨立彈簧）' : '單點彈簧壓頭（快拆）', () => robot.getTcpWorld('press').add(new THREE.Vector3(0, 50, 0)));
 addLabel('20MP 斜視相機 45°', () => robot.tcps.cam.parent.localToWorld(new THREE.Vector3(0, 150, 10)).add(new THREE.Vector3(0, 50, 0)));
 addLabel('固定全局相機 20MP', () => new THREE.Vector3(...LAYOUT.globalCam).add(new THREE.Vector3(0, 120, 0)));
 addLabel('止擋＋頂升', () => new THREE.Vector3(LAYOUT.stopFace, top - 60, 150));
@@ -103,6 +116,7 @@ const checklist = [
   [['出板至下游', has('out')]],
 ];
 // 視角：特寫以載盤在本站（頂升後）時的第一顆接頭為準
+let focusId = product.ids.includes(qp.get('focus')) ? qp.get('focus') : product.ids[0];
 function stationPoint(id) {
   const r = product.root.position;
   return product.pressPoint(id).add(new THREE.Vector3(st.place.x - r.x, LAYOUT.conveyorTop + LAYOUT.liftStroke - r.y, st.place.z - r.z));
@@ -112,10 +126,14 @@ const views = {
   press: () => { const p = stationPoint(product.ids[0]); return [p.clone().add(new THREE.Vector3(-150, 60, 90)).toArray(), p.toArray()]; },
   inspect: () => { const p = stationPoint(product.ids[0]); return [p.clone().add(new THREE.Vector3(130, 80, 120)).toArray(), p.clone().add(new THREE.Vector3(20, -5, 10)).toArray()]; },
   top: () => [[st.place.x, 2400, st.place.z + 120], [st.place.x, 900, st.place.z - 150]],
+  product: () => { const p=product.root.position.clone().add(new THREE.Vector3(0,recipe.pallet.t,0)); const d=Math.max(recipe.pallet.w,recipe.pallet.d); return [p.clone().add(new THREE.Vector3(-d*.48,d*.95,d*.85)).toArray(),p.toArray()]; },
+  leads: () => { const c=product.conns[focusId], p=product.leadPoint(focusId); const offset=(c.T.w<10 ? new THREE.Vector3(4,5,14) : new THREE.Vector3(9,7,20)).applyAxisAngle(new THREE.Vector3(0,1,0),c.rot*Math.PI/180); return [p.clone().add(offset).toArray(),p.toArray()]; },
 };
 let selectedView = 'iso', camAnim = null;
 function setView(name, instant = false) {
   if (!views[name]) return; selectedView = name;
+  lastProductPosition.copy(product.root.position);
+  camera.near=name==='leads' ? .15 : 2; camera.updateProjectionMatrix();
   const [p, t] = views[name]().map(a => new THREE.Vector3(...a));
   if (instant) { camAnim = null; camera.position.copy(p); controls.target.copy(t); camera.lookAt(t); controls.update(); }
   else camAnim = { p0: camera.position.clone(), t0: controls.target.clone(), p, t, u: 0 };
@@ -135,14 +153,14 @@ ui.stepSelect.onchange = () => { playing = false; seekTo(sequence.steps[+ui.step
 ui.timeline.oninput = () => { playing = false; seekTo(+ui.timeline.value); };
 ui.speed.oninput = () => { speed = +ui.speed.value; ui.speedVal.textContent = speed.toFixed(2).replace(/0$/, '') + '×'; };
 ui.result.onchange = () => { st.opts.ngHold = ui.result.value === 'NG'; seekTo(T); };
-ui.stations.querySelectorAll('.st').forEach(b => b.onclick = () => seekTo(stationStart[+b.dataset.st]));
+ui.stations.querySelectorAll('.st').forEach(b => b.onclick = () => seekTo(stationPreviewTime(sequence, +b.dataset.st)));
 
 // 接頭狀態格（依配方的排）
 const unitEls = {}, maxCols = Math.max(...rowsOf.map(([, ids]) => ids.length));
 ui.units.style.gridTemplateColumns = `${recipe.rows.length > 1 ? 18 : 30}px repeat(${maxCols}, 1fr)`;
 for (const [name, ids] of rowsOf) {
   const tag = document.createElement('div'); tag.className = 'rowTag'; tag.textContent = name; ui.units.appendChild(tag);
-  ids.forEach(id => { const el = document.createElement('div'); el.className = 'u'; el.innerHTML = `<b>${id}</b><span></span>`; ui.units.appendChild(el); unitEls[id] = el; });
+  ids.forEach(id => { const el = document.createElement('button'); el.type='button'; el.setAttribute('aria-label',`查看 ${id} 銀腳`); el.className = 'u'; el.innerHTML = `<b>${id}</b><span></span>`; el.onclick=()=>{focusId=id;setView('leads');}; ui.units.appendChild(el); unitEls[id] = el; });
   for (let k = ids.length; k < maxCols; k++) ui.units.appendChild(document.createElement('div'));
 }
 function unitStatus(id) {
@@ -169,7 +187,7 @@ const arrived = () => { const e = robot.error(); return e.position < (current.st
 const signals = [['載盤到位', () => S.located], ['止擋伸出', () => S.stop > .99], ['頂升定位', () => S.lift > .99], ['全局辨識完成', () => S.detected > 0],
   ['壓頭接觸', () => st.state.force > .5], ['工具到位', arrived], ['下游可收板', () => S.station === 5 || S.station === 0]];
 signals.forEach(([name]) => { const row = document.createElement('div'); row.innerHTML = `<i></i><span>${name}</span>`; ui.signals.appendChild(row); });
-const useGlobalView = () => S.station === 1 || S.globalShot > 0;
+const useGlobalView = () => cameraSource(S, current.step, arrived()) === 'global';
 
 function drawHud() {
   const e = robot.error(), ps = st.state, force = ps.force;
@@ -179,8 +197,10 @@ function drawHud() {
   if (S.station === 1 && S.detected > 0) product.ids.forEach((id, k) => showROI(k, id, 0x4aa8ff));
   else ids.forEach((id, k) => showROI(k, id, ps.gap[id] <= recipe.gapLimit ? 0x3dd68c : 0xff4d4d));
   const last = shotIds();
-  ui.pipTitle.textContent = useGlobalView() ? '固定全局相機 · IDS 20MP · 20 mm · 距離約 800 mm' : '手臂相機 · IDS 20MP · 25 mm · 45° 斜視 · WD 175 mm';
-  ui.pipResult.innerHTML = useGlobalView() ? (S.detected > 0 ? `<span class="ok">${recipe.pallet.code} → ${recipe.short}・找到 ${product.ids.length} 顆</span>` : '<span>取像中…</span>')
+  const globalView = useGlobalView();
+  ui.pipTitle.textContent = globalView ? '全局相機 · 載盤預覽（模擬）' : '手臂相機 · USB 貼合檢查（模擬）';
+  ui.pipTitle.title = globalView ? '20MP · 20 mm · 距離約 800 mm' : '20MP · 25 mm · 45° 斜視 · WD 175 mm';
+  ui.pipResult.innerHTML = globalView ? (S.station === 1 ? (S.detected > 0 ? `<span class="ok">${recipe.pallet.code}・找到 ${product.ids.length} 顆</span>` : '<span>全局取像中…</span>') : !S.located ? '<span>等待載盤到站</span>' : '<span>手臂未在取像位 · 顯示整盤 USB</span>')
     : last.length ? (S.flashTool > 0 ? '取像中　' : '最近取像　') + last.map(id => { const g = ps.gap[id], ok = g <= recipe.gapLimit; return `<span class="${ok ? 'ok' : 'ng'}">${id} ${g.toFixed(2)} mm ${ok ? 'OK' : 'NG'}</span>`; }).join('　') : '<span>—</span>';
   cell.tower.set(fault ? 'red' : T >= total - 1e-6 ? 'green' : S.station === 4 && !current.completed.has('recheck') ? 'yellow' : playing ? 'green' : 'yellow');
   cell.occluders.visible = ui.showGuards.checked; trail.visible = ui.showPath.checked;
@@ -195,6 +215,10 @@ function drawHud() {
   let ok = 0; const shotSet = new Set(ids);
   for (const id of product.ids) { const [cls, txt] = unitStatus(id), el = unitEls[id]; if (cls === 'ok') ok++; el.className = 'u ' + cls + (shotSet.has(id) ? ' shot' : ''); el.lastChild.textContent = ps.gap[id].toFixed(2); el.title = `${id}：${txt}，模擬間隙 ${ps.gap[id].toFixed(3)} mm`; }
   ui.okCount.textContent = `${ok} / ${product.ids.length} OK`;
+  const detailNote=document.getElementById('detailNote');
+  detailNote.hidden=selectedView!=='leads' && selectedView!=='product';
+  detailNote.textContent=selectedView==='leads' ? `${focusId} 銀腳特寫 · 模擬間隙 ${ps.gap[focusId].toFixed(3)} mm · ${unitStatus(focusId)[1]}\n銀腳／錫膏／PCB 焊墊 · 幾何示意，非實拍量測` : '載盤近看 · 依現場照片重建外觀\n點選右側接頭編號，可近看該顆銀腳';
+  document.body.classList.toggle('detail-view',selectedView==='leads'||selectedView==='product');
   if (curStation !== S.station) { curStation = S.station; ui.checklist.innerHTML = ''; checklist[curStation].forEach(([txt]) => { const li = document.createElement('li'); li.innerHTML = `<span class="box"></span><span>${txt}</span>`; ui.checklist.appendChild(li); }); }
   let done = 0; [...ui.checklist.children].forEach((li, i) => { const d = checklist[S.station][i][1](current.completed); li.classList.toggle('done', d); li.querySelector('.box').textContent = d ? '✓' : ''; if (d) done++; });
   ui.chkCount.textContent = done + ' / ' + checklist[S.station].length;
@@ -212,15 +236,21 @@ function render() {
   renderer.setScissorTest(false); renderer.setViewport(0, 0, w, h); renderer.render(scene, camera);
   if (ui.showPip.checked) {
     // 子畫面：目前使用中的相機實際看到的畫面（位置對齊 #pipFrame）
-    const c = canvas.getBoundingClientRect(), f = ui.pipFrame.getBoundingClientRect();
-    const x = f.left - c.left, y = c.bottom - f.bottom, pw = f.width, ph = f.height, cam = useGlobalView() ? cell.globalCam : robot.pipCam;
-    cam.aspect = pw / ph; cam.updateProjectionMatrix();
+    const c = canvas.getBoundingClientRect(), f = document.getElementById('pipImage').getBoundingClientRect();
+    const box = sensorViewport(f.width, f.height);
+    const x = f.left - c.left + box.x, y = c.bottom - f.bottom + box.y, pw = box.width, ph = box.height, cam = useGlobalView() ? cell.globalCam : robot.pipCam;
+    // Preserve the full sensor field of view; text belongs outside the image.
+    cam.aspect = SENSOR_ASPECT; cam.updateProjectionMatrix();
     const vis = [cell.occluders.visible, trail.visible]; cell.occluders.visible = false; trail.visible = false;
+    renderer.setScissorTest(true); renderer.setScissor(f.left-c.left,c.bottom-f.bottom,f.width,f.height);
+    renderer.setClearColor(0x080d13,1); renderer.clear();
     renderer.setScissorTest(true); renderer.setScissor(x, y, pw, ph); renderer.setViewport(x, y, pw, ph); renderer.render(scene, cam);
+    renderer.setClearColor(scene.background,1);
     renderer.setScissorTest(false); renderer.setViewport(0, 0, w, h); [cell.occluders.visible, trail.visible] = vis;
   }
 }
 const clock = new THREE.Clock();
+const lastProductPosition = product.root.position.clone();
 function tick(dt) {
   if (!playing) return;
   if (st.opts.ngHold && current.completed.has('recheck')) { fault = `NG · ${stub} 補壓後仍未貼合，停線待人工確認`; playing = false; ui.playBtn.textContent = '▶ 播放'; return; }
@@ -237,13 +267,19 @@ function tick(dt) {
 function frame() {
   requestAnimationFrame(frame); const dt = Math.min(clock.getDelta(), .05);
   const n = Math.max(1, Math.ceil(dt * speed / .01)); for (let k = 0; k < n; k++) tick(dt * speed / n);
+  if (selectedView==='product'||selectedView==='leads') {
+    const delta=product.root.position.clone().sub(lastProductPosition);
+    camera.position.add(delta); controls.target.add(delta);
+    if(camAnim) for(const key of ['p0','t0','p','t']) camAnim[key].add(delta);
+  }
+  lastProductPosition.copy(product.root.position);
   if (playing && ui.showPath.checked) pushTrail(robot.getTcpWorld(robot.goal.tcp));
   if (camAnim) { camAnim.u = Math.min(1, camAnim.u + dt * 1.4); camera.position.lerpVectors(camAnim.p0, camAnim.p, smooth(camAnim.u)); controls.target.lerpVectors(camAnim.t0, camAnim.t, smooth(camAnim.u)); if (camAnim.u === 1) camAnim = null; }
   controls.update(); render();
 }
 current = sequence.sample(0); robot.snap(); setView('iso', true); resize(); ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放';
 window.sim = { seekTo, pause() { playing = false; ui.playBtn.textContent = '▶ 播放'; }, play() { playing = true; ui.playBtn.textContent = '⏸ 暫停'; }, get state() { return S; }, robot, total, stationStart, steps: sequence.steps, setView, recipe: RECIPE_KEY, insert: INSERT };
-if (qp.has('st')) { playing = false; seekTo(stationStart[THREE.MathUtils.clamp(+qp.get('st') || 0, 0, STATIONS.length - 1)] + (+qp.get('t') || 0)); }
+if (qp.has('st')) { playing = false; const station = THREE.MathUtils.clamp(+qp.get('st') || 0, 0, STATIONS.length - 1); seekTo(qp.has('t') ? stationStart[station] + (+qp.get('t') || 0) : stationPreviewTime(sequence, station)); }
 if (qp.has('step')) { playing = false; seekTo(sequence.steps[THREE.MathUtils.clamp(+qp.get('step') || 0, 0, sequence.steps.length - 1)].start + (+qp.get('t') || 0)); }
 if (qp.has('view')) setView(qp.get('view'), true);
 if (qp.has('cam')) { const a = qp.get('cam').split(',').map(Number); if (a.length === 6 && a.every(Number.isFinite)) { camera.position.set(...a.slice(0, 3)); controls.target.set(...a.slice(3)); controls.update(); } }

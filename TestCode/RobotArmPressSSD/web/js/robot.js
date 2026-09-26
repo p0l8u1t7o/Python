@@ -2,7 +2,7 @@
 // 工具本地座標：+Z 為工具前進方向（朝下壓）、X 沿壓墊長邊、Y 橫向（相機所在側為 +Y）。單位 mm。
 import * as THREE from 'three';
 import { createIK } from './kinematics.js';
-import { block, cylinder, decal } from './detail.js';
+import { block, cylinder, decal, bevelBox, screw, tube } from './detail.js';
 
 const matArm   = new THREE.MeshStandardMaterial({ color: 0xeceeef, roughness: 0.42, metalness: 0.12 });
 const matArmD  = new THREE.MeshStandardMaterial({ color: 0x30353b, roughness: 0.5, metalness: 0.3 });
@@ -14,12 +14,12 @@ const matGlass = new THREE.MeshPhysicalMaterial({ color: 0x8fb8ff, roughness: 0.
 const D2R = Math.PI / 180;
 
 function cyl(r1, r2, h, mat, seg = 32) { const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r2, h, seg), mat); m.castShadow = m.receiveShadow = true; return m; }
-function box(w, h, d, mat) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.castShadow = m.receiveShadow = true; return m; }
+function box(w, h, d, mat) { return bevelBox(w,h,d,mat,Math.min(6,w*.08)); }
 
 // 工具幾何（供序列與驗證共用）
 export const TOOL = {
-  padTip: 95, padStroke: 3,                           // 壓頭（單點或 8 頭）底面在工具軸心、法蘭下 95 mm；彈簧行程 3 mm
-  barPitch: 21, barPads: 8,                           // 選配快拆 8 頭壓墊
+  padTip: 95, padStroke: 3,                           // 壓頭（8 頭或單點）底面在工具軸心、法蘭下 95 mm；彈簧行程 3 mm
+  barPitch: 21, barPads: 8,                           // 標準 8 頭整排壓墊（每頭獨立彈簧）
   camTilt: 45, camY: 150, camZ: 10, camReach: 63.5, camWD: 175, // 20MP＋25 mm 鏡頭：機身前緣到鏡頭前緣 63.5、工作距離 175
 };
 
@@ -39,10 +39,14 @@ export function createRobot() {
   const j2disc = cyl(72, 72, 190, matJoint); j2disc.rotation.x = Math.PI / 2; j.j2.add(j2disc);
   const upper = box(100, L.upper, 110, matArm); upper.position.y = L.upper / 2; j.j2.add(upper);
   const upperCap = cyl(58, 58, 112, matArm); upperCap.rotation.x = Math.PI / 2; upperCap.position.y = L.upper; j.j2.add(upperCap);
+  for(let k=0;k<6;k++) {
+    const a=k*Math.PI/3; screw(j.j2,[Math.cos(a)*58,Math.sin(a)*58,96],4,'z');
+  }
   decal(j.j2, 60, 150, [0, 170, 56], [0, 0, 0], ['VS-068', 'DENSO'], { color: '#4a525b', center: true });
 
   j.j3 = new THREE.Group(); j.j3.position.set(0, L.upper, 0); j.j2.add(j.j3);                       // J3 繞 Z
   const j3disc = cyl(55, 55, 150, matJoint); j3disc.rotation.x = Math.PI / 2; j.j3.add(j3disc);
+  for(let k=0;k<6;k++) { const a=k*Math.PI/3; screw(j.j3,[Math.cos(a)*43,Math.sin(a)*43,76],3.5,'z'); }
   const fore = box(L.fore - L.wrist1 + 30, 80, 90, matArm); fore.position.set((L.fore - L.wrist1 - 30) / 2, L.foreOffset, 0); j.j3.add(fore);
   j.j4 = new THREE.Group(); j.j4.position.set(L.fore - L.wrist1, L.foreOffset, 0); j.j3.add(j.j4);   // J4 繞 X
   const w1 = cyl(42, 42, L.wrist1, matArm); w1.rotation.z = Math.PI / 2; w1.position.x = L.wrist1 / 2; j.j4.add(w1);
@@ -59,15 +63,20 @@ export function createRobot() {
   ftRing.position.z = 12.5; tool.add(ftRing);
   block(tool, [90, 90, 8], [0, 0, 29], matTool);                                        // 工具本體板
   block(tool, [52, 52, 10], [0, 0, 38], matAnod);                                       // 快拆介面（定位銷＋識別碼）
+  for(const x of [-35,35]) for(const y of [-35,35]) screw(tool,[x,y,33.3],3.2,'z');
+  decal(tool,29,10,[0,-30,33.1],[0,0,0],'AXIA / F-T',{color:'#222d36',center:true});
   for (const s of [-1, 1]) cylinder(tool, 2, 4, [s * 18, 18, 44], matTool, 'z', 8);
-  // 單點彈簧壓頭（標準）：PU 壓墊 8×4 mm，在工具軸心
+  // 單點彈簧壓頭（快拆，只有單顆接頭的機種用）：PU 壓墊 8×4 mm，在工具軸心
   const single = new THREE.Group(); tool.add(single);
   block(single, [22, 22, 26], [0, 0, 56], matTool);
   cylinder(single, 3, 14, [0, 0, 75], matAnod, 'z', 12);
   const singlePad = new THREE.Group(); single.add(singlePad);
   cylinder(singlePad, 2, 10, [0, 0, 84], matTool, 'z', 10);
   block(singlePad, [8, 4, 6], [0, 0, TOOL.padTip - 3], matPU);
-  // 選配快拆 8 頭壓墊（高產量機種）：同一介面，片距 21 mm
+  const spring = new THREE.Group(); spring.position.z=69; single.add(spring);
+  const coil=[]; for(let i=0;i<=144;i++) { const a=i/144*Math.PI*12; coil.push([3.1*Math.cos(a),3.1*Math.sin(a),i/144*17]); }
+  tube(spring,coil,.38,matTool,144);
+  // 標準 8 頭整排壓墊：同一快拆介面，片距 21 mm；每頭獨立彈簧，各自吃掉接頭翹起的高低差
   const bar = new THREE.Group(); tool.add(bar);
   block(bar, [184, 22, 30], [0, 0, 58], matTool);
   const barPads = [];
@@ -77,6 +86,8 @@ export function createRobot() {
     const pad = new THREE.Group(); pad.position.x = x; bar.add(pad);
     cylinder(pad, 1.6, 8, [0, 0, 84], matTool, 'z', 8);
     block(pad, [7, 9, 6], [0, 0, TOOL.padTip - 3], matPU);
+    const coil = []; for (let k = 0; k <= 96; k++) { const a = k / 96 * Math.PI * 8; coil.push([2.4 * Math.cos(a), 2.4 * Math.sin(a), 74 + k / 96 * 9]); }
+    tube(pad, coil, .3, matTool, 96);                                                      // 各頭獨立壓縮彈簧
     barPads.push(pad);
   }
   // 20MP 斜視相機（45°、光軸朝下並朝 −Y）＋100 mm 條形光
@@ -88,6 +99,12 @@ export function createRobot() {
   camMount.add(box(44, 34, 47, matArmD));
   const lens = cyl(16, 16, 40, matJoint); lens.rotation.x = Math.PI / 2; lens.position.z = 23.5 + 20; camMount.add(lens);
   const lensGlass = cyl(12, 12, 1, matGlass); lensGlass.rotation.x = Math.PI / 2; lensGlass.position.z = TOOL.camReach + 0.1; camMount.add(lensGlass);
+  for(const z of [28,34,49,56,62]) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(16,.7,6,40),matTool); ring.position.z=z; camMount.add(ring);
+  }
+  for(const x of [-18,18]) for(const y of [-12,12]) screw(camMount,[x,y,23.5],1.5,'z');
+  decal(camMount,25,12,[0,17.05,-3],[-Math.PI/2,0,0],['VISION','20 MP'],{color:'#c5d0d8',center:true});
+  tube(tool,[[20,38,13],[32,65,8],[30,105,-14],[15,135,-14]],2.1,matJoint);
   const lightMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.05 });
   const barLight = box(100, 10, 16, lightMat); barLight.position.set(0, 30, 52); camMount.add(barLight);
   const flash = new THREE.SpotLight(0xffffff, 0, 500, 0.5, 0.5, 1); flash.position.set(0, 0, 60); flash.target.position.set(0, 0, 260); camMount.add(flash, flash.target);
@@ -232,12 +249,13 @@ export function createRobot() {
 
   function setForceColor(f) { const c = f < 2 ? 0x3dd68c : f < 45 ? 0xffb020 : 0xff4d4d; ftRing.material.color.setHex(c); ftRing.material.emissive.setHex(c); }
   function setFlash(on) { flash.intensity = on ? 300 : 0; lightMat.emissiveIntensity = on ? 1.1 : 0.05; }
-  /** 快拆壓墊：'single'（標準單點）或 'bar'（選配 8 頭） */
+  /** 快拆壓墊：'bar'（標準 8 頭整排）或 'single'（單顆機種的單點壓頭） */
   function setInsert(kind) { single.visible = kind !== 'bar'; bar.visible = kind === 'bar'; }
   /** 壓頭彈簧壓縮量（mm）；8 頭時可逐顆給值 */
   function setPadCompression(list) {
     const c = i => -Math.min(TOOL.padStroke, Math.max(0, Array.isArray(list) ? list[i] || 0 : list));
     singlePad.position.z = c(0); barPads.forEach((p, i) => { p.position.z = c(i); });
+    spring.scale.z = (17+c(0))/17;
   }
   setInsert('single');
   // 壓頭是預期接觸產品的部位，驗證時接觸步驟允許它們進入產品包絡

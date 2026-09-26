@@ -5,7 +5,7 @@ import { createProduct } from './product.js';
 import { createRobot } from './robot.js';
 import { productState } from './sequence.js';
 
-export function createStation(scene, recipe, insert = 'single') {
+export function createStation(scene, recipe, insert = recipe.insert) {
   const cell = createCell(scene, recipe), place = palletPlacement(recipe);
   const robot = createRobot(); robot.root.position.set(...LAYOUT.robot); scene.add(robot.root); robot.setInsert(insert); robot.apply();
   const product = createProduct(recipe); scene.add(product.root);
@@ -30,7 +30,12 @@ export function createStation(scene, recipe, insert = 'single') {
     const y0 = product.root.position.y, { w, d, t } = recipe.pallet, x = product.root.position.x, z = product.root.position.z;
     const boxes = [new THREE.Box3(new THREE.Vector3(x - w / 2, y0, z - d / 2), new THREE.Vector3(x + w / 2, y0 + t + recipe.pcbT + 1, z + d / 2))];
     for (const id of product.ids) boxes.push(new THREE.Box3().setFromObject(product.conns[id].mount));
-    product.root.traverse(o => { if (o.isMesh && o.geometry.parameters?.height > 2 && o.parent !== product.root) { const b = new THREE.Box3().setFromObject(o); if (b.max.y - y0 < 30 && b.max.y - b.min.y > 2) boxes.push(b); } });
+    // Collision volumes come from the recipe, independent of visual mesh batching.
+    for (const b of recipe.boards) for (const c of b.comps || []) if (c.h > 2) {
+      const transform = new THREE.Matrix4().makeRotationY(b.rot * Math.PI / 180);
+      transform.setPosition(x + b.x, y0 + t + recipe.pcbT, z + b.z);
+      boxes.push(new THREE.Box3(new THREE.Vector3(c.x-c.w/2,0,c.z-c.d/2),new THREE.Vector3(c.x+c.w/2,c.h,c.z+c.d/2)).applyMatrix4(transform));
+    }
     return boxes.map(b => b.expandByScalar(margin));
   }
   return { cell, robot, product, apply, opts, productBoxes, place, get state() { return last; } };

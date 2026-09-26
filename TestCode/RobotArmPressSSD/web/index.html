@@ -20,7 +20,7 @@
   <header id="topbar">
     <div class="brand">
       <div class="title">SSD USB 接頭壓合＋貼合檢查站</div>
-      <div class="sub" id="subtitle">DENSO VS-068＋共用治具（單點壓頭／快拆 8 頭壓墊）＋20MP 斜視相機＋固定全局相機 · 配方驅動</div>
+      <div class="sub" id="subtitle">DENSO VS-068＋共用治具（8 頭整排壓墊為標準、單顆機種快拆單點壓頭）＋20MP 斜視相機＋固定全局相機 · 配方驅動</div>
     </div>
     <nav id="stations"></nav>
     <div class="views">
@@ -30,8 +30,10 @@
       <button data-view="press">壓合特寫</button>
       <button data-view="inspect">檢查特寫</button>
       <button data-view="top">俯視</button>
+      <button data-view="product">載盤近看</button>
+      <button data-view="leads">銀腳特寫</button>
       <select id="recipe" aria-label="機種配方"></select>
-      <select id="insert" aria-label="壓墊"><option value="single">壓墊：單點（標準）</option><option value="bar">壓墊：快拆 8 頭（選配）</option></select>
+      <select id="insert" aria-label="壓墊"><option value="bar">壓墊：8 頭整排（標準）</option><option value="single">壓墊：單點逐顆</option></select>
     </div>
   </header>
 
@@ -44,7 +46,7 @@
     </section>
 
     <section class="card">
-      <h3>力覺感測 <span class="hint">ATI Axia80 · 每顆記錄力對高度</span></h3>
+      <h3>力覺感測 <span class="hint" id="forceHint">ATI Axia80</span></h3>
       <div class="gauge"><div id="forceBar" class="bar"></div>
         <div class="tick" style="left:66.7%"></div><div class="tick warn" style="left:99%"></div>
       </div>
@@ -55,6 +57,7 @@
     <section class="card">
       <h3>USB 接頭 <span class="hint" id="okCount"></span></h3>
       <div id="units" class="units"></div>
+      <p class="scopeNote">點選接頭編號近看銀腳；數字為模擬間隙（mm）。</p>
       <div class="unitLegend"><span class="lift">翹起</span><span class="press">壓合中</span><span class="pressed">已壓合</span><span class="ok">貼合 OK</span><span class="repress">補壓中</span><span class="ng">NG</span></div>
     </section>
 
@@ -80,8 +83,10 @@
     </section>
   </aside>
 
+  <div id="detailNote" hidden></div>
   <div id="pipFrame" hidden>
     <div class="pipTitle" id="pipTitle">手臂相機</div>
+    <div id="pipImage" aria-label="相機取景畫面"></div>
     <div id="pipResult" class="pipResult"></div>
   </div>
 

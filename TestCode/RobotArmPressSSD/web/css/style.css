@@ -152,3 +152,15 @@ body.capture #c{height:calc(100% - 132px)}body.capture #bottombar{display:none}
 .units .u.press{background:rgba(255,176,32,.28);border-color:#ffb020;color:#fff}
 .unitLegend .press::before{background:#ffb020;opacity:.8}
 .views select{max-width:210px}
+.views{overflow-x:auto}.views button{padding:7px 9px}.views select{min-width:170px}
+#detailNote{position:absolute;top:140px;left:20px;z-index:3;white-space:pre-line;line-height:1.8;font-size:12px;color:#d5e5e2;background:#14212be8;border-left:2px solid #73cfc3;padding:9px 13px;border-radius:3px;pointer-events:none}
+.units .u:focus-visible{outline:2px solid #9ce7ff;outline-offset:2px}.units .u:hover{box-shadow:0 0 0 1px #b8dee5 inset}
+body.detail-view #pipFrame{width:230px;height:155px;left:18px}
+@media(max-width:1100px){#detailNote{top:170px;font-size:11px}body.detail-view #pipFrame{width:180px;height:130px}}
+
+/* Camera text never covers the USB image. The 3:2 sensor is fitted in pipImage. */
+#pipFrame{display:flex;flex-direction:column;overflow:hidden}
+#pipFrame[hidden]{display:none}
+#pipFrame .pipTitle,#pipFrame .pipResult{position:static;flex:none;font-size:11px}
+#pipImage{flex:1;min-height:0}
+body.detail-view #pipFrame{height:195px}

@@ -48,7 +48,7 @@ export function planGroups(recipe) {
   return { lines, shots, barRows };
 }
 
-export function createSequence({ robot, product, apply, recipe, insert = 'single' }) {
+export function createSequence({ robot, product, apply, recipe, insert = recipe.insert }) {
   const place = palletPlacement(recipe), px = place.x, gap0 = LAYOUT.flowGap;
   const base = { palletX: px - gap0, prevX: px + gap0, nextX: px - gap0 - 900, stop: 0, lift: 0, located: false, belt: 0, globalShot: 0, detected: 0,
     pressIds: [], pressH: 120, seated: {}, fixed: 0, flashTool: 0, shot: '', zone: 'free', station: 0, action: '', sub: '' };

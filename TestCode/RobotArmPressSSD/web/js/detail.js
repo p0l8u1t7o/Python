@@ -10,6 +10,22 @@ export function cylinder(parent, radius, length, pos, material, axis = 'y', segm
   if (axis === 'z') m.rotation.x = Math.PI / 2;
   m.position.set(...pos); m.castShadow = m.receiveShadow = true; parent.add(m); return m;
 }
+export function bevelBox(w, h, d, material, radius = 2) {
+  const r = Math.min(radius, w/5, h/5, d/5), s = new THREE.Shape();
+  s.moveTo(-w/2+r,-h/2+r); s.lineTo(w/2-r,-h/2+r); s.lineTo(w/2-r,h/2-r); s.lineTo(-w/2+r,h/2-r); s.closePath();
+  const geo = new THREE.ExtrudeGeometry(s,{depth:d-2*r,bevelEnabled:true,bevelSize:r,bevelThickness:r,bevelSegments:3,steps:1});
+  geo.translate(0,0,-d/2+r);
+  const m = new THREE.Mesh(geo,material); m.castShadow=m.receiveShadow=true; return m;
+}
+const screwMetal = new THREE.MeshStandardMaterial({color:0x687179,metalness:.8,roughness:.3});
+const screwSlot = new THREE.MeshStandardMaterial({color:0x171c20,roughness:.8});
+export function screw(parent, pos, radius = 2, axis = 'y') {
+  const g = new THREE.Group(); g.position.set(...pos);
+  if(axis==='z') g.rotation.x=Math.PI/2;
+  if(axis==='x') g.rotation.z=-Math.PI/2;
+  parent.add(g); cylinder(g,radius,.5,[0,0,0],screwMetal,'y',16);
+  cylinder(g,radius*.45,.025,[0,.26,0],screwSlot,'y',6); return g;
+}
 const textureCache = new Map();
 // Canvas lettering stays crisp in close-up; values marked DEMO are never product records.
 export function decal(parent, w, h, pos, rotation, lines, options = {}) {
@@ -36,9 +52,9 @@ export function decal(parent, w, h, pos, rotation, lines, options = {}) {
   const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map, transparent: true, roughness: .85, polygonOffset: true, polygonOffsetFactor: -2 }));
   m.position.set(...pos); m.rotation.set(...rotation); parent.add(m); return m;
 }
-export function tube(parent, points, radius, material) {
+export function tube(parent, points, radius, material, segments = 28) {
   const path = new THREE.CatmullRomCurve3(points.map(p => new THREE.Vector3(...p)));
-  const m = new THREE.Mesh(new THREE.TubeGeometry(path, 28, radius, 7, false), material); parent.add(m); return m;
+  const m = new THREE.Mesh(new THREE.TubeGeometry(path, segments, radius, 7, false), material); m.castShadow=m.receiveShadow=true; parent.add(m); return m;
 }
 export function profile(parent, points, y, depth, material, bevel = .8) {
   const shape = new THREE.Shape(points.map(([x, z]) => new THREE.Vector2(x, -z)));

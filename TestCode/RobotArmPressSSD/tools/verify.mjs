@@ -9,8 +9,9 @@ globalThis.document = { createElement: () => ({ width: 1024, height: 512, getCon
 const failures = [], report = [];
 const cases = [];
 for (const [key, recipe] of Object.entries(RECIPES)) {
-  cases.push([key, 'single', false], [key, 'single', true]);
-  if (recipe.multiPad) cases.push([key, 'bar', false]);
+  // 標準壓墊 OK／NG，有整排接頭的機種另驗單點逐顆（比較用）
+  cases.push([key, recipe.insert, false], [key, recipe.insert, true]);
+  if (recipe.multiPad) cases.push([key, 'single', false]);
 }
 for (const [key, insert, ngHold] of cases) {
   const recipe = RECIPES[key], mode = `${key}/${insert}${ngHold ? '/NG' : ''}`;

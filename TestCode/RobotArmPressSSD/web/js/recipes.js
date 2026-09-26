@@ -9,8 +9,11 @@ export const CONNECTOR_TYPES = {
 };
 
 const usbUnitComps = [
-  { x: 0, z: 25, w: 6, d: 6, h: 0.9, kind: 'chip' },
-  { x: -6, z: 13, w: 1.6, d: 0.8, h: 0.6, kind: 'passive' }, { x: 5.5, z: 12, w: 1.6, d: 0.8, h: 0.6, kind: 'passive' },
+  { x: 0, z: 12, w: 6, d: 6, h: 0.9, kind: 'chip' },
+  { x: 5.6, z: 12, w: 2, d: 2.5, h: .65, kind: 'chip' },
+  ...[0,1,2].flatMap(k => [-1,1].map(s => ({x:s*5.5,z:4.5+k*1.6,w:1.2,d:.65,h:.45,kind:'passive'}))),
+  ...[0,1,2,3].map(k => ({x:-5.7,z:11+k*1.7,w:1.2,d:.65,h:.45,kind:'passive'})),
+  { x: 5.5, z: 16, w: 1.6, d: 0.8, h: 0.6, kind: 'passive' },
   { x: -6, z: 27, w: 1.6, d: 0.8, h: 0.6, kind: 'passive' }, { x: 6, z: 28, w: 1.6, d: 0.8, h: 0.6, kind: 'passive' },
   { x: 0, z: 35, w: 1.6, d: 0.8, h: 0.6, kind: 'passive' },
 ];
@@ -56,25 +59,26 @@ function rotateLayout(layout, deg) {
 }
 
 // tilt0：示意翹起角（°），依照片放大；stubborn：壓後回彈、示範補壓的一顆
+// insert：標準壓墊。整排接頭（8 顆、片距 21 mm）用 8 頭獨立彈簧壓墊一次壓一排；只有單顆接頭的機種快拆換單點壓頭
 const usbTilt = { A1: 3.5, A2: 4.2, A4: 1.2, A6: 2.6, A8: 0.8, B2: 1.5, B5: 2.2, B7: 0.9 };
 export const RECIPES = {
   'usb-2x8': {
     name: 'USB 隨身碟 2×8 連板', short: 'USB 2×8', source: '照片目測',
     pallet: { w: 300, d: 200, t: 6, code: '29-0290' }, ...usbPanel(0), pcbT: 1.0,
     rows: [['A', 'A'], ['B', 'B']], tilt0: usbTilt, stubborn: { id: 'A6', residual: 1.1 },
-    press: { single: 5, bar: 40 }, multiPad: { pitch: 21, count: 8 }, gapLimit: 0.10,
+    press: { single: 5, bar: 40 }, multiPad: { pitch: 21, count: 8 }, insert: 'bar', gapLimit: 0.10,
   },
   'usb-2x8-r90': {
     name: 'USB 隨身碟 2×8 連板・接頭轉 90°（假設）', short: 'USB 2×8 轉 90°', source: '假設：同一連板轉 90° 放置',
     pallet: { w: 200, d: 280, t: 6, code: '29-0290R' }, ...usbPanel(90), pcbT: 1.0,
     rows: [['A', 'A'], ['B', 'B']], tilt0: usbTilt, stubborn: { id: 'A6', residual: 1.1 },
-    press: { single: 5, bar: 40 }, multiPad: { pitch: 21, count: 8 }, gapLimit: 0.10,
+    press: { single: 5, bar: 40 }, multiPad: { pitch: 21, count: 8 }, insert: 'bar', gapLimit: 0.10,
   },
   'ssd35-usbc': {
     name: '3.5 吋 SSD ×2・USB-C（假設）', short: '3.5" SSD ×2', source: '假設：尺寸、接頭型號與位置待用戶資料',
     pallet: { w: 360, d: 250, t: 8, code: 'SSD35-02' }, ...ssdPair(), pcbT: 1.6,
     rows: [['SSD', 'SSD']], tilt0: { S1: 2.4, S2: 1.6 }, stubborn: { id: 'S2', residual: 1.4 },
-    press: { single: 6, bar: 0 }, multiPad: null, gapLimit: 0.10,
+    press: { single: 6, bar: 0 }, multiPad: null, insert: 'single', gapLimit: 0.10,
   },
 };
 export const DEFAULT_RECIPE = 'usb-2x8';
