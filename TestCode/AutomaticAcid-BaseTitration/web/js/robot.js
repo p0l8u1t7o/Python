@@ -1,6 +1,7 @@
 // DENSO COBOTTA PRO 900 協作型六軸手臂＋長行程電動平行夾爪
 // 工具本地座標：+Z 為工具前進方向（朝下）、X 為夾爪開合方向、Y 為手指厚度方向。單位 mm。
 import * as THREE from 'three';
+import { cable, armDress, CABLE } from './cable-routing.js';
 import { createIK } from './kinematics.js';
 import { block, cylinder, decal } from './detail.js';
 
@@ -95,6 +96,11 @@ export function createRobot() {
   setGripper(width);
   const toolParts = [];
   tool.traverse(m => { if (m.isMesh && m.geometry.type !== 'PlaneGeometry') toolParts.push(m); });
+
+  armDress(j,L,{upperDepth:61,foreDepth:49});
+  cable(root,'PWR / base inlet',[[-165,0,0],[-165,25,0],[-135,50,0],[-116,50,0]],{radius:6,color:CABLE.power});
+  // Tool feed uses the flange's assumed internal connection, above the finger stroke.
+  cable(tool,'GRIP / power and control',[[35,0,5],[44,0,5],[60,45,5],[70,45,45],[70,38,45]],{radius:2.8,color:CABLE.signal,clips:2});
 
   // ---- 關節狀態 ----
   const q = { j1: -60 * D2R, j2: -20 * D2R, j3: 70 * D2R, j4: 0, j5: -50 * D2R, j6: 0 };

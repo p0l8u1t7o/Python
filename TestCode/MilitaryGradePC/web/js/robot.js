@@ -1,5 +1,6 @@
 // 六軸手臂（第七軸線性滑軌）＋ 力覺末端（F/T 感測器、12MP 相機＋環形光、微距鏡頭、鉤爪、3D 線雷射）
 import * as THREE from 'three';
+import { cable, armDress, carrier, CABLE } from './cable-routing.js';
 import { createIK } from './kinematics.js';
 import { block, cylinder, tube, decal } from './detail.js';
 
@@ -28,8 +29,8 @@ export function createRobot() {
   for (const z of [-80, 80]) { const r = box(railLen - 40, 24, 24, matRail); r.position.set(0, 132, z); root.add(r); }
   const carriage = new THREE.Group(); carriage.position.y = 144; root.add(carriage);
   const carBody = box(360, 60, 300, matArmD); carBody.position.y = 30; carriage.add(carBody);
-  const cableChain = box(railLen - 200, 40, 50, matJoint); cableChain.position.set(0, 60, -170); root.add(cableChain);
-  for(let x=-1250;x<=1250;x+=45)block(root,[4,43,54],[x,60,-170],matTool);
+  const railHarness=carrier(root,'RAIL / rolling power-data-air carrier',{origin:[0,30,-220],min:-1100,max:1100,radius:65,width:44,pitch:24});
+  cable(carriage,'RAIL / moving-end strain relief',[[0,16,-220],[0,75,-195],[0,340,-176],[0,650,-176],[0,740,-150]],{radius:8,color:CABLE.sleeve,clips:5});
   for(let x=-1300;x<=1300;x+=140)for(const z of [-80,80])cylinder(root,4,3,[x,146,z],matJoint);
 
   // ---- 手臂連桿 ----
@@ -56,8 +57,7 @@ export function createRobot() {
   const elbow = box(150, L.foreOffset + 60, 120, matArm); elbow.position.y = L.foreOffset / 2; j.j3.add(elbow);
   const foreArm = box(L.fore - L.wrist1 + 30, 100, 110, matArm); foreArm.position.set((L.fore - L.wrist1 - 30) / 2, L.foreOffset, 0); j.j3.add(foreArm);   // 前臂沿 +X，J4 軸高於 J3 軸 foreOffset
   const foreCap = cyl(60, 60, 120, matArm); foreCap.rotation.x = Math.PI / 2; foreCap.position.set(L.fore - L.wrist1, L.foreOffset, 0); j.j3.add(foreCap);
-  tube(j.j2,[[0,40,-94],[45,150,-94],[50,390,-94],[0,475,-94]],9,matJoint);
-  tube(j.j3,[[0,20,-90],[80,120,-84],[300,160,-75],[420,110,-65]],7,matJoint);
+  armDress(j,L,{upperDepth:76,foreDepth:56,large:true});
   decal(j.j2,80,160,[0,220,76],[0,0,0],['6 AXIS','VISION','QC CELL'],{color:'#444c55',center:true});
   for(const joint of [j.j2,j.j3])for(let k=0;k<6;k++)cylinder(joint,4,3,[45*Math.cos(k*Math.PI/3),45*Math.sin(k*Math.PI/3),104],matRail,'z',6);
 
@@ -114,6 +114,10 @@ export function createRobot() {
     .forEach((name,i) => { toolParts[i].name = name; });
 
 
+  cable(tool,'VISION / camera supply',[[46,0,17],[82,0,17],[88,45,25],[88,65,55],[28,65,75],[28,14,80],[22,14,80]],{radius:2.5,color:CABLE.signal});
+  cable(tool,'VISION / ring-light power',[[65,45,44],[49,49,66],[42,40,100],[38,26,124]],{radius:2,color:CABLE.power});
+  cable(tool,'PROFILE / sensor data',[[70,40,48],[80,58,48],[110,58,60],[110,43,75]],{radius:2.5,color:CABLE.signal,clips:1});
+
   // ---- 關節狀態 ----
   const q = { rail: 0, j1: -90 * D2R, j2: -30 * D2R, j3: 0 * D2R, j4: 0, j5: -50 * D2R, j6: 0 };
   // VM-60B1 型錄範圍：J1 ±170、J2 +135/−90、J3 +168/−80、J4 ±185、J5 ±120、J6 ±360。
@@ -124,6 +128,7 @@ export function createRobot() {
 
   function apply() {
     carriage.position.x = q.rail;
+    railHarness.set(q.rail);
     j.j1.rotation.set(0, q.j1, 0);
     j.j2.rotation.set(0, 0, q.j2);
     j.j3.rotation.set(0, 0, q.j3);

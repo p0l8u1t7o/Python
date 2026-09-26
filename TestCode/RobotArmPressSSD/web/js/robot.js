@@ -1,6 +1,7 @@
 // DENSO VS-068 六軸手臂＋共用末端工具（快拆壓頭介面＋20MP 斜視相機）
 // 工具本地座標：+Z 為工具前進方向（朝下壓）、X 沿壓墊長邊、Y 橫向（相機所在側為 +Y）。單位 mm。
 import * as THREE from 'three';
+import { cable, armDress, CABLE } from './cable-routing.js';
 import { createIK } from './kinematics.js';
 import { block, cylinder, decal, bevelBox, screw, tube } from './detail.js';
 
@@ -115,7 +116,7 @@ export function createRobot() {
   decal(camMount,25,12,[0,17.05,-3],[-Math.PI/2,0,0],['VISION','20 MP'],{color:'#c5d0d8',center:true});
   // Route along the outside of the mounting plate, on the tool side of the
   // flange; the previous rearward loop entered the rotating wrist envelope.
-  const cameraCable = tube(tool,[[35,42,24],[38,78,24],[36,118,24],[22,150,10]],2.1,matJoint);
+  const cameraCable = tube(tool,[[35,42,20],[38,78,20],[36,118,24],[22,150,10]],2.1,matJoint);
   cameraCable.name = 'camera-cable';
   const lightMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.05 });
   const barLight = box(100, 10, 16, lightMat); barLight.position.set(0, 30, 52); camMount.add(barLight);
@@ -132,6 +133,11 @@ export function createRobot() {
   const tcpPress = new THREE.Object3D(); tcpPress.position.set(0, 0, TOOL.padTip); tool.add(tcpPress);
   const tcpCam = new THREE.Object3D(); tcpCam.position.copy(camCenter).addScaledVector(camAxis, TOOL.camReach + TOOL.camWD); tool.add(tcpCam);
   const tcps = { press: tcpPress, cam: tcpCam };
+
+  armDress(j,L,{upperDepth:56,foreDepth:46});
+  cable(root,'PWR / base inlet',[[0,0,-160],[0,32,-160],[0,70,-125],[0,80,-100]],{radius:7,color:CABLE.power});
+  cable(tool,'FT / flange junction',[[43,0,12],[55,0,12],[55,42,20],[35,42,20]],{radius:2,color:CABLE.signal,clips:1});
+  cable(camMount,'LIGHT / rear-routed lead',[[22,0,-12],[30,12,-10],[35,30,20],[35,30,44]],{radius:1.6,color:CABLE.power,clips:1});
 
   // ---- 關節狀態 ----
   const q = { j1: -90 * D2R, j2: -10 * D2R, j3: 40 * D2R, j4: 0, j5: -70 * D2R, j6: 0 };

@@ -132,3 +132,14 @@ python tools/render_server.py
 - 新增兩種 SKU 的工具／手臂、光學機殼／筆電本體、工具／翻轉治具檢查，包含 50 ms 以內路徑抽樣與連續播放。
 
 結果見 [自干涉與治具淨空](review/self-clearance.json)；四站統一執行方式見 [檢查工具](../tools/README.md)。
+
+
+## 線材配置與防干涉
+
+網頁新增「線材配置」視角與配色說明，包含主要外露線束、固定夾、分隔線槽與適用的活動拖鏈。
+
+第七軸 R65 mm 拖鏈與 S1 取像頭 R55 mm 拖鏈保持定長；立座沿背面走線，末端相機、光源與輪廓儀各有支線。
+
+[配線研究與實機確認項目](../cable-routing-review.md)｜[本機 docs 配線紀錄](docs/cable-management.md)｜[線材檢查結果](review/cables.json)｜[配線畫面](review/cables.png)
+
+共用檢查：在 TestCode 執行 `node tools/verify-cable-routing.mjs`。docs 依現有忽略規則僅留在本機；根目錄研究文件隨原始碼保存。

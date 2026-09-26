@@ -1,3 +1,5 @@
+import { routingLegend } from './cable-routing.js';
+routingLegend();
 // 主程式：場景、時間軸（動作序列）、UI、相機子畫面（上視遠心相機／手臂下視相機）
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -110,6 +112,7 @@ const checklist = [
 // 視角
 const nestP = V(NEST_SEAT.x, NEST_SEAT.y, NEST_SEAT.z);
 const views = {
+  wiring: () => [[800,1750,-700],[0,1310,-300]],
   iso: () => [[-1350, 1850, 1650], [0, 930, -150]],
   robot: () => [[-850, 1450, 650], [0, 1100, -220]],
   nest: () => [nestP.clone().add(V(-70, 85, 115)).toArray(), nestP.clone().add(V(0, 0, -5)).toArray()],
@@ -150,7 +153,7 @@ const unitEls = {};
 for (const u of UNITS) { const el = document.createElement('div'); el.className = 'u'; el.innerHTML = `<b>${u.name}</b><span></span>`; ui.units.appendChild(el); unitEls[u.id] = el; }
 function unitStatus(id) {
   const c = current.completed, loc = S.loc[id];
-  if (id === 'L2x') return loc === 'bin' ? ['ng', '已剔除'] : loc === 'T1' ? (c.has('judgeNG') ? ['ng', '疊片 NG'] : ['held', '吸取中']) : ['tray', '料盤'];
+  if (id === 'L2x') return loc === 'bin' ? ['ng', '已剔除'] : loc === 'fall' ? ['ng','落入 NG 盒'] : loc === 'T1' ? (c.has('judgeNG') ? ['ng', '疊片 NG'] : ['held', '吸取中']) : ['tray', '料盤'];
   if (id === 'base') return loc === 'tray' ? ['tray', '料盤'] : loc === 'T3' ? ['held', c.has('final') ? '取出成品' : '夾持中'] : loc === 'out' ? ['ok', '成品回盤'] : c.has('final') ? ['ok', '成品 OK'] : ['placed', S.clamp > .99 ? '治具夾緊' : '放入治具'];
   if (loc === 'tray') return ['tray', '料盤'];
   if (loc === 'T1' || loc === 'T2') return c.has('shot' + id) ? ['aligned', '已對位'] : ['held', '吸取中'];
@@ -209,7 +212,7 @@ function drawHud() {
   ui.okCount.textContent = `${ok} / ${UNITS.length - (NG ? 1 : 0)} OK`;
   const detailNote = document.getElementById('detailNote');
   detailNote.hidden = !['part', 'nest'].includes(selectedView);
-  detailNote.textContent = selectedView === 'part' ? '產品近看 · 本體 18 × 17 × 4.05 mm · 視角跟著本體移動\n葉片厚度 0.06 mm（示意）；外形依照片描繪，非 CAD' : '組裝治具 · −x／−z 為基準邊，+x／+z 推塊夾緊\n−x 側為導線槽，±z 側中央為夾指避讓槽';
+  detailNote.textContent = selectedView === 'part' ? '產品近看 · 本體 18 × 17 × 4.05 mm · 視角跟著本體移動\n葉片厚度 0.06 mm（示意）；外形依照片描繪，非 CAD' : '組裝治具 · −x／−z 為基準邊，+x／+z 推塊夾緊\n−x 側為預成形導線容置區，±z 側中央為夾指避讓槽';
   document.body.classList.toggle('detail-view', !detailNote.hidden);
   if (curStation !== S.station) { curStation = S.station; ui.checklist.innerHTML = ''; checklist[curStation].forEach(([txt]) => { const li = document.createElement('li'); li.innerHTML = `<span class="box"></span><span>${txt}</span>`; ui.checklist.appendChild(li); }); }
   let done = 0; [...ui.checklist.children].forEach((li, i) => { const d = checklist[S.station][i][1](current.completed); li.classList.toggle('done', d); li.querySelector('.box').textContent = d ? '✓' : ''; if (d) done++; });

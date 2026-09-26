@@ -85,6 +85,7 @@ export function createSim(scene) {
       for (let i = bi; i < fm.backs.length; i++) fm.backs[i].visible = false;
       fm.cam.flash(!!(fs.seg?.flash && !fs.done)); status['feeder' + H] = fs.label;
     }
+    m.updateRouting();
     scene.updateMatrixWorld(true);
     const placed = { A: plan.heads.A.hold.flat().filter(x => x.t1 <= T).length, B: plan.heads.B.hold.flat().filter(x => x.t1 <= T).length };
     const done = plan.holes.filter(h => h.placeT <= T);

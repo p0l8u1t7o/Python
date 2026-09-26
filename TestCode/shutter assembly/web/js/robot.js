@@ -1,6 +1,7 @@
 // DENSO HSR065 SCARA（J1、J2 水平旋轉、J3 花鍵軸 Z 行程、J4 花鍵軸旋轉）＋三工具頭與下視相機。
 // 世界座標：x 向右、y 向上、z 朝作業員。工具本地：原點在花鍵軸法蘭，y 向上（工具在 −y），隨 J4 轉動。單位 mm。
 import * as THREE from 'three';
+import { cable, carrier, CABLE } from './cable-routing.js';
 import { block, cylinder, decal, bevelBox, screw, tube } from './detail.js';
 import { PART } from './product.js';
 
@@ -108,8 +109,8 @@ export function createRobot() {
   cylinder(t2, 3, 16, [0, -72, 0], matShaft, 'y', 12);
   const t2springs = [];
   for (const [sx, sz] of [[-6, -6], [6, -6], [-6, 6], [6, 6]]) { const s = cylinder(t2, 1.3, 10, [sx, -83, sz], matTool, 'y', 10); t2springs.push(s); }
-  block(t2, [20, 3, 19], [0, -89.5, 0], matAnod);
   const frame = new THREE.Group(); t2.add(frame);
+  block(frame, [20, 3, 19], [0, -89.5, 0], matAnod);
   const fw = 17.8, fd = 16.8, band = 2.6, fy = -96.5, fh = 3;
   for (const [w, d, x, z] of [[fw, band, 0, -(fd - band) / 2], [fw, band, 0, (fd - band) / 2], [band, fd - 2 * band, -(fw - band) / 2, 0], [band, fd - 2 * band, (fw - band) / 2, 0]]) {
     block(frame, [w, 1, d], [x, fy + 1, z], matAnod);
@@ -118,7 +119,11 @@ export function createRobot() {
     const pad = block(frame, [PART.coverPads.w, fh, PART.coverPads.d], [x, fy, z], matPad);
     pad.name = 'T2-vacuum-pad'; contact.push(pad);
   }
-  block(frame, [4, 4, 4], [0, -92, 0], matAnod);
+  block(frame, [4, 4, 4], [0, -93, 0], matAnod);
+  function setCompliance(mm) {
+    frame.position.y=mm;
+    for(const spring of t2springs) { spring.scale.y=(10-mm)/10;spring.position.y=-83+mm/2; }
+  }
   // T3 本體夾爪：平行夾爪，ESD 夾指夾本體 ±z 側面
   const t3 = slide('T3', matAnod);
   block(t3, [26, 14, 18], [0, -65, 0], matBlueAnod);
@@ -150,12 +155,22 @@ export function createRobot() {
   for (const key of ['T1', 'T2', 'T3', 'cam']) { const o = new THREE.Object3D(); o.position.copy(TCP_OFFSET[key]); tool.add(o); tcps[key] = o; }
   for (const part of contact) part.traverse(o => { o.userData.contact = true; });
 
+  cable(j1,'SCARA / upper fixed sleeve',[[0,88,60],[0,104,115],[0,104,200],[0,88,250]],{radius:5,color:CABLE.sleeve});
+  cable(j2,'SCARA / forearm fixed sleeve',[[0,70,60],[0,94,95],[0,94,140],[0,70,165]],{radius:4,color:CABLE.sleeve,clips:1});
+  const zHarness=carrier(j2,'SCARA / Z service carrier',{origin:[90,40,L2],axis:[0,1,0],rise:[1,0,0],min:-440,max:0,radius:25,width:20,pitch:12});
+  cable(shaft,'SCARA / Z return to rotary inlet',[[140,0,0],[95,16,0],[40,20,0],[15,20,0]],{radius:3,color:CABLE.sleeve});
+  cable(tool,'CAM / rear connector',[[40,-10,-64],[40,-23,-75],[20,-32,-72],[0,-32,-60.5]],{radius:1.8,color:CABLE.signal});
+  for(const x of [-36,0,36])cable(tool,'AIR / slide '+x,[[x,-18,18],[x,-29,27],[x,-44,26],[x,-48,11]],{radius:1.4,color:CABLE.air,clips:1});
+
   // ---- 關節狀態 ----
   const q = { j1: -1.5, j2: 1.9, d3: 60, j4: 0 };
   const home = { ...q };
   function apply() {
     j1.rotation.y = q.j1; j2.rotation.y = q.j2;
     shaft.position.y = SCARA.Y0 - SCARA.colH - SCARA.arm1H - root.position.y - q.d3;   // 相對 J2 群組
+    // Like the spline datum, the routing mount uses the installed world height.
+    zHarness.group.position.y=940-root.position.y;
+    zHarness.set(shaft.position.y-zHarness.group.position.y);
     tool.rotation.y = q.j4;
     root.updateMatrixWorld(true);
   }
@@ -247,6 +262,6 @@ export function createRobot() {
   function setFlash(on) { flash.intensity = on ? 60 : 0; ringMat.emissiveIntensity = on ? 1.4 : 0.05; }
 
   return { root, q, home, goal, cur, update, apply, snap, error, reach, plan, ptpTime, poseFor, setPose, fk, ik, solveJoints,
-    getTcpWorld, getTcpYaw, setTools, setFlash, tcps, tool, pipCam, get ext() { return ext; },
+    getTcpWorld, getTcpYaw, setTools, setFlash, setCompliance, tcps, tool, pipCam, get ext() { return ext; }, get compliance() { return frame.position.y; },
     clearanceParts: { arm: armParts, camera: cameraParts } };
 }

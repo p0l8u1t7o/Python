@@ -1,3 +1,5 @@
+import { routingLegend } from './cable-routing.js';
+routingLegend();
 // 主程式：場景、節拍時間軸、UI、相機子畫面
 import * as THREE from 'three';
 import { createVisionOverlay } from './vision-overlay.js';
@@ -68,6 +70,7 @@ function closeView(hole) {
   return [t.clone().add(hole ? new THREE.Vector3(span * .4, span * .72, span) : new THREE.Vector3(200, 235, 450)).toArray(), t.toArray()];
 }
 const views = {
+  wiring: [[-1900,2450,-1800],[0,1350,0]],
   board: () => closeView(false), hole: () => closeView(true),
   iso: [[-2300, 2100, 2300], [0, 950, 0]], s2: [[650, 1650, 1250], [0, 1000, 0]], head: [[40, 1060, 260], [-90, 958, 90]],
   feeder: [[-330, 1230, 560], [-300, 960, 330]], s1: [[X[1], 1550, 700], [X[1], 960, 0]], s3: [[X[3], 1550, 700], [X[3], 960, 0]],

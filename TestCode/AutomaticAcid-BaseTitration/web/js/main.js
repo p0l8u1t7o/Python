@@ -1,3 +1,5 @@
+import { routingLegend } from './cable-routing.js';
+routingLegend();
 // 主程式：場景、批次時間軸、樣品表、滴定曲線、交握訊號、通訊紀錄
 import * as THREE from 'three';
 import { createVisionOverlay } from './vision-overlay.js';
@@ -60,6 +62,7 @@ const flowBtns = FLOW.map(([ph, idx, name]) => {
 
 // ---------------------------------------------------------------- 視角
 const views = {
+  wiring: [[1550,1850,1100],[850,1250,60]],
   titration: [[680,1105,270],[810,1003,60]], liquid: [[90,1020,-190],[-20,905,-370]], bottles:[[-260,1140,650],[-500,970,300]],
   iso: [[-1450, 2550, 2450], [80, 930, -20]], balance: [[-80, 1720, 820], [-560, 1000, -40]], decap: [[-470, 1420, 60], [-180, 1030, -330]],
   pipette: [[120, 1560, -980], [90, 1000, -300]], sampler: [[330, 1650, 760], [690, 960, 40]], top: [[0, 3700, 250], [0, 850, 0]],

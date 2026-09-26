@@ -2,6 +2,7 @@
 // 固定全局相機、機台底櫃、手臂座、外罩、三色燈、HMI。
 // 座標：x 沿流向（上游 −x → 下游 +x）、y 向上、z 橫向（手臂在 −z 後側，作業員在 +z 前側）。單位 mm。
 import * as THREE from 'three';
+import { cable, cableTray, CABLE } from './cable-routing.js';
 import { block, cylinder, decal, screw } from './detail.js';
 import { microTexture } from './surfaces.js';
 
@@ -125,6 +126,11 @@ export function createCell(scene, recipe) {
     const m = new THREE.Mesh(new THREE.CylinderGeometry(22, 22, 34, 20), new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.08, transparent: true, opacity: 0.85 }));
     m.position.y = y; tower.add(m); towerLamps[k] = m;
   });
+
+  cableTray(g,'CTRL / separate power-data trough',[-520,740,-210],[520,740,-210]);
+  cable(g,'CAM / fixed overhead data',[[520,740,-210],[550,860,-210],[550,920,-690],[550,1940,-690],[gx+35,1940,-600],[gx+35,1900,gz],[gx+35,gy+60,gz],[gx+25.5,gy+60,gz]],{radius:3,color:CABLE.signal,clips:8});
+  for(const side of [-1,1])cable(gcam,'CAM / bar-light power '+side,[[22,60,0],[46,58,side*22],[55,40,side*60],[55,26,side*70]],{radius:1.8,color:CABLE.power});
+  for(const sensor of sensors)cable(g,'I-O / '+sensor.name,[[sensor.x,top+22,rearInner-26],[sensor.x,top-15,rearInner-50],[sensor.x,780,-190],[sensor.x,740,-198]],{radius:2,color:CABLE.signal,clips:2});
 
   return {
     group: g, occluders: occ, keepout, sensors, globalCam, place,

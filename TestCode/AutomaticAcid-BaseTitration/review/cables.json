@@ -1,0 +1,14 @@
+{
+  "project": "AutomaticAcid-BaseTitration",
+  "interval": 0.05,
+  "method": "constant carrier length/radius; conservative cable-segment vs expanded mesh bounds; endpoint mount allowance 10 mm",
+  "report": [
+    {
+      "scenario": "full-batch",
+      "samples": 41682,
+      "routes": 17,
+      "carriers": 1
+    }
+  ],
+  "failures": []
+}

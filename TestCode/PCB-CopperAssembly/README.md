@@ -131,3 +131,14 @@ node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-g
 ## 防干涉回歸
 
 後側外罩與立柱移至 Z=-680 mm，避開龍門橫樑完整行程。碰撞檢查新增外罩、仰視相機與各動作端點，保留原有 2 ms 路徑取樣；兩個配方皆需通過。四站統一執行方式及報告見 [檢查工具](../tools/README.md)。
+
+
+## 線材配置與防干涉
+
+網頁新增「線材配置」視角與配色說明，包含主要外露線束、固定夾、分隔線槽與適用的活動拖鏈。
+
+雙龍門、S1/S3 掃描與 S0/S4 上下料共 12 組拖鏈；相機支線朝機頭外側，供氣歧管接入頭部內部通道。
+
+[配線研究與實機確認項目](../cable-routing-review.md)｜[本機 docs 配線紀錄](docs/cable-management.md)｜[線材檢查結果](review/cables.json)｜[配線畫面](review/cables.png)
+
+共用檢查：在 TestCode 執行 `node tools/verify-cable-routing.mjs`。docs 依現有忽略規則僅留在本機；根目錄研究文件隨原始碼保存。

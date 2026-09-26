@@ -1,5 +1,6 @@
 // 實驗桌、設備與器皿（樣品瓶、瓶蓋、滴定杯、移液模組、吸頭）
 import * as THREE from 'three';
+import { cable, cableTray, carrier, CABLE } from './cable-routing.js';
 import { finish } from './finish.js';
 import { perforated } from './perforated.js';
 import { block, cylinder, decal, tube } from './detail.js';
@@ -69,8 +70,8 @@ export function createLab(scene) {
   floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; root.add(floor);
   const grid = new THREE.GridHelper(9000, 90, 0x2c3440, 0x222831); grid.position.y = 1; root.add(grid);
   const [bx0, bx1] = BENCH.x, [bz0, bz1] = BENCH.z, bw = bx1 - bx0, bd = bz1 - bz0;
-  const bench=perforated(root,[bw,40,bd],[0,Y0-20,0],[[ST.dock.x,ST.dock.z,22],[ST.tipChute.x,ST.tipChute.z,34],[ST.funnel.x,ST.funnel.z,10]],M.benchTop);bench.name='bench-with-service-bores';K('bench',bench);
-  block(root, [bw - 40, 30, bd - 40], [0, Y0 - 55, 0], M.frame);
+  const bench=perforated(root,[bw,40,bd],[0,Y0-20,0],[[ST.dock.x,ST.dock.z,22],[ST.tipChute.x,ST.tipChute.z,34],[ST.funnel.x,ST.funnel.z,10],[-165,0,14]],M.benchTop);bench.name='bench-with-service-bores';K('bench',bench);
+  perforated(root, [bw - 40, 30, bd - 40], [0, Y0 - 55, 0], [[-165,0,14]], M.frame);
   for (const x of [bx0 + 40, 0, bx1 - 40]) for (const z of [bz0 + 40, bz1 - 40]) block(root, [50, Y0 - 70, 50], [x, (Y0 - 70) / 2, z], M.frame);
   block(root, [bw - 80, 20, bd - 120], [0, 180, 0], M.frame);                                   // 下層板
   // 桌下：手臂控制器、I/O、廢液桶
@@ -199,7 +200,7 @@ export function createLab(scene) {
   for (const [name,r,dx,dz] of probes) cylinder(head,r+1.4,8,[headX+dx,headDown+160,SP.z+dz],M.dark,'y',24).name='probe-collar-'+name;
   // Separate colour coded fluid lines and electrode cable, attached to the moving head.
   const tubing=[[-12,10,0xd5e7ef],[14,8,0xf0e7c6],[0,-14,0x41484e]];
-  for(const [dx,dz,color] of tubing) tube(head,[[headX+dx,headDown+190,SP.z+dz],[headX+dx-20,headDown+265,SP.z+dz],[towerX-45,headDown+300,SP.z+dz],[towerX,headDown+330,SP.z+dz]],2,new THREE.MeshStandardMaterial({color,roughness:.42}));
+  for(const [i,[dx,dz,color]] of tubing.entries()) cable(head,'HEAD / probe line '+i,[[headX+dx,headDown+232,SP.z+dz],[headX+dx-20,headDown+275,SP.z+60],[headX,headDown+300,SP.z+100],[towerX+130,headDown+330,SP.z+100+(i-1)*8.32]],{radius:2,color,clips:2});
   cylinder(head, 2.5, 172, [headX + 12, headDown + 84, SP.z + 14], M.steel).name='stirrer-shaft'; // 延伸到浸入液體的槳葉
   const prop = block(head, [22, 3, 6], [headX + 12, headDown - 2, SP.z + 14], M.steel);
   // 滴定儀（Titrando 級）＋ 2 支 Dosino（NaOH 滴定液、純水）＋液瓶
@@ -213,7 +214,7 @@ export function createLab(scene) {
     K('titrator', cylinder(titr, 34, 110, [-40, 120 + 190 + 55, dz], M.metrohm, 'y', 24));
     decal(titr, 90, 20, [-40, 200, dz + 49], [0, 0, 0], lab, { color: '#e6edf3', center: true, bold: true });
   }
-  tube(root, [[T.x - 40, Y0 + 420, T.z - 80], [T.x - 60, Y0 + 640, -100], [towerX, Y0 + 730, SP.z], [towerX - 40, Y0 + 700, SP.z]], 3, M.pom);
+  for(const [i,dz] of [-80,30].entries())cable(root,'DOSE / separate fluid line '+i,[[T.x-40,Y0+420,T.z+dz],[T.x-40,Y0+620,T.z+dz],[towerX+50,Y0+760,SP.z+100+(i-1)*8.32],[towerX+50,Y0+700,SP.z+100+(i-1)*8.32]],{radius:2,color:i?0xd5e7ef:0xf0e7c6,clips:3});
   // 電腦（整合軟體＋Metrohm 軟體）
   const P = ST.pc, pc = new THREE.Group(); pc.position.set(P.x, Y0, P.z); root.add(pc);
   block(pc, [160, 10, 120], [0, 5, -20], M.dark); block(pc, [30, 280, 20], [0, 150, -40], M.dark);
@@ -284,8 +285,13 @@ export function createLab(scene) {
   const pipFlow=flowLine(root,.6),waterFlow=flowLine(root,.8);
   const doseDrop=new THREE.Mesh(new THREE.SphereGeometry(.85,16,12),liquidMaterial);doseDrop.renderOrder=2;root.add(doseDrop);
   const sprayLines=Array.from({length:3},()=>flowLine(root,.25));
-  const serviceLines=tubing.map(([dx,dz,color])=>({dz,mesh:tube(root,[[towerX,Y0+700,SP.z+dz],[towerX+32,Y0+630,SP.z+dz],[towerX+30,Y0+560,SP.z+dz],[towerX,Y0+500,SP.z+dz]],2,new THREE.MeshStandardMaterial({color,roughness:.42}))}));
-  let lastDrop=null;
+  const headHarness=carrier(root,'SAMPLER / electrode and fluid service',{origin:[towerX+50,Y0+headDown+330,SP.z+100],axis:[0,1,0],rise:[1,0,0],fixed:248,min:0,max:190,radius:40,width:32,pitch:16,colors:[0xd5e7ef,0xf0e7c6,CABLE.signal]});
+  cableTray(root,'BENCH / dry electrical distribution',[-1100,710,390],[1100,710,390],{width:52});
+  cable(root,'ROBOT / cabinet to sealed bench bore',[[-300,380,0],[-230,470,0],[-165,650,0],[-165,Y0,0]],{radius:6,color:CABLE.power,clips:3});
+  cable(root,'BALANCE / rear signal',[[-700,Y0+40,20],[-750,Y0+30,20],[-760,Y0+20,525],[-760,750,525],[-760,710,405]],{radius:2.5,color:CABLE.signal,clips:3});
+  cable(pc,'PC / protected rear data',[[35,300,-42],[45,250,-65],[45,50,-65],[60,15,-100]],{radius:2.5,color:CABLE.signal,clips:3});
+  cable(root,'PC / bench-edge service',[[1060,Y0+15,300],[1230,Y0+20,350],[1230,760,400],[1100,710,405]],{radius:3,color:CABLE.signal,clips:2});
+  cable(root,'SAMPLER / dry electrode feed',[[T.x+85,Y0+60,T.z],[1140,Y0+180,-210],[1140,Y0+690,100],[towerX+50,Y0+700,SP.z+108.32]],{radius:2.2,color:CABLE.signal,clips:4});
 
   // ---------------------------------------------------------------- 狀態套用
   const _v = new THREE.Vector3(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), UP = new THREE.Vector3(0, 1, 0);
@@ -322,10 +328,7 @@ export function createLab(scene) {
     rack.rotation.y = ctx.rackAngle;
     head.position.y = Y0 + 190 * (1 - ctx.headDrop);
     prop.rotation.y = ctx.stir ? (ctx.time-ctx.job.start) * 12 : 0;
-    if(lastDrop!==ctx.headDrop){lastDrop=ctx.headDrop;
-      for(const line of serviceLines){const y=head.position.y+headDown+330,z=SP.z+line.dz;
-        const curve=new THREE.CatmullRomCurve3([new THREE.Vector3(towerX,Y0+700,z),new THREE.Vector3(towerX+32,Y0+650,z),new THREE.Vector3(towerX+30,y+50,z),new THREE.Vector3(towerX,y,z)]);
-        line.mesh.geometry.dispose();line.mesh.geometry=new THREE.TubeGeometry(curve,28,2,8,false);}}
+    headHarness.set(head.position.y-Y0);
     root.updateMatrixWorld(true);
     pipFlow.mesh.visible=waterFlow.mesh.visible=doseDrop.visible=false;sprayLines.forEach(l=>l.mesh.visible=false);
     if(ctx.step.label.startsWith('吐出')&&ctx.progress<1){

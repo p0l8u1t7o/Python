@@ -137,3 +137,14 @@ node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-r
 ## 防干涉回歸
 
 新增夾爪對手臂的全批次淨空檢查（移動每 50 ms 以內、含步驟端點），以及攪拌軸／槳葉對電極與管路的檢查。四站統一執行方式及報告見 [檢查工具](../tools/README.md)。
+
+
+## 線材配置與防干涉
+
+網頁新增「線材配置」視角與配色說明，包含主要外露線束、固定夾、分隔線槽與適用的活動拖鏈。
+
+桌下分隔線槽管理電源與訊號；滴定頭使用 R40 mm 升降拖鏈容納兩路液管與電極線；機器人供電經實際穿線孔。
+
+[配線研究與實機確認項目](../cable-routing-review.md)｜[本機 docs 配線紀錄](docs/cable-management.md)｜[線材檢查結果](review/cables.json)｜[配線畫面](review/cables.png)
+
+共用檢查：在 TestCode 執行 `node tools/verify-cable-routing.mjs`。docs 依現有忽略規則僅留在本機；根目錄研究文件隨原始碼保存。

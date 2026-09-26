@@ -1,3 +1,5 @@
+import { routingLegend } from './cable-routing.js';
+routingLegend();
 // 主程式：場景、時間軸（動作序列）、UI
 import * as THREE from 'three';
 import { createVisionOverlay } from './vision-overlay.js';
@@ -130,6 +132,7 @@ const checklist=[
   [['judge','第一階段結果彙整'],['stack','出料托叉承重 / 堆疊']]
 ];
 const views={
+  wiring: [[1200,2300,-2700],[-350,1050,-350]],
   iso:[[3300,2750,3900],[0,650,-100]],robot:[[1050,1400,1150],[-100,870,-250]],
   stacker:[[-2850,1800,1650],[-1850,990,0]],flip:[[1620,1340,1120],[1000,980,0]],
   top:[[0,5300,500],[0,750,0]],product:[[310,1120,360],[0,835,0]],door:[[-480,990,470],[-130,850,0]]

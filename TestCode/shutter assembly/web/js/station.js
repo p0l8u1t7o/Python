@@ -2,7 +2,7 @@
 // 零件位置由「歸屬」決定：料盤、工具（跟著實際 TCP）、治具、本體上（隨本體移動）、NG 盒、放回料盤。
 import * as THREE from 'three';
 import { createCell, LAYOUT, NEST_SEAT, pocket } from './cell.js';
-import { createBase, createBlade, createCover, BLADES, bladeSeat, PART } from './product.js';
+import { createBase, createBlade, createCover, setCoverFlex, BLADES, bladeSeat, PART } from './product.js';
 import { createRobot } from './robot.js';
 import { SPEC, OFFSETS, slots } from './sequence.js';
 
@@ -19,7 +19,7 @@ export function createStation(scene, { ng = false } = {}) {
   }
   for (const p of Object.values(parts)) scene.add(p);
   const S = slots(ng), ids = Object.keys(parts);
-  const binPose = { p: new THREE.Vector3(LAYOUT.ngBin.x - 6, LAYOUT.table + 2 + PART.blade.t * 2, LAYOUT.ngBin.z + 4), yaw: 0.7 };
+  const binPose = { p: new THREE.Vector3(LAYOUT.ngBin.x - 6, LAYOUT.table + 2 + PART.blade.t * 2, LAYOUT.ngBin.z + 4), yaw: Math.PI + OFFSETS.L2x.a*D2R };
   let s = null;
 
   function trayPose(id) {
@@ -34,10 +34,13 @@ export function createStation(scene, { ng = false } = {}) {
   }
   function basePose() {
     const loc = s.loc.base;
-    if (loc === 'tray') return trayPose('base');
+    if (loc === 'tray') {
+      const p=trayPose('base'),home=pocket('base',S.base[1]);
+      p.p.z=home.z+.2*s.open;p.yaw=.6*D2R*s.open;return p;
+    }
     if (loc === 'T3') return heldPose('base', 'T3');
     if (loc === 'out') return { p: pocket('base', S.base[1]), yaw: 0 };
-    const r = 1 - s.clamp;                                       // 放入後的殘差（x 0.25、z 0.15）由推塊消除
+    const r = 1 - s.baseShift; // Clamps releasing do not pull the seated body away from its datum.
     return { p: new THREE.Vector3(NEST_SEAT.x + 0.25 * r, NEST_SEAT.y, NEST_SEAT.z + 0.15 * r), yaw: 0 };
   }
   const onBase = (bp, x, y, z, yaw) => { const o = rot(x, z, bp.yaw); return { p: new THREE.Vector3(bp.p.x + o.x, bp.p.y + y, bp.p.z + o.z), yaw: bp.yaw + yaw }; };
@@ -49,12 +52,22 @@ export function createStation(scene, { ng = false } = {}) {
       const loc = s.loc[b.id];
       if (loc === 'tray') poses[b.id] = trayPose(b.id);
       else if (loc === 'T1') poses[b.id] = heldPose(b.id, 'T1');
+      else if (loc === 'fall') {
+        const start=heldPose(b.id,'T1'),p=start.p.clone().lerp(binPose.p,s.drop);
+        p.y=start.p.y-(start.p.y-binPose.p.y)*s.drop*s.drop;
+        poses[b.id]={p,yaw:start.yaw};
+      }
       else if (loc === 'bin') poses[b.id] = binPose;
       else { const q = bladeSeat(b); poses[b.id] = onBase(bp, q.x, q.y, q.z, q.yaw); }
     }
     const cl = s.loc.cover;
     poses.cover = cl === 'tray' ? trayPose('cover') : cl === 'T2' ? heldPose('cover', 'T2') : onBase(bp, 0, PART.cover.t + s.float * PART.cover.float, 0, 0);
     for (const id of ids) { parts[id].position.copy(poses[id].p); parts[id].rotation.set(0, poses[id].yaw, 0); }
+    const nearBase=Math.hypot(poses.cover.p.x-bp.p.x,poses.cover.p.z-bp.p.z)<.2;
+    setCoverFlex(parts.cover,nearBase ? poses.cover.p.y-bp.p.y-PART.cover.t : 2);
+    const tcp2=robot.getTcpWorld('T2'), atCover=Math.hypot(tcp2.x-poses.cover.p.x,tcp2.z-poses.cover.p.z)<1;
+    const compression=s.loc.cover==='base' && s.t2>.99 && atCover ? Math.max(0,poses.cover.p.y-tcp2.y) : 0;
+    robot.setCompliance(Math.min(.3,compression));
     scene.updateMatrixWorld(true);
   }
   function apply(state) {
@@ -63,8 +76,8 @@ export function createStation(scene, { ng = false } = {}) {
     cell.setClamp(s.clamp); cell.setVacuum(s.clamp > 0.5); cell.setUpFlash(s.flashUp > 0); robot.setFlash(s.flashDown > 0);
     robot.apply(); sync();
   }
-  /** 壓合力（示意）：卡勾扣入前線性上升，壓到底後維持設定值 */
-  const force = () => (s ? s.press * SPEC.pressForce : 0);
+  /** 壓合力（示意）：浮動壓頭壓縮 0.30 mm 時達到設定力值。 */
+  const force = () => robot.compliance / .3 * SPEC.pressForce;
   /** 零件世界位姿（驗證用） */
   const pose = id => poses[id];
   /** 產品包絡：治具上的本體（含已放零件）、料盤、NG 盒；接觸步驟只允許工具尖端進入 */

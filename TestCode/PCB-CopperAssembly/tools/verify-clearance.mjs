@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import assert from 'node:assert/strict';
 import {createSim} from '../web/js/sim.js';
 import {RECIPES,setRecipe} from '../web/js/layout.js';
+import {routeIntersectsBox} from '../web/js/cable-routing.js';
 globalThis.document={createElement:()=>({getContext:()=>({fillRect(){},fillText(){}})})};
 for(const recipe of Object.keys(RECIPES)){
  setRecipe(recipe);const scene=new THREE.Scene(),sim=createSim(scene),heads=sim.machine.heads;
@@ -20,11 +21,11 @@ for(const recipe of Object.keys(RECIPES)){
   for(const s of tr.segs){times.add(s.t0);times.add(s.t1);}
  for(const t of [...times].sort((a,b)=>a-b)){sim.apply(t);samples++;
   for(const p of [...A,...B])p.b.setFromObject(p.m).expandByScalar(.25);
-  for(const a of A)for(const b of B){if(!visible(a.m)||!visible(b.m)||!a.b.intersectsBox(b.b))continue;
+  for(const a of A)for(const b of B){if(!visible(a.m)||!visible(b.m)||!a.b.intersectsBox(b.b)||!routeIntersectsBox(a.m,b.b,.25)||!routeIntersectsBox(b.m,a.b,.25))continue;
    const key=[a.m.name||a.m.geometry.type,b.m.name||b.m.geometry.type].join(' / ');
    if(!hits.has(key))hits.set(key,{t:+t.toFixed(3),pair:key,a:a.m.getWorldPosition(new THREE.Vector3()).toArray(),b:b.m.getWorldPosition(new THREE.Vector3()).toArray()});
   }
-  for(const b of fixed){b.b.setFromObject(b.m);for(const a of [...A,...B])if(visible(a.m)&&a.b.intersectsBox(b.b)){
+  for(const b of fixed){b.b.setFromObject(b.m);for(const a of [...A,...B])if(visible(a.m)&&a.b.intersectsBox(b.b)&&routeIntersectsBox(a.m,b.b,.25)&&routeIntersectsBox(b.m,a.b,.25)){
    if(a.m.name==='moving-gantry-beam'&&b.name==='S2 Y 軌')continue; // Intended sliding support contact.
    const key=(a.m.name||a.m.geometry.type)+' / '+b.name;if(!hits.has(key))hits.set(key,{t:+t.toFixed(3),pair:key,position:b.m.getWorldPosition(new THREE.Vector3()).toArray(),size:b.b.getSize(new THREE.Vector3()).toArray()});}}
  }

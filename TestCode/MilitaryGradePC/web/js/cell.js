@@ -1,5 +1,6 @@
 // 線體：地面、載具式輸送線（5 站）、載具（定位銷＋側夾＋堆疊柱）、進／出料升降堆料架、S1 頂視相機、S3 翻轉夾持治具、圍籬、三色燈
 import * as THREE from 'three';
+import { cable, cableTray, carrier, CABLE } from './cable-routing.js';
 import { NB } from './notebook.js';
 import { block, cylinder, decal, tube } from './detail.js';
 
@@ -185,7 +186,10 @@ export function createCell(scene) {
   const dome = new THREE.Mesh(new THREE.SphereGeometry(LAYOUT.s1DomeR, 32, 16, 0, Math.PI * 2, .16, Math.PI / 2 - .16), matDome); dome.position.y = domeRim; dome.castShadow = true; head.add(dome); dome.name = 'S1 穹頂光'; keepout.push(dome);
   const domeRing = new THREE.Mesh(new THREE.TorusGeometry(LAYOUT.s1DomeR + 2, 8, 8, 48), matDark); domeRing.rotation.x = Math.PI / 2; domeRing.position.y = domeRim; head.add(domeRing);
   const topFlash = new THREE.SpotLight(0xffffff, 0, 1200, 0.5, 0.6, 1); topFlash.position.set(0, domeRim + 250, 0); topFlash.target.position.set(0, productTop - 100, 0); head.add(topFlash, topFlash.target);
-  const setHead = v => { head.position.z = (1 - v) * LAYOUT.s1HeadOut; };
+  const cameraHarness=carrier(s1,'S1 / retracting camera carrier',{origin:[85,beamY+90,0],axis:[0,0,1],fixed:390,min:0,max:780,radius:55,width:34,pitch:20});
+  cable(head,'S1 / moving camera drop',[[85,beamY+200,0],[90,beamY+110,20],[65,beamY-30,30],[55,domeRim+410,30],[55,domeRim+365,0],[43.5,domeRim+365,0]],{radius:3,color:CABLE.signal,clips:4});
+  cable(head,'S1 / dome-light lead',[[43.5,domeRim+365,0],[90,domeRim+340,0],[220,domeRim+240,0],[225,domeRim+60,0],[211,domeRim+4,0]],{radius:2.5,color:CABLE.power,clips:3});
+  const setHead = v => { head.position.z = (1 - v) * LAYOUT.s1HeadOut; cameraHarness.set(head.position.z); };
   setHead(0);
   // ---- S3：翻轉夾持治具 ----
   const cradle = createFlipCradle(stationX[3]);
@@ -229,6 +233,9 @@ export function createCell(scene) {
       for(const y of [-p.height/2+25,p.height/2-25])cylinder(column,3,2,[side*p.width*.27,y,p.depth/2+1],matPin,'z',6);
     }
   }
+  cableTray(g,'CELL / segregated field wiring',[-2530,400,320],[2500,400,320],{width:58});
+  cable(g,'S1 / rear-of-post feed',[[s1x,400,335],[s1x+240,600,910],[s1x+240,1900,910],[s1x+85,2090,750],[s1x+85,2090,390]],{radius:6,color:CABLE.sleeve,clips:7});
+  cable(g,'RAIL / fixed supply',[[0,400,300],[-180,370,-350],[-180,90,-750],[0,30,railZ-220]],{radius:8,color:CABLE.sleeve,clips:4});
   // keepout：手臂不得進入的固定結構（S1 懸臂與取像頭、S3 龍門），供驗證做碰撞檢查
   return { group:g,occluders:occ,pallet:palletApi,stackerIn,stackerOut,cradle,topFlash,snFlash,tower:towerApi,stops,setHead,keepout:[...keepout,...cradle.keepout],
     updateTransport(x,located){beltMarks.position.x=((x%110)+110)%110;for(const s of stops){const hit=Math.abs(x-s.x)<2;s.st.position.y=top-14+(hit&&located?28:0);s.led.material.emissiveIntensity=hit?1.4:0;}},

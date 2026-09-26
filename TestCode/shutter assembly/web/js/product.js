@@ -58,6 +58,10 @@ function windowPath(x, z, w, d, r) {
   return toShape(roundRectPath(w,d,r).getPoints(6).map(p => [p.x+x, -p.y+z]), THREE.Path);
 }
 function chamferRect(w, d, c) { const x = w / 2, z = d / 2; return [[-x + c, -z], [x - c, -z], [x, -z + c], [x, z - c], [x - c, z], [-x + c, z], [-x, z - c], [-x, -z + c]]; }
+// Four reliefs under the folded cover tabs. Dimensions remain schematic pending CAD.
+function clipRelief(indent) {
+  return [[-8.2,-8.5],[8.2,-8.5],[9,-7.7],[9,-6.4],[indent,-6.4],[indent,-4],[9,-4],[9,4],[indent,4],[indent,6.4],[9,6.4],[9,7.7],[8.2,8.5],[-8.2,8.5],[-9,7.7],[-9,6.4],[-indent,6.4],[-indent,4],[-9,4],[-9,-4],[-indent,-4],[-indent,-6.4],[-9,-6.4],[-9,-7.7]];
+}
 function roundRectPath(w, d, r, Cls = THREE.Path) {
   // Shape 座標為 (x, −z)；逆時針畫圓角矩形
   const p = new Cls(), x = w / 2, y = d / 2;
@@ -110,13 +114,17 @@ export function createBase() {
   const middle = toShape(outer); middle.holes.push(roundRectPath(...B.aperture));
   corners.forEach(([x,z]) => middle.holes.push(circlePath(x,z,hr)));
   coils.forEach(({x,z}) => middle.holes.push(windowPath(x,z,8.7,1.7,.25)));
-  g.add(extrude(middle, -2, -B.depth - .04, matBase, 12));
+  g.add(extrude(middle, -2, -1.3, matBase, 12));
+  for(const [y0,y1,indent] of [[-1.3,-.9,8.65],[-.9,-B.depth-.04,8.85]]) {
+    const relieved=toShape(clipRelief(indent));relieved.holes=middle.holes;
+    g.add(extrude(relieved,y0,y1,matBase,12));
+  }
   // 黑色底板（葉片滑動面）：葉片腔形狀，含光圈
   const floorShape = roundRectPath(...B.chamber, THREE.Shape); floorShape.holes.push(roundRectPath(...B.aperture));
   coils.forEach(({x,z}) => floorShape.holes.push(windowPath(x,z,8.7,1.7,.25)));
   g.add(extrude(floorShape, -B.depth - 0.04, -B.depth, matFloor, 12));
   // 上層框：外框減葉片腔
-  const rim = toShape(outer); rim.holes.push(roundRectPath(...B.chamber)); corners.forEach(([x, z]) => rim.holes.push(circlePath(x, z, hr)));
+  const rim = toShape(clipRelief(8.85)); rim.holes.push(roundRectPath(...B.chamber)); corners.forEach(([x, z]) => rim.holes.push(circlePath(x, z, hr)));
   g.add(extrude(rim, -B.depth - 0.04, 0, matBase, 12));
   // 轉子座、樞軸銷、撥桿銷
   for (const key of ['P1', 'P2']) {
@@ -149,15 +157,22 @@ export function createBase() {
     const pad = new THREE.Mesh(new THREE.SphereGeometry(.37,12,8),matPin);
     pad.scale.set(.55,.8,1); pad.position.set(-B.w/2-1.28,-2.2,z); g.add(pad);
   }
-  const L = PART.wire.len;
-  [[matRed, 2.2], [matBlack, 3.4]].forEach(([mat, z]) => {
-    const pts = [[-B.w / 2 - 1.2, -2.2, z], [-B.w / 2 - 6, -2.6, z + 0.2], [-B.w / 2 - 14, -3.0, z - 0.6], [-B.w / 2 - L + 4, -3.1, 2.8 + (z - 2.8) * 0.4]].map(p => new THREE.Vector3(...p));
-    const m = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 24, 0.32, 6, false), mat); m.castShadow = true; g.add(m);
+  // Preformed harness loop remains inside the dedicated tray/nest wire bay.
+  // Both conductors follow parallel curves, instead of crossing the neighbouring pocket.
+  const harness = new THREE.CatmullRomCurve3([[-10.2,-2.2,2.8],[-12,-2.4,2.8],[-13,-2.5,1],[-12.5,-2.6,-4],[-15,-2.6,-6.5],[-17.5,-2.6,-4],[-17,-2.6,1],[-15.8,-2.7,4.7]].map(p=>new THREE.Vector3(...p)));
+  [matRed,matBlack].forEach((mat,i) => {
+    const pts=Array.from({length:65},(_,n)=>{
+      const t=n/64,p=harness.getPoint(t),d=harness.getTangent(t);
+      return p.add(new THREE.Vector3(-d.z,0,d.x).normalize().multiplyScalar(i ? -.6 : .6));
+    });
+    const curve=new THREE.CatmullRomCurve3(pts);
+    const m=new THREE.Mesh(new THREE.TubeGeometry(curve,96,.32,8,false),mat);
+    m.name='harness-'+i; m.userData.length=curve.getLength(); m.castShadow=true;g.add(m);
   });
-  const conn = new THREE.Mesh(new THREE.BoxGeometry(4.2, 2.4, 3.2), matConn); conn.position.set(-B.w / 2 - L + 2, -3.1, 2.8); g.add(conn);
-  for(const z of [2.05,3.55]) {
+  const conn = new THREE.Mesh(new THREE.BoxGeometry(3.2, 2.4, 4.2), matConn); conn.position.set(-15.8,-2.7,6.8); conn.name='harness-connector';g.add(conn);
+  for(const x of [-16.55,-15.05]) {
     const socket = new THREE.Mesh(new THREE.PlaneGeometry(.95,1.2),matBlack);
-    socket.rotation.y=-Math.PI/2; socket.position.set(-B.w/2-L-.105,-3.1,z); g.add(socket);
+    socket.position.set(x,-2.7,8.905); g.add(socket);
   }
   return g;
 }
@@ -195,10 +210,23 @@ export function createCover() {
   s.holes.push(windowPath(6.35,1.7,.42,1.25,.18));
   const plate = extrude(s, -C.t, 0, [matCover,matCut], 12); plate.name='stamped-cover'; g.add(plate);
   // 4 個卡勾：折向下、卡入本體側邊
-  for (const [x, z, rx] of [[C.w / 2, -5.2, 1], [C.w / 2, 5.2, 1], [-C.w / 2, -5.2, -1], [-C.w / 2, 5.2, -1]]) {
-    const tab = new THREE.Mesh(new THREE.BoxGeometry(C.t, 1.3, 2.2), matCover); tab.position.set(x + rx * C.t / 2, -C.t - 0.6, z); tab.castShadow = true; g.add(tab);
+  for (const side of [-1,1]) for(const z of [-5.2,5.2]) {
+    const clip=new THREE.Group();clip.name='cover-clip';clip.userData.side=side;g.add(clip);
+    const tab = new THREE.Mesh(new THREE.BoxGeometry(C.t, 1.3, 2.2), matCover); tab.position.set(side*9,-.8,z);tab.castShadow=true;clip.add(tab);
+    const hook=new THREE.Mesh(new THREE.BoxGeometry(.35,.2,2.0),matCover);hook.position.set(side*8.925,-1.3,z);clip.add(hook);
+    const bridge=new THREE.Mesh(new THREE.BoxGeometry(1,.2,2.2),matCover);bridge.position.set(side*8.95,-.1,z);bridge.scale.x=.3;bridge.name='clip-bridge';g.add(bridge);
+    clip.userData.bridge=bridge;
   }
   return g;
+}
+
+export function setCoverFlex(cover,gap) {
+  // A schematic spring deflection: ramp on the lead-in, snap into the relief.
+  const flex=gap>=.095 && gap<1.5 ? Math.min(.2,(1.5-gap)/.3*.2) : 0;
+  for(const clip of cover.children.filter(c=>c.name==='cover-clip')) {
+    const side=clip.userData.side;clip.position.x=side*flex;
+    const bridge=clip.userData.bridge;bridge.scale.x=.3+flex;bridge.position.x=side*(8.95+flex/2);
+  }
 }
 
 /** 成品（本體＋4 片葉片＋上蓋），給料盤中已完成的格子用 */

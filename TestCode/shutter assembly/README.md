@@ -64,6 +64,18 @@ python serve.py --no-open
 
 ## 建模
 
+### 干涉與物理可行性修正
+
+已修正手臂穿過後罩、導線與葉片超出料格、上蓋卡勾穿入側壁、壓頭過行程穿入上蓋，以及夾取／鬆夾時本體跳位。上視光路改為真正中空，NG 葉片加入落入盒底的過程。外罩占地調整為 1440 × 1120 mm。
+
+正常與 NG 流程以最長 20 ms 間隔、包含步驟端點，共檢查 2,786 個姿態；取樣範圍內手臂距後罩最小約 78.29 mm，壓合時彈簧最大壓縮 0.30 mm。另檢查料格容納空間、201 個上蓋接近／卡扣位置與實際上視光路。結果無檢出的干涉；這是離散模型驗證，並非實機安全或公差認證。
+
+詳見[物理檢查紀錄](review/physical-review.md)與[檢查數據](review/physics.json)。導線預成形、卡勾避讓槽及彈性行程屬於本次模型的設計假設，需依實物／供應商 CAD 確認；15 N 力值為示意。
+
+```powershell
+node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-physics.mjs
+```
+
 ### 2026-09-26 實物細節更新
 
 已比對 docs 的工程圖、組裝示意、6 張零件照片與約 66 秒影片的連續抽幀。照片中的薄片弧形邊缘、上蓋長孔／小孔、兩端銅線圈和金屬框層次用於改善外觀；既有 18 × 17 × 4.05 mm 本體、0.06 mm 葉片、0.20 mm 上蓋與定位銷基準維持原設定。無標註的外形、線圈與表面粗糙度仍是依照片建立的示意，非量測 CAD。
@@ -129,3 +141,14 @@ node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify.m
 | ![上視對位](review/upcam.png) 上視遠心相機量葉片偏移 | ![疊片剔除](review/ng-reject.png) 疊片判定 NG |
 | ![壓合](review/press.png) 上蓋壓合 15 N | ![成品回盤](review/finished.png) 成品放回原格 |
 | ![料盤](review/trays.png) 抽屜 A 的 4 種吸塑盤 | |
+
+
+## 線材配置與防干涉
+
+網頁新增「線材配置」視角與配色說明，包含主要外露線束、固定夾、分隔線槽與適用的活動拖鏈。
+
+SCARA 兩臂固定護套、R25 mm Z 軸拖鏈、旋轉入口與末端氣管；相機與治具線路沿固定支架及機櫃整理。
+
+[配線研究與實機確認項目](../cable-routing-review.md)｜[本機 docs 配線紀錄](docs/cable-management.md)｜[線材檢查結果](review/cables.json)｜[配線畫面](review/cables.png)
+
+共用檢查：在 TestCode 執行 `node tools/verify-cable-routing.mjs`。docs 依現有忽略規則僅留在本機；根目錄研究文件隨原始碼保存。

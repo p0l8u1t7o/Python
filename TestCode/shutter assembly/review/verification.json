@@ -7,7 +7,7 @@
       "cycle": 23.76,
       "maxError": 0,
       "worst": "下降",
-      "maxForce": 15,
+      "maxForce": 14.999999999997726,
       "placement": [
         {
           "id": "S1",
@@ -68,7 +68,7 @@
       "framing": [
         {
           "shot": "down:pins",
-          "maxNdc": 0.862
+          "maxNdc": 0.903
         },
         {
           "shot": "up:S1",
@@ -80,7 +80,7 @@
         },
         {
           "shot": "down:checkS",
-          "maxNdc": 0.862
+          "maxNdc": 0.903
         },
         {
           "shot": "up:L1",
@@ -92,7 +92,7 @@
         },
         {
           "shot": "down:checkL",
-          "maxNdc": 0.862
+          "maxNdc": 0.903
         },
         {
           "shot": "up:cover",
@@ -100,7 +100,7 @@
         },
         {
           "shot": "down:final",
-          "maxNdc": 0.862
+          "maxNdc": 0.903
         }
       ]
     },
@@ -113,11 +113,11 @@
     },
     {
       "mode": "NG 疊片示意",
-      "steps": 111,
-      "cycle": 26.5,
+      "steps": 112,
+      "cycle": 26.61,
       "maxError": 0,
       "worst": "下降",
-      "maxForce": 15,
+      "maxForce": 14.999999999997726,
       "placement": [
         {
           "id": "S1",
@@ -178,7 +178,7 @@
       "framing": [
         {
           "shot": "down:pins",
-          "maxNdc": 0.862
+          "maxNdc": 0.903
         },
         {
           "shot": "up:S1",
@@ -190,7 +190,7 @@
         },
         {
           "shot": "down:checkS",
-          "maxNdc": 0.862
+          "maxNdc": 0.903
         },
         {
           "shot": "up:L1",
@@ -206,7 +206,7 @@
         },
         {
           "shot": "down:checkL",
-          "maxNdc": 0.862
+          "maxNdc": 0.903
         },
         {
           "shot": "up:cover",
@@ -214,15 +214,15 @@
         },
         {
           "shot": "down:final",
-          "maxNdc": 0.862
+          "maxNdc": 0.903
         }
       ]
     },
     {
       "mode": "NG 疊片示意",
       "continuous": true,
-      "planned": 26.5,
-      "elapsed": 27.05,
+      "planned": 26.61,
+      "elapsed": 27.16,
       "maxTrackErrorNear": 0
     },
     {

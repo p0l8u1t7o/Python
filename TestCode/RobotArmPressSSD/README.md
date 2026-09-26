@@ -158,3 +158,14 @@ node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-s
 ## 防干涉回歸
 
 相機自干涉、彈簧行程、完整動作、相機取像與視覺標記五組驗證已納入 [四站統一檢查工具](../tools/README.md)，改動幾何或路徑後可一次重跑。
+
+
+## 線材配置與防干涉
+
+網頁新增「線材配置」視角與配色說明，包含主要外露線束、固定夾、分隔線槽與適用的活動拖鏈。
+
+基座電源與分段手臂護套、F/T 及光源支線、外罩內側相機支線、輸送感測器線路均已建立。
+
+[配線研究與實機確認項目](../cable-routing-review.md)｜[本機 docs 配線紀錄](docs/cable-management.md)｜[線材檢查結果](review/cables.json)｜[配線畫面](review/cables.png)
+
+共用檢查：在 TestCode 執行 `node tools/verify-cable-routing.mjs`。docs 依現有忽略規則僅留在本機；根目錄研究文件隨原始碼保存。

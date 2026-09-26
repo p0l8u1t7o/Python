@@ -1,3 +1,5 @@
+import { routingLegend } from './cable-routing.js';
+routingLegend();
 // 主程式：場景、配方選擇、時間軸（動作序列）、UI、相機子畫面（手臂相機／全局相機）
 import * as THREE from 'three';
 import { createVisionOverlay } from './vision-overlay.js';
@@ -127,6 +129,7 @@ function stationPoint(id) {
   return product.pressPoint(id).add(new THREE.Vector3(st.place.x - r.x, LAYOUT.conveyorTop + LAYOUT.liftStroke - r.y, st.place.z - r.z));
 }
 const views = {
+  wiring: () => [[-1200,1850,700],[0,1200,-300]],
   iso: () => [[-1250, 1650, 1550], [0, 950, -200]], conveyor: () => [[-420, 1180, 820], [st.place.x, 915, st.place.z]], robot: () => [[-950, 1450, 150], [0, 1030, -280]],
   press: () => { const p = stationPoint(product.ids[0]); return [p.clone().add(new THREE.Vector3(-150, 60, 90)).toArray(), p.toArray()]; },
   inspect: () => { const p = stationPoint(product.ids[0]); return [p.clone().add(new THREE.Vector3(130, 80, 120)).toArray(), p.clone().add(new THREE.Vector3(20, -5, 10)).toArray()]; },

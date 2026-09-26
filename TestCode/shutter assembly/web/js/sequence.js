@@ -46,7 +46,7 @@ export function createSequence({ robot, apply, ng = false }) {
   const S = slots(ng), T = LAYOUT.travel, U = LAYOUT.upCam, B = LAYOUT.ngBin;
   const base = {
     loc: { base: 'tray', S1: 'tray', S2: 'tray', L1: 'tray', L2: 'tray', L2x: 'tray', cover: 'tray' },
-    t1: 0, t2: 0, t3: 1, open: 1, clamp: 0, float: 1, press: 0, vac: 0, flashUp: 0, flashDown: 0, view: 'down', shot: '',
+    t1: 0, t2: 0, t3: 1, open: 1, clamp: 0, baseShift: 0, float: 1, press: 0, drop: 0, vac: 0, flashUp: 0, flashDown: 0, view: 'down', shot: '',
     zone: 'free', station: 0, action: '', sub: '',
   };
   const steps = [], stationStart = Array(STATIONS.length).fill(0);
@@ -91,7 +91,7 @@ export function createSequence({ robot, apply, ng = false }) {
   pick(0, 'T3', `本體料盤 #${SPEC.k + 1}`, pBase, 0, 'base', '夾取本體', { t1: 0, t2: 0, t3: 1, open: 1 });
   // 本體沒有上視對位：TCP 對準治具槽中心放入，x 向殘差由推塊消除
   place(0, 'T3', '組裝治具', nestPose('base').p.clone().add(v(0.15, 0, 0.15)), 0, 'base', '放開本體', 'nest');
-  add(0, .2, '側推夾緊', '+x、+z 推塊把本體推靠基準邊；治具真空 ON', { clamp: 1 }, null, { done: 'base' });
+  add(0, .2, '側推夾緊', '+x、+z 推塊把本體推靠基準邊；治具真空 ON', { clamp: 1, baseShift: 1 }, null, { done: 'base' });
 
   // ---- S1 定位取像 ----
   add(1, .3, '下視相機移至治具', 'PTP；工具全部縮回', { t3: 0, view: 'down' }, camAtNest());
@@ -107,7 +107,9 @@ export function createSequence({ robot, apply, ng = false }) {
     if (id === 'L2x') {
       upShot(st, id, b.name, seat.yaw, '偵測到兩片黏疊（厚度與輪廓異常）→ 判定 NG', 'judgeNG');
       add(st, .3, '移至 NG 盒', 'PTP；疊片不組裝', { view: 'down' }, P('T1', v(B.x, B.top + 25, B.z), seat.yaw));
-      add(st, .08, '吹落 NG 料', '破真空＋吹氣；NG 數量 +1', { loc: { L2x: 'bin' }, vac: 0 }, null, { done: 'reject' });
+      add(st, .08, '吹落 NG 料', '破真空＋吹氣', { loc: { L2x: 'fall' }, vac: 0 }, null);
+      const dropHeight=B.top+25-(LAYOUT.table+2+PART.blade.t*2);
+      add(st, Math.sqrt(2*dropHeight/9810), 'NG 料落入盒內', '自由落下完成後再離開，避免零件瞬間移到盒底', {drop:1,loc:{L2x:'bin'}}, null, {done:'reject'});
       return;
     }
     upShot(st, id, b.name, seat.yaw, `樞軸孔 Δx ${fmt(onTool.x)}、Δz ${fmt(onTool.z)} mm、θ ${fmt(onTool.a)}° → 補正放料位置`, 'shot' + id);
@@ -166,7 +168,7 @@ export function createSequence({ robot, apply, ng = false }) {
     const index = steps.findIndex(s => sec < s.start + s.dur), idx = index < 0 ? steps.length - 1 : index, s = steps[idx];
     const t = THREE.MathUtils.clamp((sec - s.start) / s.dur, 0, 1), e = smooth(t), state = clone(s.initial);
     for (const [key, value] of Object.entries(s.end)) {
-      if (typeof value === 'number' && typeof s.initial[key] === 'number' && !DISCRETE.has(key)) state[key] = THREE.MathUtils.lerp(s.initial[key], value, e);
+      if (typeof value === 'number' && typeof s.initial[key] === 'number' && !DISCRETE.has(key)) state[key] = THREE.MathUtils.lerp(s.initial[key], value, key==='drop'?t:e);
       else state[key] = clone(value);
     }
     // 零件的歸屬在該步驟完成時才改變（吸取／放開的瞬間），位置因此連續
