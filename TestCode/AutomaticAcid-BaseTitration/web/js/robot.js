@@ -57,7 +57,7 @@ export function createRobot() {
   j.j6 = new THREE.Group(); j.j6.position.set(L.wrist2, 0, 0); j.j5.add(j.j6);                      // J6 繞 X
   const flange = cyl(32, 32, L.flange, matJoint); flange.rotation.z = Math.PI / 2; flange.position.x = L.flange / 2; j.j6.add(flange);
 
-  // ---- 末端工具：長行程電動平行夾爪（燒杯 Ø65、樣品瓶 Ø56／Ø86、瓶蓋 GL45、移液器夾持環共用）----
+  // ---- 末端工具：長行程電動平行夾爪（燒杯 Ø65、樣品瓶 Ø56／Ø86、瓶蓋 GL45、移液模組夾持環共用）----
   const tool = new THREE.Group(); tool.position.x = L.flange; tool.rotation.y = Math.PI / 2; j.j6.add(tool);
   cylinder(tool, 32, 10, [0, 0, 5], matAnod, 'z', 28);                                       // 快換轉接盤
   const [bw, bt, bh] = TOOL.body;

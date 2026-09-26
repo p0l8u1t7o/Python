@@ -1,4 +1,4 @@
-// 實驗桌、設備與器皿（樣品瓶、瓶蓋、滴定杯、移液器、吸頭）
+// 實驗桌、設備與器皿（樣品瓶、瓶蓋、滴定杯、移液模組、吸頭）
 import * as THREE from 'three';
 import { block, cylinder, decal, tube } from './detail.js';
 import { Y0, BENCH, ST, BEAKER, BOTTLES, CAP, PIPETTE, SAMPLES } from './layout.js';
@@ -120,18 +120,16 @@ export function createLab(scene) {
   ring(holder, BEAKER.d / 2 + 2, BEAKER.d / 2 + 10, ST.holder.base + 12, [0, 0, 0], M.pom);
   decal(holder, 80, 16, [0, 6.6, 45], [-Math.PI / 2, 0, 0], '滴定杯座', { color: '#20242a', center: true, bold: true });
 
-  // ---------------------------------------------------------------- 移液區：廢液漏斗、吸頭退除叉、吸頭架、移液器停放座
+  // ---------------------------------------------------------------- 移液區：廢液漏斗、吸頭廢料口、吸頭架、移液模組停放座
   const F = ST.funnel;
   const funnel = new THREE.Mesh(new THREE.CylinderGeometry(52, 10, F.top - 10, 32, 1, true), new THREE.MeshStandardMaterial({ color: 0xf4f1e8, roughness: 0.6, side: THREE.DoubleSide }));
   funnel.position.set(F.x, Y0 + 10 + (F.top - 10) / 2, F.z); root.add(K('funnel', funnel));
   cylinder(root, 60, 10, [F.x, Y0 + 5, F.z], M.steel, 'y', 32);
-  const S = ST.stripper, sdir = new THREE.Vector3(S.x, 0, S.z).normalize();              // 開口朝手臂
-  const strip = new THREE.Group(); strip.position.set(S.x, Y0, S.z); strip.rotation.y = Math.atan2(-sdir.x, -sdir.z); root.add(strip);
+  const S = ST.tipChute, strip = new THREE.Group(); strip.position.set(S.x, Y0, S.z); root.add(strip);
   // 局部 +Z 朝手臂：支柱在遠端，叉口開向手臂
-  K('stripper', block(strip, [30, S.plate + 6, 30], [0, (S.plate + 6) / 2, -70], M.steel));
-  for (const s of [-1, 1]) K('stripper', block(strip, [22, 6, 110], [s * 20, S.plate + 3, -15], M.steel));   // 叉形板（槽寬 18：吸頭嘴過得去、吸頭口 Ø20 卡住）
   ring(strip, 34, 44, 5, [0, 0, 0], M.dark); cylinder(strip, 34, 1, [0, 0.5, 0], M.screen, 'y', 28);          // 落料孔（通桌下廢料桶）
-  decal(strip, 70, 16, [0, 1, 58], [-Math.PI / 2, Math.PI, 0], '吸頭退除', { color: '#e6edf3', center: true, bold: true });
+  K('chute', ring(strip, 44, 48, 12, [0, 0, 0], M.steel));
+  decal(strip, 70, 16, [0, 1, 62], [-Math.PI / 2, 0, 0], '吸頭廢料口', { color: '#e6edf3', center: true, bold: true });
   const TR = ST.tipRack, tipRack = new THREE.Group(); root.add(tipRack);
   const trx = TR.x0 + (TR.n - 1) * TR.pitch / 2, trz = (TR.z[0] + TR.z[1]) / 2;
   K('tiprack', block(tipRack, [TR.n * TR.pitch + 16, TR.top - 20, 70], [trx, Y0 + (TR.top - 20) / 2, trz], M.blue));
@@ -141,7 +139,7 @@ export function createLab(scene) {
   cylinder(dock, 26, 4, [0, 2, 0], M.dark, 'y', 32); cylinder(dock, 18, 1, [0, 4.5, 0], M.screen, 'y', 24);   // 桌面孔（吸頭伸入桌下套管）
   K('dock', block(dock, [30, D.collar - 6, 30], [ddir.x * 55, (D.collar - 6) / 2, ddir.z * 55], M.steel));
   const fork = ring(dock, 21, 34, 8, [0, D.collar - 23, 0], M.pom); K('dock', fork);
-  decal(dock, 70, 16, [ddir.x * 55 - ddir.z * 16, 120, ddir.z * 55 + ddir.x * 16], [0, Math.atan2(-ddir.z, ddir.x), 0], '移液器座', { color: '#e6edf3', center: true, bold: true });
+  decal(dock, 70, 16, [ddir.x * 55 - ddir.z * 16, 120, ddir.z * 55 + ddir.x * 16], [0, Math.atan2(-ddir.z, ddir.x), 0], '移液模組座', { color: '#e6edf3', center: true, bold: true });
 
   // ---------------------------------------------------------------- 條碼讀取器（固定式，手臂把瓶子送到讀取點旋轉）
   const SC = ST.scanner, scanner = new THREE.Group(); scanner.position.set(SC.x, Y0, SC.z); root.add(scanner);
@@ -243,11 +241,13 @@ export function createLab(scene) {
     const g = new THREE.Group(); root.add(g); const p = PIPETTE;
     const nose = new THREE.Mesh(new THREE.CylinderGeometry(9, 5.5, p.nose, 20), M.white); nose.position.y = p.nose / 2; g.add(nose);
     const ej = cylinder(g, 12, 20, [0, p.nose + 10, 0], M.grey, 'y', 20);
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(p.r, 14, p.collar - p.nose - 40, 28), M.white); body.position.y = (p.collar + p.nose - 20) / 2; g.add(body);
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(p.r, 14, p.collar - p.nose - 40, 28), M.grey); body.position.y = (p.collar + p.nose - 20) / 2; g.add(body);
+    cylinder(g, p.r + 0.6, 10, [0, p.collar - 70, 0], M.blue, 'y', 28);                                  // 模組識別環
     block(g, [40, 30, 40], [0, p.collar, 0], M.dark);                                                   // 夾持環（夾爪夾這裡）
     const head = new THREE.Mesh(new THREE.CylinderGeometry(20, p.r, p.top - p.collar - 15, 28), M.white); head.position.y = (p.top + p.collar + 15) / 2; g.add(head);
-    const disp = block(g, [22, 30, 3], [0, p.collar - 55, p.r - 1], M.screen); disp.material = new THREE.MeshStandardMaterial({ color: 0x0f2c3a, emissive: 0x2a7fb0, emissiveIntensity: 0.6 });
-    block(g, [10, 4, 10], [0, p.top + 2, 0], M.blue);
+    const led = block(g, [6, 6, 3], [0, p.collar - 45, p.r - 1], M.led); void led;
+    cylinder(g, 5, 30, [0, p.top + 12, 0], M.dark, 'y', 12);                                         // RS-485／電源線接頭（線沿手臂走）
+    decal(g, 26, 60, [0, p.collar - 120, p.r + 0.5], [0, 0, 0], ['rLINE', '5 mL'], { color: '#e6edf3', center: true, bold: true });
     g.userData = { kind: 'pipette' }; return g;
   }
   function tipMesh(i) {

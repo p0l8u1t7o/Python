@@ -12,8 +12,8 @@ export const BOTTLES = {
   100: { d: 56, h: 105, neck: 45, neckH: 22, grip: 70, open: 82, fill: 90 },      // 100 mL 試劑瓶，GL45 瓶蓋
 };
 export const CAP = { d: 53, h: 26, pitch: 4 };                                  // GL45 螺牙節距約 4 mm
-// 10 mL 電動移液器（夾持環在上方）＋ 10 mL 吸頭
-export const PIPETTE = { collar: 245, top: 290, r: 18, nose: 35, tipLen: 160, tipSeat: 12, tipR: 10, tipMax: 10 };
+// 機器人專用 5 mL 移液模組（Sartorius rLINE 級，RS-485 控制、電動退吸頭；夾持環在上方）＋ 5 mL 吸頭
+export const PIPETTE = { collar: 245, top: 290, r: 18, nose: 35, tipLen: 160, tipSeat: 12, tipR: 10, tipMax: 5 };
 PIPETTE.tipEnd = PIPETTE.collar + PIPETTE.tipLen - PIPETTE.tipSeat;              // TCP（夾持環）到吸頭尖端 393 mm
 
 // 站別位置（x, z）；高度為器皿底部所在高度（相對桌面）
@@ -26,9 +26,9 @@ export const ST = {
   clamp: { x: -170, z: -330, base: 10 },                                                 // 樣品瓶座＋開蓋區（氣動自定心 V 型夾座）
   holder: { x: -20, z: -370, base: 15 },                                                 // 滴定杯座
   funnel: { x: 100, z: -345, top: 80 },                                                  // 廢液漏斗（接桌下廢液桶）
-  stripper: { x: 170, z: -230, plate: 180 },                                             // 吸頭退除叉＋落料槽
-  tipRack: { x0: 235, z: [-380, -345], pitch: 30, n: 6, top: 175 },                     // 10 mL 吸頭架（2 × 6）
-  dock: { x: 470, z: -250, collar: 250 },                                                // 移液器停放座（吸頭伸入桌面孔）
+  tipChute: { x: 170, z: -230 },                                                         // 吸頭廢料口（模組電動退吸頭，落入桌下廢料桶）
+  tipRack: { x0: 235, z: [-380, -345], pitch: 30, n: 6, top: 175 },                     // 5 mL 吸頭架（2 × 6）
+  dock: { x: 470, z: -250, collar: 250 },                                                // 移液模組停放座（吸頭伸入桌面孔）
   scanner: { x: -250, z: -30, read: { x: -250, z: 90 }, h: 130 },                       // 固定式條碼讀取器
   sampleRack: { cols: [-620, -500, -380], rows: { 500: 250, 100: 370 }, base: 8, pitch: 120 },       // 待驗樣品瓶區
   doneBottleRack: { cols: [-250, -130, -10], rows: { 500: 250, 100: 370 }, base: 8, pitch: 120 },    // 完成樣品瓶區
@@ -41,7 +41,7 @@ export const ST = {
 
 // 搬運高度：手上物件底部離桌面至少 TRAVEL（越過天平 345、瓶子 202、停放座 295）
 export const TRAVEL = 420;
-export const PIP_TRAVEL = 250;                           // 拿移液器時吸頭尖端的高度（只在移液區內移動）
+export const PIP_TRAVEL = 250;                           // 拿移液模組時吸頭尖端的高度（只在移液區內移動）
 
 // 時間參數（秒）
 export const TIME = {
@@ -57,7 +57,7 @@ export const SPEED = { fast: 500, lin: 150, linSlow: 60, push: 120, near: 40 }; 
 
 // 批次：6 瓶（3 × 500 mL、3 × 100 mL），每瓶兩重複，共 12 次滴定
 export const RINSE = { vol: 3, times: 2 };                 // 潤洗：吸 3 mL 吐到廢液，兩次
-export const ALIQUOT = { vol: 10, times: 2 };              // 取樣：10 mL × 2 = 20 mL
+export const ALIQUOT = { vol: 5, times: 4 };               // 取樣：5 mL × 4 = 20 mL（模組最大 5 mL）
 export const TITRANT = { name: 'NaOH', c: 0.1, buret: 20 };// 滴定液 0.1 mol/L NaOH、20 mL 滴定管
 export const ANALYTE = { name: 'HCl', M: 36.46 };          // 示意：以 HCl 計算酸含量
 

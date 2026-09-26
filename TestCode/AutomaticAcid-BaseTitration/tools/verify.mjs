@@ -58,7 +58,7 @@ function collisions(T, st, s) {
   for (const id of held) {
     const hc = itemCyl(id);
     if (hc) { hc.y0 += 4; for (const [name, c] of cyls) if (cylCyl(hc, c, 2)) hits.add(`${id}×${name}`); }
-    // 逐個網格的包圍盒（移液器細長，整體包圍盒太粗）；底面放在架上／秤盤上屬正常接觸
+    // 逐個網格的包圍盒（移液模組細長，整體包圍盒太粗）；底面放在架上／秤盤上屬正常接觸
     lab.items[id].traverse(m => {
       if (!m.isMesh || m.geometry.type === 'PlaneGeometry') return;
       const hb = new THREE.Box3().setFromObject(m); hb.min.y += 4;

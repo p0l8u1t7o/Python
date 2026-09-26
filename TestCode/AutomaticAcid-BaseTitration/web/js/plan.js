@@ -90,7 +90,7 @@ export function buildPlan(robot) {
   const B = { t: 0, pose: null, j: null };
   const jawVec = a => new THREE.Vector3(Math.sin(a), 0, Math.cos(a));   // 夾爪沿 (cos a, 0, −sin a) 開合
   function P(x, y, z, a = 0, sym = true) {
-    // 對稱夾持（圓形器皿、移液器）：a 與 a+π 等價，取相對手臂徑向在 ±90° 內者，J6 不會越轉越多
+    // 對稱夾持（圓形器皿、移液模組）：a 與 a+π 等價，取相對手臂徑向在 ±90° 內者，J6 不會越轉越多
     if (sym) { const phi = Math.atan2(-(z - ST.robot.z), x - ST.robot.x), rel = wrapPi(a - phi); a = phi + (rel > Math.PI / 2 ? rel - Math.PI : rel <= -Math.PI / 2 ? rel + Math.PI : rel); }
     const p = robot.poseFor('grip', new THREE.Vector3(x, y, z), jawVec(a)); p.m = { x, y, z, a }; return p;
   }
@@ -215,22 +215,22 @@ export function buildPlan(robot) {
     }
   }
 
-  // ---------------------------------------------------------------- 移液器
+  // ---------------------------------------------------------------- 移液模組
   let hasTip = null;
   function pipetteTake() {
-    act('取移液器');
+    act('取移液模組');
     const w0 = s.grip;
-    go(P(dockPos[0], Y_PIP, dockPos[2], 0), '移到移液器座上方', { fx: (st, e) => { st.grip = THREE.MathUtils.lerp(w0, 70, Math.min(1, e * 2)); } });
+    go(P(dockPos[0], Y_PIP, dockPos[2], 0), '移到移液模組座上方', { fx: (st, e) => { st.grip = THREE.MathUtils.lerp(w0, 70, Math.min(1, e * 2)); } });
     down(Y0 + ST.dock.collar, '直線下降到夾持環', { touch: ['pip', 'dock', 'bench', ...(hasTip ? [hasTip] : [])] });
-    grip(38, '夾住移液器', { touch: ['pip', 'dock', 'bench', ...(hasTip ? [hasTip] : [])] }); attach('pip');
-    up(Y_PIP, '提起移液器', { touch: ['pip', 'dock', 'bench', ...(hasTip ? [hasTip] : [])] });
+    grip(38, '夾住移液模組', { touch: ['pip', 'dock', 'bench', ...(hasTip ? [hasTip] : [])] }); attach('pip');
+    up(Y_PIP, '提起移液模組', { touch: ['pip', 'dock', 'bench', ...(hasTip ? [hasTip] : [])] });
   }
   function pipetteReturn() {
-    act('移液器放回');
-    go(P(dockPos[0], Y_PIP, dockPos[2], 0), '移到移液器座上方');
+    act('移液模組放回');
+    go(P(dockPos[0], Y_PIP, dockPos[2], 0), '移到移液模組座上方');
     down(Y0 + ST.dock.collar, '直線下降放入停放座', { touch: ['pip', 'dock', 'bench', ...(hasTip ? [hasTip] : [])] });
     detach('pip');
-    grip(70, '放開移液器', { touch: ['pip', 'dock'] });
+    grip(70, '放開移液模組', { touch: ['pip', 'dock'] });
     up(Y_PIP, '夾爪上移', { touch: ['pip', 'dock'] });
   }
   function tipMount(t) {
@@ -241,19 +241,17 @@ export function buildPlan(robot) {
     s.loc[`tip${t}`] = { on: 'pip', off: [0, PIPETTE.tipSeat, 0], yaw: 0 }; hasTip = `tip${t}`; setSig('tip', true);
     up(Y_PIP, '提起', { touch: [`tip${t}`, 'tiprack'] });
   }
-  function tipStrip() {
-    const S = ST.stripper, u = new THREE.Vector3(S.x, 0, S.z).normalize(), y = Y0 + S.plate - 1 + PIPETTE.collar - PIPETTE.tipSeat;
-    const tipId = hasTip;
-    act('退除吸頭');
-    go(P(S.x - u.x * 75, Y_PIP, S.z - u.z * 75, 0), '移到吸頭退除叉前');
-    down(y, '下降到退除高度', { touch: ['stripper'] });
-    lin(P(S.x, y, S.z, B.pose.m.a, false), '吸頭卡入叉口', { v: SPEED.linSlow, touch: ['stripper', tipId, 'pip'] });
+  // 模組電動退吸頭：吸頭尖端停在廢料口上方 25 mm，退出後落入桌下廢料桶
+  function tipEject() {
+    const S = ST.tipChute, y = Y0 + 25 + PIPETTE.tipEnd, tipId = hasTip;
+    act('退吸頭');
+    go(P(S.x, Y_PIP, S.z, 0), '移到吸頭廢料口上方');
+    down(y, '下降到退吸頭高度');
+    const y0 = itemWorld(tipId).p.y;
+    wait(0.8, '模組電動退吸頭', null, { sig: 'eject' });
     detach(tipId); hasTip = null; setSig('tip', false);
-    const y0 = s.loc[tipId].w[1];
-    lin(at(y + 50), '上提退除吸頭', { v: SPEED.linSlow, touch: ['stripper', tipId, 'pip'] });
-    wait(0.35, '吸頭落入落料槽', (st, e) => { st.loc[tipId].w[1] = y0 - 260 * e * e; if (e >= 1) st.loc[tipId].gone = true; });
+    wait(0.35, '吸頭落入廢料口', (st, e) => { st.loc[tipId].w[1] = y0 - 300 * e * e; if (e >= 1) st.loc[tipId].gone = true; }, { touch: [tipId, 'chute', 'bench'] });
     s.loc[tipId].gone = true; s.tipVol[tipId] = 0;
-    lin(P(S.x - u.x * 75, y + 50, S.z - u.z * 75, B.pose.m.a, false), '退出叉口', { touch: ['stripper'] });
     up(Y_PIP, '上升');
   }
   // 吸液：吸頭尖端在液面下 12 mm（最低離瓶底 8 mm）
@@ -338,7 +336,7 @@ export function buildPlan(robot) {
   ev('① 初始化：人員掃條碼、整合軟體建立樣品表（6 瓶 × 2 重複）', { phase: 0 });
   say(0, '人員', '整合軟體', '掃描 6 瓶條碼、選方法、按開始');
   say(0, '整合軟體', 'Metrohm', '下載樣品表（12 列，位置待定）');
-  wait(3, '整合軟體檢查天平、Metrohm、移液器連線');
+  wait(3, '整合軟體檢查天平、Metrohm、移液模組連線');
   let beakerNext = 0;
   for (let i = 0; i < SAMPLES.length; i++) {
     const S = SAMPLES[i], b = BOTTLES[S.size], id = `bottle${i}`, rp = sampleRackPos(i);
@@ -397,15 +395,15 @@ export function buildPlan(robot) {
       s.balStable = false;
       place(bk, holderPos[0], holderPos[1] + BEAKER.h / 2, holderPos[2], 0, 90, null, Y_EMPTY, ['移到滴定杯座', '直線下降', '放開', '上升'], { touch: ['holder'] });
       // ---- 移液潤洗＋取樣 20 mL
-      ev(`樣品 ${i + 1}-${rep + 1}：移液（潤洗 2 次＋取 2 × 10 mL）`, { sample: i, job: jobK, phase: 4 });
+      ev(`樣品 ${i + 1}-${rep + 1}：移液（潤洗 2 次＋取 4 × 5 mL）`, { sample: i, job: jobK, phase: 4 });
       act(`樣品 ${i + 1}-${rep + 1}：移液`);
       pipetteTake();
       if (!hasTip) tipMount(i);
       for (let n = 0; n < RINSE.times; n++) { act(`樣品 ${i + 1}-${rep + 1}：潤洗 ${n + 1}/${RINSE.times}`); aspirate(i, RINSE.vol, `潤洗 ${n + 1}`); dispense('waste', RINSE.vol); }
       for (let n = 0; n < ALIQUOT.times; n++) { act(`樣品 ${i + 1}-${rep + 1}：取樣 ${n + 1}/${ALIQUOT.times}`); aspirate(i, ALIQUOT.vol, `取樣 ${n + 1}`); dispense(k, ALIQUOT.vol, `取樣 ${n + 1}`); }
       job.aliquot = ALIQUOT.vol * ALIQUOT.times;
-      say(B.t, '移液器', '整合軟體', `樣品 ${i + 1}-${rep + 1}：已加 ${job.aliquot} mL`);
-      if (rep === 1) tipStrip();
+      say(B.t, '移液模組', '整合軟體', `樣品 ${i + 1}-${rep + 1}：已加 ${ALIQUOT.times} × ${ALIQUOT.vol} mL = ${job.aliquot} mL`);
+      if (rep === 1) tipEject();
       pipetteReturn();
       // ---- 樣品秤重
       act(`樣品 ${i + 1}-${rep + 1}：樣品秤重`); ev(`樣品 ${i + 1}-${rep + 1}：樣品秤重（讀淨重）`, { sample: i, job: jobK, phase: 5 });
