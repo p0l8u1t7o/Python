@@ -24,26 +24,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Collect the four demos and create a homepage
+      - name: Collect the five demos and create a homepage
         shell: bash
         run: |
           python3 - <<'PY'
           import os
           import shutil
           from pathlib import Path
+          from urllib.parse import quote
 
           projects = {
               "AutomaticAcid-BaseTitration": "自動酸鹼滴定系統",
               "MilitaryGradePC": "軍規電腦檢測系統",
               "PCB-CopperAssembly": "PCB 銅箔基板散熱板組裝",
               "RobotArmPressSSD": "SSD USB 接頭壓合站",
+              "shutter assembly": "快門葉片與上蓋組裝站",
           }
           sources = {}
           for name in projects:
               candidates = [Path("TestCode") / name / "web", Path(name) / "web", Path(name)]
               source = next((p for p in candidates if (p / "index.html").is_file()), None)
               if source is None:
-                  raise SystemExit(f"Missing {name}/web/index.html; upload all four web folders first.")
+                  raise SystemExit(f"Missing {name}/web/index.html; upload all five web folders first.")
               sources[name] = source
 
           output = Path(os.environ.get("PAGES_OUTPUT", "_site"))
@@ -56,7 +58,7 @@ jobs:
                       shutil.copy2(item, target / item.name)
                   elif item.is_dir() and item.name in {"css", "js", "vendor", "assets"}:
                       shutil.copytree(item, target / item.name)
-          links = "".join(f'<a href="./{name}/"><strong>{title}</strong><span>{name}</span></a>' for name, title in projects.items())
+          links = "".join(f'<a href="./{quote(name)}/"><strong>{title}</strong><span>{name}</span></a>' for name, title in projects.items())
           html = '''<!doctype html>
           <html lang="zh-Hant"><head><meta charset="utf-8">
           <meta name="viewport" content="width=device-width,initial-scale=1">
