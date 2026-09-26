@@ -63,3 +63,6 @@ PCB-CopperAssembly\docs下資料為用戶提供，用戶產品為PCB銅箔基板
 仿造MilitaryGradePC一樣，給我完整的3D動畫展示規劃，皆在shutter assembly資料夾下作
 擺放可以用伺服XYZ、Theda軸，也可以用DENSO機械手臂，請自行設計。設計完直接實作
 有問題請用選項對話與我討論
+
+=====================================================================
+AutomaticAcid-BaseTitration、MilitaryGradePC、PCB-CopperAssembly、RobotArmPress和shutter assembly內的docs內容不納入版控，
