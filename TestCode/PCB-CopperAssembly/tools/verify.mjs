@@ -1,19 +1,22 @@
-// 驗證：節拍、138 孔各放一次、取放配對、供料只取正面且在盤上的銅片、雙龍門不相撞、吸嘴移位時在安全高度、
+// 驗證（每個機種配方）：節拍、每孔各放一次、取放配對、供料只取正面且在盤上的銅片、雙龍門不相撞、吸嘴移位時在安全高度、
 // 放下瞬間銅片中心與角度等於目標、精度 ≤ ±6 mil、S1／S3 涵蓋全部孔、取樣與歷史無關，以及整台場景可套用。
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { buildPlan } from '../web/js/plan.js';
 import { createSim } from '../web/js/sim.js';
-import { LAYOUT, PRODUCT, COIN_SEAT_TOP } from '../web/js/layout.js';
+import { LAYOUT, PRODUCT, RECIPES, setRecipe, COIN_SEAT_TOP } from '../web/js/layout.js';
 globalThis.document = { createElement: () => ({ width: 1024, height: 512, getContext: () => ({ fillRect() {}, fillText() {} }) }) };
-const failures = [], fail = (what, data = {}) => failures.push({ what, ...data });
-const plan = buildPlan(), G = LAYOUT.gantry, TIP_R = 1.2;
-const report = { cycle: +plan.cycle.toFixed(2), s2End: +plan.s2End.toFixed(2), tripsA: plan.heads.A.trips.length, tripsB: plan.heads.B.trips.length, maxErr: +plan.stats.maxErr.toFixed(4), meanErr: +plan.stats.meanErr.toFixed(4) };
+const failures = [], reports = [];
+for (const recipe of Object.keys(RECIPES)) {
+setRecipe(recipe);
+const fail = (what, data = {}) => failures.push({ recipe, what, ...data });
+const plan = buildPlan(), G = LAYOUT.gantry, TIP_R = PRODUCT.nozzleR, N = plan.holes.length;
+const report = { recipe, holes: N, cycle: +plan.cycle.toFixed(2), s2End: +plan.s2End.toFixed(2), tripsA: plan.heads.A.trips.length, tripsB: plan.heads.B.trips.length, maxErr: +plan.stats.maxErr.toFixed(4), meanErr: +plan.stats.meanErr.toFixed(4) };
 if (plan.cycle > 60) fail('cycle over 60 s', { cycle: plan.cycle });
 // 放置：每孔一次、在基準點與頂升之後
 const placeEv = plan.events.filter(e => e.type === 'place');
-if (placeEv.length !== 138) fail('place count', { n: placeEv.length });
-if (new Set(placeEv.map(e => e.hole)).size !== 138) fail('duplicate placement');
+if (placeEv.length !== N) fail('place count', { n: placeEv.length });
+if (new Set(placeEv.map(e => e.hole)).size !== N) fail('duplicate placement');
 for (const H of ['A', 'B']) {
   const fidT = Math.max(...plan.events.filter(e => e.type === 'fid' && e.H === H).map(e => e.t));
   for (const e of placeEv.filter(e => e.H === H)) if (e.t < fidT || e.t < 2.7 || e.t > plan.cycle) fail('place timing', { H, t: e.t });
@@ -55,7 +58,9 @@ const scene = new THREE.Scene(), sim = createSim(scene);
 let last = null;
 for (let T = 0; T <= sim.plan.cycle; T += 0.25) last = sim.apply(T);
 last = sim.apply(sim.plan.cycle);
-if (last.placed.A + last.placed.B !== 138 || last.inspected !== 138 || last.mapped !== 138) fail('end state', last);
+if (last.placed.A + last.placed.B !== N || last.inspected !== N || last.mapped !== N) fail('end state', last);
 report.endState = { placed: last.placed, mapped: last.mapped, inspected: last.inspected };
-console.log(JSON.stringify({ report, failures: failures.slice(0, 30), failureCount: failures.length }, null, 2));
+reports.push(report);
+}
+console.log(JSON.stringify({ reports, failures: failures.slice(0, 30), failureCount: failures.length }, null, 2));
 if (failures.length) process.exitCode = 1;

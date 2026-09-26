@@ -55,8 +55,8 @@ export function buildPlan(seed = 20260911) {
     tr.wait(0.3, stLabel).move(moveTime(200), { x: -175, z: -175 }, '回原點');
     return { tr, shots };
   };
-  const s1 = scanTrack('S1', '建立 138 孔位圖（位置、角度、孔徑）', '拍攝');
-  const s3 = scanTrack('S3', '判定：138 顆全部在孔內、偏差 ≤ ±6 mil', '檢查');
+  const s1 = scanTrack('S1', `建立 ${holes.length} 孔位圖（位置、角度、孔徑）`, '拍攝');
+  const s3 = scanTrack('S3', `判定：${holes.length} 顆全部在孔內、偏差 ≤ ±6 mil`, '檢查');
   // 每個孔被哪一張涵蓋（S1 量到、S3 檢查到的時間）
   const inFov = (h, s) => Math.abs(h.x - s.x) <= SC.fov[0] / 2 - 3 && Math.abs(h.z - s.z) <= SC.fov[1] / 2 - 4;
   for (const h of holes) { h.mapT = s1.shots.find(s => inFov(h, s))?.t ?? Infinity; h.inspT = s3.shots.find(s => inFov(h, s))?.t ?? Infinity; }
@@ -72,13 +72,13 @@ export function buildPlan(seed = 20260911) {
     const cols = [...new Set(mine.map(h => h.x))].sort((a, b) => (a - b) * (H === 'A' ? 1 : -1));
     const order = cols.flatMap((x, ci) => mine.filter(h => h.x === x).sort((a, b) => (b.z - a.z) * side * (ci % 2 ? -1 : 1)));
     const trips = []; for (let i = 0; i < order.length; i += 4) trips.push(order.slice(i, i + 4));
-    // 供料盤：每次震動後重新攤開（示意：14 顆、約 85% 正面可取）
+    // 供料盤：每次震動後重新攤開（示意：依配方的顆數、約 85% 毛邊面朝下可取；反面靠震動翻面）
     const feed = { H, coins: [], epochs: [] };
     const spread = (t, keep) => {
       const pos = [], list = [];
-      for (const c of [...keep, ...Array.from({ length: 14 - keep.length }, () => ({ id: coinSeq++ }))]) {
+      for (const c of [...keep, ...Array.from({ length: PRODUCT.feederCount - keep.length }, () => ({ id: coinSeq++ }))]) {
         let x, z, ok = false, tries = 0;
-        while (!ok && tries++ < 200) { x = fd.x + (r() - 0.5) * (FD.w - 20); z = fd.z + (r() - 0.5) * (FD.d - 20); ok = pos.every(p => Math.hypot(p[0] - x, p[1] - z) > 10); }
+        while (!ok && tries++ < 200) { x = fd.x + (r() - 0.5) * (FD.w - 20); z = fd.z + (r() - 0.5) * (FD.d - 20); ok = pos.every(p => Math.hypot(p[0] - x, p[1] - z) > PRODUCT.feederGap); }
         pos.push([x, z]);
         const rec = { id: c.id, x, z, theta: r() * 180, good: r() < 0.85, t0: t, t1: Infinity };
         feed.coins.push(rec); list.push(rec);
@@ -160,7 +160,7 @@ export function buildPlan(seed = 20260911) {
   const cycle = Math.max(heads.A.tr.t, heads.B.tr.t, s1.tr.t, s3.tr.t, s0.t, s4.t, feeders.A.tr.t, feeders.B.tr.t) + 0.3;
   for (const tr of [s0, s4, conveyor]) tr.until(cycle, '待命');
   for (const tr of [s1.tr, s3.tr, heads.A.tr, heads.B.tr, feeders.A.tr, feeders.B.tr]) tr.until(cycle, '待命');
-  milestones.push({ t: s2End, st: 'S2', label: 'S2 138 顆放置完成' });
+  milestones.push({ t: s2End, st: 'S2', label: `S2 ${holes.length} 顆放置完成` });
   milestones.sort((a, b) => a.t - b.t);
   events.sort((a, b) => a.t - b.t);
   const errs = holes.map(h => h.err);

@@ -2,10 +2,11 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { createSim } from './sim.js';
-import { LAYOUT, PRODUCT, smooth } from './layout.js';
+import { LAYOUT, PRODUCT, RECIPES, setRecipe, smooth } from './layout.js';
 
 const qp = new URLSearchParams(location.search);
+setRecipe(qp.get('recipe'));                            // 先套配方，再建機台與排程
+const { createSim } = await import('./sim.js');
 const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: qp.get('aa') !== '0', powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -23,7 +24,12 @@ const fill = new THREE.DirectionalLight(0x9fb8ff, 0.5); fill.position.set(1800, 
 const sim = createSim(scene), plan = sim.plan, M = sim.machine;
 const ui = Object.fromEntries(['phase', 'cycleHint', 'pA', 'pB', 'pT', 'nA', 'nB', 'nT', 'errBar', 'errVal', 'errLim', 'stationStatus', 'showPip', 'showGuards', 'showLabels', 'exportBtn', 'pipFrame', 'pipTitle', 'pipResult', 'pipSel',
   'playBtn', 'restartBtn', 'speed', 'speedVal', 'loop', 'previous', 'next', 'stepSelect', 'cycleTime', 'timeline', 'progBar', 'clock', 'stations'].map(id => [id, document.getElementById(id)]));
-const total = plan.cycle, nA = plan.heads.A.trips.flat().length, nB = plan.heads.B.trips.flat().length;
+const total = plan.cycle, nA = plan.heads.A.trips.flat().length, nB = plan.heads.B.trips.flat().length, N = plan.holes.length;
+// 機種選單：換配方即重建頁面（實機：切換配方、供料盤清料換料、吸嘴快換）
+for (const [key, r] of Object.entries(RECIPES)) { const o = document.createElement('option'); o.value = key; o.textContent = `機種：${r.name}`; document.getElementById('recipe').appendChild(o); }
+document.getElementById('recipe').value = PRODUCT.recipe;
+document.getElementById('recipe').onchange = e => { const q = new URLSearchParams(location.search); q.set('recipe', e.target.value); q.delete('t'); location.search = q.toString(); };
+document.getElementById('subtitle').textContent = `350 × 350 mm 基板 · ${PRODUCT.name} · ±6 mil · 雙龍門 4 吸嘴＋飛越仰視補償 · 五站並行（穩態一節拍）`;
 ui.timeline.max = total;
 ui.cycleTime.textContent = `節拍 ${total.toFixed(1)} s（目標 60 s）· S2 放置 ${plan.s2End.toFixed(1)} s · 每頭 ${plan.heads.A.trips.length} 趟 × 4 顆`;
 ui.cycleHint.textContent = `目標 60 s／片`;
@@ -76,8 +82,8 @@ function pipInfo(src) {
     const hold = plan.heads[H].hold[e.k].find(x => x.t0 <= e.t && e.t < x.t1), o = hold?.coin.pickOffset;
     return [`仰視相機 ${H} · 飛越取像 · 400 mm/s`, o ? `吸嘴 ${e.k + 1}：偏移 x ${o.dx >= 0 ? '+' : ''}${o.dx.toFixed(3)} · z ${o.dz >= 0 ? '+' : ''}${o.dz.toFixed(3)} mm · θ ${o.dt >= 0 ? '+' : ''}${o.dt.toFixed(1)}° → <span class="ok">放置時補償</span>` : '—'];
   }
-  if (src === 's1') return ['S1 基板定位相機 · 20MP · 視野約 111 × 74 mm', `孔位量測 ${info.mapped} / 138`];
-  if (src === 's3') return ['S3 檢查相機 · 20MP', `檢查 ${info.inspected} / 138 · <span class="ok">全數在孔內</span>`];
+  if (src === 's1') return ['S1 基板定位相機 · 20MP · 視野約 111 × 74 mm', `孔位量測 ${info.mapped} / ${N}`];
+  if (src === 's3') return ['S3 檢查相機 · 20MP', `檢查 ${info.inspected} / ${N} · <span class="ok">全數在孔內</span>`];
   if (src === 'feedA') return ['供料相機 A · 找出正面朝上的銅片', `盤面：${plan.feeders.A.coins.filter(c => c.t0 <= T && T < c.t1 && c.good).length} 顆可取`];
   return ['A 頭下視相機 · 基準點', '板邊工具孔 → 修正 S1 孔位圖'];
 }
@@ -93,7 +99,7 @@ ui.previous.onclick = () => jumpMs(-1); ui.next.onclick = () => jumpMs(1);
 ui.stepSelect.onchange = () => { playing = false; ui.playBtn.textContent = '▶ 播放'; seekTo(plan.milestones[+ui.stepSelect.value].t); };
 ui.exportBtn.onclick = () => {
   const holes = plan.holes.map(h => ({ id: h.id + 1, column: h.col + 1, row: h.row + 1, xNominal: h.x, zNominal: h.z, head: h.by.H, nozzle: h.by.k + 1, trip: h.by.trip + 1, placeTime: +h.placeT.toFixed(3), errX: +h.ex.toFixed(4), errZ: +h.ez.toFixed(4), errMm: +h.err.toFixed(4), errMil: +(h.err / 0.0254).toFixed(2), thetaErrDeg: +h.et.toFixed(3) }));
-  const report = { mode: 'SIMULATION', cycleSec: +total.toFixed(2), s2PlaceSec: +plan.s2End.toFixed(2), specMm: PRODUCT.spec, maxErrMm: +plan.stats.maxErr.toFixed(4), meanErrMm: +plan.stats.meanErr.toFixed(4), errorModelSigmaMm: +plan.stats.sigma.toFixed(4), holes, physicalMeasurement: false };
+  const report = { mode: 'SIMULATION', recipe: PRODUCT.recipe, recipeName: PRODUCT.name, assumptions: PRODUCT.source, cycleSec: +total.toFixed(2), s2PlaceSec: +plan.s2End.toFixed(2), specMm: PRODUCT.spec, maxErrMm: +plan.stats.maxErr.toFixed(4), meanErrMm: +plan.stats.meanErr.toFixed(4), errorModelSigmaMm: +plan.stats.sigma.toFixed(4), holes, physicalMeasurement: false };
   const url = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' }));
   const a = document.createElement('a'); a.href = url; a.download = 'copper-insert-sim.json'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
@@ -101,8 +107,8 @@ ui.exportBtn.onclick = () => {
 function drawHud() {
   info = sim.apply(T);
   const pl = info.placed, tot = pl.A + pl.B;
-  ui.pA.style.width = pl.A / nA * 100 + '%'; ui.pB.style.width = pl.B / nB * 100 + '%'; ui.pT.style.width = tot / 138 * 100 + '%';
-  ui.nA.textContent = `${pl.A} / ${nA}`; ui.nB.textContent = `${pl.B} / ${nB}`; ui.nT.textContent = `${tot} / 138`;
+  ui.pA.style.width = pl.A / nA * 100 + '%'; ui.pB.style.width = pl.B / nB * 100 + '%'; ui.pT.style.width = tot / N * 100 + '%';
+  ui.nA.textContent = `${pl.A} / ${nA}`; ui.nB.textContent = `${pl.B} / ${nB}`; ui.nT.textContent = `${tot} / ${N}`;
   ui.errBar.style.width = Math.min(100, info.maxErr / PRODUCT.spec * 100) + '%';
   ui.errVal.textContent = tot ? `最大 ${info.maxErr.toFixed(3)} mm（${(info.maxErr / 0.0254).toFixed(1)} mil）` : '—';
   for (const [key] of STATUS) statusEls[key].textContent = info.status[key] || '—';

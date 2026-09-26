@@ -15,7 +15,7 @@ export function createSim(scene) {
   const opts = { placedOrder, mapOrder, inspOrder, pose: h => ({ x: h.lx + h.ex, z: h.lz + h.ez, a: h.angle + h.et }) };
   const boards = { s0: createBoard(opts), s1: createBoard(opts), s2: createBoard(opts), s3: createBoard(opts), fresh: createBoard(opts) };
   for (const b of Object.values(boards)) scene.add(b.group);
-  boards.s2.setCoins(138); boards.s3.setCoins(138); boards.s2.setMapped(0);
+  const N = plan.holes.length; boards.s2.setCoins(N); boards.s3.setCoins(N); boards.s2.setMapped(0);
   // 料倉：上料剩餘（不含最上面那片）、收料已疊
   for (const [key, n] of [['S0', STACK.in - 1], ['S4', STACK.out]]) { const s = m.stacks[key].stack; s.scale.y = n * PITCH; s.position.y = STACK.base + n * PITCH / 2; }
   const count = (list, key, T) => { let n = 0; for (const h of list) if (h[key] <= T) n++; else break; return n; };
@@ -43,7 +43,7 @@ export function createSim(scene) {
     const y0 = LAYOUT.conveyorTop;
     boards.s0.group.position.set(ST[0] + shift, y0, 0); boards.s0.setMapped(count(mapOrder, 'mapT', T)); boards.s0.setCoins(0);
     boards.s1.group.position.set(ST[1] + shift + plan.place.dx * k, y0, plan.place.dz * k); boards.s1.group.rotation.y = -plan.place.rot * k;
-    boards.s1.setCoins(count(placedOrder, 'placeT', T)); boards.s1.setMapped(k > 0.999 ? 0 : 138);
+    boards.s1.setCoins(count(placedOrder, 'placeT', T)); boards.s1.setMapped(k > 0.999 ? 0 : N);
     boards.s2.group.position.set(ST[2] + shift, y0, 0); boards.s2.setInspected(count(inspOrder, 'inspT', T));
     const un = loaderPose('S4', T), ld = loaderPose('S0', T);
     const gripT4 = plan.s4.segs.find(x => x.to.grip === 1)?.t1 ?? Infinity, relT4 = plan.s4.segs.find(x => x.from.grip === 1 && x.to.grip === 0)?.t1 ?? Infinity;

@@ -20,7 +20,7 @@
   <header id="topbar">
     <div class="brand">
       <div class="title">PCB 銅箔基板・散熱銅片植入機</div>
-      <div class="sub">350 × 350 mm 基板 · 138 孔 · ±6 mil · 雙龍門 4 吸嘴＋飛越仰視補償 · 五站並行（穩態一節拍）</div>
+      <div class="sub" id="subtitle"></div>
     </div>
     <nav id="stations"></nav>
     <div class="views">
@@ -31,6 +31,7 @@
       <button data-view="s1">基板定位</button>
       <button data-view="load">上下料</button>
       <button data-view="top">俯視</button>
+      <select id="recipe" aria-label="機種配方"></select>
       <select id="pipSel" aria-label="子畫面相機">
         <option value="auto">子畫面：自動</option><option value="upA">仰視相機 A</option><option value="upB">仰視相機 B</option>
         <option value="s1">S1 定位相機</option><option value="s3">S3 檢查相機</option><option value="feedA">供料相機 A</option><option value="downA">A 頭下視相機</option>
@@ -45,7 +46,7 @@
       <h3>放置進度 <span class="hint" id="cycleHint"></span></h3>
       <div class="prog"><span>A 頭</span><div class="pbar"><i id="pA"></i></div><b id="nA">0</b></div>
       <div class="prog"><span>B 頭</span><div class="pbar"><i id="pB"></i></div><b id="nB">0</b></div>
-      <div class="prog total"><span>合計</span><div class="pbar"><i id="pT"></i></div><b id="nT">0 / 138</b></div>
+      <div class="prog total"><span>合計</span><div class="pbar"><i id="pT"></i></div><b id="nT">—</b></div>
     </section>
 
     <section class="card">
@@ -65,7 +66,7 @@
       <label class="displayOption"><input id="showGuards" type="checkbox" checked>顯示外罩</label>
       <label class="displayOption"><input id="showLabels" type="checkbox">顯示設備標籤</label>
       <button id="exportBtn">匯出紀錄</button>
-      <p class="scopeNote">匯出 138 顆的模擬放置誤差與時間；無實拍影像、無實測值。</p>
+      <p class="scopeNote">匯出每顆的模擬放置誤差與時間；無實拍影像、無實測值。</p>
     </section>
   </aside>
 

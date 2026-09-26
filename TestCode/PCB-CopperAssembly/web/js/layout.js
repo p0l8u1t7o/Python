@@ -1,19 +1,38 @@
 // 機台與產品的共用尺寸、運動參數與誤差模型。座標：x 沿流向、y 向上、z 橫向（+z 為前側／作業員側）。單位 mm、s。
 // 產品尺寸依照片目測（350 × 350 基板、6 排 × 23 個長圓孔）；實際以圖面校正。
 
-/** 產品 */
+/** 機種配方：同一台機切換長圓孔／圓孔基板（換配方、供料盤清料換料、吸嘴快換） */
+export const RECIPES = {
+  'obround-138': {
+    name: '長圓孔基板 · 138 孔（照片）', short: '長圓 138', source: '照片目測：6 排 × 23 個長圓孔',
+    hole: { shape: 'obround', w: 3.4, l: 7.4 }, coin: { shape: 'obround', w: 3.0, l: 7.0, t: 1.5 },   // 銅片與孔單邊間隙 0.2 mm
+    columnsX: [-137.5, -82.5, -27.5, 27.5, 82.5, 137.5], rows: 23, rowPitch: 14,
+    nozzleR: 1.2, feederCount: 14, feederGap: 10,                                                    // 吸嘴 Ø2.4；供料盤每次攤開 14 顆
+  },
+  'round-72': {
+    name: '圓孔基板 · 72 孔（假設）', short: '圓形 72', source: '假設：圓形銅片 Ø10、孔 Ø10.4、6 排 × 12 孔；待用戶提供圖面',
+    hole: { shape: 'round', w: 10.4, l: 10.4 }, coin: { shape: 'round', w: 10.0, l: 10.0, t: 1.5 },
+    columnsX: [-137.5, -82.5, -27.5, 27.5, 82.5, 137.5], rows: 12, rowPitch: 26,
+    nozzleR: 2.0, feederCount: 10, feederGap: 13,                                                    // 快換 Ø4 吸嘴
+  },
+};
+export const DEFAULT_RECIPE = 'obround-138';
+
+/** 產品（依目前配方；setRecipe 會就地更新） */
 export const PRODUCT = {
   board: { w: 350, d: 350, t: 1.6, adhesive: 0.15 },          // 銅箔基板＋底部黏紙
-  hole: { w: 3.4, l: 7.4 },                                   // 長圓孔（長軸沿 z）；銅片與孔單邊間隙 0.2 mm
-  coin: { w: 3.0, l: 7.0, t: 1.5 },                           // 散熱銅片（長圓形）
-  columnsX: [-137.5, -82.5, -27.5, 27.5, 82.5, 137.5],        // 6 排
-  rowPitch: 14, rows: 23,                                     // 每排 23 孔，z = −154 … 154
   fiducials: [[-165, -165], [165, -165], [-165, 165]],        // 板邊工具孔（照片可見），當作基準點
   spec: 0.1524,                                               // 放置精度 ±6 mil
 };
-export const HOLES = PRODUCT.columnsX.flatMap((x, c) => Array.from({ length: PRODUCT.rows }, (_, r) => ({
-  id: c * PRODUCT.rows + r, col: c, row: r, x, z: (r - (PRODUCT.rows - 1) / 2) * PRODUCT.rowPitch, angle: 0,   // angle：銅片長軸相對 z 軸的角度（°）
-})));
+export const HOLES = [];
+export function setRecipe(key) {
+  const r = RECIPES[key] || RECIPES[DEFAULT_RECIPE];
+  Object.assign(PRODUCT, { recipe: RECIPES[key] ? key : DEFAULT_RECIPE, name: r.name, short: r.short, source: r.source, hole: r.hole, coin: r.coin, nozzleR: r.nozzleR, feederCount: r.feederCount, feederGap: r.feederGap });
+  HOLES.length = 0;
+  r.columnsX.forEach((x, c) => { for (let row = 0; row < r.rows; row++) HOLES.push({ id: c * r.rows + row, col: c, row, x, z: (row - (r.rows - 1) / 2) * r.rowPitch, angle: 0 }); });  // angle：銅片長軸相對 z 軸（°）
+  return PRODUCT;
+}
+setRecipe(DEFAULT_RECIPE);
 
 /** 機台配置 */
 export const LAYOUT = {

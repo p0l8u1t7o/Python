@@ -2,7 +2,7 @@
 // S2 雙龍門（4 吸嘴頭，Z＋θ）、柔性供料盤、仰視相機、外罩與三色燈。座標同 layout.js。
 import * as THREE from 'three';
 import { block, cylinder, decal } from './detail.js';
-import { LAYOUT, PRODUCT, BOARD_TOP } from './layout.js';
+import { LAYOUT, PRODUCT, HOLES, BOARD_TOP } from './layout.js';
 import { createCoin } from './board.js';
 
 const matFrame = new THREE.MeshStandardMaterial({ color: 0x6b7480, roughness: 0.5, metalness: 0.6 });
@@ -108,7 +108,7 @@ export function createMachine(scene) {
       const n = new THREE.Group(); n.position.set(dx, 0, -side * G.overhang); head.add(n);
       const spindle = new THREE.Group(); n.add(spindle);
       cylinder(spindle, 5, 150, [0, 75, 0], matAlu, 'y', 12);           // 主軸（尖端在 y=0）
-      cylinder(spindle, 1.2, 6, [0, 3, 0], matDark, 'y', 10);           // 吸嘴尖 Ø2.4（小於孔寬 3.4，放入時不碰孔邊）
+      cylinder(spindle, PRODUCT.nozzleR, 6, [0, 3, 0], matDark, 'y', 10); // 吸嘴尖（依配方快換：長圓 Ø2.4、圓形 Ø4），小於孔寬，放入時不碰孔邊
       block(spindle, [14, 30, 14], [0, 120, 0], matDark);                // θ 馬達
       const coin = createCoin(); coin.position.y = -PRODUCT.coin.t; coin.visible = false; spindle.add(coin);
       return { n, spindle, coin };
@@ -144,7 +144,7 @@ export function createMachine(scene) {
   const tower = new THREE.Group(); tower.position.set(EX - 100, H1 + 50, Z0 + 60); g.add(tower);
   const lamps = {}; [['red', 0xff3b3b, 110], ['yellow', 0xffb020, 75], ['green', 0x3dd68c, 40]].forEach(([k, c, y]) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(22, 22, 34, 20), new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.08 })); m.position.y = y; tower.add(m); lamps[k] = m; });
   block(g, [260, 170, 16], [0, 1250, Z1 + 12], new THREE.MeshStandardMaterial({ color: 0x0c1a2b, emissive: 0x1f4f8f, emissiveIntensity: 0.55 }));
-  decal(g, 240, 150, [0, 1250, Z1 + 21], [0, 0, 0], ['散熱銅片植入機', '138 顆／片 · 目標 60 s', 'SIMULATION'], { bg: '#102635', color: '#65d7b8' });
+  decal(g, 240, 150, [0, 1250, Z1 + 21], [0, 0, 0], ['散熱銅片植入機', `${PRODUCT.short} · ${HOLES.length} 顆／片`, 'SIMULATION'], { bg: '#102635', color: '#65d7b8' });
 
   return {
     group: g, occluders: occ, keepout, lifts, stops, beltMarks, stacks, loaders, scanners, heads, feeders, upCams,
