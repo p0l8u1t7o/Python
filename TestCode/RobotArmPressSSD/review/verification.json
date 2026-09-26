@@ -1,0 +1,147 @@
+{
+  "report": [
+    {
+      "mode": "usb-2x8/single",
+      "steps": 114,
+      "cycle": 30.12,
+      "shots": 4,
+      "maxError": 0.0308,
+      "worst": "回升",
+      "maxForce": 5.8,
+      "openAtEnd": []
+    },
+    {
+      "mode": "usb-2x8/single",
+      "continuous": true,
+      "time": 30.12,
+      "elapsed": 31.25,
+      "maxContactError": 0.058
+    },
+    {
+      "mode": "usb-2x8/single/NG",
+      "steps": 114,
+      "cycle": 30.12,
+      "shots": 4,
+      "maxError": 0.0308,
+      "worst": "回升",
+      "maxForce": 5.8,
+      "openAtEnd": [
+        "A6"
+      ]
+    },
+    {
+      "mode": "usb-2x8/single/NG",
+      "continuous": true,
+      "time": 30.12,
+      "elapsed": 31.25,
+      "maxContactError": 0.058
+    },
+    {
+      "mode": "usb-2x8/bar",
+      "steps": 44,
+      "cycle": 20.81,
+      "shots": 4,
+      "maxError": 0.0308,
+      "worst": "回升",
+      "maxForce": 40,
+      "openAtEnd": []
+    },
+    {
+      "mode": "usb-2x8/bar",
+      "continuous": true,
+      "time": 20.81,
+      "elapsed": 21.24,
+      "maxContactError": 0.067
+    },
+    {
+      "mode": "usb-2x8-r90/single",
+      "steps": 114,
+      "cycle": 29.87,
+      "shots": 4,
+      "maxError": 0.0448,
+      "worst": "接近",
+      "maxForce": 5.8,
+      "openAtEnd": []
+    },
+    {
+      "mode": "usb-2x8-r90/single",
+      "continuous": true,
+      "time": 29.87,
+      "elapsed": 31,
+      "maxContactError": 0.058
+    },
+    {
+      "mode": "usb-2x8-r90/single/NG",
+      "steps": 114,
+      "cycle": 29.87,
+      "shots": 4,
+      "maxError": 0.0448,
+      "worst": "接近",
+      "maxForce": 5.8,
+      "openAtEnd": [
+        "A6"
+      ]
+    },
+    {
+      "mode": "usb-2x8-r90/single/NG",
+      "continuous": true,
+      "time": 29.87,
+      "elapsed": 31,
+      "maxContactError": 0.058
+    },
+    {
+      "mode": "usb-2x8-r90/bar",
+      "steps": 44,
+      "cycle": 19.26,
+      "shots": 4,
+      "maxError": 0.0133,
+      "worst": "移至 A4–A1",
+      "maxForce": 40,
+      "openAtEnd": []
+    },
+    {
+      "mode": "usb-2x8-r90/bar",
+      "continuous": true,
+      "time": 19.26,
+      "elapsed": 19.69,
+      "maxContactError": 0.067
+    },
+    {
+      "mode": "ssd35-usbc/single",
+      "steps": 38,
+      "cycle": 16.86,
+      "shots": 2,
+      "maxError": 0.0446,
+      "worst": "接近",
+      "maxForce": 5.8,
+      "openAtEnd": []
+    },
+    {
+      "mode": "ssd35-usbc/single",
+      "continuous": true,
+      "time": 16.86,
+      "elapsed": 17.23,
+      "maxContactError": 0.058
+    },
+    {
+      "mode": "ssd35-usbc/single/NG",
+      "steps": 38,
+      "cycle": 16.86,
+      "shots": 2,
+      "maxError": 0.0446,
+      "worst": "接近",
+      "maxForce": 5.8,
+      "openAtEnd": [
+        "S2"
+      ]
+    },
+    {
+      "mode": "ssd35-usbc/single/NG",
+      "continuous": true,
+      "time": 16.86,
+      "elapsed": 17.23,
+      "maxContactError": 0.058
+    }
+  ],
+  "failures": []
+}
