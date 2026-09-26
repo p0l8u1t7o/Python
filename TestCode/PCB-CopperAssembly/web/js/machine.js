@@ -1,0 +1,154 @@
+// 機台：底座、邊軌輸送線（S1–S3 頂升真空台）、S0／S4 料倉與上下料、S1／S3 相機龍門、
+// S2 雙龍門（4 吸嘴頭，Z＋θ）、柔性供料盤、仰視相機、外罩與三色燈。座標同 layout.js。
+import * as THREE from 'three';
+import { block, cylinder, decal } from './detail.js';
+import { LAYOUT, PRODUCT, BOARD_TOP } from './layout.js';
+import { createCoin } from './board.js';
+
+const matFrame = new THREE.MeshStandardMaterial({ color: 0x6b7480, roughness: 0.5, metalness: 0.6 });
+const matAlu = new THREE.MeshStandardMaterial({ color: 0xb9c0c8, roughness: 0.35, metalness: 0.8 });
+const matDark = new THREE.MeshStandardMaterial({ color: 0x1e2226, roughness: 0.5, metalness: 0.4 });
+const matBase = new THREE.MeshStandardMaterial({ color: 0xd9dcdf, roughness: 0.6, metalness: 0.2 });
+const matGranite = new THREE.MeshStandardMaterial({ color: 0x2a2d31, roughness: 0.85 });
+const matBlue = new THREE.MeshStandardMaterial({ color: 0x2f5f9e, roughness: 0.5, metalness: 0.4 });
+const matBelt = new THREE.MeshStandardMaterial({ color: 0x2e7d56, roughness: 0.75 });
+const matYellow = new THREE.MeshStandardMaterial({ color: 0xf2b21b, roughness: 0.6 });
+const matPC = new THREE.MeshPhysicalMaterial({ color: 0xcfe3ff, roughness: 0.1, transmission: 0.3, transparent: true, opacity: 0.1, depthWrite: false, side: THREE.DoubleSide });
+const matFeeder = new THREE.MeshStandardMaterial({ color: 0xe8eef2, roughness: 0.7, emissive: 0x9fb8c8, emissiveIntensity: 0.25 });
+const glow = () => new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.05 });
+const top = LAYOUT.conveyorTop, ST = LAYOUT.stations, G = LAYOUT.gantry;
+
+/** 相機外形（朝向 dir：'down' 或 'up'），回傳 { group, ring, cam（視角） } */
+function camera(parent, pos, dir, { fov = 20, ringR = 34, power = 600 } = {}) {
+  const g = new THREE.Group(); g.position.set(...pos); parent.add(g);
+  const s = dir === 'down' ? 1 : -1;
+  block(g, [44, 47, 34], [0, s * 60, 0], matDark);
+  cylinder(g, 15, 36, [0, s * 18, 0], matDark);
+  const ringMat = glow(); const ring = new THREE.Mesh(new THREE.TorusGeometry(ringR, 5, 8, 36), ringMat); ring.rotation.x = Math.PI / 2; g.add(ring);
+  const light = new THREE.SpotLight(0xffffff, 0, 900, 0.6, 0.5, 1); light.target.position.set(0, -s * 500, 0); g.add(light, light.target);
+  // 相機預設朝本地 −z；繞 x 轉 ∓90° 改為朝下／朝上（群組只有平移，直接設旋轉即可）
+  const cam = new THREE.PerspectiveCamera(fov, 1.5, 1, 3000); cam.rotation.x = dir === 'down' ? -Math.PI / 2 : Math.PI / 2; g.add(cam);
+  return { group: g, cam, flash(on) { ringMat.emissiveIntensity = on ? 1.4 : 0.05; light.intensity = on ? power : 0; } };
+}
+
+export function createMachine(scene) {
+  const g = new THREE.Group(); g.name = 'machine'; scene.add(g);
+  const keepout = [], ko = (m, n) => { m.name = n; keepout.push(m); return m; };
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(9000, 6000), new THREE.MeshStandardMaterial({ color: 0x1b2027, roughness: 0.95 })); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; g.add(floor);
+  const grid = new THREE.GridHelper(9000, 45, 0x2c3540, 0x222a33); grid.position.y = 0.5; g.add(grid);
+
+  // ---- 底座（S2 花崗岩平台）與輸送線 ----
+  block(g, [3500, 780, 1000], [0, 390, 0], matBase);
+  block(g, [1200, 60, 1000], [0, 810, 0], matGranite);
+  const beltMarks = new THREE.Group(); g.add(beltMarks);
+  for (const s of [-1, 1]) {
+    block(g, [3400, 40, 16], [0, top - 12, s * (LAYOUT.railInner + 8)], matAlu);
+    block(g, [3380, 2, 8], [0, top - 1, s * (LAYOUT.railInner - 4)], matBelt);
+    for (let x = -1680; x < 1680; x += 60) block(beltMarks, [3, 0.6, 7], [x, top + 0.3, s * (LAYOUT.railInner - 4)], matAlu);
+    for (const x of [-1600, -1000, -300, 300, 1000, 1600]) block(g, [40, top - 820, 40], [x, (top + 820) / 2 - 20, s * (LAYOUT.railInner + 8)], matFrame);
+  }
+  // 頂升真空台（S1、S2、S3）
+  const lifts = [1, 2, 3].map(i => { const l = new THREE.Group(); l.position.x = ST[i]; g.add(l); block(l, [330, 10, 330], [0, top - 7, 0], matAlu); for (const [x, z] of [[-120, -120], [120, -120], [-120, 120], [120, 120]]) block(g, [40, 60, 40], [ST[i] + x, top - 60, z], matDark); return l; });
+  const stops = [1, 2, 3].map(i => { const s = new THREE.Group(); g.add(s); cylinder(s, 6, 24, [ST[i] + 181, top - 2, 0], matAlu); return s; });
+
+  // ---- S0／S4 料倉＋上下料 ----
+  const stacks = {}, loaders = {};
+  for (const [key, x, label] of [['S0', ST[0], '上料料倉'], ['S4', ST[4], '收料料倉']]) {
+    const sg = new THREE.Group(); sg.position.set(x, 0, LAYOUT.stackZ); g.add(sg);
+    block(sg, [420, 820, 420], [0, 410, 0], matBase);
+    for (const [px, pz] of [[-190, -190], [190, -190], [-190, 190], [190, 190]]) block(sg, [20, 500, 20], [px, 1070, pz], matAlu);
+    const liftPlate = block(sg, [360, 10, 360], [0, 825, 0], matDark);
+    const stack = new THREE.Mesh(new THREE.BoxGeometry(350, 1, 350), new THREE.MeshStandardMaterial({ color: 0xb87250, roughness: 0.5, metalness: 0.7 }));
+    stack.position.y = 830; sg.add(stack); stacks[key] = { stack, liftPlate };
+    decal(g, 160, 26, [x, 720, LAYOUT.stackZ + 211], [0, 0, 0], label, { bg: '#122d3c', color: '#9fd8ff', center: true });
+    // 上下料：z 向橫移＋升降＋真空吸盤架
+    for (const dx of [-230, 230]) block(g, [40, 1500 - 820, 40], [x + dx, (1500 + 820) / 2, LAYOUT.stackZ + 230], matFrame);
+    ko(block(g, [40, 40, LAYOUT.stackZ + 300], [x - 230, 1500, (LAYOUT.stackZ - 60) / 2], matFrame), label + '橫樑');
+    ko(block(g, [40, 40, LAYOUT.stackZ + 300], [x + 230, 1500, (LAYOUT.stackZ - 60) / 2], matFrame), label + '橫樑');
+    const car = new THREE.Group(); g.add(car); car.position.x = x;
+    block(car, [500, 40, 80], [0, 1500, 0], matAlu);
+    const zAxis = new THREE.Group(); car.add(zAxis);
+    block(zAxis, [60, 300, 60], [0, 150, 0], matDark);
+    const frame = new THREE.Group(); zAxis.add(frame);
+    block(frame, [330, 12, 20], [0, 6, 0], matAlu); block(frame, [20, 12, 330], [0, 6, 0], matAlu);
+    for (const cx of [-140, 0, 140]) for (const cz of [-140, 0, 140]) cylinder(frame, 12, 10, [cx, -2, cz], matDark);
+    loaders[key] = { car, zAxis };
+  }
+
+  // ---- S1／S3 相機龍門（XY） ----
+  const scanners = {};
+  for (const [key, i] of [['S1', 1], ['S3', 3]]) {
+    const x0 = ST[i];
+    for (const s of [-1, 1]) { ko(block(g, [40, 480, 40], [x0 + s * 250, 1060, -260], matFrame), key + '立柱'); ko(block(g, [40, 480, 40], [x0 + s * 250, 1060, 260], matFrame), key + '立柱'); block(g, [30, 30, 560], [x0 + s * 250, 1300, 0], matAlu); }
+    const beam = new THREE.Group(); g.add(beam);
+    block(beam, [540, 40, 50], [x0, 1330, 0], matAlu);
+    const car = new THREE.Group(); beam.add(car);
+    block(car, [70, 90, 70], [0, 1290, 0], matDark);
+    const cam = camera(car, [0, 1180, 0], 'down', { fov: 2 * Math.atan(8.8 / 2 / 27) * 180 / Math.PI, ringR: 45 });   // 20MP＋27 mm，WD 約 228 mm → 視野約 111 × 74 mm
+    decal(g, 150, 24, [x0, 1405, 0], [0, 0, 0], key === 'S1' ? 'S1 基板視覺定位' : 'S3 放置後檢查', { bg: '#122d3c', color: '#9fd8ff', center: true });
+    scanners[key] = { beam, car, cam, x0 };
+  }
+
+  // ---- S2 雙龍門放置 ----
+  for (const s of [-1, 1]) {
+    for (const z of [-470, 470]) ko(block(g, [70, G.beamY - 840, 70], [s * G.railX, (G.beamY + 840) / 2 - 40, z], matFrame), 'S2 立柱');
+    ko(block(g, [70, 60, 1010], [s * G.railX, G.beamY - 20, 0], matAlu), 'S2 Y 軌');
+  }
+  const heads = {};
+  for (const H of ['A', 'B']) {
+    const side = H === 'A' ? 1 : -1;
+    const beam = new THREE.Group(); g.add(beam);
+    block(beam, [2 * G.railX + 70, 80, G.beamDepth], [0, G.beamY + 40, 0], H === 'A' ? matBlue : matAlu);
+    decal(beam, 160, 30, [0, G.beamY + 40, side * (G.beamDepth / 2 + 1)], [0, side < 0 ? Math.PI : 0, 0], `龍門 ${H}`, { bg: '#102635', color: '#65d7b8', center: true });
+    const head = new THREE.Group(); beam.add(head);
+    block(head, [120, 180, 60], [0, G.beamY - 50, -side * (G.beamDepth / 2 + 10)], matDark);    // 頭座（在橫樑內側）
+    block(head, [110, 40, G.overhang + 10], [0, G.beamY - 160, -side * (G.overhang / 2 + 25)], matAlu);
+    const downCam = camera(head, [0, 1090, -side * (G.overhang + 40)], 'down', { fov: 22, ringR: 16 });
+    const nozzles = G.nozzleDX.map(dx => {
+      const n = new THREE.Group(); n.position.set(dx, 0, -side * G.overhang); head.add(n);
+      const spindle = new THREE.Group(); n.add(spindle);
+      cylinder(spindle, 5, 150, [0, 75, 0], matAlu, 'y', 12);           // 主軸（尖端在 y=0）
+      cylinder(spindle, 1.2, 6, [0, 3, 0], matDark, 'y', 10);           // 吸嘴尖 Ø2.4（小於孔寬 3.4，放入時不碰孔邊）
+      block(spindle, [14, 30, 14], [0, 120, 0], matDark);                // θ 馬達
+      const coin = createCoin(); coin.position.y = -PRODUCT.coin.t; coin.visible = false; spindle.add(coin);
+      return { n, spindle, coin };
+    });
+    heads[H] = { beam, head, nozzles, downCam, side };
+  }
+  // 柔性供料盤＋供料相機、仰視相機、拋料盒
+  const feeders = {}, upCams = {};
+  for (const H of ['A', 'B']) {
+    const f = LAYOUT.feeder[H], u = LAYOUT.upCam[H];
+    const fg = new THREE.Group(); fg.position.set(f.x, 0, f.z); g.add(fg);
+    block(fg, [LAYOUT.feeder.w + 40, LAYOUT.feeder.top - 845, LAYOUT.feeder.d + 40], [0, (LAYOUT.feeder.top + 845) / 2 - 5, 0], matDark);
+    const plate = block(fg, [LAYOUT.feeder.w, 4, LAYOUT.feeder.d], [0, LAYOUT.feeder.top - 2, 0], matFeeder);
+    block(fg, [80, 60, 60], [LAYOUT.feeder.w / 2 + 60, LAYOUT.feeder.top + 10, 0], matAlu);    // 料斗
+    decal(g, 140, 22, [f.x, LAYOUT.feeder.top - 60, f.z + (H === 'A' ? 76 : -76)], [0, H === 'A' ? 0 : Math.PI, 0], `柔性供料 ${H}`, { bg: '#122d3c', color: '#9fd8ff', center: true });
+    ko(block(g, [30, 1220 - 850, 30], [f.x + (H === 'A' ? -110 : 110), 1035, f.z], matFrame), '供料相機支架');
+    const fcam = camera(g, [f.x, 1220, f.z], 'down', { fov: 2 * Math.atan(8.8 / 2 / 16) * 180 / Math.PI, ringR: 40 });
+    const coins = Array.from({ length: 40 }, () => { const c = createCoin(); c.visible = false; g.add(c); return c; });
+    const backs = Array.from({ length: 40 }, () => { const c = createCoin(true); c.visible = false; g.add(c); return c; });
+    feeders[H] = { group: fg, plate, cam: fcam, coins, backs };
+    block(g, [60, LAYOUT.upCam.lensY - 850, 60], [u.x, (LAYOUT.upCam.lensY + 850) / 2 - 60, u.z], matDark);
+    upCams[H] = camera(g, [u.x, LAYOUT.upCam.lensY, u.z], 'up', { fov: 2 * Math.atan(8.8 / 2 / 35) * 180 / Math.PI, ringR: 30, power: 25 });
+    block(g, [60, 40, 60], [u.x + (H === 'A' ? 90 : -90), 900, u.z], matYellow);     // 拋料盒
+  }
+
+  // ---- 外罩、三色燈、HMI ----
+  const occ = new THREE.Group(); occ.name = 'occluders'; g.add(occ);
+  const EX = 1760, Z0 = -520, Z1 = 840, H1 = 2000;
+  for (const x of [-EX, -350, 350, EX]) for (const z of [Z0, Z1]) block(occ, [40, H1 - 780, 40], [x, (H1 + 780) / 2, z], matFrame);
+  for (const z of [Z0, Z1]) block(occ, [2 * EX, 40, 40], [0, H1, z], matFrame);
+  block(occ, [2 * EX, H1 - 780, 2], [0, (H1 + 780) / 2, Z0], matPC);
+  block(occ, [2 * EX, H1 - 1100, 2], [0, (H1 + 1100) / 2, Z1], matPC);
+  const tower = new THREE.Group(); tower.position.set(EX - 100, H1 + 50, Z0 + 60); g.add(tower);
+  const lamps = {}; [['red', 0xff3b3b, 110], ['yellow', 0xffb020, 75], ['green', 0x3dd68c, 40]].forEach(([k, c, y]) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(22, 22, 34, 20), new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.08 })); m.position.y = y; tower.add(m); lamps[k] = m; });
+  block(g, [260, 170, 16], [0, 1250, Z1 + 12], new THREE.MeshStandardMaterial({ color: 0x0c1a2b, emissive: 0x1f4f8f, emissiveIntensity: 0.55 }));
+  decal(g, 240, 150, [0, 1250, Z1 + 21], [0, 0, 0], ['散熱銅片植入機', '138 顆／片 · 目標 60 s', 'SIMULATION'], { bg: '#102635', color: '#65d7b8' });
+
+  return {
+    group: g, occluders: occ, keepout, lifts, stops, beltMarks, stacks, loaders, scanners, heads, feeders, upCams,
+    tower: { set(k) { for (const n in lamps) lamps[n].material.emissiveIntensity = n === k ? 1.6 : 0.08; } },
+  };
+}
+export const BOARD_SURFACE = BOARD_TOP;
