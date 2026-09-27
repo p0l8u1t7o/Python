@@ -85,3 +85,7 @@ python depth_cam.py --source clip.mp4 --no-window --frames 30 --save-dir out   #
 - 深度是模型估計的絕對深度（公尺），室內一般場景大致合理，但精度取決於模型與場景，不是量測儀器。
 - 沒有 GPU 時用 `yolo26n-depth.pt` 在 CPU 上約幾到十幾 fps（依電腦而定）；有 NVIDIA GPU 加 `--device 0 --half`。
 - 相機被其他程式占用或被 Windows 隱私設定關閉時會顯示「打不開」。
+
+## 電路圖
+
+[圖紙索引與設計說明](docs/circuit-diagrams.md) · [A3 PDF 圖冊](docs/circuit-diagrams.pdf)。可編輯 SVG 與圖面資料位於 `docs/electrical/`。

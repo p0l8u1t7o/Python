@@ -163,3 +163,7 @@ SCARA 兩臂固定護套、R25 mm Z 軸拖鏈、旋轉入口與末端氣管；�
 ## 電控規劃檢視
 
 上方「⚡ 電控規劃」可查看元件用途、功能連接及配置外形；支援剖視、透視、點選與特寫，顯示狀態共用主時間軸。[本站元件清單](docs/electrical-plan.md)。
+
+## 電路圖
+
+[圖紙索引與設計說明](docs/circuit-diagrams.md) · [A3 PDF 圖冊](docs/circuit-diagrams.pdf)。可編輯 SVG 與圖面資料位於 `docs/electrical/`。

@@ -1,6 +1,7 @@
 # 各專案 docs（用戶提供的圖面、照片、影片與規劃文件）不納入版控
 /AutomaticAcid-BaseTitration/docs/
 /MilitaryGradePC/docs/
+/MonocularDepthEstimation/docs/
 /PCB-CopperAssembly/docs/
 /RobotArmPressSSD/docs/
 /shutter assembly/docs/
