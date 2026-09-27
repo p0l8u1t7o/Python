@@ -5,17 +5,24 @@ export function createViewerWorkspace({camera, controls, canvas, resize, getFocu
   const $ = id => document.getElementById(id);
   const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('../css/viewer-workspace.css', import.meta.url); document.head.append(css);
   document.body.classList.add('viewer-workspace');
+  const compactQuery = matchMedia('(max-width:900px), (max-height:500px) and (pointer:coarse)');
+  let compact = compactQuery.matches;
+  document.body.classList.toggle('viewer-compact', compact);
   const app = $('app'), bar = document.createElement('div'); bar.className = 'viewer-tools'; bar.setAttribute('aria-label', '視窗與追隨控制'); app.append(bar);
   const button = (parent, icon, label, action) => {
     const b = document.createElement('button'); b.type = 'button'; b.textContent = icon; b.title = label; b.setAttribute('aria-label', label); b.onclick = action; parent.append(b); return b;
   };
   const panelButtons = [];
+  const desktopPanels = new Map();
   for (const [id, icon, label] of [['left', '◧', '左側資訊'], ['side', '◨', '右側資訊']]) {
     const panel = $(id); if (!panel) continue;
     // The old narrow-screen rule hides the left table; its icon can restore it.
-    panel.hidden = getComputedStyle(panel).display === 'none';
-    const b = button(bar, icon, '切換' + label, () => { panel.hidden = !panel.hidden; layout(); });
+    desktopPanels.set(id, getComputedStyle(panel).display === 'none');
+    panel.hidden = compact || desktopPanels.get(id);
+    const b = button(bar, icon, '切換' + label, () => { const open=panel.hidden;if(open)announce(id);panel.hidden=!open;layout(); });
     b.setAttribute('aria-controls', id); panelButtons.push([panel, b]);
+    const heading=document.createElement('div');heading.className='mobile-panel-heading';heading.append(document.createTextNode(label));
+    button(heading,'×','關閉'+label,()=>{panel.hidden=true;layout();b.focus();});panel.prepend(heading);
   }
   let frame = $('pipFrame');
   if (!frame) {
@@ -26,6 +33,27 @@ export function createViewerWorkspace({camera, controls, canvas, resize, getFocu
   const title = $('pipTitle'), image = $('pipImage'), result = $('pipResult');
   let show = $('showPip');
   if (!show) { show = document.createElement('input'); show.type = 'checkbox'; show.id = 'showPip'; show.checked = true; show.hidden = true; app.append(show); }
+  let desktopCamera=show.checked;
+  if(compact)show.checked=false;
+  const navButton=button($('topbar'),'☰','展開／收合製程與視角選單',()=>{const open=!document.body.classList.contains('viewer-nav-open');if(open)announce('topbar');document.body.classList.toggle('viewer-nav-open',open);layout();});
+  navButton.id='mobileNavToggle';navButton.setAttribute('aria-controls','stations');
+  const playbackButton=button($('bottombar'),'⚙','展開／收合播放設定',()=>{const open=!document.body.classList.contains('viewer-playback-open');if(open)announce('bottombar');document.body.classList.toggle('viewer-playback-open',open);layout();});
+  playbackButton.id='mobilePlaybackToggle';
+  function announce(id){window.dispatchEvent(new CustomEvent('viewer-panel-open',{detail:{id}}));}
+  function closeOthers(id){
+    if(!compact)return;
+    for(const [panel] of panelButtons)if(panel.id!==id)panel.hidden=true;
+    if(id!=='topbar')document.body.classList.remove('viewer-nav-open');
+    if(id!=='bottombar')document.body.classList.remove('viewer-playback-open');
+    if(id!=='pipFrame'){show.checked=false;updateVisibility();}
+    const legend=$('routing-legend');if(legend&&id!=='routing-legend')legend.open=false;
+    layout();
+  }
+  window.addEventListener('viewer-panel-open',e=>closeOthers(e.detail.id));
+  $('topbar').addEventListener('click',e=>{if(compact&&e.target.closest('[data-view],#stations button')){document.body.classList.remove('viewer-nav-open');layout();}});
+  $('topbar').addEventListener('change',()=>{if(compact){document.body.classList.remove('viewer-nav-open');layout();}});
+  $('routing-legend')?.addEventListener('toggle',()=>{if($('routing-legend').open)announce('routing-legend');});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&compact)announce('none');});
   const imageCanvas = document.createElement('canvas'); imageCanvas.className = 'sensor-image'; imageCanvas.setAttribute('aria-label', '同步相機影像'); image.append(imageCanvas);
   const imageContext = imageCanvas.getContext('2d');
   const actions = document.createElement('div'); actions.className = 'camera-actions'; title.before(actions);
@@ -44,7 +72,7 @@ export function createViewerWorkspace({camera, controls, canvas, resize, getFocu
   const resolveQuad = new THREE.Mesh(new THREE.PlaneGeometry(2,2),resolveMaterial); resolveScene.add(resolveQuad);
   let tracking = false, lastTarget = null;
   const cameraButton = button(bar, '▣', '顯示／隱藏相機視窗', () => {
-    if (popup && !popup.closed) dock(); else { show.checked = !show.checked; updateVisibility(); }
+    if (popup && !popup.closed) dock(); else { const open=!show.checked;if(open)announce('pipFrame');show.checked=open;updateVisibility(); }
   });
   const focusButton = button(bar, '◎', '追隨產品焦點', () => setFollowing(!tracking));
   focusButton.id = 'followProduct'; focusButton.setAttribute('aria-pressed', 'false');
@@ -56,6 +84,7 @@ export function createViewerWorkspace({camera, controls, canvas, resize, getFocu
     tracking = on; lastTarget = null; focusButton.setAttribute('aria-pressed', String(on));
     focusButton.title = on ? '解除產品焦點追隨' : '追隨產品焦點';
     if (on) {
+      if(compact)announce('none');
       onFocus(); const p = getFocus().clone(); camera.near = focusNear; camera.updateProjectionMatrix();
       controls.target.copy(p); camera.position.copy(p).add(new THREE.Vector3(...focusOffset)); lastTarget = p;
       controls.update();
@@ -77,18 +106,23 @@ export function createViewerWorkspace({camera, controls, canvas, resize, getFocu
   function layout() {
     for (const [panel, b] of panelButtons) b.setAttribute('aria-expanded', String(!panel.hidden));
     const l = $('left'), r = $('side');
-    const left = l && !l.hidden ? l.getBoundingClientRect().right + 12 : 0;
-    const right = r && !r.hidden ? innerWidth - r.getBoundingClientRect().left + 12 : 0;
+    const left = !compact && l && !l.hidden ? l.getBoundingClientRect().right + 12 : 0;
+    const right = !compact && r && !r.hidden ? innerWidth - r.getBoundingClientRect().left + 12 : 0;
     app.style.setProperty('--viewer-left', left + 'px'); app.style.setProperty('--viewer-right', right + 'px');
-    bar.style.top = ($('topbar').getBoundingClientRect().bottom + 10) + 'px';
-    if (moved) clampFrame(); else { frame.style.left = Math.max(12, left + 12) + 'px'; frame.style.top = Math.max(190, $('topbar').getBoundingClientRect().bottom + 60) + 'px'; clampFrame(); }
+    navButton.setAttribute('aria-expanded',String(document.body.classList.contains('viewer-nav-open')));
+    playbackButton.setAttribute('aria-expanded',String(document.body.classList.contains('viewer-playback-open')));
+    // The expanded menu overlays the scene; it must not shrink the canvas again.
+    const headerBottom=compact?navButton.getBoundingClientRect().bottom+6:$('topbar').getBoundingClientRect().bottom;
+    bar.style.top = (headerBottom + (compact?4:10)) + 'px';
+    app.style.setProperty('--viewer-top',(headerBottom+bar.getBoundingClientRect().height+12)+'px');
+    if (moved) clampFrame(); else { frame.style.left = Math.max(12, left + 12) + 'px'; frame.style.top = (compact?headerBottom+bar.getBoundingClientRect().height+18:Math.max(190,headerBottom+60)) + 'px'; clampFrame(); }
     resize();
   }
   function sizeFrame() { frame.classList.toggle('expanded', expanded); expandButton.setAttribute('aria-pressed', String(expanded)); clampFrame(); }
   function clampFrame() {
     const b = frame.getBoundingClientRect(); if (!b.width) return;
     frame.style.left = Math.max(6, Math.min(parseFloat(frame.style.left) || b.left, innerWidth - b.width - 6)) + 'px';
-    frame.style.top = Math.max(6, Math.min(parseFloat(frame.style.top) || b.top, innerHeight - b.height - 6)) + 'px';
+    frame.style.top = Math.max(6, Math.min(parseFloat(frame.style.top) || b.top, innerHeight - b.height - (compact?78:6))) + 'px';
   }
   let drag = null;
   title.addEventListener('pointerdown', e => { if (e.button !== 0) return; const r = frame.getBoundingClientRect(); drag = {x:e.clientX-r.left,y:e.clientY-r.top}; title.setPointerCapture(e.pointerId); e.preventDefault(); });
@@ -101,10 +135,10 @@ export function createViewerWorkspace({camera, controls, canvas, resize, getFocu
     if(!popup || popup.closed) cameraButton.title='顯示／隱藏相機視窗';
     if (!frame.hidden) { sizeFrame(); clampFrame(); }
   }
-  show.addEventListener('change', updateVisibility);
+  show.addEventListener('change',()=>{if(show.checked)announce('pipFrame');updateVisibility();});
   function dock() {
     if (popup && !popup.closed) popup.close(); popup = null; popupCanvas = popupContext = popupBadge = popupClock = null;
-    show.checked = true; updateVisibility();
+    announce('pipFrame');show.checked = true; updateVisibility();
   }
   function detach() {
     if (popup && !popup.closed) { popup.focus(); return; }
@@ -130,6 +164,7 @@ export function createViewerWorkspace({camera, controls, canvas, resize, getFocu
     if (detail !== undefined) result.textContent = detail;
     if (attachedVision !== vision) { attachedVision = vision; image.append(vision.host); vision.host.style.position = 'absolute'; }
     image.style.aspectRatio = String(aspect);
+    frame.style.setProperty('--sensor-aspect',String(aspect));
     const displayWidth = image.clientWidth || 480, displayHeight = displayWidth/aspect;
     const width = Math.min(960, Math.max(480, Math.round((popup ? popup.innerWidth : displayWidth)*Math.min(devicePixelRatio, 2))));
     const height = Math.round(width/aspect);
@@ -163,6 +198,13 @@ export function createViewerWorkspace({camera, controls, canvas, resize, getFocu
     }
   }
   css.addEventListener('load', layout); window.addEventListener('resize', layout);
+  compactQuery.addEventListener('change',e=>{
+    if(e.matches){for(const [panel] of panelButtons){desktopPanels.set(panel.id,panel.hidden);panel.hidden=true;}desktopCamera=show.checked;show.checked=false;}
+    else {for(const [panel] of panelButtons)panel.hidden=desktopPanels.get(panel.id);show.checked=desktopCamera;}
+    compact=e.matches;document.body.classList.toggle('viewer-compact',compact);
+    document.body.classList.remove('viewer-nav-open','viewer-playback-open');moved=false;updateVisibility();layout();
+  });
+  window.visualViewport?.addEventListener('resize',layout);
   const observer = new ResizeObserver(() => resize()); observer.observe(canvas);
   window.addEventListener('beforeunload', () => { if(popup&&!popup.closed)popup.close(); target?.dispose(); hdrTarget?.dispose(); resolveMaterial.dispose(); resolveQuad.geometry.dispose(); clearInterval(monitor); observer.disconnect(); });
   sizeFrame(); updateVisibility();

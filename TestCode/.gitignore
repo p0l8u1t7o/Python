@@ -10,6 +10,7 @@
 [Ll][Oo][Gg][Ss]/
 *.log
 __pycache__/
+.codex-remote-attachments/
 
 # Retired projects
 /CardServer/

@@ -1,0 +1,1102 @@
+{
+  "date": "2026-09-27",
+  "method": "In-app Chromium browser rendering each real page in a same-origin iframe at native CSS viewport dimensions; DOM geometry and screenshot inspection. This is responsive desktop-browser testing, not a physical phone/Safari test.",
+  "viewports": [
+    {
+      "project": "shutter assembly",
+      "viewport": [
+        390,
+        780
+      ],
+      "compact": true,
+      "overflow": false,
+      "topbar": {
+        "hidden": false,
+        "x": 0,
+        "y": 0,
+        "w": 390,
+        "h": 48
+      },
+      "c": {
+        "hidden": false,
+        "x": 0,
+        "y": 112,
+        "w": 390,
+        "h": 590
+      },
+      "side": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "pipFrame": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "bottombar": {
+        "hidden": false,
+        "x": 8,
+        "y": 714,
+        "w": 374,
+        "h": 58
+      },
+      "electrical-inspector": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "time": "00:00.0"
+    },
+    {
+      "project": "shutter assembly",
+      "viewport": [
+        844,
+        390
+      ],
+      "compact": true,
+      "overflow": false,
+      "topbar": {
+        "hidden": false,
+        "x": 0,
+        "y": 0,
+        "w": 844,
+        "h": 48
+      },
+      "c": {
+        "hidden": false,
+        "x": 0,
+        "y": 56,
+        "w": 844,
+        "h": 256
+      },
+      "side": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "pipFrame": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "bottombar": {
+        "hidden": false,
+        "x": 8,
+        "y": 324,
+        "w": 828,
+        "h": 58
+      },
+      "electrical-inspector": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "time": "00:00.0"
+    },
+    {
+      "project": "RobotArmPressSSD",
+      "viewport": [
+        844,
+        390
+      ],
+      "compact": true,
+      "overflow": false,
+      "topbar": {
+        "hidden": false,
+        "x": 0,
+        "y": 0,
+        "w": 844,
+        "h": 48
+      },
+      "c": {
+        "hidden": false,
+        "x": 0,
+        "y": 56,
+        "w": 844,
+        "h": 256
+      },
+      "side": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "pipFrame": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "bottombar": {
+        "hidden": false,
+        "x": 8,
+        "y": 324,
+        "w": 828,
+        "h": 58
+      },
+      "electrical-inspector": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "time": "00:00.0"
+    },
+    {
+      "project": "RobotArmPressSSD",
+      "viewport": [
+        390,
+        780
+      ],
+      "compact": true,
+      "overflow": false,
+      "topbar": {
+        "hidden": false,
+        "x": 0,
+        "y": 0,
+        "w": 390,
+        "h": 48
+      },
+      "c": {
+        "hidden": false,
+        "x": 0,
+        "y": 112,
+        "w": 390,
+        "h": 590
+      },
+      "side": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "pipFrame": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "bottombar": {
+        "hidden": false,
+        "x": 8,
+        "y": 714,
+        "w": 374,
+        "h": 58
+      },
+      "electrical-inspector": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "time": "00:00.0"
+    },
+    {
+      "project": "RobotArmPressSSD",
+      "viewport": [
+        320,
+        568
+      ],
+      "compact": true,
+      "overflow": false,
+      "topbar": {
+        "hidden": false,
+        "x": 0,
+        "y": 0,
+        "w": 320,
+        "h": 48
+      },
+      "c": {
+        "hidden": false,
+        "x": 0,
+        "y": 112,
+        "w": 320,
+        "h": 378
+      },
+      "side": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "pipFrame": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "bottombar": {
+        "hidden": false,
+        "x": 8,
+        "y": 502,
+        "w": 304,
+        "h": 58
+      },
+      "electrical-inspector": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "time": "00:00.0"
+    },
+    {
+      "project": "PCB-CopperAssembly",
+      "viewport": [
+        320,
+        568
+      ],
+      "compact": true,
+      "overflow": false,
+      "topbar": {
+        "hidden": false,
+        "x": 0,
+        "y": 0,
+        "w": 320,
+        "h": 48
+      },
+      "c": {
+        "hidden": false,
+        "x": 0,
+        "y": 112,
+        "w": 320,
+        "h": 378
+      },
+      "side": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "pipFrame": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "bottombar": {
+        "hidden": false,
+        "x": 8,
+        "y": 502,
+        "w": 304,
+        "h": 58
+      },
+      "electrical-inspector": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "time": "00:00.0"
+    },
+    {
+      "project": "PCB-CopperAssembly",
+      "viewport": [
+        390,
+        780
+      ],
+      "compact": true,
+      "overflow": false,
+      "topbar": {
+        "hidden": false,
+        "x": 0,
+        "y": 0,
+        "w": 390,
+        "h": 48
+      },
+      "c": {
+        "hidden": false,
+        "x": 0,
+        "y": 112,
+        "w": 390,
+        "h": 590
+      },
+      "side": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "pipFrame": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "bottombar": {
+        "hidden": false,
+        "x": 8,
+        "y": 714,
+        "w": 374,
+        "h": 58
+      },
+      "electrical-inspector": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "time": "00:00.0"
+    },
+    {
+      "project": "PCB-CopperAssembly",
+      "viewport": [
+        844,
+        390
+      ],
+      "compact": true,
+      "overflow": false,
+      "topbar": {
+        "hidden": false,
+        "x": 0,
+        "y": 0,
+        "w": 844,
+        "h": 48
+      },
+      "c": {
+        "hidden": false,
+        "x": 0,
+        "y": 56,
+        "w": 844,
+        "h": 256
+      },
+      "side": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "pipFrame": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "bottombar": {
+        "hidden": false,
+        "x": 8,
+        "y": 324,
+        "w": 828,
+        "h": 58
+      },
+      "electrical-inspector": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "time": "00:00.0"
+    },
+    {
+      "project": "MilitaryGradePC",
+      "viewport": [
+        844,
+        390
+      ],
+      "compact": true,
+      "overflow": false,
+      "topbar": {
+        "hidden": false,
+        "x": 0,
+        "y": 0,
+        "w": 844,
+        "h": 48
+      },
+      "c": {
+        "hidden": false,
+        "x": 0,
+        "y": 56,
+        "w": 844,
+        "h": 256
+      },
+      "side": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "pipFrame": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "bottombar": {
+        "hidden": false,
+        "x": 8,
+        "y": 324,
+        "w": 828,
+        "h": 58
+      },
+      "electrical-inspector": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "time": "00:00.0"
+    },
+    {
+      "project": "MilitaryGradePC",
+      "viewport": [
+        320,
+        568
+      ],
+      "compact": true,
+      "overflow": false,
+      "topbar": {
+        "hidden": false,
+        "x": 0,
+        "y": 0,
+        "w": 320,
+        "h": 48
+      },
+      "c": {
+        "hidden": false,
+        "x": 0,
+        "y": 112,
+        "w": 320,
+        "h": 378
+      },
+      "side": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "pipFrame": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "bottombar": {
+        "hidden": false,
+        "x": 8,
+        "y": 502,
+        "w": 304,
+        "h": 58
+      },
+      "electrical-inspector": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "time": "00:00.0"
+    },
+    {
+      "project": "MilitaryGradePC",
+      "viewport": [
+        390,
+        780
+      ],
+      "compact": true,
+      "overflow": false,
+      "topbar": {
+        "hidden": false,
+        "x": 0,
+        "y": 0,
+        "w": 390,
+        "h": 48
+      },
+      "c": {
+        "hidden": false,
+        "x": 0,
+        "y": 112,
+        "w": 390,
+        "h": 590
+      },
+      "side": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "pipFrame": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "bottombar": {
+        "hidden": false,
+        "x": 8,
+        "y": 714,
+        "w": 374,
+        "h": 58
+      },
+      "electrical-inspector": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "time": "00:00.0"
+    },
+    {
+      "project": "AutomaticAcid-BaseTitration",
+      "viewport": [
+        390,
+        780
+      ],
+      "compact": true,
+      "overflow": false,
+      "topbar": {
+        "hidden": false,
+        "x": 0,
+        "y": 0,
+        "w": 390,
+        "h": 48
+      },
+      "c": {
+        "hidden": false,
+        "x": 0,
+        "y": 112,
+        "w": 390,
+        "h": 590
+      },
+      "side": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "left": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "pipFrame": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "bottombar": {
+        "hidden": false,
+        "x": 8,
+        "y": 714,
+        "w": 374,
+        "h": 58
+      },
+      "electrical-inspector": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "time": "00:00"
+    },
+    {
+      "project": "AutomaticAcid-BaseTitration",
+      "viewport": [
+        320,
+        568
+      ],
+      "compact": true,
+      "overflow": false,
+      "topbar": {
+        "hidden": false,
+        "x": 0,
+        "y": 0,
+        "w": 320,
+        "h": 48
+      },
+      "c": {
+        "hidden": false,
+        "x": 0,
+        "y": 112,
+        "w": 320,
+        "h": 378
+      },
+      "side": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "left": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "pipFrame": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "bottombar": {
+        "hidden": false,
+        "x": 8,
+        "y": 502,
+        "w": 304,
+        "h": 58
+      },
+      "electrical-inspector": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "time": "00:00"
+    },
+    {
+      "project": "AutomaticAcid-BaseTitration",
+      "viewport": [
+        844,
+        390
+      ],
+      "compact": true,
+      "overflow": false,
+      "topbar": {
+        "hidden": false,
+        "x": 0,
+        "y": 0,
+        "w": 844,
+        "h": 48
+      },
+      "c": {
+        "hidden": false,
+        "x": 0,
+        "y": 56,
+        "w": 844,
+        "h": 256
+      },
+      "side": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "left": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "pipFrame": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "bottombar": {
+        "hidden": false,
+        "x": 8,
+        "y": 324,
+        "w": 828,
+        "h": 58
+      },
+      "electrical-inspector": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "time": "00:00"
+    },
+    {
+      "project": "AutomaticAcid-BaseTitration",
+      "viewport": [
+        1280,
+        800
+      ],
+      "compact": false,
+      "overflow": false,
+      "topbar": {
+        "hidden": false,
+        "x": 0,
+        "y": 0,
+        "w": 1280,
+        "h": 116
+      },
+      "c": {
+        "hidden": false,
+        "x": 0,
+        "y": 124,
+        "w": 946,
+        "h": 528
+      },
+      "side": {
+        "hidden": false,
+        "x": 958,
+        "y": 128,
+        "w": 308,
+        "h": 656
+      },
+      "left": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "pipFrame": {
+        "hidden": false,
+        "x": 12,
+        "y": 190,
+        "w": 360,
+        "h": 302
+      },
+      "bottombar": {
+        "hidden": false,
+        "x": 16,
+        "y": 653,
+        "w": 916,
+        "h": 131
+      },
+      "electrical-inspector": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "time": "00:00"
+    },
+    {
+      "project": "MilitaryGradePC",
+      "viewport": [
+        1280,
+        800
+      ],
+      "compact": false,
+      "overflow": false,
+      "topbar": {
+        "hidden": false,
+        "x": 0,
+        "y": 0,
+        "w": 1280,
+        "h": 116
+      },
+      "c": {
+        "hidden": false,
+        "x": 0,
+        "y": 124,
+        "w": 946,
+        "h": 528
+      },
+      "side": {
+        "hidden": false,
+        "x": 958,
+        "y": 128,
+        "w": 308,
+        "h": 656
+      },
+      "pipFrame": {
+        "hidden": false,
+        "x": 12,
+        "y": 190,
+        "w": 360,
+        "h": 302
+      },
+      "bottombar": {
+        "hidden": false,
+        "x": 16,
+        "y": 657,
+        "w": 916,
+        "h": 127
+      },
+      "electrical-inspector": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "time": "00:00.0"
+    },
+    {
+      "project": "PCB-CopperAssembly",
+      "viewport": [
+        1280,
+        800
+      ],
+      "compact": false,
+      "overflow": false,
+      "topbar": {
+        "hidden": false,
+        "x": 0,
+        "y": 0,
+        "w": 1280,
+        "h": 116
+      },
+      "c": {
+        "hidden": false,
+        "x": 0,
+        "y": 124,
+        "w": 946,
+        "h": 528
+      },
+      "side": {
+        "hidden": false,
+        "x": 958,
+        "y": 128,
+        "w": 308,
+        "h": 656
+      },
+      "pipFrame": {
+        "hidden": false,
+        "x": 12,
+        "y": 190,
+        "w": 360,
+        "h": 302
+      },
+      "bottombar": {
+        "hidden": false,
+        "x": 16,
+        "y": 657,
+        "w": 916,
+        "h": 127
+      },
+      "electrical-inspector": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "time": "00:00.0"
+    },
+    {
+      "project": "RobotArmPressSSD",
+      "viewport": [
+        1280,
+        800
+      ],
+      "compact": false,
+      "overflow": false,
+      "topbar": {
+        "hidden": false,
+        "x": 0,
+        "y": 0,
+        "w": 1280,
+        "h": 116
+      },
+      "c": {
+        "hidden": false,
+        "x": 0,
+        "y": 124,
+        "w": 946,
+        "h": 528
+      },
+      "side": {
+        "hidden": false,
+        "x": 958,
+        "y": 128,
+        "w": 308,
+        "h": 656
+      },
+      "pipFrame": {
+        "hidden": false,
+        "x": 12,
+        "y": 190,
+        "w": 360,
+        "h": 302
+      },
+      "bottombar": {
+        "hidden": false,
+        "x": 16,
+        "y": 657,
+        "w": 916,
+        "h": 127
+      },
+      "electrical-inspector": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "time": "00:00.0"
+    },
+    {
+      "project": "shutter assembly",
+      "viewport": [
+        1280,
+        800
+      ],
+      "compact": false,
+      "overflow": false,
+      "topbar": {
+        "hidden": false,
+        "x": 0,
+        "y": 0,
+        "w": 1280,
+        "h": 116
+      },
+      "c": {
+        "hidden": false,
+        "x": 0,
+        "y": 124,
+        "w": 946,
+        "h": 528
+      },
+      "side": {
+        "hidden": false,
+        "x": 958,
+        "y": 128,
+        "w": 308,
+        "h": 656
+      },
+      "pipFrame": {
+        "hidden": false,
+        "x": 12,
+        "y": 190,
+        "w": 360,
+        "h": 363
+      },
+      "bottombar": {
+        "hidden": false,
+        "x": 16,
+        "y": 657,
+        "w": 916,
+        "h": 127
+      },
+      "electrical-inspector": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "time": "00:00.0"
+    },
+    {
+      "project": "shutter assembly",
+      "viewport": [
+        320,
+        568
+      ],
+      "compact": true,
+      "overflow": false,
+      "topbar": {
+        "hidden": false,
+        "x": 0,
+        "y": 0,
+        "w": 320,
+        "h": 48
+      },
+      "c": {
+        "hidden": false,
+        "x": 0,
+        "y": 112,
+        "w": 320,
+        "h": 378
+      },
+      "side": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "pipFrame": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "bottombar": {
+        "hidden": false,
+        "x": 8,
+        "y": 502,
+        "w": 304,
+        "h": 58
+      },
+      "electrical-inspector": {
+        "hidden": true,
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "time": "00:00.0"
+    }
+  ],
+  "interactionChecks": [
+    {
+      "project": "shutter assembly",
+      "checked": [
+        "menu opens and selecting overview closes it",
+        "side information bottom sheet and accessible close button",
+        "opening camera hides side information",
+        "opening playback settings hides camera; speed and step select remain accessible",
+        "electrical inspector opens with bounded scrolling; close button works"
+      ]
+    },
+    {
+      "project": "RobotArmPressSSD",
+      "checked": [
+        "playback advances from 00:00.0 to 00:04.2",
+        "product follow enabled and product tray visible without information overlays"
+      ]
+    },
+    {
+      "project": "AutomaticAcid-BaseTitration",
+      "checked": [
+        "left sample table opens",
+        "opening right info hides left table without narrowing canvas"
+      ]
+    }
+  ],
+  "desktop": "All five pages restore right sidebar and camera at 1280x800. Acid left table retains pre-existing narrow-desktop default.",
+  "runtime": "Direct shutter page has no console errors. Iframe review harness emitted MutationObserver errors on harness navigation; production application sources do not contain MutationObserver."
+}

@@ -17,7 +17,7 @@ export function createElectricalInspector({scene,camera,controls,canvas,onEnter,
   const label=document.createElement('div');label.className='electrical-callout';label.hidden=true;document.getElementById('app').append(label);
   let selected=devices[0],mode='cutaway',lastText='',down=null;
   function displayMode(next){mode=next;setElectricalMode(scene,next,false);panel.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mode===mode)));outline.visible=!panel.hidden&&mode!=='shell';}
-  function show(){panel.hidden=false;toggle.setAttribute('aria-expanded','true');displayMode('cutaway');choose(+select.value||0);}
+  function show(){window.dispatchEvent(new CustomEvent('viewer-panel-open',{detail:{id:panel.id}}));panel.hidden=false;toggle.setAttribute('aria-expanded','true');displayMode('cutaway');choose(+select.value||0);}
   function hide(){panel.hidden=true;toggle.setAttribute('aria-expanded','false');outline.visible=false;label.hidden=true;wires.forEach(w=>{w.material.emissive?.setHex(0);});}
   function choose(index){
     selected=devices[index];if(!selected)return;select.value=String(index);const d=selected.userData.electrical;
@@ -41,6 +41,7 @@ export function createElectricalInspector({scene,camera,controls,canvas,onEnter,
   select.onchange=()=>{choose(+select.value);focus();};
   panel.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>displayMode(b.dataset.mode));
   window.addEventListener('electrical-view',e=>{if(e.detail.mode==='shell')hide();else show();});
+  window.addEventListener('viewer-panel-open',e=>{if(document.body.classList.contains('viewer-compact')&&e.detail.id!==panel.id)hide();});
   panel.addEventListener('keydown',e=>{if(e.key==='Escape'){onExit();hide();toggle.focus();}});
   const ray=new THREE.Raycaster(),pointer=new THREE.Vector2(),bodies=[];devices.forEach(d=>d.traverse(m=>{if(m.userData.electricalBody)bodies.push(m);}));
   canvas.addEventListener('pointerdown',e=>{down=[e.clientX,e.clientY];});
