@@ -1,6 +1,6 @@
 // 六軸手臂（第七軸線性滑軌）＋ 力覺末端（F/T 感測器、12MP 相機＋環形光、微距鏡頭、鉤爪、3D 線雷射）
 import * as THREE from 'three';
-import { cable, armDress, carrier, CABLE } from './cable-routing.js';
+import { cable, armDress, carrier, support, CABLE } from './cable-routing.js';
 import { createIK } from './kinematics.js';
 import { block, cylinder, tube, decal } from './detail.js';
 
@@ -30,7 +30,8 @@ export function createRobot() {
   const carriage = new THREE.Group(); carriage.position.y = 144; root.add(carriage);
   const carBody = box(360, 60, 300, matArmD); carBody.position.y = 30; carriage.add(carBody);
   const railHarness=carrier(root,'RAIL / rolling power-data-air carrier',{origin:[0,30,-220],min:-1100,max:1100,radius:65,width:44,pitch:24});
-  cable(carriage,'RAIL / moving-end strain relief',[[0,16,-220],[0,75,-195],[0,340,-176],[0,650,-176],[0,740,-150]],{radius:8,color:CABLE.sleeve,clips:5});
+  for(const x of [-1050,-550,-50,50,550,1050])support(root,'RAIL / guide cantilever',[x,19,-130],[x,19,-220],8);
+  support(carriage,'RAIL / moving anchor',[0,16,-150],[0,16,-220],6);
   for(let x=-1300;x<=1300;x+=140)for(const z of [-80,80])cylinder(root,4,3,[x,146,z],matJoint);
 
   // ---- 手臂連桿 ----
@@ -42,6 +43,8 @@ export function createRobot() {
   const riser = box(300, L.riser, 300, matArmD); riser.position.y = 60 + L.riser / 2; carriage.add(riser);
   const base = cyl(120, 140, L.base, matArm); base.position.y = 60 + L.riser + L.base / 2; carriage.add(base);
   const baseRing = cyl(128, 128, 14, matJoint); baseRing.position.y = 60 + L.riser + L.base - 7; carriage.add(baseRing);
+  cylinder(carriage,10,20,[0,740,-140],matJoint,'z');
+  cable(carriage,'RAIL / moving-end strain relief',[[0,16,-220],[0,75,-195],[0,340,-176],[0,740,-176],[0,740,-143]],{radius:8,color:CABLE.sleeve,clips:7});
 
   j.j1 = new THREE.Group(); j.j1.position.y = 60 + L.riser + L.base; carriage.add(j.j1);          // J1 繞 Y
   const shoulderHouse = cyl(100, 110, 140, matArm); shoulderHouse.position.y = 70; j.j1.add(shoulderHouse);

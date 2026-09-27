@@ -9,7 +9,7 @@ const V = p => new THREE.Vector3(...p);
 const mark = (o,kind) => {o.userData.routingHardware=kind;return o;};
 
 /** Clamped, static relative to its parent; endpoints are connector centres. */
-export function cable(parent,name,points,{radius=2.5,color=CABLE.signal,clips=2,ends=true}={}) {
+export function cable(parent,name,points,{radius=2.5,color=CABLE.signal,clips=2,ends=true,backing=null}={}) {
   const g=mark(new THREE.Group(),'route');g.name=name;parent.add(g);
   // Rounded polyline stays inside each corner's convex hull. A long Catmull-Rom
   // riser can overshoot its anchors and escape the enclosure by tens of mm.
@@ -24,8 +24,40 @@ export function cable(parent,name,points,{radius=2.5,color=CABLE.signal,clips=2,
   tube.name=name+' / jacket';tube.castShadow=true;g.add(tube);
   g.userData.cable={radius,points:Array.from({length:129},(_,i)=>curve.getPoint(i/128).toArray()),length:curve.getLength(),type:'clamped'};
   const orient=(o,t)=>{o.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1),curve.getTangent(t).normalize());o.position.copy(curve.getPoint(t));g.add(o);};
+  // A ring alone is a tie, not a mounting clamp. Only draw a fixed clamp when
+  // its foot reaches a rigid sibling (never a moving child or transparent cover).
+  const hosts=parent.children.filter(m=>m.isMesh&&!m.userData.routingHardware&&
+    (['BoxGeometry','CylinderGeometry'].includes(m.geometry.type)||(m.geometry.type==='ExtrudeGeometry'&&!m.userData.serviceBores&&!(m.geometry.parameters.shapes?.holes?.length)))&&!m.material?.transparent);
+  if(backing) {
+    const path=backing.path||points.map(p=>V(p).add(V(backing.offset)).toArray());
+    for(let i=1;i<path.length;i++)support(parent,name+' / service rail',path[i-1],path[i],backing.radius||6);
+    for(const [index,foot] of backing.feet)support(parent,name+' / rail foot',foot,path[index],backing.radius||6);
+    g.userData.backing={path,feet:backing.feet};
+  }
   for(let i=1;i<=clips;i++) {
-    const ring=mark(new THREE.Mesh(new THREE.TorusGeometry(radius+1,1,6,12),clipMat),'clamp');orient(ring,i/(clips+1));
+    const t=i/(clips+1),p=curve.getPoint(t);let foot=null,best=65;
+    if(backing) {
+      let distance=Infinity;const path=g.userData.backing.path;
+      for(let k=1;k<path.length;k++){const a=V(path[k-1]),delta=V(path[k]).sub(a),q=a.clone().addScaledVector(delta,THREE.MathUtils.clamp(p.clone().sub(a).dot(delta)/delta.lengthSq(),0,1));if(p.distanceTo(q)<distance){distance=p.distanceTo(q);foot=q;}}
+    }
+    else for(const m of hosts) {
+      m.updateMatrix();if(!m.geometry.boundingBox)m.geometry.computeBoundingBox();
+      const size=m.geometry.boundingBox.getSize(new THREE.Vector3());if(Math.min(size.x,size.y,size.z)<4)continue;
+      const local=p.clone().applyMatrix4(m.matrix.clone().invert()),b=m.geometry.boundingBox;
+      let q=b.clampPoint(local,new THREE.Vector3());
+      if(m.geometry.type==='CylinderGeometry') {
+        const r=Math.max(m.geometry.parameters.radiusTop,m.geometry.parameters.radiusBottom);
+        // Only native Y-axis cylinders: rotated geometries need explicit mounts.
+        if(Math.abs(b.max.x-r)>.01||Math.abs(b.max.z-r)>.01)continue;
+        const d=Math.hypot(local.x,local.z);if(d>r){q.x=local.x*r/d;q.z=local.z*r/d;}
+      }
+      q.applyMatrix4(m.matrix);const d=p.distanceTo(q);
+      if(d>radius+1&&d<best){best=d;foot=q;}
+    }
+    if(!foot)continue;
+    const ring=mark(new THREE.Mesh(new THREE.TorusGeometry(radius+1,1,6,12),clipMat),'clamp');orient(ring,t);
+    const end=p.clone().add(foot.clone().sub(p).normalize().multiplyScalar(radius+1));
+    support(parent,name+' / clamp foot',foot.toArray(),end.toArray(),1.6);
   }
   if(ends)for(const t of [0,1]) {
     const plug=mark(new THREE.Mesh(new THREE.CylinderGeometry(radius+1.6,radius+1.6,6,12),connectorMat),'gland');
@@ -38,17 +70,18 @@ export function cable(parent,name,points,{radius=2.5,color=CABLE.signal,clips=2,
 /** External fixed-length dress sections. Joint crossings use assumed internal
  * passages, so no unmodelled hanging loop pretends to support unlimited twist. */
 export function armDress(j,L,{upperDepth=60,foreDepth=48,large=false}={}) {
-  const uz=large?145:112,fz=large?135:90,end=Math.max(140,L.fore-L.wrist1-85);
-  cable(j.j2,'ARM / upper protected section',[[0,115,uz],[0,L.upper-110,uz]],{radius:large?7:5,color:CABLE.sleeve,clips:3});
-  cable(j.j3,'ARM / forearm protected section',[[90,L.foreOffset,fz],[end,L.foreOffset,fz]],{radius:large?6:4,color:CABLE.sleeve,clips:2});
-  for(const y of [145,L.upper-140])support(j.j2,'ARM / sleeve standoff',[0,y,upperDepth],[0,y,uz-5],3);
-  for(const x of [100,end-10])support(j.j3,'ARM / sleeve standoff',[x,L.foreOffset,foreDepth],[x,L.foreOffset,fz-4],3);
+  const uz=large?145:112,fz=large?135:90,end=Math.max(200,L.fore-L.wrist1-85);
+  cable(j.j2,'ARM / upper protected section',[[0,200,upperDepth+3],[0,200,uz],[0,L.upper-110,uz],[0,L.upper-110,upperDepth+3]],{radius:large?7:5,color:CABLE.sleeve,clips:3});
+  cable(j.j3,'ARM / forearm protected section',[[170,L.foreOffset,foreDepth+3],[170,L.foreOffset,fz],[end,L.foreOffset,fz],[end,L.foreOffset,foreDepth+3]],{radius:large?6:4,color:CABLE.sleeve,clips:2});
 }
 
 export function support(parent,name,a,b,radius=5) {
   const start=V(a),end=V(b),delta=end.clone().sub(start);
+  if(delta.length()<1e-6)return null;
   const mesh=mark(new THREE.Mesh(new THREE.CylinderGeometry(radius,radius,delta.length(),8),clipMat),'support');mesh.name=name;
-  mesh.position.copy(start).add(end).multiplyScalar(.5);mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),delta.normalize());parent.add(mesh);return mesh;
+  mesh.position.copy(start).add(end).multiplyScalar(.5);mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),delta.normalize());
+  mesh.userData.support={a:[0,-mesh.geometry.parameters.height/2,0],b:[0,mesh.geometry.parameters.height/2,0],radius};
+  mesh.castShadow=true;parent.add(mesh);return mesh;
 }
 
 /** Open cable trough with visible separate power/data lanes. No filled solid
@@ -61,7 +94,7 @@ export function cableTray(parent,name,a,b,{width=46,height=16}={}) {
     const m=mark(new THREE.Mesh(new THREE.BoxGeometry(w,h,d),clipMat),'trough');m.position.set(0,y,z);g.add(m);
   }
   for(const [z,color] of [[-width/4,CABLE.power],[width/4,CABLE.signal]])
-    cable(g,name+(z<0?' / power':' / data'),[[-length/2,0,z],[length/2,0,z]],{radius:3,color,clips:Math.max(2,Math.floor(length/220))});
+    cable(g,name+(z<0?' / power':' / data'),[[-length/2,-height/2+4,z],[length/2,-height/2+4,z]],{radius:3,color,clips:0});
   return g;
 }
 
@@ -74,6 +107,15 @@ export function carrier(parent,name,{origin=[0,0,0],axis=[1,0,0],rise=[0,1,0],fi
   if(Math.abs(x.dot(y))>1e-8)throw new Error('Carrier axes must be perpendicular');
   g.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(x,y,z));
   const length=Math.max(Math.abs(min-fixed),Math.abs(max-fixed))+Math.PI*radius+60;
+  // Continuous lower-run support. The upper run remains a self-supporting
+  // carrier span, whose permissible length must be checked against its vendor.
+  const foldMax=(length-Math.PI*radius+fixed+max)/2;
+  if(Math.abs(axis[1])<.1) {
+    const start=Math.min(min,fixed)-8,end=foldMax+8;
+    const guide=mark(new THREE.Mesh(new THREE.BoxGeometry(end-start,8,width+8),clipMat),'guide');
+    guide.name=name+' / continuous guide';guide.position.set((start+end)/2,-11,0);guide.castShadow=true;
+    guide.userData.support={a:[-(end-start)/2,0,0],b:[(end-start)/2,0,0],radius:4};guide.userData.guide=true;g.add(guide);
+  } else support(g,name+' / continuous guide',[fixed-8,-11,0],[foldMax+8,-11,0],4);
   const n=Math.ceil(length/pitch),h=12,count=80,radial=8,parts=[];
   const dummy=new THREE.Object3D(),up=new THREE.Vector3(0,0,1);
   for(const [size,offset] of [[[length/n*.9,h,3],[0,0,-width/2]],[[length/n*.9,h,3],[0,0,width/2]],[[3,2,width],[0,-h/2,0]]]) {

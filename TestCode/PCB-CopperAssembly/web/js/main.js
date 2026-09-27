@@ -1,3 +1,6 @@
+import {createElectricalInspector} from './electrical-inspector.js';
+import {setElectricalCutaway} from './electrical-cabinet.js';
+import { createViewerWorkspace } from './viewer-workspace.js';
 import { routingLegend } from './cable-routing.js';
 routingLegend();
 // 主程式：場景、節拍時間軸、UI、相機子畫面
@@ -5,8 +8,6 @@ import * as THREE from 'three';
 import { createVisionOverlay } from './vision-overlay.js';
 import { copperResults } from './vision-results.js';
 const vision = createVisionOverlay();
-import { cameraPanel } from './camera-panel.js';
-cameraPanel();
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { LAYOUT, PRODUCT, RECIPES, setRecipe, smooth } from './layout.js';
@@ -70,6 +71,7 @@ function closeView(hole) {
   return [t.clone().add(hole ? new THREE.Vector3(span * .4, span * .72, span) : new THREE.Vector3(200, 235, 450)).toArray(), t.toArray()];
 }
 const views = {
+  electrical: [[900,850,1700],[0,410,-180]],
   wiring: [[-1900,2450,-1800],[0,1350,0]],
   board: () => closeView(false), hole: () => closeView(true),
   iso: [[-2300, 2100, 2300], [0, 950, 0]], s2: [[650, 1650, 1250], [0, 1000, 0]], head: [[40, 1060, 260], [-90, 958, 90]],
@@ -78,6 +80,7 @@ const views = {
 };
 let camAnim = null, currentView = '', lastFocus = null;
 function setView(name, instant = false) {
+  workspace.stopFollowing(); setElectricalCutaway(scene,name==='electrical');
   if (!views[name]) return;
   currentView = name; lastFocus = ['board', 'hole'].includes(name) ? focusPoint(name === 'hole') : null;
   camera.near = name === 'hole' ? .2 : 5; camera.updateProjectionMatrix();
@@ -170,7 +173,6 @@ function drawHud() {
   ui.timeline.value = T; ui.progBar.style.width = T / total * 100 + '%';
   ui.clock.textContent = `${Math.floor(T / 60).toString().padStart(2, '0')}:${(T % 60).toFixed(1).padStart(4, '0')}`;
   let mi = 0; plan.milestones.forEach((m, j) => { if (m.t <= T + 1e-6) mi = j; }); ui.stepSelect.value = mi;
-  ui.pipFrame.hidden = !ui.showPip.checked;
   const src = pipSource(), [title, res] = pipInfo(src); ui.pipTitle.textContent = title; ui.pipResult.innerHTML = res;
   for (const l of labels) { const p = l.pos.clone().project(camera), vis = ui.showLabels.checked && p.z < 1 && Math.abs(p.x) < .98 && Math.abs(p.y) < .85; l.el.style.display = vis ? 'block' : 'none'; if (vis) { l.el.style.left = (p.x * .5 + .5) * canvas.clientWidth + 'px'; l.el.style.top = (-p.y * .5 + .5) * canvas.clientHeight + 'px'; } }
   document.getElementById('diagnostics').textContent = JSON.stringify({ T, total, placed: pl, maxErr: info.maxErr, mapped: info.mapped, inspected: info.inspected });
@@ -179,20 +181,16 @@ function drawHud() {
 function resize() { const w = canvas.clientWidth, h = canvas.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 window.addEventListener('resize', resize);
 function render() {
-  const src = drawHud(), w = canvas.clientWidth, h = canvas.clientHeight;
+  const src=drawHud();workspace.follow();electrical.update({time:T,playing,action:'S0–S4 多站同步 · '+(T<plan.s2End?'雙頭放置':'換站'),motion:T<plan.s2End,vision:!!(plan.s3.tr.sample(T).seg?.flash)});
   const marks=document.getElementById('showMarks').checked;Object.values(sim.boards).forEach(b=>b.setAnnotations(marks));
-  renderer.setScissorTest(false); renderer.setViewport(0, 0, w, h); renderer.render(scene, camera);
-  vision.hide();
-  if (ui.showPip.checked) {
-    const c = canvas.getBoundingClientRect(), f = document.getElementById('pipImage').getBoundingClientRect(), cam = pipCams[src]();
-    cam.aspect = 1.5; cam.updateProjectionMatrix();
-    const vis = M.occluders.visible; M.occluders.visible = false;
-    Object.values(sim.boards).forEach(b=>b.setAnnotations(false));
-    renderer.setScissorTest(true); renderer.setScissor(f.left - c.left, c.bottom - f.bottom, f.width, f.height); renderer.setViewport(f.left - c.left, c.bottom - f.bottom, f.width, f.height);
-    renderer.render(scene, cam); vision.draw(cam,f,copperResults(src,T,plan,M,sim.boards)); renderer.setScissorTest(false); renderer.setViewport(0, 0, w, h); M.occluders.visible = vis;
-    Object.values(sim.boards).forEach(b=>b.setAnnotations(marks));
-  }
+  renderer.setScissorTest(false);renderer.setViewport(0,0,canvas.clientWidth,canvas.clientHeight);workspace.renderOverview(renderer,scene);
+  const vis=M.occluders.visible;M.occluders.visible=false;Object.values(sim.boards).forEach(b=>b.setAnnotations(false));
+  workspace.renderCamera({renderer,scene,camera:pipCams[src](),vision,marks:copperResults(src,T,plan,M,sim.boards)});
+  M.occluders.visible=vis;Object.values(sim.boards).forEach(b=>b.setAnnotations(marks));
 }
+const workspace=createViewerWorkspace({camera,controls,canvas,resize,focusOccluders:[M.occluders],getFocus:()=>focusPoint(false),
+  focusOffset:[0,190,440],onFocus:()=>{setElectricalCutaway(scene,false);camAnim=null;lastFocus=null;currentView='focus';document.querySelectorAll('.views button').forEach(b=>b.classList.remove('selected'));}});
+const electrical=createElectricalInspector({scene,camera,controls,canvas,onEnter:()=>setView('electrical',true),onExit:()=>setView('iso',true),title:'PCB-CopperAssembly'});
 const clock = new THREE.Clock();
 function frame() {
   requestAnimationFrame(frame); const dt = Math.min(clock.getDelta(), 0.05);

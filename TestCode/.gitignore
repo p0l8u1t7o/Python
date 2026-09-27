@@ -4,3 +4,13 @@
 /PCB-CopperAssembly/docs/
 /RobotArmPressSSD/docs/
 /shutter assembly/docs/
+
+# Local generated data (all case variants, at any project depth)
+[Tt][Ee][Mm][Pp]/
+[Ll][Oo][Gg][Ss]/
+*.log
+__pycache__/
+
+# Retired projects
+/CardServer/
+/Bin/

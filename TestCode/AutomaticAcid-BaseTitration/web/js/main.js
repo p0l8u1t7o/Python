@@ -1,3 +1,6 @@
+import {createElectricalInspector} from './electrical-inspector.js';
+import {setElectricalCutaway} from './electrical-cabinet.js';
+import { createViewerWorkspace } from './viewer-workspace.js';
 import { routingLegend } from './cable-routing.js';
 routingLegend();
 // 主程式：場景、批次時間軸、樣品表、滴定曲線、交握訊號、通訊紀錄
@@ -5,6 +8,7 @@ import * as THREE from 'three';
 import { createVisionOverlay } from './vision-overlay.js';
 import { liquidResults } from './vision-results.js';
 const vision = createVisionOverlay();
+const fullProcessVision = createVisionOverlay();
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { createSim } from './sim.js';
@@ -62,6 +66,7 @@ const flowBtns = FLOW.map(([ph, idx, name]) => {
 
 // ---------------------------------------------------------------- 視角
 const views = {
+  electrical: [[-950,700,1400],[0,480,0]],
   wiring: [[1550,1850,1100],[850,1250,60]],
   titration: [[680,1105,270],[810,1003,60]], liquid: [[90,1020,-190],[-20,905,-370]], bottles:[[-260,1140,650],[-500,970,300]],
   iso: [[-1450, 2550, 2450], [80, 930, -20]], balance: [[-80, 1720, 820], [-560, 1000, -40]], decap: [[-470, 1420, 60], [-180, 1030, -330]],
@@ -73,6 +78,7 @@ function liquidFocus(){
   return cup.localToWorld(new THREE.Vector3(0,fluid.surface.position.y,0));
 }
 function setView(name, instant = false) {
+  workspace.stopFollowing(); setElectricalCutaway(scene,name==='electrical');
   liquidTrack=null;visionView=name;
   follow = name === 'follow';
   document.querySelectorAll('.views button').forEach(b => b.classList.toggle('selected', b.dataset.view === name));
@@ -228,9 +234,24 @@ function drawHud() {
 }
 function resize() { const w = canvas.clientWidth, h = canvas.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 window.addEventListener('resize', resize);
-function render() { drawHud(); renderer.render(scene, camera);
-  if(['meniscus','titration','liquid','bottles','balance','decap','pipette','sampler','follow'].includes(visionView))vision.draw(camera,canvas.getBoundingClientRect(),liquidResults(lab,info,T,visionView));else vision.hide();
+let focusItem='beaker0';
+function activeProduct(){
+  const touched=info?.step.touch?.find(id=>/^(beaker|bottle)/.test(id));
+  const held=Object.entries(info?.state.loc||{}).find(([id,l])=>/^(beaker|bottle)/.test(id)&&l.g)?.[0];
+  const job=info?.step.idle&&info?.sampler.job;
+  focusItem=held||touched||(job?'beaker'+job.beaker:focusItem);
+  return lab.items[focusItem].getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0,35,0));
 }
+const processCamera=new THREE.PerspectiveCamera(38,1.5,.5,10000);
+function render() {
+  drawHud();workspace.follow();electrical.update({time:T,playing,action:info?.step.label,motion:!info?.step.idle,vision:false});workspace.renderOverview(renderer,scene);
+  if(['meniscus','titration','liquid','bottles','balance','decap','pipette','sampler','follow'].includes(visionView)) fullProcessVision.draw(camera,canvas.getBoundingClientRect(),liquidResults(lab,info,T,visionView)); else fullProcessVision.hide();
+  const p=activeProduct();processCamera.position.copy(p).add(new THREE.Vector3(-150,180,230));processCamera.lookAt(p);processCamera.updateMatrixWorld(true);
+  workspace.renderCamera({renderer,scene,camera:processCamera,vision,title:'製程觀察 · 液面示意（虛擬相機）',result:'跟隨目前處理的樣品，非實拍量測',marks:liquidResults(lab,info,T,info.sampler.job&&info.step.idle?'titration':visionView)});
+}
+const workspace=createViewerWorkspace({camera,controls,canvas,resize,getFocus:activeProduct,
+  focusOffset:[-150,180,230],focusNear:.5,onFocus:()=>{setElectricalCutaway(scene,false);camAnim=null;liquidTrack=null;follow=false;visionView='focus';document.querySelectorAll('.views button').forEach(b=>b.classList.remove('selected'));}});
+const electrical=createElectricalInspector({scene,camera,controls,canvas,onEnter:()=>setView('electrical',true),onExit:()=>setView('iso',true),title:'AutomaticAcid-BaseTitration'});
 const clock = new THREE.Clock();
 function frame() {
   requestAnimationFrame(frame); const dt = Math.min(clock.getDelta(), 0.05);

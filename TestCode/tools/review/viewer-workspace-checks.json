@@ -1,0 +1,70 @@
+{
+  "verifiedAt": "2026-09-26T23:56:02.076Z",
+  "method": "Local browser UI actions and visual inspection; no simulation schedule changes",
+  "projects": [
+    {
+      "project": "RobotArmPressSSD",
+      "checks": [
+        "camera title drag from x24 to x604",
+        "hide and restore",
+        "right panel collapse",
+        "popup time 9.29 matches main",
+        "popup dock",
+        "focus moves to x1006 at timeline end",
+        "focus off stays inactive",
+        "camera HDR render visually verified"
+      ],
+      "sourceHash": "614671b96c5ab09b93f3d0888ca83e128d71700c30a4f7b7da6d09518c44d95c"
+    },
+    {
+      "project": "AutomaticAcid-BaseTitration",
+      "checks": [
+        "left/right panel toggle and reclaim space",
+        "virtual process camera and liquid overlay",
+        "close product view during dispensing",
+        "popup follows next milestone",
+        "dock restores panel",
+        "Original meniscus view retains full-view annotations"
+      ],
+      "sourceHash": "d7822716f6834637665ebe3cf648039205c598c915430221292b1d43061b61a0"
+    },
+    {
+      "project": "PCB-CopperAssembly",
+      "checks": [
+        "camera enlarge and restore",
+        "hide and restore",
+        "focus tracks assembly board during conveyor index",
+        "popup follows backward seek",
+        "right panel collapsed"
+      ],
+      "sourceHash": "bf3d4826759455cfbd93f4fca5b8dc55e819d0d6b15c8483008c8b7a7c4bdbc2"
+    },
+    {
+      "project": "MilitaryGradePC",
+      "checks": [
+        "new draggable sensor panel",
+        "right panel collapse",
+        "focus follows notebook transfer/flip",
+        "popup time advances with main play",
+        "pause and dock",
+        "camera hidden while product remains visible",
+        "Original full-screen sensor view retains ROI overlay alongside panel"
+      ],
+      "sourceHash": "f4a95a26a921bb3f42db522c8a81c02e4c9eacb0fc6c921fd4b54c08795e2476"
+    },
+    {
+      "project": "shutter assembly",
+      "checks": [
+        "focus shows 18 mm product close up",
+        "popup follows next assembly step at 19.19 s",
+        "dock and hide",
+        "focus off leaves view at fixture when timeline jumps to input tray"
+      ],
+      "sourceHash": "7fa9e811b359aac5e2c7406b41232c0e8aafee5920ee0431baa47d9efd5cbb8d"
+    }
+  ],
+  "scope": "Desktop controls, source-frame time mirroring, camera overlays and product tracking. Popup creation/docking verified; separate native popup screenshot unavailable in this browser surface.",
+  "syntax": "15 source files passed node --check",
+  "sharedCopies": "All five JS/CSS pairs match shared source",
+  "packaging": "104 website source files match local Pages preview; ZIP verified, 106 files including index and .nojekyll"
+}

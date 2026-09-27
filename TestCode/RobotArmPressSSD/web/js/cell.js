@@ -1,8 +1,10 @@
+import {robotController,controllerLeads} from './electrical-components.js';
 // 壓合站設備：上游／本站／下游 SMT 雙邊輸送（後軌固定為基準邊、前軌依配方調寬）、止擋、頂升支撐、
 // 固定全局相機、機台底櫃、手臂座、外罩、三色燈、HMI。
 // 座標：x 沿流向（上游 −x → 下游 +x）、y 向上、z 橫向（手臂在 −z 後側，作業員在 +z 前側）。單位 mm。
 import * as THREE from 'three';
-import { cable, cableTray, CABLE } from './cable-routing.js';
+import {cabinetShell,controlPanel,entryGland,panelFeed} from './electrical-cabinet.js';
+import { cable, cableTray, support, CABLE } from './cable-routing.js';
 import { block, cylinder, decal, screw } from './detail.js';
 import { microTexture } from './surfaces.js';
 
@@ -86,10 +88,18 @@ export function createCell(scene, recipe) {
 
   // ---- 機台底櫃（RC8A、PLC、IPC）＋手臂座 ----
   const [rx, ry, rz] = LAYOUT.robot, { x: ex, z0, z1, h } = LAYOUT.encl;
-  ko(block(g, [2 * ex, ry - 20, -240 - z0], [0, (ry - 20) / 2, (z0 - 240) / 2], matCab), '機台底櫃');
+  const cabZ=(z0-240)/2,cabTop=ry-20;
+  const cabinetEntries=[{x:0,z:-610-cabZ,hole:15,wire:7,sourceY:ry},...[-430,120,520].map(x=>({x,z:-280-cabZ,hole:10,wire:x===520?3:2,sourceY:820}))];
+  const cabinet=cabinetShell(g,'機台底櫃',{center:[0,cabTop/2,cabZ],size:[2*ex,cabTop,-240-z0],entries:cabinetEntries,thickness:20,material:matCab});
+  for(const m of cabinet.solids)keepout.push(m);
+  const panel=controlPanel(g,'CTRL / PLC and drive panel',{center:[0,400,z0+45],width:970,height:600,backZ:z0+3,profile:'ssd'});
+  const controller=robotController(g,{at:[230,63,-630],floor:4});controllerLeads(g,controller,panel);
+  for(const [i,e] of cabinetEntries.entries()){
+    const z=e.z+cabZ;entryGland(g,'CTRL / roof gland '+i,{at:[e.x,cabTop,z],hole:e.hole,wire:e.wire,thickness:20});
+    panelFeed(g,'CTRL / roof to terminal '+i,[[e.x,e.sourceY,z],[e.x,cabTop-50,z],[e.x,650,z0+90],[panel.ports[i*3][0],650,z0+90],panel.ports[i*3]],{radius:e.wire,color:i?CABLE.signal:CABLE.power});
+  }
   block(g, [300, 20, 300], [rx, ry - 10, rz], matDark);
-  for (const x of [-420, -140, 140, 420]) block(g, [240, 700, 2], [x, 420, -239], matCab);
-  decal(g, 520, 90, [0, 560, -238], [0, 0, 0], ['RC8A 手臂控制器 · KV-X PLC · 視覺 IPC', 'SIMULATION'], { bg: '#102635', color: '#65d7b8' });
+  decal(g,520,90,[0,560,-238],[0,0,0],['RC8A 手臂控制器 · KV-X PLC · 視覺 IPC','SIMULATION'],{bg:'#102635',color:'#65d7b8'}).userData.electricalCover=true;
 
   // ---- 固定全局相機：20MP＋20 mm 鏡頭，距輸送面約 800 mm，視野約 530 × 355 mm ----
   const [gx, gy, gz] = LAYOUT.globalCam;
@@ -128,9 +138,10 @@ export function createCell(scene, recipe) {
   });
 
   cableTray(g,'CTRL / separate power-data trough',[-520,740,-210],[520,740,-210]);
-  cable(g,'CAM / fixed overhead data',[[520,740,-210],[550,860,-210],[550,920,-690],[550,1940,-690],[gx+35,1940,-600],[gx+35,1900,gz],[gx+35,gy+60,gz],[gx+25.5,gy+60,gz]],{radius:3,color:CABLE.signal,clips:8});
+  for(const x of [-450,0,450])support(g,'CTRL / trough cabinet bracket',[x,731,-240],[x,731,-210],5);
+  cable(g,'CAM / fixed overhead data',[[520,820,-280],[550,860,-210],[550,920,-690],[550,1940,-690],[gx+35,1940,-600],[gx+35,1900,gz],[gx+35,gy+60,gz],[gx+25.5,gy+60,gz]],{radius:3,color:CABLE.signal,clips:12,backing:{offset:[15,0,0],feet:[[1,[550,800,-250]],[2,[580,920,-740]],[3,[580,1940,-740]],[4,[gx+20,1970,-600]],[5,[gx+15,1900,gz]]]}});
   for(const side of [-1,1])cable(gcam,'CAM / bar-light power '+side,[[22,60,0],[46,58,side*22],[55,40,side*60],[55,26,side*70]],{radius:1.8,color:CABLE.power});
-  for(const sensor of sensors)cable(g,'I-O / '+sensor.name,[[sensor.x,top+22,rearInner-26],[sensor.x,top-15,rearInner-50],[sensor.x,780,-190],[sensor.x,740,-198]],{radius:2,color:CABLE.signal,clips:2});
+  for(const sensor of sensors)cable(g,'I-O / '+sensor.name,[[sensor.x,top+22,rearInner-26],[sensor.x,top-15,rearInner-50],[sensor.x,860,-190],[sensor.x,860,-280],[sensor.x,820,-280]],{radius:2,color:CABLE.signal,clips:3});
 
   return {
     group: g, occluders: occ, keepout, sensors, globalCam, place,

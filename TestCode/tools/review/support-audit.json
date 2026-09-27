@@ -1,0 +1,65 @@
+{
+  "scope": "Visible wiring, support segments and carrier guides against selected rigid obstacles; finite pose sampling, not structural certification",
+  "passed": true,
+  "results": [
+    {
+      "project": "AutomaticAcid-BaseTitration",
+      "scenarios": 1,
+      "samples": 41682,
+      "supportsPerScenario": [
+        57
+      ],
+      "screenshot": "AutomaticAcid-BaseTitration/review/support-routing.png",
+      "browserErrors": 0
+    },
+    {
+      "project": "MilitaryGradePC",
+      "scenarios": 2,
+      "samples": 13644,
+      "supportsPerScenario": [
+        67,
+        67
+      ],
+      "screenshot": "MilitaryGradePC/review/support-routing.png",
+      "browserErrors": 0
+    },
+    {
+      "project": "PCB-CopperAssembly",
+      "scenarios": 2,
+      "samples": 3896,
+      "supportsPerScenario": [
+        169,
+        169
+      ],
+      "screenshot": "PCB-CopperAssembly/review/support-routing.png",
+      "browserErrors": 0
+    },
+    {
+      "project": "RobotArmPressSSD",
+      "scenarios": 5,
+      "samples": 2737,
+      "supportsPerScenario": [
+        44,
+        44,
+        44,
+        44,
+        44
+      ],
+      "screenshot": "RobotArmPressSSD/review/support-routing.png",
+      "browserErrors": 0
+    },
+    {
+      "project": "shutter assembly",
+      "scenarios": 2,
+      "samples": 1285,
+      "supportsPerScenario": [
+        33,
+        33
+      ],
+      "screenshot": "shutter assembly/review/support-routing.png",
+      "browserErrors": 0
+    }
+  ],
+  "packagedFiles": 106,
+  "deployment": "Local preview and ZIP refreshed; not pushed to GitHub"
+}

@@ -134,7 +134,7 @@ node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-s
 - [放大相機預覽](http://127.0.0.1:8767/?pause&st=3&view=inspect&cameraSize=large)。
 ## 干涉修正與驗證
 
-本輪干涉位置、幾何／路徑修正及驗證範圍見[四站干涉修正紀錄](../interference-review.md)。
+本輪干涉位置、幾何／路徑修正及驗證範圍見[四站干涉修正紀錄](../tools/docs/interference-review.md)。
 
 新增驗證：`node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-clearance.mjs`。
 
@@ -149,7 +149,7 @@ node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-s
 
 ## 相機視覺標記
 
-相機畫面新增可開關的檢測框、中心標記及對應結果；依當前取像與 3D 模型更新，所有數值均為模擬。詳見 [標記內容、預覽與驗證](../vision-review.md)。
+相機畫面新增可開關的檢測框、中心標記及對應結果；依當前取像與 3D 模型更新，所有數值均為模擬。詳見 [標記內容、預覽與驗證](../tools/docs/vision-review.md)。
 
 ## 成本估算
 
@@ -166,6 +166,17 @@ node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-s
 
 基座電源與分段手臂護套、F/T 及光源支線、外罩內側相機支線、輸送感測器線路均已建立。
 
-[配線研究與實機確認項目](../cable-routing-review.md)｜[本機 docs 配線紀錄](docs/cable-management.md)｜[線材檢查結果](review/cables.json)｜[配線畫面](review/cables.png)
+[配線研究與實機確認項目](../tools/docs/cable-routing-review.md)｜[本機 docs 配線紀錄](docs/cable-management.md)｜[線材檢查結果](review/cables.json)｜[配線畫面](review/cables.png)
 
 共用檢查：在 TestCode 執行 `node tools/verify-cable-routing.mjs`。docs 依現有忽略規則僅留在本機；根目錄研究文件隨原始碼保存。
+
+
+## 視窗操作與產品焦點
+
+相機標題列可拖曳，右上角可放大、獨立開窗或隱藏；主畫面上方的 ◧／◨ 可收合資訊，▣ 恢復相機面板，◎ 切換近距離產品追隨。獨立視窗共用主時間軸與檢測標記。
+
+[完整操作說明與驗證範圍](../tools/docs/viewer-controls.md)｜[介面畫面](review/viewer-workspace.png)
+
+## 電控規劃檢視
+
+上方「⚡ 電控規劃」可查看元件用途、功能連接及配置外形；支援剖視、透視、點選與特寫，顯示狀態共用主時間軸。[本站元件清單](docs/electrical-plan.md)。

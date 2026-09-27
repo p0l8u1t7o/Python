@@ -12,3 +12,19 @@ for(const sku of ['V110-STND','V110-RF']){
  }
 }
 console.log(`PASS: ${checks} closed doors; minimum connector/cover clearance ${minimum.toFixed(2)} mm.`);
+const {createCell}=await import('../web/js/cell.js');
+const scene=new THREE.Scene(),cell=createCell(scene);scene.updateMatrixWorld(true);
+for(const name of ['CTRL / under-conveyor cabinet','CTRL / peripheral drive cabinet']){
+const cabinet=scene.getObjectByName(name);
+const cabinetBounds=new THREE.Box3().setFromObject(cabinet);
+assert(Math.abs(cabinetBounds.min.y)<.01,'Cabinet must rest on floor');
+let cabinetGap=Infinity,frameChecks=0;
+cell.group.traverse(m=>{
+ if(!['conveyor leg','conveyor foot'].includes(m.name))return;
+ const b=new THREE.Box3().setFromObject(m),gap=Math.max(b.min.x-cabinetBounds.max.x,cabinetBounds.min.x-b.max.x,b.min.y-cabinetBounds.max.y,cabinetBounds.min.y-b.max.y,b.min.z-cabinetBounds.max.z,cabinetBounds.min.z-b.max.z);
+ assert(gap>=10,'Electrical cabinet overlaps conveyor support '+m.position.toArray());
+ cabinetGap=Math.min(cabinetGap,gap);frameChecks++;
+});
+assert(frameChecks>0);
+console.log(`PASS: cabinet grounded; ${frameChecks} conveyor support checks, minimum clearance ${cabinetGap.toFixed(1)} mm.`);
+}

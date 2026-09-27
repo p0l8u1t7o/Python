@@ -1,0 +1,33 @@
+{
+  "date": "2026-09-27",
+  "tested": [
+    "Five project pages load with no browser console errors observed",
+    "Component selection and close-up",
+    "Direct 3D click selects BZ2 on PCB station",
+    "Cutaway, translucent cover and shell restoration",
+    "Returning to overview hides inspector",
+    "Main timeline and electrical status both read 195.9 s after pause in titration station"
+  ],
+  "projects": [
+    {
+      "project": "AutomaticAcid-BaseTitration",
+      "screenshot": "AutomaticAcid-BaseTitration/review/electrical-plan.png"
+    },
+    {
+      "project": "MilitaryGradePC",
+      "screenshot": "MilitaryGradePC/review/electrical-plan.png"
+    },
+    {
+      "project": "PCB-CopperAssembly",
+      "screenshot": "PCB-CopperAssembly/review/electrical-plan.png"
+    },
+    {
+      "project": "RobotArmPressSSD",
+      "screenshot": "RobotArmPressSSD/review/electrical-plan.png"
+    },
+    {
+      "project": "shutter assembly",
+      "screenshot": "shutter assembly/review/electrical-plan.png"
+    }
+  ]
+}

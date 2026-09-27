@@ -1,3 +1,6 @@
+import {createElectricalInspector} from './electrical-inspector.js';
+import {setElectricalCutaway} from './electrical-cabinet.js';
+import { createViewerWorkspace } from './viewer-workspace.js';
 import { routingLegend } from './cable-routing.js';
 routingLegend();
 // 主程式：場景、時間軸（動作序列）、UI、相機子畫面（上視遠心相機／手臂下視相機）
@@ -5,16 +8,14 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { createVisionOverlay } from './vision-overlay.js';
-import { cameraPanel } from './camera-panel.js';
 import { createStation } from './station.js';
 import { createSequence, smooth, STATIONS, SPEC, OFFSETS } from './sequence.js';
 import { LAYOUT, NEST_SEAT, TRAYS } from './cell.js';
 import { BLADES, PART } from './product.js';
 import { TOOL, SCARA } from './robot.js';
-import { cameraSource, stationPreviewTime, sensorViewport, SENSOR_ASPECT } from './camera-view.js';
+import { cameraSource, stationPreviewTime, SENSOR_ASPECT } from './camera-view.js';
 import { shutterMarks } from './vision-results.js';
 const vision = createVisionOverlay();
-cameraPanel();
 
 const qp = new URLSearchParams(location.search);
 const NG = qp.get('result') === 'NG';
@@ -112,6 +113,7 @@ const checklist = [
 // 視角
 const nestP = V(NEST_SEAT.x, NEST_SEAT.y, NEST_SEAT.z);
 const views = {
+  electrical: () => [[900,1000,1250],[0,480,-400]],
   wiring: () => [[800,1750,-700],[0,1310,-300]],
   iso: () => [[-1350, 1850, 1650], [0, 930, -150]],
   robot: () => [[-850, 1450, 650], [0, 1100, -220]],
@@ -124,6 +126,7 @@ const views = {
 let selectedView = 'iso', camAnim = null;
 const followBase = () => selectedView === 'part';
 function setView(name, instant = false) {
+  workspace.stopFollowing(); setElectricalCutaway(scene,name==='electrical');
   if (!views[name]) return; selectedView = name;
   camera.near = name === 'part' ? 0.1 : name === 'nest' || name === 'upcam' ? 0.5 : 2; camera.updateProjectionMatrix();
   lastBase.copy(st.pose('base').p);
@@ -197,7 +200,6 @@ function drawHud() {
   ui.pipResult.innerHTML = pipText(src, src === 'up' ? S.flashUp > 0 : S.flashDown > 0);
   cell.tower.set(fault ? 'red' : NG && current.completed.has('judgeNG') && !current.completed.has('reject') ? 'yellow' : T >= total - 1e-6 ? 'green' : playing ? 'green' : 'yellow');
   cell.occluders.visible = ui.showGuards.checked; trail.visible = ui.showPath.checked;
-  ui.pipFrame.hidden = !ui.showPip.checked;
   ui.action.textContent = S.action; ui.substep.textContent = S.sub;
   ui.phase.textContent = fault || (T >= total ? 'COMPLETE · 本顆完成' : waiting > 0 ? '等待手臂到位' : playing ? 'AUTO · 執行中' : 'HOLD · 暫停'); ui.phase.classList.toggle('fault', !!fault);
   ui.forceBar.style.width = Math.min(100, force / SPEC.forceLimit * 100) + '%'; ui.forceVal.textContent = force.toFixed(1) + ' N';
@@ -226,29 +228,19 @@ function drawHud() {
 function resize() { const w = canvas.clientWidth, h = canvas.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 window.addEventListener('resize', resize);
 function render() {
-  drawHud();
-  // Keep sub-millimetre contact shadows on the actual moving product.
-  taskLight.target.position.copy(st.pose('base').p);
-  taskLight.position.copy(st.pose('base').p).add(V(-25,65,40));
-  const w = canvas.clientWidth, h = canvas.clientHeight;
-  renderer.setScissorTest(false); renderer.setViewport(0, 0, w, h); renderer.render(scene, camera);
-  vision.hide();
-  if (ui.showPip.checked) {
-    const c = canvas.getBoundingClientRect(), f = document.getElementById('pipImage').getBoundingClientRect();
-    const box = sensorViewport(f.width, f.height), src = cameraSource(S);
-    const x = f.left - c.left + box.x, y = c.bottom - f.bottom + box.y, pw = box.width, ph = box.height, cam = src === 'up' ? cell.upCam : robot.pipCam;
-    if (cam.isPerspectiveCamera) { cam.aspect = SENSOR_ASPECT; cam.updateProjectionMatrix(); }
-    const vis = [cell.occluders.visible, trail.visible]; cell.occluders.visible = false; trail.visible = false;
-    const exposure = renderer.toneMappingExposure; renderer.toneMappingExposure = .9;
-    renderer.setScissorTest(true); renderer.setScissor(f.left - c.left, c.bottom - f.bottom, f.width, f.height);
-    renderer.setClearColor(0x080d13, 1); renderer.clear();
-    renderer.setScissor(x, y, pw, ph); renderer.setViewport(x, y, pw, ph); renderer.render(scene, cam);
-    const shooting = src === 'up' ? S.flashUp > 0 : S.flashDown > 0;
-    vision.draw(cam, { left: f.left + box.x, top: f.top + box.y, width: pw, height: ph }, { title: src === 'up' ? '上視對位' : '下視檢查', state: shooting ? '本幀取像' : '即時', time: T, marks: shutterMarks(st, S, { cam: src, exposure: shooting }) });
-    renderer.setClearColor(scene.background, 1); renderer.toneMappingExposure = exposure;
-    renderer.setScissorTest(false); renderer.setViewport(0, 0, w, h); [cell.occluders.visible, trail.visible] = vis;
-  }
+  drawHud(); workspace.follow();electrical.update({time:T,playing,action:S.action,motion:true,vision:!!(S.flashTool||S.flashTop||S.flashUp||S.flashDown||S.flashSn)});
+  taskLight.target.position.copy(st.pose('base').p); taskLight.position.copy(st.pose('base').p).add(V(-25,65,40));
+  renderer.setScissorTest(false);renderer.setViewport(0,0,canvas.clientWidth,canvas.clientHeight);workspace.renderOverview(renderer,scene);
+  const src=cameraSource(S),shooting=src==='up'?S.flashUp>0:S.flashDown>0;
+  const hidden=[cell.occluders,trail],visible=hidden.map(o=>o.visible);hidden.forEach(o=>o.visible=false);
+  const exposure=renderer.toneMappingExposure;renderer.toneMappingExposure=.9;
+  workspace.renderCamera({renderer,scene,camera:src==='up'?cell.upCam:robot.pipCam,vision,aspect:SENSOR_ASPECT,
+    marks:{title:src==='up'?'上視對位':'下視檢查',state:shooting?'本幀取像':'即時',time:T,marks:shutterMarks(st,S,{cam:src,exposure:shooting})}});
+  renderer.toneMappingExposure=exposure;hidden.forEach((o,i)=>o.visible=visible[i]);
 }
+const workspace=createViewerWorkspace({camera,controls,canvas,resize,focusOccluders:[cell.occluders],getFocus:()=>st.pose('base').p,
+  focusOffset:[-24,35,42],focusNear:.1,onFocus:()=>{setElectricalCutaway(scene,false);camAnim=null;selectedView='focus';document.querySelectorAll('.views button').forEach(b=>b.classList.remove('selected'));}});
+const electrical=createElectricalInspector({scene,camera,controls,canvas,onEnter:()=>setView('electrical',true),onExit:()=>setView('iso',true),title:'shutter assembly'});
 const clock = new THREE.Clock();
 const lastBase = new THREE.Vector3();
 function tick(dt) {

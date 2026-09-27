@@ -1,0 +1,20 @@
+/* Independent sensor canvas and accessible controls, shared by all five demos. */
+.viewer-workspace #left[hidden],.viewer-workspace #side[hidden]{display:none!important}
+.viewer-workspace #left:not([hidden]){display:flex!important}
+.viewer-workspace #c{left:var(--viewer-left,0px)!important;width:max(80px,calc(100% - var(--viewer-left,0px) - var(--viewer-right,332px)))!important}
+.viewer-workspace #bottombar{left:calc(var(--viewer-left,0px) + 16px)!important;right:calc(var(--viewer-right,332px) + 14px)!important}
+.viewer-tools{position:fixed;left:50%;transform:translateX(-50%);display:flex;gap:5px;z-index:40;padding:4px;background:#0e1c29e8;border:1px solid #4b6f82;border-radius:9px}
+.viewer-tools button,.camera-actions button{display:grid;place-items:center;min-width:32px;height:30px;padding:3px 7px;background:#172e3c;border:1px solid #416273;border-radius:5px;color:#d8eef5;font:18px system-ui;cursor:pointer}
+.viewer-tools button[aria-pressed=true]{background:#20546a;border-color:#7ae3e5;color:#fff}
+.viewer-tools button:focus-visible,.camera-actions button:focus-visible,#pipTitle:focus-visible{outline:2px solid #9af3ff;outline-offset:2px}
+.viewer-workspace #app #pipFrame{position:fixed;left:12px;top:205px;bottom:auto;right:auto;width:min(360px,calc(100vw - 24px),calc((100vh - 110px)*1.5));height:auto;max-width:none;display:flex;flex-direction:column;z-index:30;pointer-events:auto;background:#091622;border:1px solid #527d90;border-radius:9px;overflow:hidden;box-shadow:0 8px 28px #0008}
+.viewer-workspace #app #pipFrame[hidden]{display:none!important}
+.viewer-workspace #app #pipFrame.expanded{width:min(680px,calc(100vw - 24px),calc((100vh - 110px)*1.5))}
+.viewer-workspace #app #pipFrame .pipTitle{position:static;min-height:34px;box-sizing:border-box;padding:8px 112px 8px 10px;background:#152d3b;color:#d1eaf5;cursor:move;touch-action:none;user-select:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:12px system-ui}
+.viewer-workspace #app #pipImage{position:relative;width:100%;height:auto;aspect-ratio:1.5;flex:none;min-height:0;overflow:hidden}
+.sensor-image{display:block;width:100%;height:100%}
+.camera-actions{position:absolute;right:4px;top:2px;display:flex;gap:3px;z-index:2}
+.viewer-workspace #app #pipFrame .pipResult{position:static;background:#102531;padding:6px 9px;color:#b4d1df;font:11px/1.4 system-ui;max-height:48px;overflow:auto}
+.viewer-status{position:fixed;bottom:160px;left:20px;max-width:400px;padding:12px;background:#422f12;color:#ffdb91;z-index:50;border:1px solid #bd9659;border-radius:8px}
+body.capture .viewer-tools,body.capture #pipFrame{display:none!important}
+@media(max-width:760px){.viewer-workspace #app #pipFrame{width:min(290px,calc(100vw - 24px),calc((100vh - 100px)*1.5))}.viewer-tools{left:12px;transform:none}.viewer-workspace #bottombar .ctl{flex-wrap:wrap}}

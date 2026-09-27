@@ -1,3 +1,6 @@
+import {createElectricalInspector} from './electrical-inspector.js';
+import {setElectricalCutaway} from './electrical-cabinet.js';
+import { createViewerWorkspace } from './viewer-workspace.js';
 import { routingLegend } from './cable-routing.js';
 routingLegend();
 // 主程式：場景、時間軸（動作序列）、UI
@@ -5,6 +8,7 @@ import * as THREE from 'three';
 import { createVisionOverlay } from './vision-overlay.js';
 import { notebookResults } from './vision-results.js';
 const vision = createVisionOverlay();
+const fullSensorVision = createVisionOverlay();
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { createNotebook, NB, SKUS, selectSku } from './notebook.js';
@@ -132,6 +136,7 @@ const checklist=[
   [['judge','第一階段結果彙整'],['stack','出料托叉承重 / 堆疊']]
 ];
 const views={
+  electrical: [[-1000,530,1550],[-1000,330,20]],
   wiring: [[1200,2300,-2700],[-350,1050,-350]],
   iso:[[3300,2750,3900],[0,650,-100]],robot:[[1050,1400,1150],[-100,870,-250]],
   stacker:[[-2850,1800,1650],[-1850,990,0]],flip:[[1620,1340,1120],[1000,980,0]],
@@ -139,6 +144,7 @@ const views={
 };
 let selectedView='iso',camAnim=null,viewDoorId='';
 function setView(name,instant=false){
+  workspace.stopFollowing(); setElectricalCutaway(scene,name==='electrical');
   if(!views[name]&&name!=='sensor')return;selectedView=name;controls.enabled=name!=='sensor';
   document.querySelectorAll('.views button').forEach(b=>b.classList.toggle('selected',b.dataset.view===name));
   if(name==='sensor'){camAnim=null;return;}
@@ -217,20 +223,24 @@ function drawHud(){
 function resize(){const w=canvas.clientWidth,h=canvas.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}
 window.addEventListener('resize',resize);
 function render(){
-  drawHud();detailLight.target.position.copy(carrier.position);detailLight.position.copy(carrier.position).add(new THREE.Vector3(-260,700,320));
-  const caption=document.getElementById('sensorCaption'),sensor=selectedView==='sensor';caption.hidden=!sensor;
+  drawHud();workspace.follow();electrical.update({time:T,playing,action:S.action,motion:true,vision:!!(S.flashTool||S.flashTop||S.flashUp||S.flashDown||S.flashSn)});detailLight.target.position.copy(carrier.position);detailLight.position.copy(carrier.position).add(new THREE.Vector3(-260,700,320));
+  const caption=document.getElementById('sensorCaption'),sensor=selectedView==='sensor';caption.hidden=!sensor;fullSensorVision.hide();
   const w=canvas.clientWidth,h=canvas.clientHeight;renderer.setScissorTest(false);renderer.setViewport(0,0,w,h);
-  vision.hide();
-  if(!sensor){renderer.render(scene,camera);return;}
-  caption.textContent=`手臂鏡頭 · 3:2 完整視野 · ${S.flashTool?'取像位置':'即時預覽／移動中'} · 模擬影像`;
-  const hidden=[roiBox,zoneSlow,zoneSlowE,zoneKeep,trail],visible=hidden.map(o=>o.visible);hidden.forEach(o=>o.visible=false);
-  labels.forEach(l=>l.el.style.display='none');
-  const ph=Math.min(h,w/1.5),pw=ph*1.5;renderer.clear();renderer.setViewport((w-pw)/2,(h-ph)/2,pw,ph);
-  renderer.render(scene,robot.inspectionCam);
-  const rect=canvas.getBoundingClientRect(),e=robot.error(),exposure=S.flashTool>0&&e.position<2&&e.angle<3&&e.rail<2;
-  vision.draw(robot.inspectionCam,{left:rect.left+(w-pw)/2,top:rect.top+(h-ph)/2,width:pw,height:ph},notebookResults(nb,S,exposure,T));
+  const hidden=[roiBox,zoneSlow,zoneSlowE,zoneKeep,trail],visible=hidden.map(o=>o.visible);
+  if(sensor){
+    hidden.forEach(o=>o.visible=false);labels.forEach(l=>l.el.style.display='none');
+    const ph=Math.min(h,w/1.5),pw=ph*1.5;renderer.clear();renderer.setViewport((w-pw)/2,(h-ph)/2,pw,ph);renderer.render(scene,robot.inspectionCam);
+    caption.textContent='手臂鏡頭 · 3:2 完整視野 · 模擬影像';
+  }else workspace.renderOverview(renderer,scene);
+  hidden.forEach(o=>o.visible=false);
+  const e=robot.error(),exposure=S.flashTool>0&&e.position<2&&e.angle<3&&e.rail<2;
+  if(sensor){const rect=canvas.getBoundingClientRect(),ph=Math.min(h,w/1.5),pw=ph*1.5;fullSensorVision.draw(robot.inspectionCam,{left:rect.left+(w-pw)/2,top:rect.top+(h-ph)/2,width:pw,height:ph},notebookResults(nb,S,exposure,T));}
+  workspace.renderCamera({renderer,scene,camera:robot.inspectionCam,vision,title:'手臂相機 · 外觀檢測',result:exposure?'本幀取像':'即時預覽／移動中',marks:notebookResults(nb,S,exposure,T)});
   renderer.setViewport(0,0,w,h);hidden.forEach((o,i)=>o.visible=visible[i]);
 }
+const workspace=createViewerWorkspace({camera,controls,canvas,resize,focusOccluders:[cell.occluders],getFocus:()=>carrier.getWorldPosition(new THREE.Vector3()),
+  focusOffset:[-360,340,470],onFocus:()=>{setElectricalCutaway(scene,false);camAnim=null;selectedView='focus';controls.enabled=true;document.querySelectorAll('.views button').forEach(b=>b.classList.remove('selected'));}});
+const electrical=createElectricalInspector({scene,camera,controls,canvas,onEnter:()=>setView('electrical',true),onExit:()=>setView('iso',true),title:'MilitaryGradePC'});
 const clock=new THREE.Clock();
 function tick(dt){
   // Work at bounded substeps, so changing playback speed changes every axis equally.

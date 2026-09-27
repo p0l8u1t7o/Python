@@ -1,6 +1,8 @@
+import {robotController,controllerLeads} from './electrical-components.js';
 // 線體：地面、載具式輸送線（5 站）、載具（定位銷＋側夾＋堆疊柱）、進／出料升降堆料架、S1 頂視相機、S3 翻轉夾持治具、圍籬、三色燈
 import * as THREE from 'three';
-import { cable, cableTray, carrier, CABLE } from './cable-routing.js';
+import {cabinetShell,controlPanel,entryGland,panelFeed} from './electrical-cabinet.js';
+import { cable, cableTray, carrier, support, CABLE } from './cable-routing.js';
 import { NB } from './notebook.js';
 import { block, cylinder, decal, tube } from './detail.js';
 
@@ -135,7 +137,7 @@ export function createCell(scene) {
   for (const z of [-170, 170]) {
     const beam = box(len, 80, 60, matAlu); beam.position.set(cx, top - 40, z); g.add(beam);
     const belt = box(len - 20, 6, 30, matBelt); belt.position.set(cx, top + 3, z); g.add(belt);
-    for (let x = x0 + 100; x <= x1 - 100; x += 600) { const leg = box(50, top - 80, 50, matFrame); leg.position.set(x, (top - 80) / 2, z); g.add(leg); const foot = box(120, 12, 90, matDark); foot.position.set(x, 6, z); g.add(foot); }
+    for (let x = x0 + 100; x <= x1 - 100; x += 600) { const leg = box(50, top - 80, 50, matFrame); leg.name='conveyor leg'; leg.position.set(x, (top - 80) / 2, z); g.add(leg); const foot = box(120, 12, 90, matDark); foot.name='conveyor foot'; foot.position.set(x, 6, z); g.add(foot); }
   }
   for (let x = x0 + 100; x <= x1 - 100; x += 600) { const cross = box(40, 40, 400, matFrame); cross.position.set(x, top - 100, 0); g.add(cross); }
   const stops=[];
@@ -187,7 +189,8 @@ export function createCell(scene) {
   const domeRing = new THREE.Mesh(new THREE.TorusGeometry(LAYOUT.s1DomeR + 2, 8, 8, 48), matDark); domeRing.rotation.x = Math.PI / 2; domeRing.position.y = domeRim; head.add(domeRing);
   const topFlash = new THREE.SpotLight(0xffffff, 0, 1200, 0.5, 0.6, 1); topFlash.position.set(0, domeRim + 250, 0); topFlash.target.position.set(0, productTop - 100, 0); head.add(topFlash, topFlash.target);
   const cameraHarness=carrier(s1,'S1 / retracting camera carrier',{origin:[85,beamY+90,0],axis:[0,0,1],fixed:390,min:0,max:780,radius:55,width:34,pitch:20});
-  cable(head,'S1 / moving camera drop',[[85,beamY+200,0],[90,beamY+110,20],[65,beamY-30,30],[55,domeRim+410,30],[55,domeRim+365,0],[43.5,domeRim+365,0]],{radius:3,color:CABLE.signal,clips:4});
+  for(const z of [50,420,750])support(s1,'S1 / fixed guide mount',[40,beamY+45,z],[85,beamY+79,z],6);
+  cable(head,'S1 / moving camera drop',[[85,beamY+200,0],[90,beamY+110,20],[65,beamY-30,30],[55,domeRim+410,30],[55,domeRim+365,0],[43.5,domeRim+365,0]],{radius:3,color:CABLE.signal,clips:5,backing:{offset:[18,0,0],feet:[[0,[60,beamY-12,0]],[3,[20,domeRim+430,0]]]}});
   cable(head,'S1 / dome-light lead',[[43.5,domeRim+365,0],[90,domeRim+340,0],[220,domeRim+240,0],[225,domeRim+60,0],[211,domeRim+4,0]],{radius:2.5,color:CABLE.power,clips:3});
   const setHead = v => { head.position.z = (1 - v) * LAYOUT.s1HeadOut; cameraHarness.set(head.position.z); };
   setHead(0);
@@ -234,10 +237,21 @@ export function createCell(scene) {
     }
   }
   cableTray(g,'CELL / segregated field wiring',[-2530,400,320],[2500,400,320],{width:58});
-  cable(g,'S1 / rear-of-post feed',[[s1x,400,335],[s1x+240,600,910],[s1x+240,1900,910],[s1x+85,2090,750],[s1x+85,2090,390]],{radius:6,color:CABLE.sleeve,clips:7});
-  cable(g,'RAIL / fixed supply',[[0,400,300],[-180,370,-350],[-180,90,-750],[0,30,railZ-220]],{radius:8,color:CABLE.sleeve,clips:4});
+  for(let x=x0+100;x<=x1-100;x+=600)if(Math.abs(x-1400)>60)support(g,'CELL / trough leg bracket',[x,389,195],[x,389,320],6);
+  cable(g,'S1 / rear-of-post feed',[[s1x,400,335],[s1x+240,600,910],[s1x+240,1900,910],[s1x+85,2090,750],[s1x+85,2090,390]],{radius:6,color:CABLE.sleeve,clips:9,backing:{offset:[20,0,0],feet:[[1,[s1x+40,600,LAYOUT.s1PostZ]],[2,[s1x+40,1900,LAYOUT.s1PostZ]],[4,[s1x+40,beamY+45,390]]],radius:8}});
+  cable(g,'RAIL / fixed supply',[[0,400,300],[-180,370,-350],[-180,90,-750],[0,30,railZ-220]],{radius:8,color:CABLE.sleeve,clips:5,backing:{offset:[0,-22,0],feet:[[0,[0,top-100,190]],[3,[0,6,railZ-130]]],radius:8}});
+  const cabinet=cabinetShell(g,'CTRL / under-conveyor cabinet',{center:[-700,300,20],size:[460,600,440],entries:[{x:-150,z:180,hole:14},{x:150,z:180,hole:16},{x:0,z:180,hole:10}],thickness:12});
+  const panel=controlPanel(g,'CTRL / drive and vision IO',{center:[-700,300,-150],width:410,height:460,backZ:-197,profile:'military'});
+  const controller=robotController(g,{at:[-700,63,-145],floor:4});controllerLeads(g,controller,panel);
+  const motionCabinet=cabinetShell(g,'CTRL / peripheral drive cabinet',{center:[-1300,300,20],size:[460,600,440],entries:[{x:0,z:180,hole:10}],thickness:12});
+  const motionPanel=controlPanel(g,'CTRL / peripheral drives',{center:[-1300,300,-150],width:410,height:460,backZ:-197,profile:'military-motion'});
+  for(const x of [-700,-1300])entryGland(g,'CTRL / inter-cabinet service '+x,{at:[x,600,200],hole:10,wire:4,thickness:12});
+  panelFeed(g,'CTRL / inter-cabinet bus',[panel.ports[11],[-700,500,-100],[-700,540,200],[-700,660,200],[-700,680,250],[-1300,680,250],[-1300,660,200],[-1300,540,200],[-1300,500,-100],motionPanel.ports[0]],{radius:4});
+  for(const [x,hole,wire] of [[-850,14,6],[-550,16,8]])entryGland(g,'CTRL / roof entry '+x,{at:[x,600,200],hole,wire,thickness:12});
+  panelFeed(g,'CTRL / S1 to panel',[[s1x,400,335],[s1x,660,335],[-850,660,335],[-850,660,200],[-850,540,200],[-850,505,-100],panel.ports[3]],{radius:6});
+  panelFeed(g,'CTRL / rail power to panel',[[0,400,300],[-140,400,320],[-140,660,320],[-550,660,200],[-550,540,200],[-550,505,-100],panel.ports[9]],{radius:8,color:CABLE.power});
   // keepout：手臂不得進入的固定結構（S1 懸臂與取像頭、S3 龍門），供驗證做碰撞檢查
-  return { group:g,occluders:occ,pallet:palletApi,stackerIn,stackerOut,cradle,topFlash,snFlash,tower:towerApi,stops,setHead,keepout:[...keepout,...cradle.keepout],
+  return { group:g,occluders:occ,pallet:palletApi,stackerIn,stackerOut,cradle,topFlash,snFlash,tower:towerApi,stops,setHead,keepout:[...keepout,...cradle.keepout,...cabinet.solids,...motionCabinet.solids],
     updateTransport(x,located){beltMarks.position.x=((x%110)+110)%110;for(const s of stops){const hit=Math.abs(x-s.x)<2;s.st.position.y=top-14+(hit&&located?28:0);s.led.material.emissiveIntensity=hit?1.4:0;}},
     get topCamPos(){return topCam.getWorldPosition(new THREE.Vector3());},snReaderPos:snReader.position.clone() };
 }

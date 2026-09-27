@@ -135,7 +135,7 @@ export function createRobot() {
   const tcps = { press: tcpPress, cam: tcpCam };
 
   armDress(j,L,{upperDepth:56,foreDepth:46});
-  cable(root,'PWR / base inlet',[[0,0,-160],[0,32,-160],[0,70,-125],[0,80,-100]],{radius:7,color:CABLE.power});
+  cable(root,'PWR / base inlet',[[0,0,-180],[0,32,-180],[0,70,-125],[0,80,-100]],{radius:7,color:CABLE.power});
   cable(tool,'FT / flange junction',[[43,0,12],[55,0,12],[55,42,20],[35,42,20]],{radius:2,color:CABLE.signal,clips:1});
   cable(camMount,'LIGHT / rear-routed lead',[[22,0,-12],[30,12,-10],[35,30,20],[35,30,44]],{radius:1.6,color:CABLE.power,clips:1});
 

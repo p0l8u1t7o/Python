@@ -65,7 +65,7 @@ const results = await Promise.all(targets.map(async project => {
   return { project, sourceHash: after, sourceChangedDuringRun: before !== after, passed: before === after && checks.every(c => c.passed), checks };
 }));
 const report = { startedAt, finishedAt: new Date().toISOString(), scope: 'sampled animation geometry, kinematics and camera regression; not real-machine collision certification', passed: results.every(r => r.passed), results };
-await mkdir(join(root, 'review'), { recursive: true });
-await writeFile(join(root, 'review', 'interference-checks.json'), JSON.stringify(report, null, 2) + '\n');
-console.log(`${report.passed ? 'ALL CHECKS PASSED' : 'CHECKS FAILED / SOURCES CHANGED'}; report: review/interference-checks.json`);
+await mkdir(join(root, 'tools', 'review'), { recursive: true });
+await writeFile(join(root, 'tools', 'review', 'interference-checks.json'), JSON.stringify(report, null, 2) + '\n');
+console.log(`${report.passed ? 'ALL CHECKS PASSED' : 'CHECKS FAILED / SOURCES CHANGED'}; report: tools/review/interference-checks.json`);
 if (!report.passed) process.exitCode = 1;

@@ -1,3 +1,6 @@
+import {createElectricalInspector} from './electrical-inspector.js';
+import {setElectricalCutaway} from './electrical-cabinet.js';
+import { createViewerWorkspace } from './viewer-workspace.js';
 import { routingLegend } from './cable-routing.js';
 routingLegend();
 // 主程式：場景、配方選擇、時間軸（動作序列）、UI、相機子畫面（手臂相機／全局相機）
@@ -5,15 +8,13 @@ import * as THREE from 'three';
 import { createVisionOverlay } from './vision-overlay.js';
 import { ssdResults } from './vision-results.js';
 const vision = createVisionOverlay();
-import { cameraPanel } from './camera-panel.js';
-cameraPanel();
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { createStation } from './station.js';
 import { createSequence, smooth, STATIONS, SPEC } from './sequence.js';
 import { RECIPES, DEFAULT_RECIPE } from './recipes.js';
 import { LAYOUT } from './cell.js';
-import { cameraSource, stationPreviewTime, sensorViewport, SENSOR_ASPECT } from './camera-view.js';
+import { cameraSource, stationPreviewTime, SENSOR_ASPECT } from './camera-view.js';
 
 const qp = new URLSearchParams(location.search);
 const RECIPE_KEY = RECIPES[qp.get('recipe')] ? qp.get('recipe') : DEFAULT_RECIPE, recipe = RECIPES[RECIPE_KEY];
@@ -129,6 +130,7 @@ function stationPoint(id) {
   return product.pressPoint(id).add(new THREE.Vector3(st.place.x - r.x, LAYOUT.conveyorTop + LAYOUT.liftStroke - r.y, st.place.z - r.z));
 }
 const views = {
+  electrical: () => [[0,520,850],[0,420,-500]],
   wiring: () => [[-1200,1850,700],[0,1200,-300]],
   iso: () => [[-1250, 1650, 1550], [0, 950, -200]], conveyor: () => [[-420, 1180, 820], [st.place.x, 915, st.place.z]], robot: () => [[-950, 1450, 150], [0, 1030, -280]],
   press: () => { const p = stationPoint(product.ids[0]); return [p.clone().add(new THREE.Vector3(-150, 60, 90)).toArray(), p.toArray()]; },
@@ -139,6 +141,7 @@ const views = {
 };
 let selectedView = 'iso', camAnim = null;
 function setView(name, instant = false) {
+  workspace.stopFollowing(); setElectricalCutaway(scene,name==='electrical');
   if (!views[name]) return; selectedView = name;
   lastProductPosition.copy(product.root.position);
   camera.near=name==='leads' ? .15 : 2; camera.updateProjectionMatrix();
@@ -212,7 +215,6 @@ function drawHud() {
     : last.length ? (S.flashTool > 0 ? '取像中　' : '最近取像　') + last.map(id => { const g = ps.gap[id], ok = g <= recipe.gapLimit; return `<span class="${ok ? 'ok' : 'ng'}">${id} ${g.toFixed(2)} mm ${ok ? 'OK' : 'NG'}</span>`; }).join('　') : '<span>—</span>';
   cell.tower.set(fault ? 'red' : T >= total - 1e-6 ? 'green' : S.station === 4 && !current.completed.has('recheck') ? 'yellow' : playing ? 'green' : 'yellow');
   cell.occluders.visible = ui.showGuards.checked; trail.visible = ui.showPath.checked;
-  ui.pipFrame.hidden = !ui.showPip.checked;
   ui.action.textContent = S.action; ui.substep.textContent = S.sub;
   ui.phase.textContent = fault || (T >= total ? 'COMPLETE · 本盤完成' : waiting > 0 ? '等待手臂到位' : playing ? 'AUTO · 執行中' : 'HOLD · 暫停'); ui.phase.classList.toggle('fault', !!fault);
   ui.forceBar.style.width = Math.min(100, force / SPEC.forceLimit * 100) + '%'; ui.forceVal.textContent = force.toFixed(1) + ' N';
@@ -239,30 +241,20 @@ function drawHud() {
 function resize() { const w = canvas.clientWidth, h = canvas.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 window.addEventListener('resize', resize);
 function render() {
-  drawHud();
-  const w = canvas.clientWidth, h = canvas.clientHeight;
-  renderer.setScissorTest(false); renderer.setViewport(0, 0, w, h); renderer.render(scene, camera);
-  vision.hide();
-  if (ui.showPip.checked) {
-    // 子畫面：目前使用中的相機實際看到的畫面（位置對齊 #pipFrame）
-    const c = canvas.getBoundingClientRect(), f = document.getElementById('pipImage').getBoundingClientRect();
-    const box = sensorViewport(f.width, f.height);
-    const x = f.left - c.left + box.x, y = c.bottom - f.bottom + box.y, pw = box.width, ph = box.height, cam = useGlobalView() ? cell.globalCam : robot.pipCam;
-    // Preserve the full sensor field of view; text belongs outside the image.
-    cam.aspect = SENSOR_ASPECT; cam.updateProjectionMatrix();
-    const vis = [cell.occluders.visible, trail.visible]; cell.occluders.visible = false; trail.visible = false;
-    const roiVisible=roiBoxes.map(b=>b.visible);roiBoxes.forEach(b=>b.visible=false);
-    const exposure=renderer.toneMappingExposure;renderer.toneMappingExposure=.88;
-    renderer.setScissorTest(true); renderer.setScissor(f.left-c.left,c.bottom-f.bottom,f.width,f.height);
-    renderer.setClearColor(0x080d13,1); renderer.clear();
-    renderer.setScissorTest(true); renderer.setScissor(x, y, pw, ph); renderer.setViewport(x, y, pw, ph); renderer.render(scene, cam);
-    const global=useGlobalView(),shotReady=S.flashTool>0&&arrived();
-    vision.draw(cam,{left:f.left+box.x,top:f.top+box.y,width:pw,height:ph},{title:global?'USB 定位':'銀腳貼合',state:global?(S.station===1&&S.detected>0?'定位示意':'預覽'):shotReady?`本幀取像 · ≤ ${recipe.gapLimit} mm`:'待取像',time:T,marks:ssdResults(product,recipe,{global,detected:S.station===1&&S.detected>0,exposure:shotReady,ids:shotIds(),gaps:st.state.gap})});
-    renderer.setClearColor(scene.background,1);
-    renderer.toneMappingExposure=exposure;roiBoxes.forEach((b,i)=>b.visible=roiVisible[i]);
-    renderer.setScissorTest(false); renderer.setViewport(0, 0, w, h); [cell.occluders.visible, trail.visible] = vis;
-  }
+  drawHud(); workspace.follow();electrical.update({time:T,playing,action:S.action,motion:true,vision:!!(S.flashTool||S.flashTop||S.flashUp||S.flashDown||S.flashSn)});
+  renderer.setScissorTest(false); renderer.setViewport(0,0,canvas.clientWidth,canvas.clientHeight); workspace.renderOverview(renderer,scene);
+  const hidden=[cell.occluders,trail,...roiBoxes],visible=hidden.map(o=>o.visible); hidden.forEach(o=>o.visible=false);
+  const exposure=renderer.toneMappingExposure;renderer.toneMappingExposure=.88;
+  const global=useGlobalView(),shotReady=S.flashTool>0&&arrived();
+  workspace.renderCamera({renderer,scene,camera:global?cell.globalCam:robot.pipCam,vision,aspect:SENSOR_ASPECT,
+    marks:{title:global?'USB 定位':'銀腳貼合',state:global?(S.station===1&&S.detected>0?'定位示意':'預覽'):shotReady?`本幀取像 · ≤ ${recipe.gapLimit} mm`:'待取像',time:T,marks:ssdResults(product,recipe,{global,detected:S.station===1&&S.detected>0,exposure:shotReady,ids:shotIds(),gaps:st.state.gap})}});
+  renderer.toneMappingExposure=exposure;hidden.forEach((o,i)=>o.visible=visible[i]);
 }
+const workspace=createViewerWorkspace({camera,controls,canvas,resize,focusOccluders:[cell.occluders],
+  getFocus:()=>product.root.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0,recipe.pallet.t+5,0)),
+  focusOffset:[-recipe.pallet.w*.55,recipe.pallet.w*.85,recipe.pallet.d*.95],
+  onFocus:()=>{setElectricalCutaway(scene,false);camAnim=null;selectedView='focus';document.querySelectorAll('.views button').forEach(b=>b.classList.remove('selected'));}});
+const electrical=createElectricalInspector({scene,camera,controls,canvas,onEnter:()=>setView('electrical',true),onExit:()=>setView('iso',true),title:'RobotArmPressSSD'});
 const clock = new THREE.Clock();
 const lastProductPosition = product.root.position.clone();
 function tick(dt) {

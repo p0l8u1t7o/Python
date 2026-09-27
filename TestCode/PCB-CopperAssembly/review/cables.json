@@ -1,19 +1,37 @@
 {
   "project": "PCB-CopperAssembly",
   "interval": 0.05,
-  "method": "constant carrier length/radius; conservative cable-segment vs expanded mesh bounds; endpoint mount allowance 10 mm",
+  "method": "constant carrier length/radius; cable and support segments vs expanded selected rigid mesh bounds; cable end seating 10 mm; support seating only at contacting endpoints, max(10 mm, diameter); tabletop service bores",
   "report": [
     {
       "scenario": "obround-138",
       "samples": 2507,
-      "routes": 48,
-      "carriers": 12
+      "routes": 51,
+      "supports": 172,
+      "carriers": 12,
+      "feedthroughs": {
+        "plates": 1,
+        "glands": 4,
+        "holeRays": 24,
+        "wireCrossings": 12,
+        "mountChecks": 4,
+        "failures": []
+      }
     },
     {
       "scenario": "round-72",
       "samples": 1389,
-      "routes": 48,
-      "carriers": 12
+      "routes": 51,
+      "supports": 172,
+      "carriers": 12,
+      "feedthroughs": {
+        "plates": 1,
+        "glands": 4,
+        "holeRays": 24,
+        "wireCrossings": 12,
+        "mountChecks": 4,
+        "failures": []
+      }
     }
   ],
   "failures": []

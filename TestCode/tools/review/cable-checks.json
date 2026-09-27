@@ -1,0 +1,48 @@
+{
+  "startedAt": "2026-09-27T01:07:32.349Z",
+  "finishedAt": "2026-09-27T01:08:28.988Z",
+  "scope": "sampled visible cable routes and carrier kinematics; not dynamic flexible-body or machine certification",
+  "passed": true,
+  "results": [
+    {
+      "project": "AutomaticAcid-BaseTitration",
+      "passed": true,
+      "sourceHash": "c3ff64e8feafa9eef2e811b21718dfae6877ed973542eac003d58b3872b7aece",
+      "sourceChangedDuringRun": false,
+      "seconds": 56.63,
+      "report": "AutomaticAcid-BaseTitration/review/cables.json"
+    },
+    {
+      "project": "MilitaryGradePC",
+      "passed": true,
+      "sourceHash": "2c1113dd64ab800fceb42f43d4576567bd70c67a1231ca8c965aa850e12a7174",
+      "sourceChangedDuringRun": false,
+      "seconds": 53.9,
+      "report": "MilitaryGradePC/review/cables.json"
+    },
+    {
+      "project": "PCB-CopperAssembly",
+      "passed": true,
+      "sourceHash": "adf3b2a64e091e77276cf6b33685390cf15d47cb682e876a7bb2e37a1f2bcb6c",
+      "sourceChangedDuringRun": false,
+      "seconds": 27.25,
+      "report": "PCB-CopperAssembly/review/cables.json"
+    },
+    {
+      "project": "RobotArmPressSSD",
+      "passed": true,
+      "sourceHash": "c25ec2b19712f1161fe4cd3bedda2fed0e1fc134f161c6e51cc89a93f03da8c3",
+      "sourceChangedDuringRun": false,
+      "seconds": 14.09,
+      "report": "RobotArmPressSSD/review/cables.json"
+    },
+    {
+      "project": "shutter assembly",
+      "passed": true,
+      "sourceHash": "1a57be24fa96e20a85f20deb62882ede0e1245e620765192d1e4a7f95b4c742c",
+      "sourceChangedDuringRun": false,
+      "seconds": 4.39,
+      "report": "shutter assembly/review/cables.json"
+    }
+  ]
+}

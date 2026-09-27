@@ -7,10 +7,14 @@ const root=fileURLToPath(new URL('../',import.meta.url));
 const projects=['AutomaticAcid-BaseTitration','MilitaryGradePC','PCB-CopperAssembly','RobotArmPressSSD','shutter assembly'];
 const source=await readFile(join(root,'tools/cable-routing.js'));
 for(const p of projects)if(!source.equals(await readFile(join(root,p,'web/js/cable-routing.js'))))throw new Error(p+': run node tools/sync-cable-routing.mjs');
+for(const file of ['electrical-cabinet.js','electrical-components.js','electrical-inspector.js']){
+const electricalSource=await readFile(join(root,'tools',file));
+for(const p of projects)if(!electricalSource.equals(await readFile(join(root,p,'web/js',file))))throw new Error(p+': run node tools/sync-electrical-cabinet.mjs');
+}
 async function hash(project) {
   const h=createHash('sha256'),dir=join(root,project,'web/js');
   for(const name of (await readdir(dir)).filter(n=>n.endsWith('.js')).sort())h.update(name).update(await readFile(join(dir,name)));
-  h.update(await readFile(join(root,'tools/verify-cables.mjs')));return h.digest('hex');
+  h.update(await readFile(join(root,'tools/verify-cables.mjs')));h.update(await readFile(join(root,'tools/check-feedthroughs.mjs')));return h.digest('hex');
 }
 const startedAt=new Date().toISOString();
 const results=await Promise.all(projects.map(async project=>{
@@ -25,5 +29,5 @@ const results=await Promise.all(projects.map(async project=>{
   console.log((passed?'PASS ':'FAIL ')+project+' cable routing');
   return {project,passed,sourceHash,sourceChangedDuringRun:before!==sourceHash,seconds:+((Date.now()-start)/1000).toFixed(2),report:project+'/review/cables.json'};
 }));
-await writeFile(join(root,'review/cable-checks.json'),JSON.stringify({startedAt,finishedAt:new Date().toISOString(),scope:'sampled visible cable routes and carrier kinematics; not dynamic flexible-body or machine certification',passed:results.every(r=>r.passed),results},null,2));
+await writeFile(join(root,'tools/review/cable-checks.json'),JSON.stringify({startedAt,finishedAt:new Date().toISOString(),scope:'sampled visible cable routes and carrier kinematics; not dynamic flexible-body or machine certification',passed:results.every(r=>r.passed),results},null,2));
 if(results.some(r=>!r.passed))process.exitCode=1;

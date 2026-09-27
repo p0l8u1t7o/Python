@@ -64,5 +64,5 @@ export function createVisionOverlay() {
       ctx.fillStyle='#071720e8';ctx.fillRect(r.x,r.y,r.w,r.h);ctx.fillStyle=c;ctx.fillText(m.label,r.x+5,r.y+13,r.w-10);
     }
   }
-  return {draw,hide};
+  return {draw,hide,host};
 }
