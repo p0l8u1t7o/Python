@@ -54,3 +54,7 @@ node --no-warnings --experimental-loader ./MilitaryGradePC/tools/three-loader.mj
 ## 五站共用視窗控制
 
 `viewer-workspace.js`、`viewer-workspace.css` 管理相機拖曳、獨立視窗與產品焦點；修改後執行 `node tools/sync-viewer-workspace.mjs` 同步五站。詳見[操作說明](docs/viewer-controls.md)與[瀏覽器驗證紀錄](review/viewer-workspace-checks.json)。
+
+## MP4 展示影片
+
+[movie-export](movie-export/README.md) 使用五站網站的本機副本逐格渲染完整流程，並以 NVIDIA NVENC 編碼 1080p／30 fps MP4。包含產品追隨、電盤剖視、整線與穿板接頭。影片與抽查影格集中於忽略版控的 `TEMP/videos/`，不放進 GitHub Pages。
