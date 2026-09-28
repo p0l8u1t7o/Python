@@ -9,12 +9,18 @@ import numpy as np
 from scipy.spatial.transform import Rotation, Slerp
 
 from cellforge.kinematics import solve_ik
-from cellforge.schema.models import ProcessStep
+from cellforge.schema.models import PartPlacement, ProcessStep
 
 from .sampling import state_at
 from .scene import SceneModel, transform
+from .workpiece import PRIMARY_PART
 
 SAMPLE_PERIOD_S = 0.1
+# 直線移動依關節速度推導時長時，每輪最多放大的倍數；連續路徑幾輪內就會收斂。
+LINEAR_DURATION_GROWTH = 4.0
+# 連續路徑的最大單段關節變化會隨取樣加密倍數等比縮小，IK 解支跳躍則維持不變；
+# 加密至少這麼多倍時才比較兩者，門檻取兩種情況的幾何中點（前一輪 ÷ √加密倍數）。
+LINEAR_MIN_REFINEMENT = 1.5
 
 
 def _sample_times(t0: float, t1: float) -> list[float]:
@@ -55,6 +61,8 @@ class Simulator:
         self.events: list[dict[str, Any]] = []
         self.steps: list[dict[str, Any]] = []
         self.ik_failures: list[dict[str, Any]] = []
+        self.path_discontinuities: list[dict[str, Any]] = []
+        self.action_results: list[dict[str, Any]] = []
         self.station_ranges: dict[str, list[float]] = {}
         self.duration_s = 0.0
         self._initialize_tracks()
@@ -71,32 +79,114 @@ class Simulator:
             axis = self._axis(name)
             key = "value_deg" if axis.type == "revolute" else "value_mm"
             self.nodes[name] = {"type": axis.type, key: [[0.0, value]]}
-        self.nodes["workpiece"] = {
-            "type": "pose",
-            "attached_to": [[0.0, None]],
-            "pose": [],
-            "pose_quat": [],
-        }
-        self._append_pose(0.0, self.state.workpiece_pose)
+        for part_id in self.scene.parts:
+            self.nodes[part_id] = {
+                "type": "pose",
+                "attached_to": [[0.0, None]],
+                "pose": [],
+                "pose_quat": [],
+            }
+            self._append_pose(0.0, self.state.part(part_id).pose, part_id)
 
     def initialize_workpiece(self, frame_name: str | None) -> None:
-        if not frame_name:
-            return
-        self.state.workpiece_pose = self.scene.resolve_frame(frame_name, self.state)
-        self.state.attached_to = self.scene.frame_owner(frame_name)
-        self.nodes["workpiece"]["pose"].clear()
-        self.nodes["workpiece"]["pose_quat"].clear()
-        self.nodes["workpiece"]["attached_to"] = [[0.0, self.state.attached_to]]
-        self._append_pose(0.0, self.state.workpiece_pose)
+        """Legacy entry point: place the primary workpiece at ``frame_name``."""
+        if frame_name:
+            self._place(PRIMARY_PART, PartPlacement(frame=frame_name))
+
+    def initialize_parts(self, legacy_frame: str | None = None) -> None:
+        """Place every part at its declared initial frame, holders before the parts they hold.
+
+        ``legacy_frame`` is ``process.initial_workpiece_frame`` for scenes whose primary
+        workpiece was built without a process.
+        """
+
+        primary = self.scene.parts.get(PRIMARY_PART)
+        if primary is not None and primary.initial is None and legacy_frame:
+            primary.initial = PartPlacement(frame=legacy_frame)
+        pending = [part for part in self.scene.parts.values() if part.initial is not None]
+        placed = {part.id for part in self.scene.parts.values() if part.initial is None}
+        while pending:
+            ready = [
+                part
+                for part in pending
+                if (owner := self.scene.frame_owner(part.initial.frame)) not in self.scene.parts
+                or owner in placed
+            ]
+            if not ready:
+                names = "、".join(part.id for part in pending)
+                raise ValueError(f"零件初始位置互相引用成環：{names}")
+            for part in ready:
+                self._place(part.id, part.initial)
+                placed.add(part.id)
+                pending.remove(part)
+
+    def _place(self, part_id: str, placement: PartPlacement) -> None:
+        pose = self.scene.resolve_frame(placement.frame, self.state)
+        offset = placement.offset
+        if any(offset.xyz) or any(offset.rpy_deg):
+            pose = pose @ transform(offset.xyz, offset.rpy_deg)
+        state = self.state.part(part_id)
+        state.pose = pose
+        state.holder = self.scene.frame_owner(placement.frame)
+        state.relative = self._relative_to_holder(part_id)
+        node = self.nodes[part_id]
+        node["pose"].clear()
+        node["pose_quat"].clear()
+        node["attached_to"] = [[0.0, state.holder]]
+        self._append_pose(0.0, pose, part_id)
+
+    def _object(self, step: ProcessStep) -> str:
+        """The part a step acts on; single-part projects default to that part."""
+        if step.object:
+            if step.object not in self.scene.parts:
+                raise ValueError(f"步驟 {step.id} 的 object 不是零件：{step.object}")
+            return step.object
+        if PRIMARY_PART in self.scene.parts:
+            return PRIMARY_PART
+        if len(self.scene.parts) == 1:
+            return next(iter(self.scene.parts))
+        raise ValueError(f"步驟 {step.id} 作用於零件，必須以 object 指定零件 id")
+
+    def _holder_frame(self, holder: str | None) -> np.ndarray | None:
+        """World frame that carries a held part (robot tool or another part)."""
+        if not holder:
+            return None
+        if holder in self.scene.parts:
+            return self.state.part(holder).pose
+        robot, _, suffix = holder.partition(".")
+        if robot in self.scene.robots and suffix == "tool":
+            return self.scene.resolve_frame(holder, self.state)
+        return None
+
+    def _relative_to_holder(self, part_id: str) -> np.ndarray | None:
+        state = self.state.part(part_id)
+        frame = self._holder_frame(state.holder)
+        return None if frame is None else np.linalg.inv(frame) @ state.pose
+
+    def _carry(self, t: float, moved: set[str]) -> None:
+        """Move every part held (directly or through other parts) by a moved holder."""
+        frontier = set(moved)
+        while frontier:
+            following = set()
+            for part_id in self.scene.parts:
+                state = self.state.part(part_id)
+                if state.holder not in frontier or state.relative is None:
+                    continue
+                frame = self._holder_frame(state.holder)
+                if frame is None:
+                    continue
+                state.pose = frame @ state.relative
+                self._append_pose(t, state.pose, part_id)
+                following.add(part_id)
+            frontier = following
 
     def _axis(self, name: str):
-        if name.startswith("workpiece."):
-            axes = self.scene.workpiece.definition.axes
-            suffix = name.removeprefix("workpiece.")
-        else:
-            module_name, _, suffix = name.partition(".")
-            module = self.scene.modules.get(module_name)
-            axes = [] if module is None else module.definition.axes
+        found = self.scene.part_axis(name)
+        if found is not None:
+            return found[1]
+        module_name, _, suffix = name.partition(".")
+        module = self.scene.modules.get(module_name)
+        axes = [] if module is None else module.definition.axes
         for axis in axes:
             if axis.id == suffix:
                 return axis
@@ -107,12 +197,15 @@ class Simulator:
         defaults = self.scene.initial_state()
         defaults.joints.update(sampled.joints)
         defaults.axes.update(sampled.axes)
-        defaults.workpiece_pose = sampled.workpiece_pose
-        defaults.attached_to = sampled.attached_to
+        for part_id in self.scene.parts:
+            source = sampled.part(part_id)
+            target = defaults.part(part_id)
+            target.pose = source.pose
+            target.holder = source.holder
         self.state = defaults
-        if sampled.attached_to and sampled.attached_to.endswith(".tool"):
-            tool = self.scene.resolve_frame(sampled.attached_to, self.state)
-            self.state.attachment_relative = np.linalg.inv(tool) @ sampled.workpiece_pose
+        # 持有者先於被持有者還原，相對位姿才以持有者當下的 frame 計算。
+        for part_id in self.scene.parts:
+            self.state.part(part_id).relative = self._relative_to_holder(part_id)
 
     @staticmethod
     def _append(track: list[list[Any]], key: list[Any]) -> None:
@@ -121,31 +214,26 @@ class Simulator:
         else:
             track.append(key)
 
-    def _append_pose(self, t: float, pose: np.ndarray) -> None:
+    def _append_pose(self, t: float, pose: np.ndarray, part_id: str = PRIMARY_PART) -> None:
         quaternion = Rotation.from_matrix(pose[:3, :3]).as_quat()
         rpy = Rotation.from_matrix(pose[:3, :3]).as_euler("xyz", degrees=True)
         self._append(
-            self.nodes["workpiece"]["pose"],
+            self.nodes[part_id]["pose"],
             [float(t), *pose[:3, 3].tolist(), *rpy.tolist()],
         )
         self._append(
-            self.nodes["workpiece"]["pose_quat"],
+            self.nodes[part_id]["pose_quat"],
             [float(t), *pose[:3, 3].tolist(), *quaternion.tolist()],
         )
 
-    def _append_attached(self, t: float, target: str | None) -> None:
-        self._append(self.nodes["workpiece"]["attached_to"], [float(t), target])
-        self.state.attached_to = target
+    def _append_attached(self, t: float, target: str | None, part_id: str = PRIMARY_PART) -> None:
+        self._append(self.nodes[part_id]["attached_to"], [float(t), target])
+        self.state.part(part_id).holder = target
 
     def _append_joints(self, actor: str, t: float, joints: np.ndarray) -> None:
         self._append(self.nodes[actor]["joints_deg"], [float(t), *joints.tolist()])
         self.state.joints[actor] = joints.copy()
-        if self.state.attached_to == f"{actor}.tool" and self.state.attachment_relative is not None:
-            self.state.workpiece_pose = (
-                self.scene.resolve_frame(f"{actor}.tool", self.state)
-                @ self.state.attachment_relative
-            )
-            self._append_pose(t, self.state.workpiece_pose)
+        self._carry(t, {f"{actor}.tool"})
 
     def _append_axis(self, actor: str, t: float, value: float) -> None:
         node = self.nodes[actor]
@@ -236,23 +324,44 @@ class Simulator:
         speed_scale = (
             float(step.value.get("speed_scale", 0.5)) if isinstance(step.value, dict) else 0.5
         )
+        return self._move_pose(
+            step.id,
+            step.actor,
+            target,
+            t0,
+            linear=linear,
+            duration_s=step.duration_s,
+            speed_scale=speed_scale,
+        )
+
+    def _move_pose(
+        self,
+        step_id: str,
+        actor: str,
+        target: np.ndarray,
+        t0: float,
+        *,
+        linear: bool,
+        duration_s: float | None = None,
+        speed_scale: float = 0.5,
+    ) -> float:
+        """Move ``actor``'s TCP to the world pose ``target`` (joint-interpolated or linear)."""
         if not linear:
-            goal = self._solve(step.id, step.actor, target, t0)
-            return self._move_joints(step.id, step.actor, goal, t0, step.duration_s, speed_scale)
-        start_pose = self.scene.resolve_frame(f"{step.actor}.tool", self.state)
-        endpoint = self._solve(step.id, step.actor, target, t0, record=False)
-        derive_duration = step.duration_s is None
+            goal = self._solve(step_id, actor, target, t0)
+            return self._move_joints(step_id, actor, goal, t0, duration_s, speed_scale)
+        start_pose = self.scene.resolve_frame(f"{actor}.tool", self.state)
+        endpoint = self._solve(step_id, actor, target, t0, record=False)
+        derive_duration = duration_s is None
         initial_duration = (
-            step.duration_s
-            if step.duration_s is not None
-            else self._joint_duration(
-                step.actor, self.state.joints[step.actor], endpoint, speed_scale
-            )
+            duration_s
+            if duration_s is not None
+            else self._joint_duration(actor, self.state.joints[actor], endpoint, speed_scale)
         )
         duration = max(0.0, float(initial_duration))
-        start_joints = self.state.joints[step.actor].copy()
-        speeds = self._joint_speeds(step.actor)
+        start_joints = self.state.joints[actor].copy()
+        speeds = self._joint_speeds(actor)
         plan = []
+        previous: tuple[float, float] | None = None
         for _attempt in range(5 if derive_duration else 1):
             local_times = _sample_times(0.0, duration)
             seed = start_joints.copy()
@@ -260,28 +369,53 @@ class Simulator:
             for local_t in local_times:
                 ratio = 1.0 if duration <= 0 else local_t / duration
                 desired = _interpolate_pose(start_pose, target, ratio)
-                self.state.joints[step.actor] = seed
-                result = self._solve_result(step.id, step.actor, desired)
+                self.state.joints[actor] = seed
+                result = self._solve_result(step_id, actor, desired)
                 seed = result.joints
                 plan.append((ratio, result))
             required = duration
+            jump = 0.0
+            jump_at: tuple[float, int, float] | None = None
             for (ratio_a, result_a), (ratio_b, result_b) in zip(plan, plan[1:], strict=False):
                 ratio_span = ratio_b - ratio_a
                 if ratio_span <= 1e-12:
                     continue
-                segment = np.max(
-                    np.abs(result_b.joints - result_a.joints) / (speeds * speed_scale * ratio_span)
-                )
+                change = np.abs(result_b.joints - result_a.joints)
+                segment = np.max(change / (speeds * speed_scale * ratio_span))
                 required = max(required, float(segment))
+                joint_index = int(np.argmax(change))
+                if float(change[joint_index]) > jump:
+                    jump = float(change[joint_index])
+                    jump_at = (ratio_b, joint_index, jump)
             if not derive_duration or required <= duration * (1.0 + 1e-9):
                 break
-            duration = required
+            refinement = duration / previous[0] if previous and previous[0] > 0 else 1.0
+            if (
+                previous is not None
+                and refinement >= LINEAR_MIN_REFINEMENT
+                and jump >= previous[1] / math.sqrt(refinement)
+            ):
+                # 取樣加密後最大關節跳變沒有隨之縮小：直線路徑在 IK 解支之間跳躍，拉長時長只會
+                # 讓取樣數無限增加（DEV-006 實測 29→404→5594 秒）。停止推導並記錄具體原因。
+                assert jump_at is not None
+                ratio_b, joint_index, change_deg = jump_at
+                self.path_discontinuities.append(
+                    {
+                        "step_id": step_id,
+                        "t": float(t0 + ratio_b * duration),
+                        "joint": self.scene.robots[actor].chain.joint_names[joint_index],
+                        "jump_deg": change_deg,
+                    }
+                )
+                break
+            previous = (duration, jump)
+            duration = min(required, duration * LINEAR_DURATION_GROWTH)
         t1 = t0 + duration
-        self.state.joints[step.actor] = start_joints
+        self.state.joints[actor] = start_joints
         for ratio, result in plan:
             t = t0 + ratio * duration
-            self._record_ik(step.id, t, result)
-            self._append_joints(step.actor, t, result.joints)
+            self._record_ik(step_id, t, result)
+            self._append_joints(actor, t, result.joints)
         return t1
 
     def _move_joint(self, step: ProcessStep, t0: float) -> float:
@@ -302,11 +436,11 @@ class Simulator:
         return self._move_joints(step.id, step.actor, goal, t0, step.duration_s, speed_scale)
 
     def _cover_name(self, step: ProcessStep) -> str | None:
-        if step.actor.startswith("workpiece."):
+        if self.scene.part_axis(step.actor) is not None:
             return step.actor
         target = step.target or {}
-        if target.get("module") == "workpiece" and target.get("id"):
-            return f"workpiece.{target['id']}"
+        if target.get("module") in self.scene.parts and target.get("id"):
+            return f"{target['module']}.{target['id']}"
         return None
 
     def _cover_goal(self, name: str, value: Any) -> float:
@@ -370,22 +504,30 @@ class Simulator:
         t1 = t0 + max(0.0, duration)
         self._append_axis(step.actor, t0, current)
         owner = step.actor.partition(".")[0]
-        follows_axis = self.state.attached_to == owner
-        if follows_axis:
+        followers = [
+            part_id for part_id in self.scene.parts if self.state.part(part_id).holder == owner
+        ]
+        relatives = {}
+        if followers:
             child = axis.child or axis.id
             current_link = self.scene.module_link_transforms(owner, self.state)[child]
-            relative = np.linalg.inv(current_link) @ self.state.workpiece_pose
-            self._append_pose(t0, self.state.workpiece_pose)
+            for part_id in followers:
+                relatives[part_id] = np.linalg.inv(current_link) @ self.state.part(part_id).pose
+                self._append_pose(t0, self.state.part(part_id).pose, part_id)
+            self._carry(t0, set(followers))
         self._append_axis(step.actor, t1, goal)
-        if follows_axis:
+        if followers:
             goal_link = self.scene.module_link_transforms(owner, self.state)[child]
-            self.state.workpiece_pose = goal_link @ relative
-            self._append_pose(t1, self.state.workpiece_pose)
+            for part_id in followers:
+                self.state.part(part_id).pose = goal_link @ relatives[part_id]
+                self._append_pose(t1, self.state.part(part_id).pose, part_id)
+            self._carry(t1, set(followers))
         return t1
 
     def _transfer(self, step: ProcessStep, t0: float) -> float:
+        part_id = self._object(step)
         goal = self.scene.frame_target(step.target or {}, self.state, tool=False)
-        start = self.state.workpiece_pose.copy()
+        start = self.state.part(part_id).pose.copy()
         distance = float(np.linalg.norm(goal[:3, 3] - start[:3, 3]))
         module = self.scene.modules[step.actor]
         speed = float(module.instance.params.get("speed_mm_s", 0.0))
@@ -396,45 +538,65 @@ class Simulator:
             )
         duration = step.duration_s if step.duration_s is not None else distance / speed
         t1 = t0 + max(0.0, duration)
-        self._append_attached(t0, step.actor)
-        self._append_pose(t0, start)
-        self.state.workpiece_pose = goal
-        self._append_pose(t1, goal)
+        self._append_attached(t0, step.actor, part_id)
+        self._append_pose(t0, start, part_id)
+        self._carry(t0, {part_id})
+        rotates = not np.allclose(start[:3, :3], goal[:3, :3], atol=1e-9)
+        if rotates and self._holds_others(part_id):
+            # 被帶著的子零件各自內插會與母零件的 slerp 不一致：旋轉時逐點取樣。
+            for sample in _sample_times(t0, t1)[1:-1]:
+                ratio = (sample - t0) / (t1 - t0)
+                self.state.part(part_id).pose = _interpolate_pose(start, goal, ratio)
+                self._append_pose(sample, self.state.part(part_id).pose, part_id)
+                self._carry(sample, {part_id})
+        self.state.part(part_id).pose = goal
+        self._append_pose(t1, goal, part_id)
+        self._carry(t1, {part_id})
         owner = self.scene.frame_owner(str((step.target or {}).get("frame", step.actor)))
-        self._append_attached(t1, owner)
+        self._append_attached(t1, owner, part_id)
+        self.state.part(part_id).relative = self._relative_to_holder(part_id)
         return t1
 
+    def _holds_others(self, part_id: str) -> bool:
+        return any(self.state.part(other).holder == part_id for other in self.scene.parts)
+
     def _attach(self, step: ProcessStep, t0: float) -> float:
+        part_id = self._object(step)
         tool_name = f"{step.actor}.tool"
         tool = self.scene.resolve_frame(tool_name, self.state)
-        self.state.attachment_relative = np.linalg.inv(tool) @ self.state.workpiece_pose
-        self._append_attached(t0, tool_name)
+        self.state.part(part_id).relative = np.linalg.inv(tool) @ self.state.part(part_id).pose
+        self._append_attached(t0, tool_name, part_id)
         return t0 + max(0.0, step.duration_s or 0.0)
 
     def _detach(self, step: ProcessStep, t0: float) -> float:
+        part_id = self._object(step)
+        state = self.state.part(part_id)
         duration = max(0.0, step.duration_s or 0.0)
         t1 = t0 + duration
         if step.target:
-            self._append_pose(t0, self.state.workpiece_pose)
-            self.state.workpiece_pose = self.scene.frame_target(step.target, self.state, tool=False)
-            self._append_pose(t1, self.state.workpiece_pose)
+            self._append_pose(t0, state.pose, part_id)
+            state.pose = self.scene.frame_target(step.target, self.state, tool=False)
+            self._append_pose(t1, state.pose, part_id)
+            self._carry(t1, {part_id})
             owner = self.scene.frame_owner(str(step.target.get("frame", "")))
         else:
             owner = None
-        self.state.attachment_relative = None
-        self._append_attached(t1, owner)
+        self._append_attached(t1, owner, part_id)
+        state.relative = self._relative_to_holder(part_id)
         return t1
 
     def _flip_robot(self, step: ProcessStep, t0: float) -> float:
-        if self.state.attached_to != f"{step.actor}.tool" or self.state.attachment_relative is None:
+        part_id = self._object(step)
+        held = self.state.part(part_id)
+        if held.holder != f"{step.actor}.tool" or held.relative is None:
             raise ValueError(f"步驟 {step.id} 翻面前手臂必須先夾持工件")
         value = step.value if isinstance(step.value, dict) else {}
         lift = float(value.get("lift_mm", 150.0))
         angle = float(value.get("angle_deg", 180.0))
         duration = max(0.0, step.duration_s if step.duration_s is not None else 4.0)
         t1 = t0 + duration
-        original = self.state.workpiece_pose.copy()
-        center_local = np.array([0.0, 0.0, self.scene.workpiece.sku.size.z / 2.0, 1.0])
+        original = held.pose.copy()
+        center_local = np.array([0.0, 0.0, self.scene.parts[part_id].height_mm / 2.0, 1.0])
         seed = self.state.joints[step.actor].copy()
         for t in _sample_times(t0, t1):
             ratio = 1.0 if t1 <= t0 else (t - t0) / (t1 - t0)
@@ -447,13 +609,14 @@ class Simulator:
                 center = lifted @ center_local
                 rotation = transform(rpy_deg=(angle * (ratio - 0.25) / 0.75, 0, 0))
                 pose = transform(center[:3]) @ rotation @ transform(-center[:3]) @ lifted
-            tool_goal = pose @ np.linalg.inv(self.state.attachment_relative)
+            tool_goal = pose @ np.linalg.inv(held.relative)
             self.state.joints[step.actor] = seed
             seed = self._solve(step.id, step.actor, tool_goal, t)
             self._append_joints(step.actor, t, seed)
         return t1
 
     def _flip_module(self, step: ProcessStep, t0: float) -> float:
+        part_id = self._object(step)
         module = self.scene.modules[step.actor]
         axis = next((item for item in module.definition.axes if item.id == "flip"), None)
         if axis is None:
@@ -462,23 +625,32 @@ class Simulator:
         current = self.state.axes[axis_name]
         child = axis.child or axis.id
         current_link = self.scene.module_link_transforms(step.actor, self.state)[child]
-        relative = np.linalg.inv(current_link) @ self.state.workpiece_pose
+        relative = np.linalg.inv(current_link) @ self.state.part(part_id).pose
         duration = max(0.0, step.duration_s if step.duration_s is not None else 4.0)
         t1 = t0 + duration
-        self._append_attached(t0, axis_name)
+        self._append_attached(t0, axis_name, part_id)
         for t in _sample_times(t0, t1):
             ratio = 1.0 if t1 <= t0 else (t - t0) / (t1 - t0)
             self._append_axis(axis_name, t, current + (180.0 - current) * ratio)
             link = self.scene.module_link_transforms(step.actor, self.state)[child]
-            self.state.workpiece_pose = link @ relative
-            self._append_pose(t, self.state.workpiece_pose)
-        self._append_attached(t1, None)
+            self.state.part(part_id).pose = link @ relative
+            self._append_pose(t, self.state.part(part_id).pose, part_id)
+            self._carry(t, {part_id})
+        self._append_attached(t1, None, part_id)
+        self.state.part(part_id).relative = None
         return t1
 
+    def motion_failures(self) -> int:
+        return len(self.ik_failures) + len(self.path_discontinuities)
+
     def execute(self, step: ProcessStep, t0: float) -> tuple[float, str | None]:
+        from .contracts import CONTRACTS
+
         self._restore(t0)
-        failures_before = len(self.ik_failures)
-        if step.action == "move_to":
+        failures_before = self.motion_failures()
+        if step.action in CONTRACTS:
+            t1 = CONTRACTS[step.action](self, step, t0)
+        elif step.action == "move_to":
             t1 = self._move_to(step, t0)
         elif step.action == "move_joint":
             t1 = self._move_joint(step, t0)
@@ -507,8 +679,8 @@ class Simulator:
             raise ValueError(f"步驟 {step.id} 使用不支援的 action：{step.action}")
         self.duration_s = max(self.duration_s, t1)
         ik = None
-        if step.action in {"move_to", "flip"} or self._cover_name(step):
-            ik = "failed" if len(self.ik_failures) > failures_before else "ok"
+        if step.action in {"move_to", "flip", *CONTRACTS} or self._cover_name(step):
+            ik = "failed" if self.motion_failures() > failures_before else "ok"
         return t1, ik
 
     def timeline(self) -> dict[str, Any]:
@@ -529,4 +701,6 @@ class Simulator:
             "nodes": self.nodes,
             "events": sorted(self.events, key=lambda item: (item["t"], item["id"])),
             "ik_failures": self.ik_failures,
+            "path_discontinuities": self.path_discontinuities,
+            "action_results": self.action_results,
         }

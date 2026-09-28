@@ -8,7 +8,7 @@ from typing import Any
 import numpy as np
 from scipy.spatial.transform import Rotation, Slerp
 
-from .scene import SceneModel, SimulationState, motion, transform
+from .scene import SceneModel, SimulationState
 
 
 def _bracket(keys: list[list[Any]], t: float) -> tuple[list[Any], list[Any], float]:
@@ -66,10 +66,11 @@ def state_at(timeline: dict[str, Any], t: float) -> SimulationState:
         node_type = node.get("type")
         if node_type == "robot" and node.get("joints_deg"):
             state.joints[name] = _linear(node["joints_deg"], t)
-        elif name == "workpiece":
+        elif node_type == "pose":
+            part = state.part(name)
             if node.get("pose_quat"):
-                state.workpiece_pose = _pose(node["pose_quat"], t)
-            state.attached_to = _held(node.get("attached_to", []), t)
+                part.pose = _pose(node["pose_quat"], t)
+            part.holder = _held(node.get("attached_to", []), t)
         elif node.get("value_mm"):
             state.axes[name] = float(_linear(node["value_mm"], t)[0])
         elif node.get("value_deg"):
@@ -92,12 +93,17 @@ def world_transforms(scene: SceneModel, state: SimulationState) -> dict[str, np.
             if child in links:
                 result[f"{module_name}.{axis.id}"] = links[child].copy()
         if module.chain is not None:
+            # 固定關節（含 URDF 中夾在活動關節之間的）也是 GLB 節點與碰撞零件的父座標。
+            for joint in module.chain.joints:
+                if not joint.active and joint.child in links:
+                    result[f"{module_name}.{joint.id}"] = links[joint.child].copy()
             result[f"{module_name}.tool"] = links[module.chain.tip_link].copy()
-    result["workpiece"] = state.workpiece_pose.copy()
-    for axis in scene.workpiece.definition.axes:
-        # GLB joint nodes live at the hinge origin; named workpiece frames may live
-        # elsewhere on the moving cover and therefore are not node transforms.
-        origin = transform(axis.origin.xyz, axis.origin.rpy_deg)
-        moving = origin @ motion(axis, state.axes.get(f"workpiece.{axis.id}", 0.0))
-        result[f"workpiece.{axis.id}"] = state.workpiece_pose @ moving
+    for part_id, part in scene.parts.items():
+        pose = state.part(part_id).pose
+        result[part_id] = pose.copy()
+        # GLB joint nodes live at the axis origin; named part frames may live
+        # elsewhere on the moving link and therefore are not node transforms.
+        links = scene.part_link_transforms(part_id, state)
+        for axis in part.definition.axes:
+            result[f"{part_id}.{axis.id}"] = links[axis.child or axis.id].copy()
     return result

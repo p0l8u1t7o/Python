@@ -13,6 +13,7 @@ import {
 } from "../api";
 import type {
   Assumption,
+  ExportMissing,
   InputEntry,
   LibraryModuleSummary,
   ModuleDetail,
@@ -22,9 +23,10 @@ import type {
   Question,
 } from "../types";
 import { Viewer, type Check } from "./Viewer";
+import { CostPanel } from "./CostPanel";
 import { ModulePreview } from "./ModulePreview";
 
-const tabs = ["資料", "檢查", "問題", "假設", "變更", "任務", "對話", "流程", "模組"] as const;
+const tabs = ["資料", "檢查", "成本", "問題", "假設", "變更", "任務", "對話", "流程", "模組"] as const;
 type Tab = (typeof tabs)[number];
 type Task = {
   id: string;
@@ -58,6 +60,7 @@ export function MainWorkspace({ projectId, onBack }: { projectId: string; onBack
   const [exportOpen, setExportOpen] = useState(false);
   const [moduleImage, setModuleImage] = useState<{ id: string; url: string }>();
   const [placeholderInstances, setPlaceholderInstances] = useState<string[]>([]);
+  const [approximatedInstances, setApproximatedInstances] = useState<string[]>([]);
   const [inferredModuleCount, setInferredModuleCount] = useState(0);
   const [placeholderFilterToken, setPlaceholderFilterToken] = useState(0);
   const [agentSummary, setAgentSummary] = useState<string>();
@@ -98,8 +101,18 @@ export function MainWorkspace({ projectId, onBack }: { projectId: string; onBack
     setFocusedCheck(undefined);
     if (!version) {
       setChecks([]);
+      setApproximatedInstances([]);
       return;
     }
+    void api<{ manifest: { modules?: { id: string; approximated?: boolean }[] } | null }>(
+      `/projects/${projectId}/versions/${version}/manifest`,
+    )
+      .then((data) =>
+        setApproximatedInstances(
+          (data.manifest?.modules ?? []).filter((item) => item.approximated).map((item) => item.id),
+        ),
+      )
+      .catch(() => setApproximatedInstances([]));
     void api<{ items: Check[] }>(`/projects/${projectId}/versions/${version}/checks.json`)
       .then((data) => setChecks(data.items))
       .catch(() => setChecks([]));
@@ -115,7 +128,10 @@ export function MainWorkspace({ projectId, onBack }: { projectId: string; onBack
     const finished = await waitForJob(jobId, (job) => setNotice(`${label}：${job.status}`));
     if (finished.status !== "done") throw new Error(finished.error ?? `${label} 失敗`);
     await refresh();
-    setNotice(`${label} 完成`);
+    const warnings = finished.warnings ?? [];
+    setNotice(
+      warnings.length > 0 ? `${label} 完成，但有警告：${warnings.join("；")}` : `${label} 完成`,
+    );
     return finished;
   }
   async function submitChange(text: string, object?: string, time?: number) {
@@ -156,13 +172,30 @@ export function MainWorkspace({ projectId, onBack }: { projectId: string; onBack
       setError(reason instanceof Error ? reason.message : String(reason));
     }
   }
+  async function manualBuild() {
+    try {
+      const job = await api<{ id: string }>(`/projects/${projectId}/builds/manual`, {
+        method: "POST",
+      });
+      await runJob(job.id, "手寫資料建置（非代理驗收）");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    }
+  }
   async function exportPack() {
     try {
       const job = await api<{ id: string }>(`/projects/${projectId}/export`, {
         method: "POST",
-        body: JSON.stringify({ kinds: [] }),
+        body: JSON.stringify({ kinds: [], version }),
       });
-      await runJob(job.id, "完整交付包");
+      const finished = await runJob(job.id, `${version ?? "最新版本"} 交付包`);
+      const missing = (finished.result?.missing ?? []) as ExportMissing[];
+      if (missing.length > 0) {
+        setNotice(
+          `${String(finished.result?.version ?? version)} 交付包不完整：` +
+            missing.map((item) => `${item.kind}（${item.reason}）`).join("；"),
+        );
+      }
       setExportOpen(false);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -193,7 +226,9 @@ export function MainWorkspace({ projectId, onBack }: { projectId: string; onBack
         </div>
         <select value={version ?? ""} onChange={(event) => setVersion(event.target.value)}>
           {project.versions.map((item) => (
-            <option key={item.id}>{item.id}</option>
+            <option key={item.id} value={item.id}>
+              {item.complete === false ? `${item.id}（舊版快照）` : item.id}
+            </option>
           ))}
         </select>
         <select
@@ -208,7 +243,18 @@ export function MainWorkspace({ projectId, onBack }: { projectId: string; onBack
               <option key={item.id}>{item.id}</option>
             ))}
         </select>
-        <button onClick={() => void build()}>建置 L1</button>
+        <button
+          onClick={() => void build()}
+          title="由工程代理依 intake 結果建立初版；需先完成且未過期的 intake"
+        >
+          建置 L1
+        </button>
+        <button
+          onClick={() => void manualBuild()}
+          title="不經工程代理，直接以目前 YAML 建置 L1；結果不算代理驗收"
+        >
+          手寫資料建置（非代理驗收）
+        </button>
         <button onClick={() => setExportOpen(true)}>匯出</button>
         <div className="agent-state">
           <span className="green-dot" />
@@ -277,6 +323,7 @@ export function MainWorkspace({ projectId, onBack }: { projectId: string; onBack
                 checks={checks}
                 summary={latest?.checks}
                 placeholderInstances={placeholderInstances}
+                approximatedInstances={approximatedInstances}
                 onPlaceholder={() => {
                   setPlaceholderFilterToken((value) => value + 1);
                   setTab("模組");
@@ -284,6 +331,7 @@ export function MainWorkspace({ projectId, onBack }: { projectId: string; onBack
                 onSelect={setFocusedCheck}
               />
             )}
+            {tab === "成本" && <CostPanel projectId={projectId} version={version} />}
             {tab === "問題" && <QuestionPanel projectId={projectId} />}
             {tab === "假設" && <AssumptionPanel projectId={projectId} />}
             {tab === "變更" && (
@@ -343,6 +391,7 @@ export function MainWorkspace({ projectId, onBack }: { projectId: string; onBack
       {exportOpen && (
         <ExportDialog
           projectId={projectId}
+          version={version}
           inferredModuleCount={inferredModuleCount}
           placeholderCount={placeholderInstances.length}
           onClose={() => setExportOpen(false)}
@@ -524,17 +573,15 @@ function ModulePanel({
             ? await promoteModule(projectId, selected)
             : await recheckModule(projectId, selected);
       if ("change_id" in job && "task_id" in job)
-        setActionMessage(`已建立 ${String(job.change_id)}／${String(job.task_id)}，工程代理執行中…`);
+        setActionMessage(
+          `已建立 ${String(job.change_id)}／${String(job.task_id)}，工程代理執行中…`,
+        );
       await onWorkspaceRefresh();
       const finished = await waitForJob(job.id, (current) =>
         setActionMessage(`${label}：${current.status}`),
       );
       if (finished.status !== "done") throw new Error(finished.error ?? `${label}失敗`);
-      await Promise.all([
-        refreshModules(),
-        refreshSelected(selected),
-        onWorkspaceRefresh(),
-      ]);
+      await Promise.all([refreshModules(), refreshSelected(selected), onWorkspaceRefresh()]);
       setAssetRevision((value) => value + 1);
       setActionMessage(`${label}完成`);
     } catch (reason) {
@@ -944,12 +991,14 @@ function ChatPanel({ summary }: { summary?: string }) {
 
 function ExportDialog({
   projectId,
+  version,
   inferredModuleCount,
   placeholderCount,
   onClose,
   onConfirm,
 }: {
   projectId: string;
+  version?: string;
   inferredModuleCount: number;
   placeholderCount: number;
   onClose: () => void;
@@ -967,7 +1016,10 @@ function ExportDialog({
     <div className="modal-backdrop">
       <div className="modal export-dialog" role="dialog" aria-label="匯出交付包">
         <h2>匯出完整交付包</h2>
-        <p>將以目前版本建立工程交付檔案；請先確認尚未定案的內容。</p>
+        <p>
+          將以 <b>{version ?? "最新版本"}</b>
+          建立工程交付檔案，所有內容只取自該版本快照；該版本缺少的項目會列為缺件，不會以其他版本補上。
+        </p>
         <div className="export-readiness">
           <span>仍為推估的項目數</span>
           <b>{inferredCount === undefined ? "…" : inferredCount + inferredModuleCount}</b>
@@ -992,12 +1044,14 @@ function ChecksPanel({
   checks,
   summary,
   placeholderInstances,
+  approximatedInstances,
   onPlaceholder,
   onSelect,
 }: {
   checks: Check[];
   summary?: { red: number; yellow: number; green: number };
   placeholderInstances: string[];
+  approximatedInstances: string[];
   onPlaceholder: () => void;
   onSelect: (check: Check) => void;
 }) {
@@ -1017,6 +1071,16 @@ function ChecksPanel({
               {placeholderInstances.join("、")}。點此查看模組清單。
             </p>
           </button>
+        )}
+        {approximatedInstances.length > 0 && (
+          <div className="check-row check-info">
+            <b>ⓘ 近似廠商模型</b>
+            <p>
+              {approximatedInstances.join("、")}
+              為型錄尺寸近似（approximated
+              stub），不是原廠模型；相關可達、干涉與速度檢查不代表真機結果。
+            </p>
+          </div>
         )}
         {checks.map((item) => (
           <button

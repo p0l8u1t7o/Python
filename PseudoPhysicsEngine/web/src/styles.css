@@ -1448,3 +1448,134 @@ textarea:focus {
     padding: 36px;
   }
 }
+.brand-actions {
+  display: flex;
+  gap: 10px;
+}
+.brand-actions button.active {
+  border-color: #89d7b7;
+  color: #89d7b7;
+}
+.danger {
+  color: #ffe1e4;
+  border-color: #a8424f;
+  background: #6e2630;
+  font-weight: 700;
+}
+.danger:hover {
+  background: #8a2f3b;
+  border-color: #c75664;
+}
+.card-top .card-delete {
+  margin-left: auto;
+  padding: 3px 9px;
+  border-color: transparent;
+  background: transparent;
+  color: #718292;
+  font-size: 12px;
+  opacity: 0;
+  transition: 0.15s;
+}
+.project-card:hover .card-delete,
+.card-delete:focus-visible {
+  opacity: 1;
+}
+.card-top .card-delete:hover {
+  color: #ffb3bb;
+  border-color: #a8424f;
+}
+.list-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 18px;
+  padding: 10px 14px;
+  border: 1px solid #2f5b4b;
+  border-radius: 9px;
+  color: #bfe9d8;
+  background: #13261f;
+}
+.list-notice .ghost {
+  padding: 0 6px;
+  border: 0;
+}
+.trash-panel {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 26px;
+  padding: 20px 22px;
+  border: 1px solid #2a3847;
+  border-radius: 14px;
+  background: #0f161f;
+}
+.trash-panel h2,
+.trash-panel p {
+  margin: 0;
+}
+.trash-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid #243140;
+  border-radius: 10px;
+  background: #121b25;
+}
+.trash-row > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+.trash-row small {
+  color: #8495a5;
+}
+.trash-row > div:last-child {
+  display: flex;
+  gap: 8px;
+}
+.confirm-message {
+  margin: 0;
+  color: #c3d0dc;
+  line-height: 1.6;
+}
+.confirm-error {
+  margin: 0;
+  padding: 9px 12px;
+  border-radius: 8px;
+  color: #ffd0d5;
+  background: #3d1c22;
+}
+.cost-panel h3 {
+  margin: 18px 0 8px;
+  font-size: 14px;
+  color: #b9c9d7;
+}
+.cost-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.cost-table th,
+.cost-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #243140;
+  text-align: right;
+}
+.cost-table th:first-child,
+.cost-table td:first-child {
+  text-align: left;
+}
+.cost-table th {
+  color: #8495a5;
+  font-weight: 600;
+}
+.cost-table tr.cost-missing td {
+  color: #f0c27b;
+}
+.cost-lines td:first-child {
+  max-width: 220px;
+}
+.compact-list article.cost-error b {
+  color: #ff9aa5;
+}

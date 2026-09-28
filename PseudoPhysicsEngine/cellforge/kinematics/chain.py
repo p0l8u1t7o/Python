@@ -6,6 +6,7 @@ import math
 import xml.etree.ElementTree as ET
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
@@ -22,10 +23,27 @@ def _transform(xyz: Sequence[float], rpy_rad: Sequence[float]) -> np.ndarray:
     return result
 
 
+@lru_cache(maxsize=4096)
+def _origin_matrix(xyz: tuple[float, ...], rpy_deg: tuple[float, ...]) -> np.ndarray:
+    """關節原點是常數；IK 每次殘差都要做 FK，重算 scipy 旋轉曾占建置時間的三分之一。"""
+    matrix = _transform(xyz, np.radians(rpy_deg))
+    matrix.setflags(write=False)
+    return matrix
+
+
 def _motion(joint_type: JointType, axis: np.ndarray, value: float) -> np.ndarray:
     result = np.eye(4, dtype=float)
     if joint_type in {"revolute", "continuous"}:
-        result[:3, :3] = Rotation.from_rotvec(axis * math.radians(value)).as_matrix()
+        # Rodrigues 閉式解；axis 已在 Joint 建立時正規化，與 Rotation.from_rotvec 等價。
+        angle = math.radians(value)
+        cosine, sine = math.cos(angle), math.sin(angle)
+        versine = 1.0 - cosine
+        x, y, z = float(axis[0]), float(axis[1]), float(axis[2])
+        result[:3, :3] = (
+            (cosine + x * x * versine, x * y * versine - z * sine, x * z * versine + y * sine),
+            (y * x * versine + z * sine, cosine + y * y * versine, y * z * versine - x * sine),
+            (z * x * versine - y * sine, z * y * versine + x * sine, cosine + z * z * versine),
+        )
     elif joint_type == "prismatic":
         result[:3, 3] = axis * value
     return result
@@ -61,7 +79,8 @@ class Joint:
 
     @property
     def origin(self) -> np.ndarray:
-        return _transform(self.origin_xyz, np.radians(self.origin_rpy_deg))
+        """Read-only parent-to-joint transform (cached; do not modify in place)."""
+        return _origin_matrix(tuple(self.origin_xyz), tuple(self.origin_rpy_deg))
 
 
 class Chain:
@@ -84,11 +103,14 @@ class Chain:
         self.base_link = base_link or next(iter(parents - set(children)), "base")
         self.tip_link = tip_link or (self.joints[-1].child if self.joints else self.base_link)
         self._by_child = {joint.child: joint for joint in self.joints}
-        self._validate_tree()
+        self._order = self._validate_tree()
+        self._axes = {joint.id: np.asarray(joint.axis, dtype=float) for joint in self.joints}
 
-    def _validate_tree(self) -> None:
+    def _validate_tree(self) -> tuple[Joint, ...]:
+        """Validate connectivity and return the joints in parent-before-child order."""
         known = {self.base_link}
         remaining = list(self.joints)
+        order: list[Joint] = []
         while remaining:
             ready = [joint for joint in remaining if joint.parent in known]
             if not ready:
@@ -97,8 +119,10 @@ class Chain:
             for joint in ready:
                 known.add(joint.child)
                 remaining.remove(joint)
+                order.append(joint)
         if self.tip_link not in known:
             raise ValueError(f"末端 link 不存在：{self.tip_link}")
+        return tuple(order)
 
     @property
     def active_joints(self) -> tuple[Joint, ...]:
@@ -139,22 +163,9 @@ class Chain:
     def link_transforms(self, values: Sequence[float] | dict[str, float]) -> dict[str, np.ndarray]:
         positions = self.values_dict(values)
         result = {self.base_link: np.eye(4, dtype=float)}
-        remaining = list(self.joints)
-        while remaining:
-            progressed = False
-            for joint in list(remaining):
-                if joint.parent not in result:
-                    continue
-                value = positions.get(joint.id, 0.0)
-                result[joint.child] = (
-                    result[joint.parent]
-                    @ joint.origin
-                    @ _motion(joint.type, np.asarray(joint.axis), value)
-                )
-                remaining.remove(joint)
-                progressed = True
-            if not progressed:  # protected by _validate_tree, kept defensive for mutated input
-                raise RuntimeError("無法計算關節鏈的世界變換")
+        for joint in self._order:
+            motion = _motion(joint.type, self._axes[joint.id], positions.get(joint.id, 0.0))
+            result[joint.child] = result[joint.parent] @ joint.origin @ motion
         return result
 
     def geometric_jacobian(
@@ -217,7 +228,10 @@ class Chain:
                 lower = float(limit_element.get("lower", "-inf"))
                 upper = float(limit_element.get("upper", "inf"))
                 velocity = limit_element.get("velocity")
-                if joint_type in {"revolute", "continuous"}:
+                if joint_type == "continuous":
+                    # URDF 規範：continuous 關節忽略 lower／upper，只保留速度。
+                    speed = math.degrees(float(velocity)) if velocity else None
+                elif joint_type == "revolute":
                     limit = (math.degrees(lower), math.degrees(upper))
                     speed = math.degrees(float(velocity)) if velocity else None
                 else:

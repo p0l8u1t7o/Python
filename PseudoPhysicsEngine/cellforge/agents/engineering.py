@@ -9,15 +9,48 @@ import os
 import re
 import shutil
 import subprocess
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+from cellforge.procutil import ProcessTimeoutError, run_streaming
 from cellforge.project import source_root
+from cellforge.version_store import BUILD_JOB_ENV, BUILD_ORIGIN_ENV
 
 AgentKind = Literal["intake", "first_build", "apply_cr", "assumption_override"]
 EventSink = Callable[[str, dict[str, Any]], None]
+
+# 只有網路或服務端錯誤才重試；代理回報的工程失敗與逾時都直接回報，不盲目重跑。
+RETRY_DELAYS_S = (10.0, 30.0)
+CAPTION_TIMEOUT_S = 60.0
+PARENT_SESSION_VARIABLES = frozenset(
+    {
+        "CLAUDECODE",
+        "CLAUDE_PID",
+        "CLAUDE_EFFORT",
+        "CLAUDE_AGENT_SDK_VERSION",
+        "CLAUDE_PLUGIN_DATA",
+        "CLAUDE_CODE_ENTRYPOINT",
+        "CLAUDE_CODE_EXECPATH",
+        "CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING",
+        "CLAUDE_CODE_ENABLE_TASKS",
+    }
+)
+PARENT_SESSION_PREFIXES = ("CLAUDE_CODE_SESSION", "CLAUDE_CODE_CHILD", "CLAUDE_CODE_MESSAGING")
+# headless 執行在最後一則訊息後就結束，子代理與背景等待的工作會被一併終止；
+# DEV-006 實測代理把修正交給背景子代理後結束回合，沒有回傳最終 JSON。
+HEADLESS_DISALLOWED_TOOLS = (
+    "Agent,Task,TaskOutput,TaskStop,Workflow,Monitor,ScheduleWakeup,CronCreate,RemoteTrigger"
+)
+CAPTION_ATTEMPTS = 2
+NETWORK_ERROR = re.compile(
+    r"(ECONNREFUSED|ConnectionRefused|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|getaddrinfo"
+    r"|socket hang up|fetch failed|Connection error|APIConnectionError|network error"
+    r"|overloaded_error|Overloaded|rate_limit_error|\b529\b|\b503 Service)",
+    re.IGNORECASE,
+)
 
 
 class EngineeringAgentError(RuntimeError):
@@ -157,11 +190,15 @@ class EngineeringAgent:
         model: str | None = None,
         effort: str | None = "low",
         timeout_s: float = 1800,
+        max_attempts: int = 3,
+        retry_delays_s: tuple[float, ...] = RETRY_DELAYS_S,
     ):
         self.command = command
         self.model = model
         self.effort = effort
         self.timeout_s = timeout_s
+        self.max_attempts = max(1, max_attempts)
+        self.retry_delays_s = retry_delays_s
 
     async def run(
         self,
@@ -170,14 +207,19 @@ class EngineeringAgent:
         emit: EventSink,
         *,
         context: str = "",
+        job_id: str | None = None,
     ) -> dict[str, Any]:
+        """Run one agent task within ``timeout_s`` in total, retrying only network failures."""
+
+        deadline = time.monotonic() + self.timeout_s
         capabilities = await asyncio.to_thread(detect_claude, self.command)
         if not capabilities.supports_stream_json or not capabilities.supports_accept_edits:
             raise EngineeringAgentError(
                 "Claude Code 缺少 stream-json 或 acceptEdits 支援，請更新 Claude Code。"
             )
+        environment = self._environment(job_id=job_id, origin=f"agent:{kind}")
         if kind == "intake":
-            await self._prepare_vision_summary(capabilities, project, emit)
+            await self._prepare_vision_summary(capabilities, project, emit, deadline, environment)
         prompt = _read_prompt(kind)
         if context:
             prompt += f"\n\n## Job context\n\n{context.strip()}\n"
@@ -192,6 +234,8 @@ class EngineeringAgent:
             "acceptEdits",
             "--allowedTools",
             "Read,Write,Edit,Bash(cell *),Bash(git *),Bash(python *),Bash(python3 *)",
+            "--disallowedTools",
+            HEADLESS_DISALLOWED_TOOLS,
             "--add-dir",
             str(source_root()),
         ]
@@ -199,91 +243,72 @@ class EngineeringAgent:
             arguments.extend(["--model", self.model])
         if self.effort and capabilities.supports_effort:
             arguments.extend(["--effort", self.effort])
-        emit(
-            "agent",
-            {
-                "message": f"Claude Code {capabilities.version} 啟動：{kind}",
-                "command": capabilities.executable,
-            },
-        )
-        process = await asyncio.create_subprocess_exec(
-            *arguments,
-            cwd=project,
-            env=self._environment(),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        final_text = ""
-
-        async def read_stdout() -> None:
-            nonlocal final_text
-            assert process.stdout is not None
-            while line_bytes := await process.stdout.readline():
-                line = line_bytes.decode("utf-8", errors="replace").strip()
-                if not line:
-                    continue
-                try:
-                    event = json.loads(line)
-                except json.JSONDecodeError:
-                    emit("log", {"message": line})
-                    final_text += "\n" + line
-                    continue
-                event_type = str(event.get("type", "agent"))
-                if event_type == "result":
-                    final_text += "\n" + str(event.get("result", ""))
-                message = _event_summary(event)
-                if message:
-                    emit("agent", {"event_type": event_type, "message": message[:2000]})
-
-        async def read_stderr() -> None:
-            assert process.stderr is not None
-            while line_bytes := await process.stderr.readline():
-                line = line_bytes.decode("utf-8", errors="replace").rstrip()
-                if line:
-                    emit("log", {"stream": "stderr", "message": line})
-
-        readers = [asyncio.create_task(read_stdout()), asyncio.create_task(read_stderr())]
-        try:
-            await asyncio.wait_for(process.wait(), timeout=self.timeout_s)
-            await asyncio.gather(*readers)
-        except TimeoutError as error:
-            process.terminate()
-            try:
-                await asyncio.wait_for(process.wait(), timeout=5)
-            except TimeoutError:
-                process.kill()
-                await process.wait()
-            raise EngineeringAgentError(
-                f"Claude 工程代理超過 {self.timeout_s:.0f} 秒，已停止。"
-            ) from error
-        except asyncio.CancelledError:
-            process.terminate()
-            try:
-                await asyncio.wait_for(process.wait(), timeout=5)
-            except TimeoutError:
-                process.kill()
-                await process.wait()
-            raise
-        finally:
-            for reader in readers:
-                if not reader.done():
-                    reader.cancel()
-        if process.returncode != 0:
-            raise EngineeringAgentError(f"Claude 工程代理失敗，退出碼 {process.returncode}")
-        result = _json_from_text(final_text)
-        if result is None:
-            raise EngineeringAgentError("Claude 工程代理未回傳規定的最終 JSON。")
-        if result["status"] != "ok":
-            raise EngineeringAgentError(str(result.get("summary", "工程代理回報失敗")))
-        return result
+        failures: list[str] = []
+        for attempt in range(1, self.max_attempts + 1):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise EngineeringAgentError(
+                    f"Claude 工程代理已用完 {self.timeout_s:.0f} 秒總期限"
+                    f"（已嘗試 {attempt - 1} 次）：" + "；".join(failures)
+                )
+            emit(
+                "agent",
+                {
+                    "message": f"Claude Code {capabilities.version} 啟動：{kind}"
+                    f"（第 {attempt}/{self.max_attempts} 次，剩餘 {remaining:.0f} 秒）",
+                    "command": capabilities.executable,
+                },
+            )
+            outcome = await _run_claude(arguments, project, environment, emit, remaining)
+            if outcome.timed_out:
+                raise EngineeringAgentError(
+                    f"Claude 工程代理超過 {self.timeout_s:.0f} 秒總期限，已連同子程序一併停止。"
+                )
+            if outcome.returncode == 0:
+                result = _json_from_text(outcome.final_text)
+                if result is None:
+                    raise EngineeringAgentError("Claude 工程代理未回傳規定的最終 JSON。")
+                if result["status"] != "ok":
+                    # 代理自己判定失敗（例如幾何或驗證錯誤）是工程結論，不盲目重試。
+                    raise EngineeringAgentError(str(result.get("summary", "工程代理回報失敗")))
+                return {**result, "attempts": attempt}
+            reason = network_failure(outcome.diagnostics)
+            failures.append(
+                f"第 {attempt} 次退出碼 {outcome.returncode}" + (f"（{reason}）" if reason else "")
+            )
+            if reason is None or attempt == self.max_attempts:
+                detail = f"：{reason}" if reason else ""
+                raise EngineeringAgentError(
+                    f"Claude 工程代理失敗，退出碼 {outcome.returncode}{detail}"
+                    f"（共嘗試 {attempt} 次）"
+                )
+            delay = min(
+                self.retry_delays_s[min(attempt - 1, len(self.retry_delays_s) - 1)],
+                max(deadline - time.monotonic(), 0),
+            )
+            emit(
+                "agent",
+                {"message": f"偵測到網路或服務錯誤（{reason}），{delay:.0f} 秒後重試"},
+            )
+            await asyncio.sleep(delay)
+        raise AssertionError("unreachable")
 
     @staticmethod
-    def _environment() -> dict[str, str]:
-        environment = os.environ.copy()
+    def _environment(job_id: str | None = None, origin: str | None = None) -> dict[str, str]:
+        environment = {
+            name: value
+            for name, value in os.environ.items()
+            if not is_parent_session_variable(name)
+        }
         scripts = source_root() / ".venv" / "Scripts"
         if scripts.is_dir():
             environment["PATH"] = str(scripts) + os.pathsep + environment.get("PATH", "")
             environment["VIRTUAL_ENV"] = str(source_root() / ".venv")
+        # 代理在工作階段內執行的 cell build 會把這兩個值寫進版本 manifest。
+        if job_id:
+            environment[BUILD_JOB_ENV] = job_id
+        if origin:
+            environment[BUILD_ORIGIN_ENV] = origin
         return environment
 
     async def _prepare_vision_summary(
@@ -291,6 +316,8 @@ class EngineeringAgent:
         capabilities: ClaudeCapabilities,
         project: Path,
         emit: EventSink,
+        deadline: float,
+        environment: dict[str, str],
     ) -> None:
         extraction_path = project / "analysis" / "extraction.json"
         extraction = json.loads(extraction_path.read_text("utf-8"))
@@ -326,7 +353,9 @@ class EngineeringAgent:
                 "agent",
                 {"message": f"Claude 視覺判讀 {index}/{len(images)}：{Path(relative).name}"},
             )
-            caption = await self._caption_image(capabilities, project, relative, source)
+            caption = await self._caption_image(
+                capabilities, project, relative, source, deadline, environment, emit
+            )
             cache[relative] = {"sha256": digest, "source": source, "caption": caption}
             cache_path.write_text(
                 json.dumps(cache, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
@@ -352,6 +381,9 @@ class EngineeringAgent:
         project: Path,
         relative: str,
         source: str,
+        deadline: float,
+        environment: dict[str, str],
+        emit: EventSink,
     ) -> str:
         prompt = (
             f"Use the Read tool on `{relative}`. This is a review copy of `{source}`. "
@@ -374,35 +406,118 @@ class EngineeringAgent:
             arguments.extend(["--model", self.model])
         if self.effort and capabilities.supports_effort:
             arguments.extend(["--effort", self.effort])
-        process = await asyncio.create_subprocess_exec(
-            *arguments,
-            cwd=project,
-            env=self._environment(),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        try:
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=60)
-        except TimeoutError as error:
-            process.kill()
-            await process.wait()
-            raise EngineeringAgentError(f"Claude 視覺判讀超時：{relative}") from error
-        except asyncio.CancelledError:
-            process.terminate()
+        for attempt in range(1, CAPTION_ATTEMPTS + 1):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise EngineeringAgentError(f"Claude 視覺判讀已用完工作總期限：{relative}")
+            stdout_lines: list[str] = []
+            stderr_lines: list[str] = []
             try:
-                await asyncio.wait_for(process.wait(), timeout=5)
-            except TimeoutError:
-                process.kill()
-                await process.wait()
-            raise
-        if process.returncode != 0:
-            detail = stderr.decode("utf-8", errors="replace").strip()
-            raise EngineeringAgentError(f"Claude 視覺判讀失敗：{relative}：{detail}")
+                code = await run_streaming(
+                    arguments,
+                    cwd=project,
+                    env=environment,
+                    timeout_s=min(CAPTION_TIMEOUT_S, remaining),
+                    on_stdout=stdout_lines.append,
+                    on_stderr=stderr_lines.append,
+                )
+            except ProcessTimeoutError as error:
+                if attempt < CAPTION_ATTEMPTS:
+                    emit("agent", {"message": f"視覺判讀逾時，重試一次：{relative}"})
+                    continue
+                raise EngineeringAgentError(
+                    f"Claude 視覺判讀超時（每次 {CAPTION_TIMEOUT_S:.0f} 秒，共嘗試 {attempt} 次）："
+                    f"{relative}"
+                ) from error
+            stdout = "\n".join(stdout_lines)
+            stderr = "\n".join(stderr_lines).strip()
+            if code != 0:
+                reason = network_failure(f"{stderr}\n{stdout}")
+                if reason and attempt < CAPTION_ATTEMPTS:
+                    emit("agent", {"message": f"視覺判讀遇到{reason}，重試一次：{relative}"})
+                    continue
+                raise EngineeringAgentError(
+                    f"Claude 視覺判讀失敗：{relative}：{stderr or reason or f'退出碼 {code}'}"
+                )
+            try:
+                payload = json.loads(stdout)
+                caption = str(payload["result"]).strip()
+            except (json.JSONDecodeError, KeyError, TypeError) as error:
+                raise EngineeringAgentError(f"Claude 視覺判讀回傳格式錯誤：{relative}") from error
+            if not caption:
+                raise EngineeringAgentError(f"Claude 視覺判讀沒有內容：{relative}")
+            return caption
+        raise AssertionError("unreachable")
+
+
+@dataclass(frozen=True)
+class ClaudeOutcome:
+    returncode: int | None
+    final_text: str
+    diagnostics: str
+    timed_out: bool = False
+
+
+async def _run_claude(
+    arguments: list[str],
+    project: Path,
+    environment: dict[str, str],
+    emit: EventSink,
+    timeout_s: float,
+) -> ClaudeOutcome:
+    final_parts: list[str] = []
+    diagnostics: list[str] = []
+
+    def on_stdout(line: str) -> None:
         try:
-            payload = json.loads(stdout.decode("utf-8", errors="replace"))
-            caption = str(payload["result"]).strip()
-        except (json.JSONDecodeError, KeyError) as error:
-            raise EngineeringAgentError(f"Claude 視覺判讀回傳格式錯誤：{relative}") from error
-        if not caption:
-            raise EngineeringAgentError(f"Claude 視覺判讀沒有內容：{relative}")
-        return caption
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            emit("log", {"message": line})
+            final_parts.append(line)
+            diagnostics.append(line)
+            return
+        if not isinstance(event, dict):
+            return
+        event_type = str(event.get("type", "agent"))
+        if event_type == "result":
+            text = str(event.get("result", ""))
+            final_parts.append(text)
+            diagnostics.append(text)
+        message = _event_summary(event)
+        if message:
+            emit("agent", {"event_type": event_type, "message": message[:2000]})
+
+    def on_stderr(line: str) -> None:
+        diagnostics.append(line)
+        emit("log", {"stream": "stderr", "message": line})
+
+    try:
+        code = await run_streaming(
+            arguments,
+            cwd=project,
+            env=environment,
+            timeout_s=timeout_s,
+            on_stdout=on_stdout,
+            on_stderr=on_stderr,
+        )
+    except ProcessTimeoutError:
+        return ClaudeOutcome(None, "\n".join(final_parts), "\n".join(diagnostics[-200:]), True)
+    return ClaudeOutcome(code, "\n".join(final_parts), "\n".join(diagnostics[-200:]))
+
+
+def is_parent_session_variable(name: str) -> bool:
+    """Markers of an enclosing Claude Code session that a spawned agent must not inherit.
+
+    伺服器若是從另一個 Claude Code 工作階段內啟動，工程代理會繼承父工作階段的 id、訊息通道
+    與 effort，把自己當成子工作階段；授權與一般設定（例如 CLAUDE_CODE_GIT_BASH_PATH）保留。
+    """
+
+    upper = name.upper()
+    return upper in PARENT_SESSION_VARIABLES or upper.startswith(PARENT_SESSION_PREFIXES)
+
+
+def network_failure(text: str) -> str | None:
+    """Return a short reason when ``text`` shows a network or service failure worth retrying."""
+
+    match = NETWORK_ERROR.search(text)
+    return f"網路或服務錯誤 {match.group(1)}" if match else None

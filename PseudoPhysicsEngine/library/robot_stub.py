@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import importlib
 from typing import Any
 
 import cadquery as cq
 
+from cellforge.build.modules import load_part
 from cellforge.kinematics import Chain, make_stub_chain, stub_dimensions
 from cellforge.schema import Frame, ModuleAxis, ModuleDef, ModuleMeta
 
@@ -92,8 +92,7 @@ def _tool_parameters(
             float(tool.get("mass_kg", 1.2)),
             None,
         )
-    module_name = str(tool["part"]).replace("\\", "/").removesuffix(".py").replace("/", ".")
-    module = importlib.import_module(module_name)
+    module = load_part(str(tool["part"]))
     definition = module.MODULE
     tcp = definition.frames.get("tool_center_point", Frame(xyz=(0, 0, 150)))
     length = float(tcp.xyz[2])
@@ -102,6 +101,29 @@ def _tool_parameters(
     if include_shape:
         shape = module.build(dict(tool.get("params", {}))).toCompound()
     return length, float(tool.get("radius_mm", 30)), mass, shape
+
+
+def _tool_children(params: dict[str, Any]) -> list[tuple[str, cq.Shape, cq.Location, cq.Color]]:
+    """Tool sub-parts kept separate when the tool module sets SEPARATE_COLLISION.
+
+    例如多頭壓墊：每個壓墊各自是碰撞零件，才能分別判定與各接頭的接觸。
+    """
+    tool = params.get("tool") or {}
+    if not isinstance(tool, dict) or "part" not in tool:
+        return []
+    module = load_part(str(tool["part"]))
+    if not getattr(module, "SEPARATE_COLLISION", False):
+        return []
+    assembly = module.build(dict(tool.get("params", {})))
+    children = []
+    for name, child in assembly.objects.items():
+        if name == assembly.name or child.obj is None:
+            continue
+        shape = child.obj.val() if isinstance(child.obj, cq.Workplane) else child.obj
+        children.append(
+            (name.rsplit("/", 1)[-1], shape, child.loc or cq.Location(), child.color or cq.Color())
+        )
+    return children
 
 
 def chain_from_params(params: dict[str, Any]) -> Chain:
@@ -161,7 +183,7 @@ def module_definition(params: dict[str, Any]) -> ModuleDef:
         collision="hull",
         payload_kg=float(params.get("payload_kg", 7)),
         tool_mass_kg=tool_mass,
-        meta=ModuleMeta(basis=ROBOT_STUB_BASIS),
+        meta=ModuleMeta(basis=ROBOT_STUB_BASIS, approximated=True),
     )
 
 
@@ -279,12 +301,24 @@ def build(params: dict) -> cq.Assembly:
         )
         result.add(tool_shape, name="tool", color=JOINT_DARK)
     else:
-        result.add(
-            custom_tool,
-            name="tool",
-            color=cq.Color(0.18, 0.21, 0.24),
-            loc=cq.Location((wrist_x + dims.l6_mm, 0, wrist_z), (0, 90, 0)),
-        )
+        mount = cq.Location((wrist_x + dims.l6_mm, 0, wrist_z), (0, 90, 0))
+        children = _tool_children(params)
+        if children:
+            for child_name, shape, location, color in children:
+                result.add(
+                    shape,
+                    name=f"tool_{child_name}",
+                    color=color,
+                    loc=mount * location,
+                    metadata={"link": "tool"},
+                )
+        else:
+            result.add(
+                custom_tool,
+                name="tool",
+                color=cq.Color(0.18, 0.21, 0.24),
+                loc=mount,
+            )
     result.metadata = {"tcp_xyz": (tcp_x, 0.0, wrist_z)}
     return result
 
@@ -305,5 +339,5 @@ MODULE = ModuleDef(
     axes=[ModuleAxis(id=f"j{i}", type="revolute", range_deg=(-180, 180)) for i in range(1, 7)],
     collision="hull",
     payload_kg=7,
-    meta=ModuleMeta(basis=ROBOT_STUB_BASIS),
+    meta=ModuleMeta(basis=ROBOT_STUB_BASIS, approximated=True),
 )

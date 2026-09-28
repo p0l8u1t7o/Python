@@ -1,0 +1,1100 @@
+{
+  "$defs": {
+    "Connection": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "from": {
+          "$ref": "#/$defs/Endpoint"
+        },
+        "to": {
+          "$ref": "#/$defs/Endpoint"
+        },
+        "wire_numbers": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Wire Numbers",
+          "type": "array"
+        },
+        "cable_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cable Ref"
+        },
+        "note": {
+          "default": "",
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "from",
+        "to"
+      ],
+      "title": "Connection",
+      "type": "object"
+    },
+    "Device": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "isolator",
+            "breaker",
+            "fuse",
+            "psu",
+            "plc",
+            "io_module",
+            "safety_controller",
+            "contactor",
+            "relay",
+            "terminal_block",
+            "switch",
+            "ipc",
+            "camera",
+            "light_controller",
+            "light",
+            "sensor",
+            "valve",
+            "robot_controller",
+            "robot",
+            "motor_drive",
+            "conveyor_controller",
+            "emergency_stop",
+            "door_switch",
+            "signal_tower",
+            "force_sensor",
+            "fan",
+            "filter",
+            "ground_bar",
+            "other"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "model": {
+          "default": "",
+          "title": "Model",
+          "type": "string"
+        },
+        "catalog_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Catalog Ref"
+        },
+        "catalog_quantity": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 1.0,
+          "title": "Catalog Quantity"
+        },
+        "module_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Module Ref"
+        },
+        "location": {
+          "default": "panel",
+          "enum": [
+            "panel",
+            "field"
+          ],
+          "title": "Location",
+          "type": "string"
+        },
+        "size_mm": {
+          "anyOf": [
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Size Mm"
+        },
+        "panel": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PanelPlacement"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "ratings": {
+          "$ref": "#/$defs/Ratings"
+        },
+        "terminals": {
+          "items": {
+            "$ref": "#/$defs/Terminal"
+          },
+          "title": "Terminals",
+          "type": "array"
+        },
+        "bridges": {
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "type": "array"
+          },
+          "title": "Bridges",
+          "type": "array"
+        },
+        "trust": {
+          "default": "inferred",
+          "enum": [
+            "inferred",
+            "confirmed"
+          ],
+          "title": "Trust",
+          "type": "string"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "note": {
+          "default": "",
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "kind"
+      ],
+      "title": "Device",
+      "type": "object"
+    },
+    "DrawingTemplate": {
+      "additionalProperties": true,
+      "description": "圖框與標題欄欄位；LOGO 為圖檔路徑（案子內 drawing_templates/），未提供時顯示案名文字。",
+      "properties": {
+        "paper": {
+          "default": "A3",
+          "enum": [
+            "A3",
+            "A4"
+          ],
+          "title": "Paper",
+          "type": "string"
+        },
+        "orientation": {
+          "default": "landscape",
+          "enum": [
+            "landscape",
+            "portrait"
+          ],
+          "title": "Orientation",
+          "type": "string"
+        },
+        "logo": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Logo"
+        },
+        "company": {
+          "default": "",
+          "title": "Company",
+          "type": "string"
+        },
+        "drawing_no": {
+          "default": "",
+          "title": "Drawing No",
+          "type": "string"
+        },
+        "revision": {
+          "default": "V1",
+          "title": "Revision",
+          "type": "string"
+        },
+        "date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Date"
+        },
+        "drawn_by": {
+          "default": "待填",
+          "title": "Drawn By",
+          "type": "string"
+        },
+        "designed_by": {
+          "default": "待填",
+          "title": "Designed By",
+          "type": "string"
+        },
+        "checked_by": {
+          "default": "待填",
+          "title": "Checked By",
+          "type": "string"
+        },
+        "approved_by": {
+          "default": "待填",
+          "title": "Approved By",
+          "type": "string"
+        },
+        "status": {
+          "default": "工程規劃圖／非施工放行版",
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "title": "DrawingTemplate",
+      "type": "object"
+    },
+    "Endpoint": {
+      "additionalProperties": true,
+      "properties": {
+        "device": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Device"
+        },
+        "terminal": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Terminal"
+        },
+        "net": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Net"
+        },
+        "pool": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pool"
+        }
+      },
+      "title": "Endpoint",
+      "type": "object"
+    },
+    "EquipmentMatch": {
+      "additionalProperties": true,
+      "properties": {
+        "part": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Part"
+        },
+        "vendor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Vendor"
+        },
+        "module": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Module"
+        },
+        "tool": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool"
+        }
+      },
+      "title": "EquipmentMatch",
+      "type": "object"
+    },
+    "EquipmentTemplate": {
+      "additionalProperties": true,
+      "description": "每個符合條件的模組實例產生一組器件、連接與 I/O；字串中的 {module} 換成模組 id。",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "match": {
+          "$ref": "#/$defs/EquipmentMatch"
+        },
+        "devices": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Devices",
+          "type": "array"
+        },
+        "connections": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Connections",
+          "type": "array"
+        },
+        "io": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Io",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "match"
+      ],
+      "title": "EquipmentTemplate",
+      "type": "object"
+    },
+    "IoPoint": {
+      "additionalProperties": true,
+      "description": "I/O 表的一列：控制器通道（固定位址或由點位池配置）接到現場器件的端子。",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "signal": {
+          "enum": [
+            "ac_power",
+            "dc_power",
+            "ground",
+            "digital_in",
+            "digital_out",
+            "analog_in",
+            "analog_out",
+            "relay_contact",
+            "safety",
+            "ethernet",
+            "gige",
+            "fieldbus",
+            "serial",
+            "vendor"
+          ],
+          "title": "Signal",
+          "type": "string"
+        },
+        "function": {
+          "title": "Function",
+          "type": "string"
+        },
+        "address": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Address"
+        },
+        "pool": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pool"
+        },
+        "channel_device": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Channel Device"
+        },
+        "via": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Endpoint"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "field": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Endpoint"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "wire": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Wire"
+        },
+        "note": {
+          "default": "",
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "signal",
+        "function"
+      ],
+      "title": "IoPoint",
+      "type": "object"
+    },
+    "Net": {
+      "additionalProperties": true,
+      "description": "電位或網路：同一個 net 上的端子視為相連。",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "signal": {
+          "enum": [
+            "ac_power",
+            "dc_power",
+            "ground",
+            "digital_in",
+            "digital_out",
+            "analog_in",
+            "analog_out",
+            "relay_contact",
+            "safety",
+            "ethernet",
+            "gige",
+            "fieldbus",
+            "serial",
+            "vendor"
+          ],
+          "title": "Signal",
+          "type": "string"
+        },
+        "voltage": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Voltage"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label"
+        }
+      },
+      "required": [
+        "id",
+        "signal"
+      ],
+      "title": "Net",
+      "type": "object"
+    },
+    "PanelLayout": {
+      "additionalProperties": true,
+      "properties": {
+        "width_mm": {
+          "title": "Width Mm",
+          "type": "number"
+        },
+        "height_mm": {
+          "title": "Height Mm",
+          "type": "number"
+        },
+        "depth_mm": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Depth Mm"
+        },
+        "margin_mm": {
+          "default": 20.0,
+          "title": "Margin Mm",
+          "type": "number"
+        },
+        "clearance_mm": {
+          "default": 10.0,
+          "title": "Clearance Mm",
+          "type": "number"
+        },
+        "rails": {
+          "items": {
+            "$ref": "#/$defs/PanelRail"
+          },
+          "title": "Rails",
+          "type": "array"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        }
+      },
+      "required": [
+        "width_mm",
+        "height_mm"
+      ],
+      "title": "PanelLayout",
+      "type": "object"
+    },
+    "PanelPlacement": {
+      "additionalProperties": true,
+      "properties": {
+        "rail": {
+          "title": "Rail",
+          "type": "string"
+        },
+        "order": {
+          "default": 0,
+          "title": "Order",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "rail"
+      ],
+      "title": "PanelPlacement",
+      "type": "object"
+    },
+    "PanelRail": {
+      "additionalProperties": true,
+      "description": "盤內軌道或線槽；y_mm 為中心線距盤面上緣的距離。線槽以 height_mm 佔用上下空間。",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "y_mm": {
+          "title": "Y Mm",
+          "type": "number"
+        },
+        "kind": {
+          "default": "din_rail",
+          "enum": [
+            "din_rail",
+            "duct",
+            "mounting_plate"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "height_mm": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Height Mm"
+        }
+      },
+      "required": [
+        "id",
+        "y_mm"
+      ],
+      "title": "PanelRail",
+      "type": "object"
+    },
+    "Pool": {
+      "additionalProperties": true,
+      "description": "一個器件上可依序配置的端子（I/O 通道、交換器埠、端子排位置）。",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "device": {
+          "title": "Device",
+          "type": "string"
+        },
+        "signal": {
+          "enum": [
+            "ac_power",
+            "dc_power",
+            "ground",
+            "digital_in",
+            "digital_out",
+            "analog_in",
+            "analog_out",
+            "relay_contact",
+            "safety",
+            "ethernet",
+            "gige",
+            "fieldbus",
+            "serial",
+            "vendor"
+          ],
+          "title": "Signal",
+          "type": "string"
+        },
+        "terminals": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Terminals",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "device",
+        "signal",
+        "terminals"
+      ],
+      "title": "Pool",
+      "type": "object"
+    },
+    "Ratings": {
+      "additionalProperties": true,
+      "description": "額定值；缺少時相關容量檢查為未評估，不以預設值補。",
+      "properties": {
+        "current_a": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Current A"
+        },
+        "power_w": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Power W"
+        },
+        "output_current_a": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Current A"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        }
+      },
+      "title": "Ratings",
+      "type": "object"
+    },
+    "SafetyCircuit": {
+      "additionalProperties": true,
+      "description": "安全功能回路（急停、門互鎖）：只呈現需求與規劃回路，不宣稱安全等級。",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "devices": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Devices",
+          "type": "array"
+        },
+        "controller": {
+          "title": "Controller",
+          "type": "string"
+        },
+        "outputs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Outputs",
+          "type": "array"
+        },
+        "requirement": {
+          "default": "",
+          "title": "Requirement",
+          "type": "string"
+        },
+        "note": {
+          "default": "未完成風險評估與安全架構驗證；不宣稱安全等級或停止類別",
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "devices",
+        "controller"
+      ],
+      "title": "SafetyCircuit",
+      "type": "object"
+    },
+    "Terminal": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "signal": {
+          "enum": [
+            "ac_power",
+            "dc_power",
+            "ground",
+            "digital_in",
+            "digital_out",
+            "analog_in",
+            "analog_out",
+            "relay_contact",
+            "safety",
+            "ethernet",
+            "gige",
+            "fieldbus",
+            "serial",
+            "vendor"
+          ],
+          "title": "Signal",
+          "type": "string"
+        },
+        "voltage": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Voltage"
+        },
+        "direction": {
+          "default": "passive",
+          "enum": [
+            "source",
+            "sink",
+            "bidirectional",
+            "passive"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "required": {
+          "default": false,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label"
+        }
+      },
+      "required": [
+        "id",
+        "signal"
+      ],
+      "title": "Terminal",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "properties": {
+    "version": {
+      "const": 1,
+      "default": 1,
+      "title": "Version",
+      "type": "integer"
+    },
+    "title": {
+      "default": "",
+      "title": "Title",
+      "type": "string"
+    },
+    "nets": {
+      "items": {
+        "$ref": "#/$defs/Net"
+      },
+      "title": "Nets",
+      "type": "array"
+    },
+    "devices": {
+      "items": {
+        "$ref": "#/$defs/Device"
+      },
+      "title": "Devices",
+      "type": "array"
+    },
+    "connections": {
+      "items": {
+        "$ref": "#/$defs/Connection"
+      },
+      "title": "Connections",
+      "type": "array"
+    },
+    "pools": {
+      "items": {
+        "$ref": "#/$defs/Pool"
+      },
+      "title": "Pools",
+      "type": "array"
+    },
+    "io": {
+      "items": {
+        "$ref": "#/$defs/IoPoint"
+      },
+      "title": "Io",
+      "type": "array"
+    },
+    "equipment": {
+      "items": {
+        "$ref": "#/$defs/EquipmentTemplate"
+      },
+      "title": "Equipment",
+      "type": "array"
+    },
+    "safety": {
+      "items": {
+        "$ref": "#/$defs/SafetyCircuit"
+      },
+      "title": "Safety",
+      "type": "array"
+    },
+    "panel": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PanelLayout"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "drawing": {
+      "$ref": "#/$defs/DrawingTemplate"
+    },
+    "notes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Notes",
+      "type": "array"
+    }
+  },
+  "title": "Electrical",
+  "type": "object"
+}

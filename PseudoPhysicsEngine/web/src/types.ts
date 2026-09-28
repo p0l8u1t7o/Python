@@ -8,12 +8,27 @@ export type ProjectSummary = {
   checks: { red: number; yellow: number; green: number };
 };
 
+export type TrashItem = {
+  trash_id: string;
+  original_id: string;
+  name: string;
+  customer: string;
+  product: string;
+  deleted_at: string;
+  versions: number;
+};
+
 export type Version = {
   id: string;
   number: number;
   generated: string;
   checks: { red: number; yellow: number; green: number };
+  complete?: boolean;
+  level?: "L0" | "L1" | null;
+  engineering_status?: "pass" | "warning" | "fail" | "not_evaluated" | null;
 };
+
+export type ExportMissing = { kind: string; reason: string };
 
 export type Project = {
   id: string;
@@ -57,6 +72,7 @@ export type Job = {
   status: "queued" | "running" | "done" | "failed" | "cancelled";
   error?: string;
   result?: Record<string, unknown>;
+  warnings?: string[];
 };
 
 export type TimelineStation = {

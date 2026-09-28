@@ -47,6 +47,23 @@ def create_project(directory: Path, project_data: dict, *, seed_example: str | N
             target = directory / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, target)
+        # 範例的推估假設與待確認問題：推估值必須帶著對應假設進入新案子。
+        for relative in (
+            "analysis/assumptions.yaml",
+            "analysis/questions.yaml",
+            "costing.yaml",
+            "electrical.yaml",
+        ):
+            if (example / relative).is_file():
+                shutil.copy2(example / relative, directory / relative)
+        # 案例專屬的零件與工具模組（例如 SSD 案的接頭、連板與壓墊工具）
+        if (example / "parts").is_dir():
+            shutil.copytree(
+                example / "parts",
+                directory / "parts",
+                dirs_exist_ok=True,
+                ignore=shutil.ignore_patterns("__pycache__"),
+            )
     dump_yaml(directory / "project.yaml", project_data)
     initialize_git(directory)
     return directory

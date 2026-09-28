@@ -1,0 +1,718 @@
+version: 1
+title: SSD USB 銀腳壓合與視覺檢查成本估算
+as_of: '2026-09-26'
+policy:
+  currency: TWD
+  overhead_rate: 0
+  contingency_rate: 0.15
+  tax_rate: 0.05
+  rounding:
+    line_decimals: 0
+    total_decimals: 2
+    mode: half_up
+exchange_rates:
+- from: USD
+  to: TWD
+  rate: 31
+  date: '2026-09-26'
+  source: TestCode 試算表的 USD→NT$ 參考匯率；本表單價皆以 NT$ 輸入，未使用
+items:
+- id: 1-01
+  kind: module
+  subsystem: 1 手臂與授權
+  name: 六軸工業手臂套裝
+  unit: 套
+  spec: 7 kg／710 mm 級，含 RC8A、教導器與標準線材
+  model: DENSO VS-068
+  rationale: 依目前機構／流程配置，待供應商確認
+  alternative: 同規格替代品，需重新驗證
+  price:
+    amount: 950000
+    currency: TWD
+    source: TestCode RobotArmPressSSD cost-estimate.xlsx（2026-09-26 
+      內部預算，未取得供應商報價）；工程預算假設；非廠商報價；規格參考（查閱 
+      2026-09-26）：https://www.densorobotics.com/products/5-6-axis/vsa-series/
+    quote_date: '2026-09-26'
+    trust: estimate
+    grade: B
+    range_pct: 0.2
+- id: 1-02
+  kind: purchased
+  subsystem: 1 手臂與授權
+  name: 力覺柔順控制授權
+  unit: 組
+  spec: 壓合與補壓閉迴路；控制器相容性確認
+  model: DENSO Force Compliance 級
+  rationale: 依目前機構／流程配置，待供應商確認
+  alternative: 同規格替代品，需重新驗證
+  price:
+    amount: 120000
+    currency: TWD
+    source: TestCode RobotArmPressSSD cost-estimate.xlsx（2026-09-26 
+      內部預算，未取得供應商報價）；工程預算假設；非廠商報價
+    quote_date: '2026-09-26'
+    trust: estimate
+    grade: C
+    range_pct: 0.3
+- id: 1-03
+  kind: purchased
+  subsystem: 1 手臂與授權
+  name: EtherNet/IP 與離線程式授權
+  unit: 組
+  spec: 控制交握、程式備份；不重複計控制器
+  model: RC8A 通訊選配＋WINCAPS
+  rationale: 依目前機構／流程配置，待供應商確認
+  alternative: 同規格替代品，需重新驗證
+  price:
+    amount: 105000
+    currency: TWD
+    source: TestCode RobotArmPressSSD cost-estimate.xlsx（2026-09-26 
+      內部預算，未取得供應商報價）；工程預算假設；非廠商報價
+    quote_date: '2026-09-26'
+    trust: estimate
+    grade: C
+    range_pct: 0.3
+- id: 1-04
+  kind: purchased
+  subsystem: 1 手臂與授權
+  name: 手臂外部線材管理
+  unit: 組
+  spec: 相機與力覺 Ethernet、光源線、高撓線材
+  model: 外部護套與固定件
+  rationale: 依目前機構／流程配置，待供應商確認
+  alternative: 同規格替代品，需重新驗證
+  price:
+    amount: 40000
+    currency: TWD
+    source: TestCode RobotArmPressSSD cost-estimate.xlsx（2026-09-26 
+      內部預算，未取得供應商報價）；工程預算假設；非廠商報價
+    quote_date: '2026-09-26'
+    trust: estimate
+    grade: C
+    range_pct: 0.3
+- id: 2-01
+  kind: purchased
+  subsystem: 2 共用壓合工具
+  name: 六軸力覺感測器
+  unit: 組
+  spec: 量測整排合力；無法取代單顆視覺貼合判斷
+  model: ATI Axia80-M20
+  rationale: 依目前機構／流程配置，待供應商確認
+  alternative: 同規格替代品，需重新驗證
+  price:
+    amount: 170000
+    currency: TWD
+    source: TestCode RobotArmPressSSD cost-estimate.xlsx（2026-09-26 
+      內部預算，未取得供應商報價）；工程預算假設；非廠商報價；規格參考（查閱 
+      2026-09-26）：https://www.ati-ia.com/products/ft/ft_models.aspx?id=axia80-m20
+    quote_date: '2026-09-26'
+    trust: estimate
+    grade: B
+    range_pct: 0.2
+- id: 2-02
+  kind: fabricated
+  subsystem: 2 共用壓合工具
+  name: 8 頭獨立彈簧整排壓墊
+  unit: 組
+  spec: 21 mm 片距、3 mm 行程；含 PU 墊、限位
+  model: 自製可拆壓條
+  rationale: 依目前機構／流程配置，待供應商確認
+  alternative: 同規格替代品，需重新驗證
+  price:
+    amount: 85000
+    currency: TWD
+    source: TestCode RobotArmPressSSD cost-estimate.xlsx（2026-09-26 
+      內部預算，未取得供應商報價）；工程預算假設；非廠商報價
+    quote_date: '2026-09-26'
+    trust: estimate
+    grade: C
+    range_pct: 0.3
+- id: 2-03
+  kind: fabricated
+  subsystem: 2 共用壓合工具
+  name: 單點壓頭與快拆識別
+  unit: 組
+  spec: 用於單顆 SSD 接頭；同法蘭介面
+  model: 自製彈簧壓頭
+  rationale: 依目前機構／流程配置，待供應商確認
+  alternative: 同規格替代品，需重新驗證
+  price:
+    amount: 35000
+    currency: TWD
+    source: TestCode RobotArmPressSSD cost-estimate.xlsx（2026-09-26 
+      內部預算，未取得供應商報價）；工程預算假設；非廠商報價
+    quote_date: '2026-09-26'
+    trust: estimate
+    grade: C
+    range_pct: 0.3
+- id: 2-04
+  kind: fabricated
+  subsystem: 2 共用壓合工具
+  name: 工具本體與相機支架
+  unit: 組
+  spec: 法蘭、剛性工具板、可調斜視支架
+  model: 6061 陽極處理
+  rationale: 依目前機構／流程配置，待供應商確認
+  alternative: 同規格替代品，需重新驗證
+  price:
+    amount: 45000
+    currency: TWD
+    source: TestCode RobotArmPressSSD cost-estimate.xlsx（2026-09-26 
+      內部預算，未取得供應商報價）；工程預算假設；非廠商報價
+    quote_date: '2026-09-26'
+    trust: estimate
+    grade: C
+    range_pct: 0.3
+- id: 3-01
+  kind: purchased
+  subsystem: 3 視覺檢測
+  name: 20MP GigE 相機
+  unit: 台
+  spec: 全局 1 台＋手臂斜視 1 台；靜止曝光
+  model: IDS GV-5800 級
+  rationale: 依目前機構／流程配置，待供應商確認
+  alternative: 同規格替代品，需重新驗證
+  price:
+    amount: 38000
+    currency: TWD
+    source: TestCode RobotArmPressSSD cost-estimate.xlsx（2026-09-26 
+      內部預算，未取得供應商報價）；工程預算假設；非廠商報價
+    quote_date: '2026-09-26'
+    trust: estimate
+    grade: B
+    range_pct: 0.2
+- id: 3-02
+  kind: purchased
+  subsystem: 3 視覺檢測
+  name: 高解析鏡頭
+  unit: 支
+  spec: 手臂 25 mm；全局依實際 WD/FOV 選型
+  model: 1 吋 20MP C-mount 級
+  rationale: 依目前機構／流程配置，待供應商確認
+  alternative: 同規格替代品，需重新驗證
+  price:
+    amount: 15000
+    currency: TWD
+    source: TestCode RobotArmPressSSD cost-estimate.xlsx（2026-09-26 
+      內部預算，未取得供應商報價）；工程預算假設；非廠商報價
+    quote_date: '2026-09-26'
+    trust: estimate
+    grade: B
+    range_pct: 0.2
+- id: 3-03
+  kind: purchased
+  subsystem: 3 視覺檢測
+  name: 漫射與斜視頻閃打光
+  unit: 組
+  spec: 全局漫射、手臂條光各 1 組
+  model: CCS／OPT 級
+  rationale: 依目前機構／流程配置，待供應商確認
+  alternative: 同規格替代品，需重新驗證
+  price:
+    amount: 40000
+    currency: TWD
+    source: TestCode RobotArmPressSSD cost-estimate.xlsx（2026-09-26 
+      內部預算，未取得供應商報價）；工程預算假設；非廠商報價
+    quote_date: '2026-09-26'
+    trust: estimate
+    grade: B
+    range_pct: 0.2
+- id: 3-04
+  kind: purchased
+  subsystem: 3 視覺檢測
+  name: 頻閃控制、PoE 與線材
+  unit: 組
+  spec: 含觸發、網卡、高撓 GigE 線
+  model: 視覺連接套件
+  rationale: 依目前機構／流程配置，待供應商確認
+  alternative: 同規格替代品，需重新驗證
+  price:
+    amount: 40000
+    currency: TWD
+    source: TestCode RobotArmPressSSD cost-estimate.xlsx（2026-09-26 
+      內部預算，未取得供應商報價）；工程預算假設；非廠商報價
+    quote_date: '2026-09-26'
+    trust: estimate
+    grade: B
+    range_pct: 0.2
+- id: 3-05
+  kind: purchased
+  subsystem: 3 視覺檢測
+  name: 光學校正與間隙限度樣件
+  unit: 組
+  spec: 相機標定、0.10 mm 級判定樣件；不含客戶限度標準制定
+  model: 校正板與可調間隙樣件
+  rationale: 依目前機構／流程配置，待供應商確認
+  alternative: 同規格替代品，需重新驗證
+  price:
+    amount: 25000
+    currency: TWD
+    source: TestCode RobotArmPressSSD cost-estimate.xlsx（2026-09-26 
+      內部預算，未取得供應商報價）；工程預算假設；非廠商報價
+    quote_date: '2026-09-26'
+    trust: estimate
+    grade: C
+    range_pct: 0.3
+- id: 4-01
+  kind: module
+  subsystem: 4 輸送與定位
+  name: 1.2 m SMT 輸送模組
+  unit: 組
+  spec: 雙軌、止擋、SMEMA；不含調寬伺服及頂升
+  model: SMT 輸送本體
+  rationale: 依目前機構／流程配置，待供應商確認
+  alternative: 同規格替代品，需重新驗證
+  price:
+    amount: 180000
+    currency: TWD
+    source: TestCode RobotArmPressSSD cost-estimate.xlsx（2026-09-26 
+      內部預算，未取得供應商報價）；工程預算假設；非廠商報價
+    quote_date: '2026-09-26'
+    trust: estimate
+    grade: C
+    range_pct: 0.3
+- id: 4-02
+  kind: purchased
+  subsystem: 4 輸送與定位
+  name: 伺服自動調寬
+  unit: 組
+  spec: 伺服、驅動器、絲桿與同步件全含
+  model: 小功率伺服調寬
+  rationale: 依目前機構／流程配置，待供應商確認
+  alternative: 同規格替代品，需重新驗證
+  price:
+    amount: 70000
+    currency: TWD
+    source: TestCode RobotArmPressSSD cost-estimate.xlsx（2026-09-26 
+      內部預算，未取得供應商報價）；工程預算假設；非廠商報價
+    quote_date: '2026-09-26'
+    trust: estimate
+    grade: B
+    range_pct: 0.2
+- id: 4-03
+  kind: fabricated
+  subsystem: 4 輸送與定位
+  name: 頂升、支撐與到位感測
+  unit: 組
+  spec: 載盤通用支撐面、避讓加工、氣缸；不另購原產線載盤
+  model: 自製頂升定位
+  rationale: 依目前機構／流程配置，待供應商確認
+  alternative: 同規格替代品，需重新驗證
+  price:
+    amount: 90000
+    currency: TWD
+    source: TestCode RobotArmPressSSD cost-estimate.xlsx（2026-09-26 
+      內部預算，未取得供應商報價）；工程預算假設；非廠商報價
+    quote_date: '2026-09-26'
+    trust: estimate
+    grade: C
+    range_pct: 0.3
+- id: 5-01
+  kind: fabricated
+  subsystem: 5 機架與罩體
+  name: 底座與防護罩
+  unit: 組
+  spec: 手臂固定座、ESD 工作面、維修門
+  model: 自製機架與透明罩
+  rationale: 依目前機構／流程配置，待供應商確認
+  alternative: 同規格替代品，需重新驗證
+  price:
+    amount: 150000
+    currency: TWD
+    source: TestCode RobotArmPressSSD cost-estimate.xlsx（2026-09-26 
+      內部預算，未取得供應商報價）；工程預算假設；非廠商報價
+    quote_date: '2026-09-26'
+    trust: estimate
+    grade: C
+    range_pct: 0.3
+- id: 6-01
+  kind: purchased
+  subsystem: 6 控制與氣動
+  name: PLC、I/O 與 HMI
+  unit: 套
+  spec: 站序、配方、SMEMA、壓力與異常交握
+  model: Keyence KV-X＋I/O＋HMI 級
+  rationale: 依目前機構／流程配置，待供應商確認
+  alternative: 同規格替代品，需重新驗證
+  price:
+    amount: 140000
+    currency: TWD
+    source: TestCode RobotArmPressSSD cost-estimate.xlsx（2026-09-26 
+      內部預算，未取得供應商報價）；工程預算假設；非廠商報價；規格參考（查閱 
+      2026-09-26）：https://www.keyence.com.tw/products/controls/plc-building-block-type/kv-x/
+    quote_date: '2026-09-26'
+    trust: estimate
+    grade: B
+    range_pct: 0.2
+- id: 6-02
+  kind: purchased
+  subsystem: 6 控制與氣動
+  name: 閥、氣源與感測器
+  unit: 組
+  spec: FRL、氣缸閥、磁簧、光電、壓力、接頭
+  model: SMC／Keyence 級
+  rationale: 依目前機構／流程配置，待供應商確認
+  alternative: 同規格替代品，需重新驗證
+  price:
+    amount: 65000
+    currency: TWD
+    source: TestCode RobotArmPressSSD cost-estimate.xlsx（2026-09-26 
+      內部預算，未取得供應商報價）；工程預算假設；非廠商報價
+    quote_date: '2026-09-26'
+    trust: estimate
+    grade: B
+    range_pct: 0.2
+- id: 7-01
+  kind: purchased
+  subsystem: 7 安全與電力
+  name: 安全控制與門互鎖
+  unit: 組
+  spec: 急停、門鎖、安全控制器與接線元件
+  model: Keyence GC／GS 級
+  rationale: 依目前機構／流程配置，待供應商確認
+  alternative: 同規格替代品，需重新驗證
+  price:
+    amount: 75000
+    currency: TWD
+    source: TestCode RobotArmPressSSD cost-estimate.xlsx（2026-09-26 
+      內部預算，未取得供應商報價）；工程預算假設；非廠商報價
+    quote_date: '2026-09-26'
+    trust: estimate
+    grade: B
+    range_pct: 0.2
+- id: 7-02
+  kind: fabricated
+  subsystem: 7 安全與電力
+  name: 電控盤與配電材料
+  unit: 組
+  spec: 盤體、電源、斷路器、端子；施工另列
+  model: 自製電控箱
+  rationale: 依目前機構／流程配置，待供應商確認
+  alternative: 同規格替代品，需重新驗證
+  price:
+    amount: 85000
+    currency: TWD
+    source: TestCode RobotArmPressSSD cost-estimate.xlsx（2026-09-26 
+      內部預算，未取得供應商報價）；工程預算假設；非廠商報價
+    quote_date: '2026-09-26'
+    trust: estimate
+    grade: C
+    range_pct: 0.3
+- id: 8-01
+  kind: purchased
+  subsystem: 8 電腦與網路
+  name: 視覺工業電腦與螢幕
+  unit: 組
+  spec: 32 GB、SSD；傳統演算法主案，不含 GPU AI 授權
+  model: 工業電腦
+  rationale: 依目前機構／流程配置，待供應商確認
+  alternative: 同規格替代品，需重新驗證
+  price:
+    amount: 100000
+    currency: TWD
+    source: TestCode RobotArmPressSSD cost-estimate.xlsx（2026-09-26 
+      內部預算，未取得供應商報價）；工程預算假設；非廠商報價
+    quote_date: '2026-09-26'
+    trust: estimate
+    grade: B
+    range_pct: 0.2
+- id: 8-02
+  kind: purchased
+  subsystem: 8 電腦與網路
+  name: UPS 與控制網路
+  unit: 組
+  spec: 影像網卡已列 3；此列不重複
+  model: UPS＋交換器
+  rationale: 依目前機構／流程配置，待供應商確認
+  alternative: 同規格替代品，需重新驗證
+  price:
+    amount: 30000
+    currency: TWD
+    source: TestCode RobotArmPressSSD cost-estimate.xlsx（2026-09-26 
+      內部預算，未取得供應商報價）；工程預算假設；非廠商報價
+    quote_date: '2026-09-26'
+    trust: estimate
+    grade: B
+    range_pct: 0.2
+- id: 9-12
+  kind: service
+  subsystem: 9 工程與服務
+  name: 安全風險評估與驗證
+  unit: 式
+  spec: 工業手臂封閉站、夾壓與復歸
+  model: 顧問與測試
+  rationale: 依目前機構／流程配置，待供應商確認
+  alternative: 同規格替代品，需重新驗證
+  price:
+    amount: 70000
+    currency: TWD
+    source: TestCode RobotArmPressSSD cost-estimate.xlsx（2026-09-26 
+      內部預算，未取得供應商報價）；工程預算假設；非廠商報價
+    quote_date: '2026-09-26'
+    trust: estimate
+    grade: C
+    range_pct: 0.3
+- id: 9-13
+  kind: service
+  subsystem: 9 工程與服務
+  name: 運輸與現場安裝
+  unit: 式
+  spec: 台灣本島一次進場；串線停線配合另議
+  model: 運輸安裝
+  rationale: 依目前機構／流程配置，待供應商確認
+  alternative: 同規格替代品，需重新驗證
+  price:
+    amount: 35000
+    currency: TWD
+    source: TestCode RobotArmPressSSD cost-estimate.xlsx（2026-09-26 
+      內部預算，未取得供應商報價）；工程預算假設；非廠商報價
+    quote_date: '2026-09-26'
+    trust: estimate
+    grade: C
+    range_pct: 0.3
+- id: 10-01
+  kind: fabricated
+  subsystem: 10 選配
+  name: 不同片距壓條
+  unit: 套
+  spec: 新增機種專用片距，不含原有 21 mm
+  model: 額外加工＋驗證
+  rationale: 依目前機構／流程配置，待供應商確認
+  alternative: 同規格替代品，需重新驗證
+  price:
+    amount: 60000
+    currency: TWD
+    source: TestCode RobotArmPressSSD cost-estimate.xlsx（2026-09-26 
+      內部預算，未取得供應商報價）；工程預算假設；非廠商報價
+    quote_date: '2026-09-26'
+    trust: estimate
+    grade: C
+    range_pct: 0.3
+- id: 10-02
+  kind: service
+  subsystem: 10 選配
+  name: MES 介面與 NG 排料擴充
+  unit: 式
+  spec: 基準案 NG 停站人工覆判；此列另購
+  model: 額外軟硬體整合
+  rationale: 依目前機構／流程配置，待供應商確認
+  alternative: 同規格替代品，需重新驗證
+  price:
+    amount: 180000
+    currency: TWD
+    source: TestCode RobotArmPressSSD cost-estimate.xlsx（2026-09-26 
+      內部預算，未取得供應商報價）；工程預算假設；非廠商報價
+    quote_date: '2026-09-26'
+    trust: estimate
+    grade: C
+    range_pct: 0.3
+equipment:
+- id: EQ-robot
+  match:
+    module: robot_1
+  items:
+  - item: 1-01
+    quantity: 1
+  - item: 1-02
+    quantity: 1
+  - item: 1-03
+    quantity: 1
+  - item: 1-04
+    quantity: 1
+- id: EQ-press-tool
+  match:
+    tool: parts/press_camera_eoat.py
+  items:
+  - item: 2-01
+    quantity: 1
+  - item: 2-02
+    quantity: 1
+  - item: 2-04
+    quantity: 1
+  - item: 3-01
+    quantity: 1
+  - item: 3-02
+    quantity: 1
+- id: EQ-global-camera
+  match:
+    part: parts/global_camera.py
+  items:
+  - item: 3-01
+    quantity: 1
+  - item: 3-02
+    quantity: 1
+- id: EQ-conveyor
+  match:
+    part: library/conveyor.py
+  items:
+  - item: 4-01
+    quantity: 1
+  - item: 4-02
+    quantity: 1
+  - item: 4-03
+    quantity: 1
+bom:
+- id: BOM-2-03
+  item: 2-03
+  quantity: 1
+  note: ''
+- id: BOM-3-03
+  item: 3-03
+  quantity: 1
+  note: ''
+- id: BOM-3-04
+  item: 3-04
+  quantity: 1
+  note: ''
+- id: BOM-3-05
+  item: 3-05
+  quantity: 1
+  note: ''
+- id: BOM-5-01
+  item: 5-01
+  quantity: 1
+  note: ''
+- id: BOM-6-01
+  item: 6-01
+  quantity: 1
+  note: ''
+- id: BOM-6-02
+  item: 6-02
+  quantity: 1
+  note: ''
+- id: BOM-7-01
+  item: 7-01
+  quantity: 1
+  note: ''
+- id: BOM-7-02
+  item: 7-02
+  quantity: 1
+  note: ''
+- id: BOM-8-01
+  item: 8-01
+  quantity: 1
+  note: ''
+- id: BOM-8-02
+  item: 8-02
+  quantity: 1
+  note: ''
+- id: BOM-9-12
+  item: 9-12
+  quantity: 1
+  note: ''
+- id: BOM-9-13
+  item: 9-13
+  quantity: 1
+  note: ''
+- id: BOM-10-01
+  item: 10-01
+  quantity: 0
+  note: 選配；數量 0 表示不計入
+- id: BOM-10-02
+  item: 10-02
+  quantity: 0
+  note: 選配；數量 0 表示不計入
+labor:
+  rates:
+  - id: engineer
+    rate: 8000
+    unit: 人日
+    basis: 設計、程式、POC 與驗收
+  - id: technician
+    rate: 5500
+    unit: 人日
+    basis: 機構組配與配線
+  tasks:
+  - id: 9-01
+    category: poc
+    name: 錫膏、反光與回彈 POC
+    quantity: 12
+    rate: engineer
+    basis: 初版單機工程；含測試、修正與紀錄；沿用軍規案人日費率，按本案工作量估算
+    grade: C
+    range_pct: 0.3
+  - id: 9-02
+    category: mechanical
+    name: 機構與壓頭設計
+    quantity: 18
+    rate: engineer
+    basis: 初版單機工程；含測試、修正與紀錄；沿用軍規案人日費率，按本案工作量估算
+    grade: C
+    range_pct: 0.3
+  - id: 9-03
+    category: electrical
+    name: 電控設計
+    quantity: 8
+    rate: engineer
+    basis: 初版單機工程；含測試、修正與紀錄；沿用軍規案人日費率，按本案工作量估算
+    grade: C
+    range_pct: 0.3
+  - id: 9-04
+    category: assembly
+    name: 機構組配
+    quantity: 12
+    rate: technician
+    basis: 初版單機工程；含測試、修正與紀錄；沿用軍規案人日費率，按本案工作量估算
+    grade: C
+    range_pct: 0.3
+  - id: 9-05
+    category: wiring
+    name: 配線施工
+    quantity: 8
+    rate: technician
+    basis: 初版單機工程；含測試、修正與紀錄；沿用軍規案人日費率，按本案工作量估算
+    grade: C
+    range_pct: 0.3
+  - id: 9-06
+    category: software
+    name: PLC／HMI 程式
+    quantity: 12
+    rate: engineer
+    basis: 初版單機工程；含測試、修正與紀錄；沿用軍規案人日費率，按本案工作量估算
+    grade: C
+    range_pct: 0.3
+  - id: 9-07
+    category: software
+    name: 手臂力控與多配方
+    quantity: 20
+    rate: engineer
+    basis: 初版單機工程；含測試、修正與紀錄；沿用軍規案人日費率，按本案工作量估算
+    grade: C
+    range_pct: 0.3
+  - id: 9-08
+    category: software
+    name: 全局定位與銀腳貼合演算法
+    quantity: 25
+    rate: engineer
+    basis: 初版單機工程；含測試、修正與紀錄；沿用軍規案人日費率，按本案工作量估算
+    grade: C
+    range_pct: 0.3
+  - id: 9-09
+    category: software
+    name: 上位紀錄與影像索引
+    quantity: 10
+    rate: engineer
+    basis: 初版單機工程；含測試、修正與紀錄；沿用軍規案人日費率，按本案工作量估算
+    grade: C
+    range_pct: 0.3
+  - id: 9-10
+    category: commissioning
+    name: 試車與驗收
+    quantity: 15
+    rate: engineer
+    basis: 初版單機工程；含測試、修正與紀錄；沿用軍規案人日費率，按本案工作量估算
+    grade: C
+    range_pct: 0.3
+  - id: 9-11
+    category: documentation
+    name: 文件與教育訓練
+    quantity: 5
+    rate: engineer
+    basis: 初版單機工程；含測試、修正與紀錄；沿用軍規案人日費率，按本案工作量估算
+    grade: C
+    range_pct: 0.3
+notes:
+- 全部為內部 ROM 預算，並非供應商報價；官方網頁只支持規格，不能當成價格來源。
+- 上下限為逐列 B ±20%、C ±30% 的加總，不是統計信賴區間。
+- 載盤由既有產線提供；PCB、USB、焊接設備與迴焊爐不含。
+- 不含銷售毛利、廠房電氣／空壓／排風改造、客戶 MES 端開發、量產原料、全年耗材與保養合約。

@@ -1,4 +1,8 @@
-"""Workpiece geometry, face frames, and articulated hinged covers."""
+"""Workpiece and part geometry, face frames, articulated hinged covers, and part state axes.
+
+單一工件案例只有一個 id 為 ``workpiece`` 的零件；多零件產品（``workpiece.yaml`` 的 ``parts``）
+每個零件各自有外形、frame、狀態軸、質量與初始位置，持有關係由模擬引擎追蹤。
+"""
 
 from __future__ import annotations
 
@@ -9,15 +13,29 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 
 from cellforge.schema import Frame, ModuleAxis, ModuleDef
-from cellforge.schema.models import Cover, Process, Sku, Workpiece
+from cellforge.schema.models import Cover, PartInstance, PartPlacement, Process, Sku, Workpiece
+
+PRIMARY_PART = "workpiece"
 
 
 @dataclass(slots=True)
 class BuiltWorkpiece:
-    sku: Sku
+    """One product part instance (the legacy single workpiece is id ``workpiece``)."""
+
+    sku: Sku | None
     assembly: cq.Assembly | None
     definition: ModuleDef
     warnings: list[str] = field(default_factory=list)
+    id: str = PRIMARY_PART
+    mass_kg: float = 0.0
+    initial: PartPlacement | None = None
+    state: dict[str, float] = field(default_factory=dict)
+    # 零件模組路徑（SKU 方塊零件為空字串）與外形高度（翻面旋轉中心用）。
+    part_file: str = ""
+    height_mm: float = 0.0
+    trust: str | None = None
+    # 零件模組的參數（例如壓合後的回彈角），供狀態模型使用。
+    params: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,8 +148,81 @@ def _choose_sku(workpiece: Workpiece, process: Process | None) -> Sku:
 def build_workpiece(
     workpiece: Workpiece, process: Process | None = None, *, build_geometry: bool = True
 ) -> BuiltWorkpiece:
+    """Legacy single workpiece: the process-selected SKU as part ``workpiece``."""
+
     sku = _choose_sku(workpiece, process)
-    assembly = cq.Assembly(name="workpiece") if build_geometry else None
+    built = _sku_part(sku, PRIMARY_PART, build_geometry=build_geometry)
+    if process is not None and process.initial_workpiece_frame:
+        built.initial = PartPlacement(frame=process.initial_workpiece_frame)
+    return built
+
+
+def build_parts(
+    workpiece: Workpiece, process: Process | None = None, *, build_geometry: bool = True
+) -> list[BuiltWorkpiece]:
+    """All part instances of the product; without ``parts`` this is the legacy workpiece."""
+
+    if not workpiece.parts:
+        return [build_workpiece(workpiece, process, build_geometry=build_geometry)]
+    skus = {sku.id: sku for sku in workpiece.skus}
+    built = []
+    for part in workpiece.parts:
+        if part.sku is not None:
+            item = _sku_part(skus[part.sku], part.id, build_geometry=build_geometry)
+            item.mass_kg = float(part.mass_kg if part.mass_kg is not None else item.mass_kg)
+        else:
+            item = _module_part(part, build_geometry=build_geometry)
+        item.initial = part.initial
+        item.state = dict(part.state)
+        item.trust = part.trust or item.trust
+        unknown = sorted(set(part.state) - {axis.id for axis in item.definition.axes})
+        if unknown:
+            raise ValueError(f"零件 {part.id} 的 state 引用不存在的狀態軸：{', '.join(unknown)}")
+        built.append(item)
+    return built
+
+
+def _module_part(part: PartInstance, *, build_geometry: bool) -> BuiltWorkpiece:
+    from cellforge.build.modules import load_part, validate_params
+
+    assert part.part is not None
+    module = load_part(part.part)
+    definition = getattr(module, "MODULE", None)
+    builder = getattr(module, "build", None)
+    if not isinstance(definition, ModuleDef) or not callable(builder):
+        raise ValueError(f"零件 {part.id} 的模組 {part.part} 必須匯出 MODULE 與 build(params)")
+    params = dict(part.params)
+    validate_params(definition, params)
+    dynamic = getattr(module, "module_definition", lambda _params: definition)(params)
+    assembly = None
+    height = 0.0
+    if build_geometry:
+        assembly = builder(dict(params))
+        if not isinstance(assembly, cq.Assembly):
+            raise ValueError(f"零件 {part.id} 的 {part.part}.build() 必須回傳 cq.Assembly")
+        assembly.name = part.id
+        bounds = assembly.toCompound().BoundingBox()
+        height = float(bounds.zmax - bounds.zmin)
+    warnings = []
+    mass = part.mass_kg
+    if mass is None:
+        mass = 0.0
+        warnings.append(f"零件 {part.id} 沒有 mass_kg，負載檢查以 0 kg 計；請補上質量")
+    return BuiltWorkpiece(
+        sku=None,
+        assembly=assembly,
+        definition=dynamic.model_copy(update={"id": part.id}),
+        warnings=warnings,
+        id=part.id,
+        mass_kg=float(mass),
+        part_file=part.part.replace("\\", "/"),
+        height_mm=height,
+        params=params,
+    )
+
+
+def _sku_part(sku: Sku, part_id: str, *, build_geometry: bool) -> BuiltWorkpiece:
+    assembly = cq.Assembly(name=part_id) if build_geometry else None
     if assembly is not None:
         assembly.add(
             cq.Workplane("XY")
@@ -190,10 +281,19 @@ def build_workpiece(
         center = face.origin + face.u * (u + width / 2) + face.v * (v + height / 2)
         frames[str(region["id"])] = _frame(center, face.rotation)
     definition = ModuleDef(
-        id="workpiece",
+        id=part_id,
         frames=frames,
         axes=axes,
         collision="box",
         payload_kg=sku.mass_kg,
     )
-    return BuiltWorkpiece(sku, assembly, definition, warnings)
+    return BuiltWorkpiece(
+        sku,
+        assembly,
+        definition,
+        warnings,
+        id=part_id,
+        mass_kg=float(sku.mass_kg),
+        height_mm=float(sku.size.z),
+        trust=sku.size.trust,
+    )

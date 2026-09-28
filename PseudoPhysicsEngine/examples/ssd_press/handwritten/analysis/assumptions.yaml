@@ -1,0 +1,53 @@
+assumptions:
+  - id: A-SSD-GEOMETRY
+    text: USB-A 接頭 12 × 4.5 × 14 mm、9 支銀腳（片距 1.0 mm、長 3.5 mm）、連板片距 21 mm、載盤 300 × 200 × 6 mm
+    basis: TestCode RobotArmPressSSD 照片目測配方 usb-2x8；需以接頭型錄與連板工程圖確認
+    affects: [workpiece.yaml, parts/usb_a_connector.py, parts/usb_panel_2x8.py, parts/ssd_tray.py]
+  - id: A-SSD-TILT
+    text: 各接頭初始翹起角 A1 3.5°、A2 4.2°、A4 1.2°、A6 2.6°、A8 0.8°、B2 1.5°、B5 2.2°、B7 0.9°，其餘貼平；A6 首次壓合後回彈 1.1°
+    basis: TestCode 依照片放大的示意值，實際間隙要量測
+    affects: [workpiece.yaml]
+  - id: A-SSD-PIVOT
+    text: 接頭翹起時繞殼體前緣底部轉動，壓墊只能把接頭往貼平方向壓；貼平後的下壓量由壓墊彈簧吸收
+    basis: 受限行程與接觸狀態模型（開發書 2.3）；未建立材料模型，不預測接觸力或變形
+    affects: [process.yaml]
+  - id: A-SSD-ROBOT
+    text: 手臂為 DENSO VS-068 等級的型錄近似（臂展 710 mm、負載 7 kg），裝在 550 mm 高的底座上
+    basis: VS-068 沒有公開 URDF；依 TestCode 引用的型錄值以 robot_stub 參數化近似
+    affects: [cell.yaml]
+  - id: A-SSD-TOOL
+    text: 末端工具 8 頭 PU 壓墊 7 × 9 mm、彈簧行程 3 mm；斜視相機 IDS GV-5800＋25 mm、f/11、45° 斜裝、工作距離 175 mm
+    basis: TestCode 多機種重新設計；光圈與外形為工程推估
+    affects: [parts/press_camera_eoat.py]
+  - id: A-SSD-CONVEYOR
+    text: 輸送高度 900 mm、寬 300 mm，載盤停在輸送段中心
+    basis: 產線輸送高度與寬度待用戶確認，暫以一般 SMEMA 設備高度推估
+    affects: [cell.yaml]
+  - id: A-SSD-GAP
+    text: 允收間隙 0.10 mm；判定值由壓合狀態模型計算，不是實拍影像的演算法結果
+    basis: TestCode 暫定示意值，需以限度樣品與迴焊後空焊結果回推
+    affects: [process.yaml]
+  - id: A-SSD-ELEC
+    from_question: Q-SSD-E05
+    text: 電控器件、端子、I/O 點序（DI00–DI09、DO00–DO06）、端子排位置與線號由 TestCode circuit-data.json P02 轉入；IO1 為 16 DI／16 DO、SW1 為 8 埠、IPC1 為 4 埠 GigE PoE 網卡
+    basis: TestCode RobotArmPressSSD docs/electrical/circuit-data.json；端子名稱與點數為規劃代號，不是原廠腳位
+    affects: [electrical.yaml]
+  - id: A-SSD-SUPPLY
+    from_question: Q-SSD-E01
+    text: 現場供電以 L／N／PE 表示；QS1 後分 QF1 控制支路（PS1、IPC1）與 QF2 動力支路（RC1、經 K1 至 CV1）；PE 不經開關，盤內接地排 PE1
+    basis: TestCode components 對 QS1／QF1／QF2／K1 的角色描述與 common_notes；供電制式未確認
+    affects: [electrical.yaml]
+  - id: A-SSD-PANEL
+    text: 盤面 970 × 600 mm 與兩列器件外形取自 TestCode panels.ssd；線槽 D1–D4、端子軌 R3 的位置與 XDI／XDO／SM1／PE1 外形為推估
+    basis: TestCode circuit-data.json panels；線槽與端子軌依一般配盤習慣推估
+    affects: [electrical.yaml]
+  - id: A-SSD-SAFETY
+    from_question: Q-SSD-E06
+    text: 急停 ES1 與防護門 GS1 以雙通道接 GC1 測試輸出（T0–T3）與安全輸入（X0–X3）；Y0 控制 K1 動力支路、Y1 接 RC1 外部停止、K1 輔助 NC 以 T4→X4 回授 EDM
+    basis: TestCode GC1／K1 角色與 guards「GS1 防護門雙通道」；為規劃回路，未完成風險評估，不宣稱安全等級
+    affects: [electrical.yaml]
+  - id: A-SSD-TRIGGER
+    from_question: Q-SSD-E03
+    text: 頻閃光源 LC1 與固定相機的硬體觸發由 IO1 DO 點位池配置，經 XDO 端子排；手動指定的 DO00–DO06 優先
+    basis: TestCode links「IO1 觸發 → LC1」；相機觸發腳位待選
+    affects: [electrical.yaml]

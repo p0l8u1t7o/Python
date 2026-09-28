@@ -1,0 +1,51 @@
+questions:
+  - id: Q-SSD-01
+    topic: workpiece
+    text: 接頭型號、銀腳數與允收間隙為何？
+    why: 壓合面位置、翹起樞軸與相機判定門檻都依接頭尺寸與間隙規格
+    default_if_skipped: 沿用照片目測的 USB-A 尺寸與 0.10 mm 示意門檻（A-SSD-GEOMETRY、A-SSD-GAP）
+  - id: Q-SSD-02
+    topic: site
+    text: 產線輸送高度、寬度與 SMEMA 版本為何？
+    why: 手臂底座高度、可達範圍與載盤停位都受輸送高度影響
+    default_if_skipped: 輸送高度 900 mm、寬 300 mm（A-SSD-CONVEYOR）
+  - id: Q-SSD-03
+    topic: equipment
+    text: 各接頭可承受的壓合力與載盤尺寸圖為何？
+    why: 壓墊彈簧行程與力覺上限要依接頭可承受的壓合力設定
+    default_if_skipped: 壓墊彈簧行程 3 mm、整排合力約 40 N（A-SSD-TOOL）
+  - id: Q-SSD-04
+    topic: process
+    text: 不合格品的處理方式與是否需要接 MES？
+    why: 補壓次數上限與停線條件決定站別流程與節拍
+    default_if_skipped: 間隙超標原位補壓一次後複檢，仍不合格停線待人工
+  - id: Q-SSD-E01
+    topic: site
+    text: 現場供電的電壓、相數、中性線需求、短路容量與接地系統為何？
+    why: 隔離開關、斷路器、電源與接地的選型與電位域都依供電制式決定
+    default_if_skipped: 以 L／N／PE 三個電位域規劃，不推定供電制式（A-SSD-SUPPLY）
+  - id: Q-SSD-E02
+    topic: equipment
+    text: PS1 的輸出額定電流與各 24 V 負載（PLC、I/O、交換器、光源控制、感測器、安全控制器）的消耗電流為何？
+    why: 供電容量檢查需要額定值；缺少時只列未評估，不代表容量足夠
+    default_if_skipped: 供電容量檢查維持未評估
+  - id: Q-SSD-E03
+    topic: equipment
+    text: 頻閃光源與固定相機的觸發來源與腳位為何（IO1 DO、相機閃光輸出或 IPC 觸發卡）？
+    why: 觸發點位決定 I/O 表、端子排與配線；TestCode 只寫「IO1 觸發 → LC1」且相機腳位待選
+    default_if_skipped: 由 IO1 DO 點位池依序配置（A-SSD-TRIGGER）
+  - id: Q-SSD-E04
+    topic: equipment
+    text: IPC1、FT1、CAM01、CV1 的原廠電源設計為何？
+    why: TestCode 註明「依原廠電源設計」；供電支路與保護器件要依原廠規格配置
+    default_if_skipped: IPC1 由 QF1 控制支路 AC 供電、FT1 由 24 V 供電、相機經 PoE、CV1 經 K1 動力支路（A-SSD-SUPPLY）
+  - id: Q-SSD-E05
+    topic: equipment
+    text: PLC／分散式 I/O、端子台與 SMEMA 隔離模組的型號與點數為何？
+    why: 點位池容量、端子名稱與盤面外形都依型號決定；目前的 DI／DO 點序是規劃代號
+    default_if_skipped: IO1 為 16 DI／16 DO、XDI／XDO 各 16 位、IPC1 為 4 埠 GigE PoE 網卡（A-SSD-ELEC）
+  - id: Q-SSD-E06
+    topic: constraint
+    text: 急停與防護門互鎖的安全功能需求（停止類別、PL／SIL）由誰完成風險評估與驗證？
+    why: 圖面只呈現規劃回路；安全等級、測試脈衝、EDM 與接觸器冗餘需依風險評估與原廠手冊定案
+    default_if_skipped: 只呈現規劃回路，不宣稱安全等級（A-SSD-SAFETY）

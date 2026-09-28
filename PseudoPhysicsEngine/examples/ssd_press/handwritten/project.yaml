@@ -1,0 +1,15 @@
+name: SSD USB 接頭壓合站（DEV-008 驗收）
+customer: RobotArmPressSSD
+product: USB 隨身碟 2×8 連板（USB-A）
+description: |
+  把前站放好、但可能翹起的 USB 接頭壓回 PCB 焊墊，再逐顆以斜視相機確認貼合；
+  不合格的原位補壓後複檢。配方 usb-2x8，8 頭獨立彈簧壓墊一次壓一排。
+  尺寸與版面依 TestCode RobotArmPressSSD 的照片目測，皆為推估值。
+constraints:
+  robot_brand: DENSO
+  takt_target_s: 40
+  footprint_mm: [2000, 1600]
+  stations_max: 6
+  safety_notes: 壓合力受控；不可壓傷接頭殼體
+  free_text: ""
+created: 2026-09-28

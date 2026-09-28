@@ -35,16 +35,19 @@ export function captureRestTransforms(root: THREE.Object3D): RestTransforms {
       type: joint.type ?? "fixed",
     });
   });
-  const workpiece = findSceneNode(root, "workpiece");
-  if (workpiece && !rest.has("workpiece")) {
-    rest.set("workpiece", {
-      position: workpiece.position.clone(),
-      quaternion: workpiece.quaternion.clone(),
-      scale: workpiece.scale.clone(),
+  // 產品零件（GLB extras.part；舊版本只有名為 workpiece 的單一工件）以時間軸位姿移動。
+  root.traverse((object) => {
+    const name = String(object.userData.name ?? object.name);
+    const isPart = object.userData.part === true || name === "workpiece";
+    if (!isPart || rest.has(name)) return;
+    rest.set(name, {
+      position: object.position.clone(),
+      quaternion: object.quaternion.clone(),
+      scale: object.scale.clone(),
       axis: new THREE.Vector3(0, 0, 1),
       type: "pose",
     });
-  }
+  });
   return rest;
 }
 
@@ -75,12 +78,13 @@ export function applyTimeline(
     }
   }
 
-  const poseTrack = timeline.nodes.workpiece?.pose_quat;
-  const workpiece = findSceneNode(root, "workpiece");
-  if (workpiece && poseTrack?.length) {
-    const pose = interpolatePose(poseTrack, time);
-    workpiece.position.fromArray(pose.position);
-    workpiece.quaternion.copy(pose.quaternion);
+  for (const [name, track] of Object.entries(timeline.nodes)) {
+    if (!track.pose_quat?.length) continue;
+    const part = findSceneNode(root, name);
+    if (!part) continue;
+    const pose = interpolatePose(track.pose_quat, time);
+    part.position.fromArray(pose.position);
+    part.quaternion.copy(pose.quaternion);
   }
   root.updateMatrixWorld(true);
 }

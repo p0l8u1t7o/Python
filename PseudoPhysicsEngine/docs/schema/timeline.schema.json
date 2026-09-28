@@ -1,5 +1,80 @@
 {
   "$defs": {
+    "TimelineActionResult": {
+      "additionalProperties": true,
+      "description": "動作契約的執行結果；失敗時 reason_code 為固定代碼、reason 為中文說明。",
+      "properties": {
+        "step_id": {
+          "title": "Step Id",
+          "type": "string"
+        },
+        "action": {
+          "title": "Action",
+          "type": "string"
+        },
+        "objects": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Objects",
+          "type": "array"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "t0": {
+          "title": "T0",
+          "type": "number"
+        },
+        "t1": {
+          "title": "T1",
+          "type": "number"
+        },
+        "reason_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason Code"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "details": {
+          "additionalProperties": true,
+          "title": "Details",
+          "type": "object"
+        }
+      },
+      "required": [
+        "step_id",
+        "action",
+        "status",
+        "t0",
+        "t1"
+      ],
+      "title": "TimelineActionResult",
+      "type": "object"
+    },
     "TimelineEvent": {
       "additionalProperties": true,
       "properties": {
@@ -51,6 +126,36 @@
         "nearest_distance_mm"
       ],
       "title": "TimelineIKFailure",
+      "type": "object"
+    },
+    "TimelinePathDiscontinuity": {
+      "additionalProperties": true,
+      "description": "直線移動在相鄰取樣點之間 IK 跳解：加密取樣也無法讓關節變化縮小。",
+      "properties": {
+        "step_id": {
+          "title": "Step Id",
+          "type": "string"
+        },
+        "t": {
+          "title": "T",
+          "type": "number"
+        },
+        "joint": {
+          "title": "Joint",
+          "type": "string"
+        },
+        "jump_deg": {
+          "title": "Jump Deg",
+          "type": "number"
+        }
+      },
+      "required": [
+        "step_id",
+        "t",
+        "joint",
+        "jump_deg"
+      ],
+      "title": "TimelinePathDiscontinuity",
       "type": "object"
     },
     "TimelineStation": {
@@ -173,6 +278,20 @@
         "$ref": "#/$defs/TimelineIKFailure"
       },
       "title": "Ik Failures",
+      "type": "array"
+    },
+    "path_discontinuities": {
+      "items": {
+        "$ref": "#/$defs/TimelinePathDiscontinuity"
+      },
+      "title": "Path Discontinuities",
+      "type": "array"
+    },
+    "action_results": {
+      "items": {
+        "$ref": "#/$defs/TimelineActionResult"
+      },
+      "title": "Action Results",
       "type": "array"
     }
   },

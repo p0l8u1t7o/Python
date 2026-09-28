@@ -8,8 +8,8 @@ import json
 import mimetypes
 import os
 import re
-import subprocess
 import sys
+import time
 from datetime import date, datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -19,6 +19,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
+from cellforge import derived
 from cellforge.agents import AstraAgent, EngineeringAgent, refresh_theme_local
 from cellforge.diffing import diff_versions
 from cellforge.exports import export_project
@@ -35,6 +36,7 @@ from cellforge.module_service import (
     promotion_check,
     resolve_project_module,
 )
+from cellforge.procutil import ProcessTimeoutError, run_streaming
 from cellforge.project import (
     create_project,
     resolve_inside,
@@ -43,39 +45,134 @@ from cellforge.project import (
 )
 from cellforge.questions import update_questions
 from cellforge.schema import Questions
-from cellforge.versioning import commit_changes
+from cellforge.trash import (
+    TrashError,
+    list_trash,
+    move_to_trash,
+    purge_trash,
+    restore_from_trash,
+)
+from cellforge.version_store import BUILD_JOB_ENV, BUILD_ORIGIN_ENV
+from cellforge.versioning import (
+    MANIFEST_NAME,
+    VersionContext,
+    VersionError,
+    VersionNotFoundError,
+    commit_changes,
+    try_commit_changes,
+    version_dirs,
+)
+from cellforge.workflow import (
+    WorkflowPreconditionError,
+    inputs_fingerprint,
+    intake_state,
+    record_intake,
+    require_first_build_ready,
+    versions_for_job,
+    written_since,
+)
 from cellforge.yamlio import dump_yaml, load_yaml
+from server.jobs import current_job_id
+
+PLATFORM_ROOT = Path(__file__).resolve().parents[2]
+# intake 必須在本次工作中重新產生的輸出；舊檔案不能冒充這次的結果。
+INTAKE_OUTPUTS = ["analysis/intake.md", "analysis/checklist_map.md", "analysis/questions.yaml"]
 
 
-def _local_build(project: Path) -> dict[str, Any]:
-    """Isolate OCP from the ASGI worker thread on Windows."""
+async def _cell_json(
+    project: Path,
+    args: list[str],
+    *,
+    purpose: str,
+    timeout_s: float,
+    origin: str | None = None,
+) -> tuple[int, dict[str, Any] | None, str]:
+    """Run ``cell ... --json`` in a subprocess so native OCP crashes cannot take down the API.
 
-    completed = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "cellforge.cli",
-            "build",
-            "--project",
-            str(project),
-            "--level",
-            "L1",
-            "--json",
-        ],
-        cwd=Path(__file__).resolve().parents[2],
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
-    output = completed.stdout.strip()
-    if completed.returncode != 0:
-        detail = output or completed.stderr.strip() or f"exit {completed.returncode}"
-        raise ValueError(f"本機建置失敗：{detail}")
+    取消 job 時整棵子程序樹一併結束，被中斷的建置只會留下之後自動回收的 staging。
+    """
+
+    environment = os.environ.copy()
+    if job_id := current_job_id():
+        environment[BUILD_JOB_ENV] = job_id
+    if origin:
+        environment[BUILD_ORIGIN_ENV] = origin
+    stdout: list[str] = []
+    stderr: list[str] = []
     try:
-        return json.loads(output.splitlines()[-1])
-    except (IndexError, json.JSONDecodeError) as error:
-        raise ValueError("本機建置未回傳有效 JSON") from error
+        code = await run_streaming(
+            [sys.executable, "-m", "cellforge.cli", *args, "--project", str(project), "--json"],
+            cwd=PLATFORM_ROOT,
+            env=environment,
+            timeout_s=timeout_s,
+            on_stdout=stdout.append,
+            on_stderr=stderr.append,
+        )
+    except ProcessTimeoutError as error:
+        raise ValueError(f"{purpose}超過 {timeout_s:.0f} 秒，已停止") from error
+    payload = None
+    for line in reversed(stdout):
+        try:
+            candidate = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(candidate, dict):
+            payload = candidate
+            break
+    detail = (payload or {}).get("message") or "\n".join(stderr[-20:]) or f"退出碼 {code}"
+    return code, payload, str(detail)
+
+
+def _commit_or_warn(project: Path, emit, message: str, paths: list[str]) -> str | None:
+    """工作已完成後的 git 提交；失敗只記警告，不把完成的工作改判失敗。"""
+    warning = try_commit_changes(project, message, paths)
+    if warning:
+        emit("warning", {"message": warning})
+    return warning
+
+
+async def _local_build(project: Path, request: Request, origin: str) -> dict[str, Any]:
+    code, payload, detail = await _cell_json(
+        project,
+        ["build", "--level", "L1"],
+        purpose="本機建置",
+        timeout_s=float(request.app.state.settings.get("build_timeout_s", 900)),
+        origin=origin,
+    )
+    if code != 0 or payload is None or payload.get("status") != "ok":
+        raise ValueError(f"本機建置失敗：{detail}")
+    return payload
+
+
+async def _verify_job_version(
+    project: Path, request: Request, *, require_level: str | None = "L1"
+) -> dict[str, Any]:
+    """Success means: this job published a version and it reads back completely."""
+
+    job_id = current_job_id()
+    produced = versions_for_job(project, job_id) if job_id else []
+    if not produced:
+        raise ValueError("本次工作沒有發布任何版本（案子既有的版本不算數）；請檢查建置紀錄後重試")
+    latest = produced[-1]
+    code, payload, detail = await _cell_json(
+        project,
+        ["version", "verify", latest.name],
+        purpose="版本回讀驗證",
+        timeout_s=float(request.app.state.settings.get("verify_timeout_s", 300)),
+    )
+    if code != 0 or payload is None or payload.get("status") != "ok":
+        raise ValueError(f"本次工作發布的 {latest.name} 回讀驗證失敗：{detail}")
+    if require_level and payload.get("level") != require_level:
+        raise ValueError(
+            f"本次工作發布的 {latest.name} 為 {payload.get('level')}，first_build 必須產生 "
+            f"{require_level} 版本"
+        )
+    return {
+        "version": int(latest.name[1:]),
+        "version_id": latest.name,
+        "job_versions": [path.name for path in produced],
+        "verification": payload,
+    }
 
 
 router = APIRouter(prefix="/api")
@@ -124,6 +221,7 @@ class TaskCreate(BaseModel):
 
 class ExportCreate(BaseModel):
     kinds: list[str]
+    version: str | None = None
 
 
 def _root(request: Request) -> Path:
@@ -149,6 +247,7 @@ def _agent(request: Request) -> EngineeringAgent:
         model=settings.get("engineering_agent_model") or None,
         effort=settings.get("engineering_agent_effort") or None,
         timeout_s=float(settings.get("engineering_agent_timeout_s", 1800)),
+        max_attempts=int(settings.get("engineering_agent_max_attempts", 3)),
     )
 
 
@@ -226,12 +325,8 @@ def _refresh_module_artifacts(resource, cache_root: Path) -> dict[str, Any]:
 
 
 def _versions(project: Path) -> list[dict[str, Any]]:
-    root = project / ".cellforge"
-    if not root.is_dir():
-        return []
     versions = []
-    directories = [path for path in root.glob("v*") if path.name[1:].isdigit()]
-    for directory in sorted(directories, key=lambda path: int(path.name[1:])):
+    for directory in version_dirs(project):
         report_path = directory / "step_validation.json"
         report = json.loads(report_path.read_text("utf-8")) if report_path.is_file() else None
         checks_path = directory / "checks.json"
@@ -240,15 +335,24 @@ def _versions(project: Path) -> list[dict[str, Any]]:
             if checks_path.is_file()
             else {"red": 0, "yellow": 0, "green": 0}
         )
+        manifest_path = directory / MANIFEST_NAME
+        manifest = json.loads(manifest_path.read_text("utf-8")) if manifest_path.is_file() else None
+        generated = (
+            manifest["created"]
+            if manifest
+            else datetime.fromtimestamp(directory.stat().st_mtime).astimezone().isoformat()
+        )
         versions.append(
             {
                 "id": directory.name,
                 "number": int(directory.name[1:]),
-                "generated": datetime.fromtimestamp(directory.stat().st_mtime)
-                .astimezone()
-                .isoformat(),
+                "generated": generated,
                 "step": report,
                 "checks": checks,
+                # 建置完成、工程結論與匯出狀態分開呈現；舊快照沒有 manifest，標為資料不完整。
+                "complete": manifest is not None,
+                "level": manifest["build"]["level"] if manifest else None,
+                "engineering_status": manifest["engineering"]["status"] if manifest else None,
             }
         )
     return versions
@@ -320,6 +424,42 @@ def get_project(project_id: str, request: Request) -> dict[str, Any]:
         summary_path.read_text(encoding="utf-8") if summary_path.is_file() else None
     )
     return data
+
+
+@router.delete("/projects/{project_id}")
+def delete_project(project_id: str, request: Request) -> dict[str, Any]:
+    """移到回收區（可還原）；有排隊或執行中的工作時拒絕，避免工作寫入已搬走的目錄。"""
+    _project(request, project_id)
+    active = request.app.state.jobs.active(project_id)
+    if active:
+        kinds = "、".join(sorted({job.kind for job in active}))
+        raise HTTPException(409, f"案子仍有執行中的工作（{kinds}），請等待完成或取消後再刪除")
+    try:
+        return move_to_trash(_root(request), request.app.state.trash_root, project_id)
+    except TrashError as error:
+        raise HTTPException(409, str(error)) from error
+
+
+@router.get("/trash")
+def get_trash(request: Request) -> list[dict[str, Any]]:
+    return list_trash(request.app.state.trash_root)
+
+
+@router.post("/trash/{trash_id}/restore")
+def restore_trash(trash_id: str, request: Request) -> dict[str, Any]:
+    try:
+        return restore_from_trash(_root(request), request.app.state.trash_root, trash_id)
+    except TrashError as error:
+        raise HTTPException(404 if "沒有這個項目" in str(error) else 409, str(error)) from error
+
+
+@router.delete("/trash/{trash_id}")
+def purge_trash_item(trash_id: str, request: Request) -> dict[str, Any]:
+    try:
+        purge_trash(request.app.state.trash_root, trash_id)
+    except TrashError as error:
+        raise HTTPException(404 if "沒有這個項目" in str(error) else 409, str(error)) from error
+    return {"trash_id": trash_id, "purged": True}
 
 
 @router.get("/library/modules")
@@ -482,6 +622,7 @@ async def fix_project_module(project_id: str, module_id: str, request: Request) 
                     project,
                     emit,
                     context=f"CR: {change_id}\nModule: {module_id}\n{change_text}",
+                    job_id=current_job_id(),
                 )
             task["status"] = "done"
             task["result"] = result
@@ -491,8 +632,9 @@ async def fix_project_module(project_id: str, module_id: str, request: Request) 
             raise
         finally:
             dump_yaml(task_path, task)
-            commit_changes(
+            _commit_or_warn(
                 project,
+                emit,
                 f"apply {change_id}",
                 ["parts", "changes", "tasks", ".cellforge"],
             )
@@ -522,7 +664,7 @@ async def promote_project_module(
             catalog_root=catalog_root,
             cache_root=cache_root,
         )
-        commit_changes(project, f"promote module {module_id}", ["cell.yaml", "parts"])
+        _commit_or_warn(project, emit, f"promote module {module_id}", ["cell.yaml", "parts"])
         emit("progress", {"progress": 1.0, "message": "模組已收進共用模組庫"})
         return {"status": "ok", "module": entry}
 
@@ -587,30 +729,79 @@ def get_file_content(project_id: str, path: str, request: Request) -> FileRespon
 @router.post("/projects/{project_id}/intake", status_code=202)
 async def start_intake(project_id: str, request: Request) -> dict[str, Any]:
     project = _project(request, project_id)
+    mode = "local" if _local_agent(request) else "claude"
 
     async def worker(emit):
-        emit("progress", {"progress": 0.05, "message": "開始逐頁擷取 PDF 與 Check List"})
-        extraction = await asyncio.to_thread(
-            prepare_intake,
+        job_id = current_job_id()
+        started = datetime.now().astimezone().isoformat()
+        started_epoch = time.time()
+        fingerprint = inputs_fingerprint(project)
+        state = {
+            "job_id": job_id,
+            "mode": mode,
+            "started": started,
+            "fingerprint": fingerprint,
+        }
+        record_intake(project, status="running", **state)
+        try:
+            emit("progress", {"progress": 0.05, "message": "開始逐頁擷取 PDF 與 Check List"})
+            extraction = await asyncio.to_thread(
+                prepare_intake,
+                project,
+                lambda message: emit("progress", {"progress": 0.2, "message": message}),
+            )
+            emit("progress", {"progress": 0.35, "message": "工程代理開始判讀全部資料"})
+            if mode == "local":
+                result = await asyncio.to_thread(run_local_intake, project, extraction)
+            else:
+                result = await _agent(request).run("intake", project, emit, job_id=job_id)
+            stale = written_since(project, INTAKE_OUTPUTS, started_epoch)
+            if stale:
+                raise ValueError(
+                    "intake 結束，但下列輸出不是本次工作產生的，不能沿用舊結果：" + "、".join(stale)
+                )
+            validation = _validate_intake_outputs(project)
+            emit("progress", {"progress": 0.9, "message": "驗證工件、設備與流程草案"})
+            code, _payload, detail = await _cell_json(
+                project, ["validate"], purpose="草案驗證", timeout_s=300
+            )
+            if code != 0:
+                raise ValueError(f"intake 產生的工程草案未通過 cell validate：{detail}")
+            if inputs_fingerprint(project) != fingerprint:
+                raise ValueError("intake 進行中輸入資料被修改，結果已過期；請重新執行 intake")
+        except asyncio.CancelledError:
+            record_intake(project, status="cancelled", error="工作已取消", **state)
+            try_commit_changes(project, "engineering intake cancelled", ["analysis"])
+            raise
+        except Exception as error:
+            record_intake(project, status="failed", error=str(error), **state)
+            try_commit_changes(project, "engineering intake failed", ["analysis"])
+            raise
+        payload = {**result, **validation, "files": extraction["file_count"], "mode": mode}
+        record_intake(project, status="succeeded", result=validation, **state)
+        emit("progress", {"progress": 1.0, "message": "解析、問題、對照表與草案驗證完成"})
+        if warning := _commit_or_warn(
             project,
-            lambda message: emit("progress", {"progress": 0.2, "message": message}),
-        )
-        emit("progress", {"progress": 0.35, "message": "工程代理開始判讀全部資料"})
-        if _local_agent(request):
-            result = await asyncio.to_thread(run_local_intake, project, extraction)
-        else:
-            result = await _agent(request).run("intake", project, emit)
-        validation = _validate_intake_outputs(project)
-        emit("progress", {"progress": 1.0, "message": "解析、問題與對照表驗證完成"})
-        commit_changes(
-            project,
+            emit,
             "engineering intake",
             ["analysis", "workpiece.yaml", "cell.yaml", "process.yaml"],
-        )
-        return {**result, **validation, "files": extraction["file_count"]}
+        ):
+            payload["warnings"] = [warning]
+        return payload
 
     job = _jobs(request).submit(project_id, "intake", worker)
     return job.public()
+
+
+@router.get("/projects/{project_id}/intake/state")
+def get_intake_state(project_id: str, request: Request) -> dict[str, Any]:
+    project = _project(request, project_id)
+    state = intake_state(project)
+    return {
+        "state": state,
+        "inputs_fingerprint": inputs_fingerprint(project),
+        "stale": bool(state) and state.get("inputs_fingerprint") != inputs_fingerprint(project),
+    }
 
 
 def _validate_intake_outputs(project: Path) -> dict[str, Any]:
@@ -691,38 +882,76 @@ async def update_assumption(
                 project,
                 emit,
                 context=f"Assumption: {assumption_id}\nCR: {change_id}\nNew text: {body.text}",
+                job_id=current_job_id(),
             )
-        commit_changes(project, f"apply {change_id}", ["analysis", "changes", ".cellforge"])
+        _commit_or_warn(project, emit, f"apply {change_id}", ["analysis", "changes", ".cellforge"])
         return result
 
     job = _jobs(request).submit(project_id, "assumption_override", worker)
     return {**job.public(), "change_id": change_id}
 
 
-@router.post("/projects/{project_id}/build", status_code=202)
-async def start_build(project_id: str, request: Request) -> dict[str, Any]:
-    project = _project(request, project_id)
-
+def _require_first_build_ready(project: Path, request: Request) -> None:
+    mode = "local" if _local_agent(request) else "claude"
+    try:
+        require_first_build_ready(project, mode)
+    except WorkflowPreconditionError as error:
+        raise HTTPException(409, str(error)) from error
     questions = Questions.model_validate(load_yaml(project / "analysis" / "questions.yaml"))
     open_ids = [question.id for question in questions.questions if question.status == "open"]
     if open_ids:
         raise HTTPException(409, f"尚有未回答或未跳過的問題：{', '.join(open_ids)}")
 
+
+@router.post("/projects/{project_id}/build", status_code=202)
+async def start_build(project_id: str, request: Request) -> dict[str, Any]:
+    project = _project(request, project_id)
+    _require_first_build_ready(project, request)
+    mode = "local" if _local_agent(request) else "claude"
+
     async def worker(emit):
+        # 排隊期間輸入可能被改；開始前再確認一次，失效就不動工。
+        try:
+            intake = require_first_build_ready(project, mode)
+        except WorkflowPreconditionError as error:
+            raise ValueError(str(error)) from error
         emit("progress", {"progress": 0.05, "message": "工程代理開始建立初版"})
-        if _local_agent(request):
-            result = await asyncio.to_thread(_local_build, project)
+        if mode == "local":
+            result = await _local_build(project, request, origin="local:first_build")
             result.update({"status": "ok", "mode": "local"})
         else:
-            result = await _agent(request).run("first_build", project, emit)
+            result = await _agent(request).run(
+                "first_build", project, emit, job_id=current_job_id()
+            )
+            result["mode"] = "claude"
+        claimed = result.get("version")
+        emit("progress", {"progress": 0.7, "message": "確認本次工作發布的版本並回讀驗證"})
+        verified = await _verify_job_version(project, request, require_level="L1")
+        warnings: list[str] = []
+        if isinstance(claimed, int) and claimed != verified["version"]:
+            warnings.append(
+                f"代理回報 v{claimed}，但本次工作實際發布的最新版本是 {verified['version_id']}；"
+                "以 manifest 為準"
+            )
+        result.update(verified)
+        result["intake_job"] = intake.get("job_id")
+        # 只有正式代理跑完 intake 與 first_build 才可作為代理驗收證據。
+        result["agent_acceptance"] = mode == "claude" and intake.get("mode") == "claude"
+        # 建置成功與工程通過分開：工程結論取自版本 manifest，未通過時以警告明示。
+        engineering = verified["verification"].get("engineering_status")
+        result["engineering_status"] = engineering
+        if engineering != "pass":
+            summary_counts = verified["verification"].get("engineering_summary") or {}
+            warnings.append(
+                f"{verified['version_id']} 已建置並通過回讀驗證，但工程檢查未通過"
+                f"（{engineering}；red {summary_counts.get('red', '?')}、"
+                f"yellow {summary_counts.get('yellow', '?')}），僅可作為草案，不是工程驗收。"
+            )
         summary = result.get("summary")
         if isinstance(summary, str):
             summary_path = project / "analysis" / "first_build_summary.txt"
             summary_path.parent.mkdir(parents=True, exist_ok=True)
             summary_path.write_text(summary, encoding="utf-8")
-        versions = _versions(project)
-        if not versions:
-            raise ValueError("first_build 完成但未產生 .cellforge/vN 版本")
         emit("progress", {"progress": 0.82, "message": "Astra 正在刷新主題與 1080p 影片"})
         instruction = "依 render_brief 自動美化並輸出 1080p 工程審查影片"
         if _local_astra(request):
@@ -730,11 +959,14 @@ async def start_build(project_id: str, request: Request) -> dict[str, Any]:
         else:
             astra = await _astra(request).run(project, instruction, emit)
         result["astra"] = astra
-        commit_changes(
+        if warning := _commit_or_warn(
             project,
+            emit,
             "Astra presentation refresh",
-            ["presentation", "analysis/first_build_summary.txt"],
-        )
+            ["presentation", "analysis/first_build_summary.txt", ".cellforge/derived"],
+        ):
+            warnings.append(warning)
+        result["warnings"] = [*result.get("warnings", []), *warnings]
         emit("progress", {"progress": 1.0, "message": "建置、檢查與 Astra 交付完成"})
         return result
 
@@ -742,9 +974,77 @@ async def start_build(project_id: str, request: Request) -> dict[str, Any]:
     return job.public()
 
 
+@router.post("/projects/{project_id}/builds/manual", status_code=202)
+async def start_manual_build(project_id: str, request: Request) -> dict[str, Any]:
+    """以目前工作區 YAML 直接建置 L1；不經工程代理，結果明確標示不是代理驗收。"""
+
+    project = _project(request, project_id)
+
+    async def worker(emit):
+        emit(
+            "progress",
+            {"progress": 0.05, "message": "手寫資料建置（非代理驗收）：以目前 YAML 建置 L1"},
+        )
+        result = await _local_build(project, request, origin="manual")
+        emit("progress", {"progress": 0.8, "message": "確認本次工作發布的版本並回讀驗證"})
+        result.update(await _verify_job_version(project, request, require_level="L1"))
+        result.update({"status": "ok", "mode": "manual", "agent_acceptance": False})
+        result["engineering_status"] = result["verification"].get("engineering_status")
+        if result["engineering_status"] != "pass":
+            result["warnings"] = [
+                f"{result['version_id']} 已建置，但工程檢查未通過"
+                f"（{result['engineering_status']}），僅可作為草案。"
+            ]
+        return result
+
+    job = _jobs(request).submit(project_id, "manual_build", worker)
+    return job.public()
+
+
 @router.get("/projects/{project_id}/versions")
 def get_versions(project_id: str, request: Request) -> list[dict[str, Any]]:
     return _versions(_project(request, project_id))
+
+
+@router.get("/projects/{project_id}/versions/{version}/costing")
+def get_version_costing(project_id: str, version: str, request: Request) -> dict[str, Any]:
+    """該版本的成本計算結果（總額、缺價、來源）；只讀版本快照，不重新計算。"""
+    project = _project(request, project_id)
+    try:
+        context = VersionContext.open(project, version)
+    except VersionNotFoundError as error:
+        raise HTTPException(404, str(error)) from error
+    path = context.optional_artifact("costing.json")
+    if path is None:
+        raise HTTPException(404, f"{context.name} 沒有成本資料（案子缺少 costing.yaml）")
+    return json.loads(path.read_text("utf-8"))
+
+
+@router.get("/projects/{project_id}/versions/{version}/manifest")
+def get_version_manifest(project_id: str, version: str, request: Request) -> dict[str, Any]:
+    project = _project(request, project_id)
+    try:
+        context = VersionContext.open(project, version)
+    except VersionNotFoundError as error:
+        raise HTTPException(404, str(error)) from error
+    return {
+        "version": context.name,
+        "complete": not context.legacy,
+        "manifest": context.manifest,
+        "warnings": context.warnings,
+        "derived": [
+            {
+                "id": item.entry.get("id"),
+                "kind": item.kind,
+                "path": item.entry.get("path"),
+                "created": item.entry.get("created"),
+                "available": item.available,
+                "reason": item.reason,
+                "settings": item.entry.get("settings", {}),
+            }
+            for item in derived.artifacts(project, context.name)
+        ],
+    }
 
 
 @router.get("/projects/{project_id}/versions/{version}/{asset}")
@@ -755,11 +1055,20 @@ def get_version_asset(project_id: str, version: str, asset: str, request: Reques
         "checks.json",
         "render_brief.md",
         "step_validation.json",
+        MANIFEST_NAME,
     }:
         raise HTTPException(404, "不支援的版本檔案")
     project = _project(request, project_id)
-    target = project / ".cellforge" / version / asset
-    if not target.is_file():
+    try:
+        context = VersionContext.open(project, version)
+        target = (
+            context.directory / MANIFEST_NAME
+            if asset == MANIFEST_NAME
+            else context.optional_artifact(asset)
+        )
+    except VersionError as error:
+        raise HTTPException(404, str(error)) from error
+    if target is None or not target.is_file():
         raise HTTPException(404, "找不到版本檔案")
     return FileResponse(target)
 
@@ -794,9 +1103,11 @@ async def create_change(project_id: str, body: ChangeCreate, request: Request) -
                     f"CR: {change_id}\nObject: {body.object or ''}\n"
                     f"Time: {body.t if body.t is not None else ''}"
                 ),
+                job_id=current_job_id(),
             )
-        commit_changes(
+        _commit_or_warn(
             project,
+            emit,
             f"apply {change_id}",
             ["cell.yaml", "process.yaml", "changes", ".cellforge"],
         )
@@ -916,6 +1227,7 @@ async def run_task(project_id: str, task_id: str, request: Request) -> dict[str,
                     project,
                     emit,
                     context=f"Task: {task_id}\nInstruction: {task_data['instruction']}",
+                    job_id=current_job_id(),
                 )
             task_data["status"] = "done"
             task_data["result"] = result
@@ -925,8 +1237,9 @@ async def run_task(project_id: str, task_id: str, request: Request) -> dict[str,
             raise
         finally:
             dump_yaml(task_path, task_data)
-            commit_changes(
+            _commit_or_warn(
                 project,
+                emit,
                 f"run {task_id}",
                 ["tasks", "changes", ".cellforge", "presentation"],
             )
@@ -958,14 +1271,22 @@ def get_intake(project_id: str, request: Request) -> dict[str, str]:
 
 
 @router.post("/projects/{project_id}/export", status_code=202)
-def export(project_id: str, body: ExportCreate, request: Request) -> dict[str, Any]:
+async def export(project_id: str, body: ExportCreate, request: Request) -> dict[str, Any]:
     project = _project(request, project_id)
+    try:
+        version = VersionContext.open(project, body.version).name
+    except VersionNotFoundError as error:
+        raise HTTPException(404, str(error)) from error
 
     async def worker(emit):
-        emit("progress", {"progress": 0.1, "message": "正在建立客戶交付包"})
-        result = await asyncio.to_thread(export_project, project, body.kinds or None)
-        emit("progress", {"progress": 1.0, "message": "交付包完成"})
-        commit_changes(project, "export delivery pack", ["export"])
+        emit("progress", {"progress": 0.1, "message": f"正在建立 {version} 客戶交付包"})
+        result = await asyncio.to_thread(export_project, project, body.kinds or None, version)
+        if result["missing"]:
+            missing = "；".join(f"{item['kind']}：{item['reason']}" for item in result["missing"])
+            emit("progress", {"progress": 1.0, "message": f"{version} 交付包不完整：{missing}"})
+        else:
+            emit("progress", {"progress": 1.0, "message": f"{version} 交付包完成"})
+        _commit_or_warn(project, emit, f"export {version} delivery pack", ["export"])
         return result
 
     job = _jobs(request).submit(project_id, "export", worker, owner="engineering")
@@ -975,7 +1296,11 @@ def export(project_id: str, body: ExportCreate, request: Request) -> dict[str, A
 @router.get("/projects/{project_id}/export/{filename}")
 def get_export(project_id: str, filename: str, request: Request) -> FileResponse:
     project = _project(request, project_id)
-    matches = list((project / "export").glob(f"v*/{Path(filename).name}"))
+    matches = [
+        path
+        for path in (project / "export").glob(f"v*/{Path(filename).name}")
+        if path.name != "manifest.json"
+    ]
     if len(matches) != 1 or not matches[0].is_file():
         raise HTTPException(404, "找不到匯出檔案")
     target = matches[0]

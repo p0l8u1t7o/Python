@@ -1,5 +1,326 @@
 {
   "$defs": {
+    "ActionPath": {
+      "additionalProperties": true,
+      "description": "動作契約的路徑：接近、下探／插入深度、保持與撤離，長度沿目標 frame 的 +Z（mm）。",
+      "properties": {
+        "approach_mm": {
+          "default": 30.0,
+          "title": "Approach Mm",
+          "type": "number"
+        },
+        "retract_mm": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retract Mm"
+        },
+        "depth_mm": {
+          "default": 0.0,
+          "title": "Depth Mm",
+          "type": "number"
+        },
+        "hold_s": {
+          "default": 0.0,
+          "title": "Hold S",
+          "type": "number"
+        },
+        "speed_scale": {
+          "default": 0.5,
+          "title": "Speed Scale",
+          "type": "number"
+        }
+      },
+      "title": "ActionPath",
+      "type": "object"
+    },
+    "ContactDecl": {
+      "additionalProperties": true,
+      "description": "合法接觸：只在 window 的步驟期間、區域內、方向相符且穿透不超過容差時允許。",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "pair": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Pair",
+          "type": "array"
+        },
+        "window": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Window",
+          "type": "array"
+        },
+        "tolerance_mm": {
+          "title": "Tolerance Mm",
+          "type": "number"
+        },
+        "region": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ContactRegion"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "direction": {
+          "anyOf": [
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Direction"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        }
+      },
+      "required": [
+        "id",
+        "pair",
+        "window",
+        "tolerance_mm"
+      ],
+      "title": "ContactDecl",
+      "type": "object"
+    },
+    "ContactRegion": {
+      "additionalProperties": true,
+      "description": "接觸區域：frame 的 XY 平面上以原點為中心的矩形（mm）；省略 size 表示不限位置。",
+      "properties": {
+        "frame": {
+          "title": "Frame",
+          "type": "string"
+        },
+        "size_mm": {
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Size Mm"
+        }
+      },
+      "required": [
+        "frame"
+      ],
+      "title": "ContactRegion",
+      "type": "object"
+    },
+    "InspectSpec": {
+      "additionalProperties": true,
+      "description": "檢測：以相機 frame 觀察 ROI；ROI 為 frame（XY 平面上的矩形）或各零件上的同名 frame。",
+      "properties": {
+        "camera": {
+          "title": "Camera",
+          "type": "string"
+        },
+        "roi": {
+          "title": "Roi",
+          "type": "string"
+        },
+        "roi_size_mm": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Roi Size Mm",
+          "type": "array"
+        },
+        "max_mm_per_px": {
+          "title": "Max Mm Per Px",
+          "type": "number"
+        },
+        "view": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InspectView"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "gap_frames": {
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "string"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Gap Frames"
+        },
+        "max_gap_mm": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Gap Mm"
+        }
+      },
+      "required": [
+        "camera",
+        "roi",
+        "roi_size_mm",
+        "max_mm_per_px"
+      ],
+      "title": "InspectSpec",
+      "type": "object"
+    },
+    "InspectView": {
+      "additionalProperties": true,
+      "description": "手臂相機的觀測位姿：相機位於 ROI frame 的 +Z 方向、繞 ROI 的 X 軸傾斜 tilt_deg。",
+      "properties": {
+        "distance_mm": {
+          "title": "Distance Mm",
+          "type": "number"
+        },
+        "tilt_deg": {
+          "default": 0.0,
+          "title": "Tilt Deg",
+          "type": "number"
+        },
+        "spin_deg": {
+          "default": 0.0,
+          "title": "Spin Deg",
+          "type": "number"
+        }
+      },
+      "required": [
+        "distance_mm"
+      ],
+      "title": "InspectView",
+      "type": "object"
+    },
+    "PressSpec": {
+      "additionalProperties": true,
+      "description": "壓合：工具的壓墊 frame 依序對應 objects；各零件以 face frame 接受壓墊。",
+      "properties": {
+        "pads": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Pads",
+          "type": "array"
+        },
+        "face": {
+          "default": "press_face",
+          "title": "Face",
+          "type": "string"
+        },
+        "pad_size_mm": {
+          "default": [
+            7.0,
+            9.0
+          ],
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Pad Size Mm",
+          "type": "array"
+        },
+        "spring_mm": {
+          "default": 3.0,
+          "title": "Spring Mm",
+          "type": "number"
+        }
+      },
+      "title": "PressSpec",
+      "type": "object"
+    },
     "ProcessStep": {
       "additionalProperties": true,
       "properties": {
@@ -28,7 +349,12 @@
             "transfer",
             "attach",
             "detach",
-            "emit"
+            "emit",
+            "pick",
+            "place",
+            "insert",
+            "press",
+            "inspect"
           ],
           "title": "Action",
           "type": "string"
@@ -87,6 +413,82 @@
           ],
           "default": null,
           "title": "Driven By"
+        },
+        "object": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Object"
+        },
+        "objects": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Objects",
+          "type": "array"
+        },
+        "tool": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ActionPath"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "contact": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Contact"
+        },
+        "press": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PressSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "inspect": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InspectSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
@@ -197,6 +599,13 @@
       ],
       "default": null,
       "title": "Initial Workpiece Frame"
+    },
+    "contacts": {
+      "items": {
+        "$ref": "#/$defs/ContactDecl"
+      },
+      "title": "Contacts",
+      "type": "array"
     }
   },
   "required": [

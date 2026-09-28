@@ -235,3 +235,99 @@ def test_legacy_sequence_api_still_builds(tmp_path):
     timeline = json.loads((project / "build" / "timeline.json").read_text("utf-8"))
     assert report["duration_s"] > 0
     assert any(event["id"] == "legacy.done" for event in timeline["events"])
+
+
+def _linear_process() -> Process:
+    return Process.model_validate(
+        {
+            "stations": [{"id": "S1", "name": "直線", "modules": ["robot_1"]}],
+            "steps": [
+                {
+                    "id": "straight",
+                    "station": "S1",
+                    "actor": "robot_1",
+                    "action": "move_to",
+                    "target": {"xyz": [400, 650, 900], "rpy_deg": [180, 0, 0]},
+                    "value": {"linear": True},
+                }
+            ],
+            "takt": {"target_s": 10},
+        }
+    )
+
+
+def _scripted_ik(monkeypatch, simulator: Simulator, joints_at_ratio):
+    """以直線進度（目標位置投影）決定回傳的關節值，模擬連續或跳解的 IK 解支。"""
+    from cellforge.kinematics.ik import IKResult
+
+    start = simulator.scene.resolve_frame("robot_1.tool", simulator.state)[:3, 3]
+    calls = {"count": 0}
+
+    def fake(step_id, actor, target):
+        calls["count"] += 1
+        end = np.asarray([400.0, 650.0, 900.0])
+        span = end - start
+        ratio = float(np.clip(np.dot(target[:3, 3] - start, span) / np.dot(span, span), 0, 1))
+        return IKResult(True, joints_at_ratio(ratio), 0.0, 0.0, 0.0, 1, "IK 求解成功")
+
+    monkeypatch.setattr(simulator, "_solve_result", fake)
+    return calls
+
+
+def test_linear_move_with_ik_branch_jump_stays_bounded_and_is_reported(handwritten, monkeypatch):
+    from cellforge.checks.runner import _reachability
+    from cellforge.sim import engine
+
+    _project, _timeline, scene, _process, _elapsed = handwritten
+    simulator = Simulator(scene)
+    chain = scene.robots["robot_1"].chain
+    jump = 170.0
+
+    def branch_flip(ratio: float) -> np.ndarray:
+        joints = np.zeros(len(chain.active_joints))
+        joints[1] = 20.0 * ratio
+        joints[0] = jump if ratio > 0.5 else 0.0
+        return joints
+
+    calls = _scripted_ik(monkeypatch, simulator, branch_flip)
+    process = _linear_process()
+    timeline = schedule_process(process, simulator)
+    [discontinuity] = timeline["path_discontinuities"]
+    assert discontinuity["step_id"] == "straight"
+    assert discontinuity["joint"] == chain.joint_names[0]
+    assert abs(discontinuity["jump_deg"] - jump) < 1e-9
+    speeds = np.asarray([joint.max_speed for joint in chain.active_joints])
+    initial = float(np.max(np.abs(branch_flip(1.0)) / (speeds * 0.5)))
+    [step] = timeline["steps"]
+    # 至多放大一輪就判定跳解：時長與 IK 次數都不再隨取樣無限增長。
+    assert step["t1"] - step["t0"] <= initial * engine.LINEAR_DURATION_GROWTH + 1e-9
+    max_samples = (initial * engine.LINEAR_DURATION_GROWTH) / engine.SAMPLE_PERIOD_S + 2
+    assert calls["count"] <= 1 + 2 * max_samples
+    assert step["ik"] == "failed"
+    [item] = _reachability(process, timeline)
+    assert item["severity"] == "red" and "跳解" in item["detail"]
+
+
+def test_linear_move_on_continuous_path_still_derives_a_feasible_duration(handwritten, monkeypatch):
+    _project, _timeline, scene, _process, _elapsed = handwritten
+    simulator = Simulator(scene)
+    chain = scene.robots["robot_1"].chain
+
+    def smooth_but_fast_middle(ratio: float) -> np.ndarray:
+        # 中段集中轉動：以端點推得的初始時長不夠，必須依關節速度拉長。
+        joints = np.zeros(len(chain.active_joints))
+        joints[0] = 90.0 * (ratio - np.sin(2 * np.pi * ratio) / (2 * np.pi)) * 2
+        return joints
+
+    _scripted_ik(monkeypatch, simulator, smooth_but_fast_middle)
+    timeline = schedule_process(_linear_process(), simulator)
+    assert timeline["path_discontinuities"] == []
+    track = np.asarray(timeline["nodes"]["robot_1"]["joints_deg"], dtype=float)
+    speeds = np.asarray([joint.max_speed for joint in chain.active_joints])
+    elapsed = np.diff(track[:, 0])
+    moving = elapsed > 1e-12
+    rates = np.abs(np.diff(track[:, 1:], axis=0))[moving] / elapsed[moving, None]
+    assert np.all(rates <= speeds * 0.5 * (1 + 1e-6))
+    initial = float(np.max(np.abs(smooth_but_fast_middle(1.0)) / (speeds * 0.5)))
+    [step] = timeline["steps"]
+    assert step["t1"] - step["t0"] > initial

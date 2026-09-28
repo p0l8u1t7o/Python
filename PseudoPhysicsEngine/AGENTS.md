@@ -4,9 +4,11 @@
 
 ## 目前任務
 
-**`docs/CellForge_WP-A-C_規格_v1.2.md`** — 代理自主建模能力、機構樣板庫、模組層前端。開工前完整讀過，依其第 10 節的開發順序逐步執行。該文件與本檔衝突時以該文件為準。
+**`docs/CellForge_平台擴充開發書_v2.0.md`** — 平台擴充 P0～P7，依其任務清單 DEV-001～DEV-015 依序執行（已完成項目在清單中打勾）。目前進行 **DEV-010**，暫停時的進度與待辦見 **`docs/DEV010_PROGRESS.md`**，恢復工作前先讀。該文件與本檔衝突時以該文件為準。
 
-其他必讀背景：`docs/DECISIONS.md`（20 條既有決策，D-011、D-016、D-018、D-019、D-020 與本次任務直接相關）、`docs/ENGINE_REWORK_PLAN.md` 第 1 節（共通約定）。
+既有 WP-A／WP-C（`docs/CellForge_WP-A-C_規格_v1.2.md`）已於 DEV-006 驗收收尾，仍是背景規範。
+
+其他必讀背景：`docs/DECISIONS.md`（既有決策 D-001 起；D-011 的 Windows 載入順序、D-036 之後的平台擴充決策與目前任務直接相關）、`docs/ENGINE_REWORK_PLAN.md` 第 1 節（共通約定）。
 
 ## 共通約定
 

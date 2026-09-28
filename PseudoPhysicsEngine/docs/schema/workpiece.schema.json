@@ -42,6 +42,215 @@
       "title": "Cover",
       "type": "object"
     },
+    "PartInstance": {
+      "additionalProperties": true,
+      "description": "產品中的一個零件實例；外形取自 SKU 方塊或 CadQuery 零件模組（library/ 或 parts/）。",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "sku": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sku"
+        },
+        "part": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Part"
+        },
+        "params": {
+          "additionalProperties": true,
+          "title": "Params",
+          "type": "object"
+        },
+        "mass_kg": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mass Kg"
+        },
+        "initial": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PartPlacement"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "state": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "State",
+          "type": "object"
+        },
+        "trust": {
+          "anyOf": [
+            {
+              "enum": [
+                "inferred",
+                "confirmed"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Trust"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "PartInstance",
+      "type": "object"
+    },
+    "PartPlacement": {
+      "additionalProperties": true,
+      "description": "零件初始位置：放在某個命名 frame（模組或另一零件的 frame）上；持有者為該 frame 的擁有者。",
+      "properties": {
+        "frame": {
+          "title": "Frame",
+          "type": "string"
+        },
+        "offset": {
+          "$ref": "#/$defs/Pose"
+        }
+      },
+      "required": [
+        "frame"
+      ],
+      "title": "PartPlacement",
+      "type": "object"
+    },
+    "Pose": {
+      "additionalProperties": true,
+      "properties": {
+        "xyz": {
+          "default": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Xyz",
+          "type": "array"
+        },
+        "rpy_deg": {
+          "default": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Rpy Deg",
+          "type": "array"
+        },
+        "trust": {
+          "default": "inferred",
+          "enum": [
+            "inferred",
+            "confirmed"
+          ],
+          "title": "Trust",
+          "type": "string"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "link": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Link"
+        },
+        "free_space": {
+          "default": false,
+          "title": "Free Space",
+          "type": "boolean"
+        }
+      },
+      "title": "Pose",
+      "type": "object"
+    },
     "Rect": {
       "additionalProperties": true,
       "properties": {
@@ -182,11 +391,15 @@
       "default": "",
       "title": "Variants Note",
       "type": "string"
+    },
+    "parts": {
+      "items": {
+        "$ref": "#/$defs/PartInstance"
+      },
+      "title": "Parts",
+      "type": "array"
     }
   },
-  "required": [
-    "skus"
-  ],
   "title": "Workpiece",
   "type": "object"
 }

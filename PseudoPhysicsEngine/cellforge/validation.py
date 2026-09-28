@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 from pydantic import ValidationError
 
-from cellforge.build.modules import load_part, validate_params
+from cellforge.build.modules import build_module, load_part, project_parts, validate_params
 from cellforge.schema import (
     Assumptions,
     Cell,
@@ -19,8 +19,10 @@ from cellforge.schema import (
     VendorManifest,
     Workpiece,
 )
+from cellforge.schema.costing import Costing
+from cellforge.schema.electrical import Electrical
 from cellforge.schema.models import ModuleInstance
-from cellforge.sim import SceneModel, build_workpiece
+from cellforge.sim import SceneModel, build_parts
 from cellforge.sim.scheduler import validate_process
 from cellforge.yamlio import load_yaml
 
@@ -39,6 +41,11 @@ def _parse(model, path: Path):
 
 
 def validate_project(project_dir: Path) -> tuple[Project, Workpiece, Cell, Process]:
+    with project_parts(project_dir):
+        return _validate_project(project_dir)
+
+
+def _validate_project(project_dir: Path) -> tuple[Project, Workpiece, Cell, Process]:
     project = _parse(Project, project_dir / "project.yaml")
     workpiece = _parse(Workpiece, project_dir / "workpiece.yaml")
     cell = _parse(Cell, project_dir / "cell.yaml")
@@ -47,6 +54,11 @@ def validate_project(project_dir: Path) -> tuple[Project, Workpiece, Cell, Proce
     questions = _parse(Questions, project_dir / "analysis" / "questions.yaml")
     assumptions = _parse(Assumptions, project_dir / "analysis" / "assumptions.yaml")
     vendor_manifest = _parse(VendorManifest, project_dir / "vendor" / "manifest.yaml")
+    costing = (
+        _parse(Costing, project_dir / "costing.yaml")
+        if (project_dir / "costing.yaml").is_file()
+        else None
+    )
     vendor_ids = {item.id for item in vendor_manifest.vendors}
     _validate_unique_ids("問題", [item.id for item in questions.questions])
     _validate_unique_ids("假設", [item.id for item in assumptions.assumptions])
@@ -57,17 +69,32 @@ def validate_project(project_dir: Path) -> tuple[Project, Workpiece, Cell, Proce
     unknown = sorted(referenced - module_ids)
     if unknown:
         raise ProjectValidationError(f"站別引用不存在的模組：{', '.join(unknown)}")
+    if costing is not None:
+        unknown_modules = sorted(
+            {rule.match.module for rule in costing.equipment if rule.match.module} - module_ids
+        )
+        if unknown_modules:
+            raise ProjectValidationError(
+                f"costing.yaml 的設備對應引用不存在的模組：{', '.join(unknown_modules)}"
+            )
+    if (project_dir / "electrical.yaml").is_file():
+        _validate_electrical(project_dir, _parse(Electrical, project_dir / "electrical.yaml"), cell)
+    vendor_items = {item.id: item.model_dump(mode="json") for item in vendor_manifest.vendors}
     for machine in cell.machines:
         for instance in machine.modules:
             _validate_module(instance, vendor_ids)
-    vendor_items = {item.id: item.model_dump(mode="json") for item in vendor_manifest.vendors}
+    _validate_vendor_files(project_dir, vendor_items)
     try:
         modules = [
             _describe_module(instance, vendor_items)
             for machine in cell.machines
             for instance in machine.modules
         ]
-        scene = SceneModel(cell, modules, build_workpiece(workpiece, process, build_geometry=False))
+        parts = build_parts(workpiece, process, build_geometry=False)
+        clash = sorted({part.id for part in parts} & (module_ids | {"system"}))
+        if clash:
+            raise ValueError(f"零件 id 不可與模組 id 相同：{', '.join(clash)}")
+        scene = SceneModel(cell, modules, parts)
         validate_process(scene, process)
     except (ImportError, AttributeError, KeyError, ValueError) as error:
         raise ProjectValidationError(f"流程驗證失敗：{error}") from error
@@ -78,8 +105,30 @@ def validate_project(project_dir: Path) -> tuple[Project, Workpiece, Cell, Proce
     return project, workpiece, cell, process
 
 
-def placeholder_warnings(cell: Cell) -> list[str]:
+def _validate_electrical(project_dir: Path, electrical: Electrical, cell: Cell) -> None:
+    """未定義的器件、端子、電位網、點位池或模組一律使驗證失敗；連通問題留給檢查。"""
+    from cellforge.electrical import resolve_electrical
+
+    resolved = resolve_electrical(electrical, cell)
+    errors = list(resolved.reference_errors)
+    logo = electrical.drawing.logo
+    if logo is not None:
+        path = (project_dir / logo).resolve()
+        if not path.is_relative_to((project_dir / "drawing_templates").resolve()):
+            errors.append(f"圖框 LOGO 必須放在案內 drawing_templates/：{logo}")
+        elif not path.is_file():
+            errors.append(f"圖框 LOGO 檔案不存在：{logo}")
+        elif path.suffix.lower() not in {".png", ".jpg", ".jpeg", ".svg"}:
+            errors.append(f"圖框 LOGO 只接受 PNG、JPG 或 SVG：{logo}")
+    if errors:
+        raise ProjectValidationError("electrical.yaml 引用錯誤：" + "；".join(errors))
+
+
+def placeholder_warnings(cell: Cell, project_dir: Path | None = None) -> list[str]:
     """Return one non-blocking warning for each placeholder module instance."""
+    if project_dir is not None:
+        with project_parts(project_dir):
+            return placeholder_warnings(cell)
     messages: list[str] = []
     for machine in cell.machines:
         for instance in machine.modules:
@@ -148,16 +197,21 @@ def _validate_module(instance: ModuleInstance, vendor_ids: set[str]) -> None:
         raise ProjectValidationError(f"模組 {instance.id} 驗證失敗：{error}") from error
 
 
+def _validate_vendor_files(project_dir: Path, vendor_items: dict[str, dict]) -> None:
+    from cellforge.vendor_model import VendorModelError, verify_vendor_files
+
+    for item in vendor_items.values():
+        try:
+            verify_vendor_files(project_dir, item)
+        except VendorModelError as error:
+            raise ProjectValidationError(str(error)) from error
+
+
 def _describe_module(instance: ModuleInstance, vendor_items: dict[str, dict]):
     if instance.vendor:
-        item = vendor_items[instance.vendor]
-        module = load_part("library/robot_stub.py")
-        params = {
-            "reach_mm": item.get("limits", {}).get("reach_mm", 905),
-            "payload_kg": item.get("limits", {}).get("payload_kg", 7),
-            "name": instance.id,
-            **instance.params,
-        }
+        # 廠商模組的關節鏈來自原廠檔或近似 stub，與建置使用同一個轉接流程。
+        built = build_module(instance, vendor_items)
+        return SimpleNamespace(instance=instance, definition=built.definition, chain=built.chain)
     else:
         assert instance.part is not None
         module = load_part(instance.part)

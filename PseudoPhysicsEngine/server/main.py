@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from cellforge.trash import default_trash_root
 from server.jobs import JobRunner
 from server.routes.api import router
 
@@ -31,8 +32,13 @@ def create_app(
         os.environ.get("CELLFORGE_PROJECTS_ROOT", Path.home() / "CellForge" / "projects")
     )
     root.mkdir(parents=True, exist_ok=True)
+    trash_root = overrides.pop("trash_root", None) or os.environ.get("CELLFORGE_TRASH_ROOT")
     app = FastAPI(title="CellForge", version="0.1.0")
     app.state.projects_root = root.resolve()
+    # 刪除的案子移到這裡，可由網頁還原；預設為專案根目錄旁的 trash/。
+    app.state.trash_root = (
+        Path(trash_root).resolve() if trash_root else default_trash_root(app.state.projects_root)
+    )
     app.state.catalog_root = catalog_root
     app.state.module_cache_root = module_cache_root
     app.state.jobs = JobRunner(app.state.projects_root)

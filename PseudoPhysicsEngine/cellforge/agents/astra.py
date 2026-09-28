@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
 import shutil
@@ -14,7 +13,15 @@ from typing import Any
 from imageio_ffmpeg import write_frames
 from PIL import Image, ImageDraw, ImageEnhance, ImageFont
 
+from cellforge import derived
+from cellforge.procutil import ProcessTimeoutError, run_streaming
 from cellforge.versioning import latest_version_dir, restore_build
+
+VIDEO_FPS = 12
+VIDEO_SIZE = (1920, 1080)
+FRAMES_PER_IMAGE = 18
+VIDEO_QUALITY = 7
+REVIEW_SNAPSHOTS = ("snapshot_t0_iso.png", "snapshot_station_s3.png", "snapshot_t0_top.png")
 
 
 class AstraError(RuntimeError):
@@ -37,6 +44,7 @@ class AstraAgent:
         if not executable:
             raise AstraError(f"Codex command not found: {self.command}")
         before = build_hash(project)
+        mirrored = derived.mirrored_version(project)
         prompt = (
             "You are the CellForge presentation agent. Never edit build/, source YAML, CAD, "
             "checks, or timeline. Read build/render_brief.md and create presentation/theme.json, "
@@ -57,23 +65,26 @@ class AstraAgent:
             prompt,
         ]
         emit("agent", {"message": f"Running Codex Astra ({self.model})"})
-        process = await asyncio.create_subprocess_exec(
-            *args,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
+        stdout_lines: list[str] = []
+        stderr_lines: list[str] = []
         try:
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=self.timeout_s)
-        except TimeoutError as error:
-            process.kill()
-            await process.wait()
+            # 取消或逾時時連同 Codex 啟動的子程序一起結束。
+            returncode = await run_streaming(
+                args,
+                cwd=project,
+                env=None,
+                timeout_s=self.timeout_s,
+                on_stdout=stdout_lines.append,
+                on_stderr=stderr_lines.append,
+            )
+        except ProcessTimeoutError as error:
             raise AstraError(f"Astra timed out after {self.timeout_s:g}s") from error
-        if process.returncode:
-            raise AstraError(stderr.decode("utf-8", errors="replace")[-4000:])
+        if returncode:
+            raise AstraError("\n".join(stderr_lines)[-4000:])
         after = build_hash(project)
         protected = before == after
         if not protected:
-            version = latest_version_dir(project)
+            version = project / ".cellforge" / mirrored if mirrored else latest_version_dir(project)
             if version:
                 restore_build(project, version)
             raise AstraError("Astra modified protected engineering build; files were restored")
@@ -86,7 +97,7 @@ class AstraAgent:
             "build_hash_after": after,
             "build_unchanged": True,
             "video": str(video.relative_to(project)),
-            "events": len(stdout.splitlines()),
+            "events": len(stdout_lines),
         }
         _write_result(project, result, instruction)
         return result
@@ -156,28 +167,35 @@ def build_hash(project: Path) -> str:
     return digest.hexdigest()
 
 
-def render_video(project: Path, output: Path | None = None) -> Path:
-    output = output or project / "presentation" / "cell_review_1080p.mp4"
-    output.parent.mkdir(parents=True, exist_ok=True)
-    images = [
-        path
-        for name in ("snapshot_t0_iso.png", "snapshot_station_s3.png", "snapshot_t0_top.png")
-        if (path := project / "build" / name).is_file()
-    ]
-    if not images:
+def render_video(project: Path) -> Path:
+    """Render the review video of the version mirrored in ``build/`` and register it there.
+
+    影片只用登記在同一版本名下的截圖；找不到對應版本時拒絕產生，避免影片被標到錯的版本。
+    """
+
+    version = derived.mirrored_version(project)
+    if version is None:
+        raise AstraError("build/ 沒有對應到已發布且雜湊相符的版本，無法產生版本影片；請先重新建置")
+    snapshots: dict[str, Path] = {}
+    for item in derived.artifacts(project, version, "snapshot"):
+        if item.available and item.name in REVIEW_SNAPSHOTS:
+            snapshots.setdefault(item.name, item.path)
+    images = [snapshots[name] for name in REVIEW_SNAPSHOTS if name in snapshots]
+    placeholder = not images
+    if placeholder:
         images = [_placeholder(project)]
     frames = []
     for index, path in enumerate(images):
         source = Image.open(path).convert("RGB")
         source.thumbnail((1760, 880), Image.Resampling.LANCZOS)
-        canvas = Image.new("RGB", (1920, 1080), "#0B1118")
-        x = (1920 - source.width) // 2
+        canvas = Image.new("RGB", VIDEO_SIZE, "#0B1118")
+        x = (VIDEO_SIZE[0] - source.width) // 2
         y = 90 + (880 - source.height) // 2
         canvas.paste(ImageEnhance.Contrast(source).enhance(1.06), (x, y))
         draw = ImageDraw.Draw(canvas)
         draw.text(
             (80, 35),
-            "CELLFORGE • ENGINEERING REVIEW",
+            f"CELLFORGE • ENGINEERING REVIEW • {version}",
             fill="#E6F1FF",
             font=ImageFont.load_default(size=28),
         )
@@ -188,21 +206,49 @@ def render_video(project: Path, output: Path | None = None) -> Path:
             font=ImageFont.load_default(size=22),
         )
         frames.append(canvas)
+    stamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
+    output = derived.video_dir(project, version) / f"cell_review_1080p_{stamp}.mp4"
+    output.parent.mkdir(parents=True, exist_ok=True)
     writer = write_frames(
         str(output),
-        (1920, 1080),
-        fps=12,
+        VIDEO_SIZE,
+        fps=VIDEO_FPS,
         codec="libx264",
-        quality=7,
+        quality=VIDEO_QUALITY,
         macro_block_size=1,
     )
     writer.send(None)
     try:
         for frame in frames:
-            for _ in range(18):
+            for _ in range(FRAMES_PER_IMAGE):
                 writer.send(frame.tobytes())
     finally:
         writer.close()
+    derived.register(
+        project,
+        version,
+        "video",
+        output,
+        producer="cellforge.agents.astra.render_video",
+        sources=[
+            {
+                "path": path.resolve().relative_to(project.resolve()).as_posix(),
+                "sha256": derived.sha256_file(path),
+            }
+            for path in images
+        ],
+        settings={
+            "renderer": "pillow-slideshow",
+            "encoder": "imageio-ffmpeg/libx264",
+            "resolution": list(VIDEO_SIZE),
+            "fps": VIDEO_FPS,
+            "frames_per_image": FRAMES_PER_IMAGE,
+            "frame_count": FRAMES_PER_IMAGE * len(frames),
+            "quality": VIDEO_QUALITY,
+            "images": 0 if placeholder else len(images),
+            "placeholder_only": placeholder,
+        },
+    )
     return output
 
 

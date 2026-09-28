@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from cellforge.schema import SCHEMAS
 from cellforge.schema.export import export_json_schemas
 from cellforge.validation import validate_project
 
@@ -17,5 +18,10 @@ def test_handwritten_project_validates():
 
 def test_json_schema_export(tmp_path):
     outputs = export_json_schemas(tmp_path)
-    assert len(outputs) == 11
+    assert {path.name for path in outputs} == {f"{name}.schema.json" for name in SCHEMAS}
+    assert "version-manifest" in SCHEMAS
     assert all(path.is_file() for path in outputs)
+    # docs/schema 必須與目前的 pydantic 模型同步。
+    for path in outputs:
+        committed = ROOT / "docs" / "schema" / path.name
+        assert committed.read_text("utf-8") == path.read_text("utf-8"), path.name

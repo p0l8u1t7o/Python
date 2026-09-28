@@ -1,0 +1,30 @@
+units: mm
+plant_frame:
+  description: 站位原點在輸送段中心地面，X 沿輸送方向，Y 指向相機立柱側，Z 向上
+  trust: inferred
+  source: TestCode RobotArmPressSSD 站別配置（照片與影片目測）
+survey_points: []
+machines:
+  - id: ssd_press_cell
+    pose: {xyz: [0, 0, 0], rpy_deg: [0, 0, 0], trust: inferred}
+    modules:
+      - id: conveyor_1
+        part: library/conveyor.py
+        params: {length_mm: 1300, width_mm: 300, height_mm: 855}
+        pose: {xyz: [0, 0, 0], rpy_deg: [0, 0, 0], trust: inferred}
+      - id: robot_riser
+        part: library/fixture_stand.py
+        params: {top_size: [320, 320, 15], top_height_mm: 550}
+        pose: {xyz: [0, -470, 0], rpy_deg: [0, 0, 0], trust: inferred}
+      - id: robot_1
+        part: library/robot_stub.py
+        params:
+          reach_mm: 710
+          payload_kg: 7
+          tool: {part: parts/press_camera_eoat.py}
+        pose: {xyz: [0, -470, 550], rpy_deg: [0, 0, 90], trust: inferred}
+        mount: robot_riser.top
+      - id: global_camera
+        part: parts/global_camera.py
+        params: {lens_height_mm: 1657, reach_mm: 450, working_distance_mm: 750}
+        pose: {xyz: [0, 450, 0], rpy_deg: [0, 0, -90], trust: inferred}

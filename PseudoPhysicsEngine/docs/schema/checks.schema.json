@@ -42,7 +42,10 @@
             "reachability",
             "joint_limit",
             "hardware",
-            "takt"
+            "takt",
+            "process",
+            "vision",
+            "electrical"
           ],
           "title": "Type",
           "type": "string"
@@ -55,6 +58,36 @@
           ],
           "title": "Severity",
           "type": "string"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "enum": [
+                "pass",
+                "fail",
+                "not_evaluated",
+                "error"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status"
+        },
+        "code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Code"
         },
         "t": {
           "anyOf": [
@@ -158,6 +191,25 @@
           ],
           "default": null,
           "title": "Min Dist Mm"
+        },
+        "approximated_models": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Approximated Models",
+          "type": "array"
+        },
+        "contact_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Contact Id"
         }
       },
       "required": [

@@ -3,21 +3,40 @@
 from __future__ import annotations
 
 import json
+import os
 import warnings
+from datetime import datetime
 from pathlib import Path
 
 import cadquery as cq
 import numpy as np
 
 from cellforge.checks import run_checks
+from cellforge.project import source_root
 from cellforge.schema import Checks, Timeline, VendorManifest
-from cellforge.sim import SceneModel, build_workpiece
+from cellforge.sim import SceneModel, build_parts
 from cellforge.validation import validate_project
-from cellforge.versioning import snapshot_build
+from cellforge.version_store import (
+    BUILD_JOB_ENV,
+    BUILD_ORIGIN_ENV,
+    StagedBuild,
+    VersionPublishError,
+    commit_version,
+    engine_info,
+    expanded_params,
+    publish,
+    schema_fingerprint,
+    source_policy,
+    stage_build,
+    verify_library_unchanged,
+    verify_outputs,
+    write_manifest,
+)
+from cellforge.versioning import MANIFEST_NAME
 from cellforge.yamlio import load_yaml
 
 from .glb import _assembly_meshes, export_glb
-from .modules import BuiltModule, build_module
+from .modules import BuiltModule, build_module, fresh_library_modules, project_parts
 from .stepio import StepValidationError, export_and_validate_step
 from .timeline import expand_sequence
 from .transforms import cadquery_location, matrix_from_pose
@@ -67,12 +86,116 @@ def _module_floor_warnings(modules: list[BuiltModule]) -> list[str]:
 
 
 def build_project(project_dir: Path, level: str = "L0") -> dict:
+    """凍結工作區來源後在 staging 建置，驗證通過才原子發布為新的 ``.cellforge/vN``。"""
+
     level = level.upper()
     if level not in {"L0", "L1"}:
         raise BuildError("Build level must be L0 or L1")
-    project, workpiece, cell, process = validate_project(project_dir)
+    project_dir = project_dir.resolve()
+    library_root = source_root() / "library"
+    try:
+        with stage_build(project_dir, library_root) as stage:
+            with project_parts(stage.source_dir), fresh_library_modules():
+                report, modules = _build_into(
+                    stage.source_dir, stage.output_dir, level, stage.number
+                )
+            return _publish(stage, level, report, modules, library_root)
+    except VersionPublishError as error:
+        raise BuildError(str(error)) from error
+
+
+def _publish(
+    stage: StagedBuild,
+    level: str,
+    report: dict,
+    modules: list[BuiltModule],
+    library_root: Path,
+) -> dict:
+    expected_nodes = [module.instance.id for module in modules] + [
+        part["id"] for part in report["parts"]
+    ]
+    artifacts = verify_outputs(stage.output_dir, level, stage.number, expected_nodes)
+    verify_library_unchanged(stage, library_root)
+    checks = report["checks"]
+    if checks is None:
+        engineering = {"status": "not_evaluated", "summary": None}
+    else:
+        status = "fail" if checks["red"] else "warning" if checks["yellow"] else "pass"
+        engineering = {"status": status, "summary": dict(checks)}
+    project = load_yaml(stage.source_dir / "project.yaml") or {}
+    write_manifest(
+        stage,
+        {
+            "version": stage.name,
+            "number": stage.number,
+            "created": datetime.now().astimezone(),
+            "project_name": str(project.get("name", "")),
+            "build": {
+                "level": level,
+                "status": "succeeded",
+                "started": stage.started,
+                "finished": datetime.now().astimezone(),
+                "warnings": report["warnings"],
+                "origin": os.environ.get(BUILD_ORIGIN_ENV) or "direct",
+                "job_id": os.environ.get(BUILD_JOB_ENV) or None,
+            },
+            "engineering": engineering,
+            "engine": engine_info(source_root()),
+            "schema_fingerprint": schema_fingerprint(),
+            "source_policy": source_policy(),
+            "sources": stage.sources,
+            "library": stage.library,
+            "modules": [
+                {
+                    "id": module.instance.id,
+                    "source": module.source,
+                    "module_file": module.module_file,
+                    "module_sha256": stage.module_file_sha256(module.module_file),
+                    "params": module.params,
+                    "expanded_params": expanded_params(
+                        module.definition.params_schema, module.params
+                    ),
+                    "model_source": module.model_source,
+                    "approximated": module.approximated,
+                }
+                for module in modules
+            ],
+            "parts": [
+                {
+                    **part,
+                    "module_sha256": (
+                        stage.module_file_sha256(part["module_file"])
+                        if part.get("module_file")
+                        else None
+                    ),
+                }
+                for part in report["parts"]
+            ],
+            "artifacts": artifacts,
+        },
+    )
+    target, publish_warnings = publish(stage)
+    warnings = [*report["warnings"], *publish_warnings]
+    if git_warning := commit_version(stage.project, stage.name):
+        warnings.append(git_warning)
+    return {
+        **report,
+        "version": stage.number,
+        "version_id": stage.name,
+        "manifest": f".cellforge/{target.name}/{MANIFEST_NAME}",
+        "engineering_status": engineering["status"],
+        "warnings": warnings,
+    }
+
+
+def _build_into(
+    source_dir: Path, output_dir: Path, level: str, version_number: int
+) -> tuple[dict, list[BuiltModule]]:
+    """Build strictly from frozen sources into the staging output directory."""
+
+    project, workpiece, cell, process = validate_project(source_dir)
     vendor_manifest = VendorManifest.model_validate(
-        load_yaml(project_dir / "vendor" / "manifest.yaml") or {"vendors": []}
+        load_yaml(source_dir / "vendor" / "manifest.yaml") or {"vendors": []}
     )
     vendor_items = {item.id: item.model_dump(mode="json") for item in vendor_manifest.vendors}
     station_by_module = {
@@ -90,19 +213,24 @@ def build_project(project_dir: Path, level: str = "L0") -> dict:
                 name=instance.id,
                 loc=cadquery_location(instance.pose.xyz, instance.pose.rpy_deg),
             )
-    built_workpiece = build_workpiece(workpiece, process)
-    build_warnings = [*built_workpiece.warnings, *_module_floor_warnings(modules)]
-    assert built_workpiece.assembly is not None
-    scene = SceneModel(cell, modules, built_workpiece)
-    assembly.add(built_workpiece.assembly, name="workpiece")
-    expected_step_names = [module.instance.id for module in modules] + ["workpiece"]
-    build_dir = project_dir / "build"
-    build_dir.mkdir(parents=True, exist_ok=True)
+    built_parts = build_parts(workpiece, process)
+    build_warnings = [
+        *(message for part in built_parts for message in part.warnings),
+        *(message for module in modules for message in module.warnings),
+        *_module_floor_warnings(modules),
+    ]
+    scene = SceneModel(cell, modules, built_parts)
+    for part in built_parts:
+        assert part.assembly is not None
+        assembly.add(part.assembly, name=part.id)
+    expected_step_names = [module.instance.id for module in modules] + [
+        part.id for part in built_parts
+    ]
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", FutureWarning)
             inspection, fallback = export_and_validate_step(
-                assembly, build_dir / "scene.step", expected_step_names
+                assembly, output_dir / "scene.step", expected_step_names
             )
     except StepValidationError as error:
         raise BuildError(str(error)) from error
@@ -116,39 +244,87 @@ def build_project(project_dir: Path, level: str = "L0") -> dict:
             "xcaf_fallback_used": fallback,
         }
     )
-    (build_dir / "step_validation.json").write_text(
+    (output_dir / "step_validation.json").write_text(
         json.dumps(step_report, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-    export_glb(modules, build_dir / "scene.glb", built_workpiece)
+    export_glb(modules, output_dir / "scene.glb", built_parts)
     timeline = Timeline.model_validate(
-        expand_sequence(project_dir / "animation" / "sequence.py", process, scene)
+        expand_sequence(source_dir / "animation" / "sequence.py", process, scene)
     ).model_dump(mode="json")
-    (build_dir / "timeline.json").write_text(
+    (output_dir / "timeline.json").write_text(
         json.dumps(timeline, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     checks = None
     if level == "L1":
-        existing = [
-            int(path.name[1:])
-            for path in (project_dir / ".cellforge").glob("v*")
-            if path.is_dir() and path.name[1:].isdigit()
-        ]
         checks = Checks.model_validate(
             run_checks(
                 cell,
                 workpiece,
                 process,
                 timeline,
-                max(existing, default=0) + 1,
+                version_number,
                 vendor_items,
                 scene=scene,
             )
         ).model_dump(mode="json")
-        (build_dir / "checks.json").write_text(
+
+    costing = None
+    if (source_dir / "costing.yaml").is_file():
+        from cellforge.costing import compute_costing
+        from cellforge.schema.costing import Costing
+
+        costing = {
+            "version": version_number,
+            **compute_costing(
+                Costing.model_validate(load_yaml(source_dir / "costing.yaml")),
+                cell,
+                as_of=datetime.now().astimezone().date(),
+            ),
+        }
+        (output_dir / "costing.json").write_text(
+            json.dumps(costing, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        build_warnings.extend(
+            f"成本：{issue['message']}"
+            for issue in costing["issues"]
+            if issue["severity"] == "error"
+        )
+
+    electrical = None
+    if (source_dir / "electrical.yaml").is_file():
+        from cellforge.electrical import electrical_report
+        from cellforge.schema.electrical import Electrical
+
+        electrical = {
+            "version": version_number,
+            **electrical_report(
+                Electrical.model_validate(load_yaml(source_dir / "electrical.yaml")),
+                cell,
+                scene=scene,
+                process=process,
+                costing=costing,
+            ),
+        }
+        (output_dir / "electrical.json").write_text(
+            json.dumps(electrical, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        build_warnings.extend(
+            f"電控：{issue['message']}"
+            for issue in electrical["issues"]
+            if issue["severity"] == "warning"
+        )
+        if checks is not None:
+            # 電控檢查併入同一份 L1 證據，前端與報告共用同一套紅黃綠。
+            checks["items"].extend(electrical["checks"])
+            checks["summary"] = {
+                color: sum(item["severity"] == color for item in checks["items"])
+                for color in ("red", "yellow", "green")
+            }
+            checks = Checks.model_validate(checks).model_dump(mode="json")
+    if checks is not None:
+        (output_dir / "checks.json").write_text(
             json.dumps(checks, ensure_ascii=False, indent=2), encoding="utf-8"
         )
-    elif (build_dir / "checks.json").exists():
-        (build_dir / "checks.json").unlink()
 
     stations = "\n".join(
         f"- {station['id']}: {station.get('name', station['id'])} "
@@ -166,7 +342,7 @@ def build_project(project_dir: Path, level: str = "L0") -> dict:
             or "- No red or yellow checks."
         )
     warning_lines = "\n".join(f"- {message}" for message in build_warnings) or "- 無。"
-    (build_dir / "render_brief.md").write_text(
+    (output_dir / "render_brief.md").write_text(
         f"# {project.name} — {level} render brief\n\n{project.description}\n\n"
         f"## 建置警告\n{warning_lines}\n\n## Stations\n{stations}\n\n"
         f"## Red / yellow checks\n{risks}\n\n"
@@ -183,14 +359,46 @@ def build_project(project_dir: Path, level: str = "L0") -> dict:
     ]
     if checks:
         output_names.append("checks.json")
-    version = snapshot_build(project_dir, output_names)
-    return {
-        "version": version,
+    if costing:
+        output_names.append("costing.json")
+    if electrical:
+        output_names.append("electrical.json")
+    report = {
         "level": level,
         "modules": len(modules),
+        "parts": [
+            {
+                "id": part.id,
+                "sku": part.sku.id if part.sku is not None else None,
+                "module_file": part.part_file or None,
+                "mass_kg": part.mass_kg,
+            }
+            for part in built_parts
+        ],
         "warnings": build_warnings,
+        "costing": (
+            {
+                "complete": costing["complete"],
+                "currency": costing["currency"],
+                "cost": costing["totals"]["cost"]["value"],
+                "missing": len(costing["missing"]),
+            }
+            if costing
+            else None
+        ),
+        "electrical": (
+            {
+                "devices": len(electrical["devices"]),
+                "connections": len(electrical["connections"]),
+                "io": len(electrical["io"]),
+                **electrical["summary"],
+            }
+            if electrical
+            else None
+        ),
         "duration_s": timeline["duration_s"],
         "step": step_report,
         "checks": checks["summary"] if checks else None,
         "outputs": [f"build/{name}" for name in output_names],
     }
+    return report, modules

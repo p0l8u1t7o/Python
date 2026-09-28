@@ -26,7 +26,7 @@ class SequenceBuilder:
 
     def __post_init__(self) -> None:
         self.simulator = Simulator(self.scene, fps=self.fps)
-        self.simulator.initialize_workpiece(self.process.initial_workpiece_frame)
+        self.simulator.initialize_parts(self.process.initial_workpiece_frame)
 
     def run_process(self) -> None:
         if self._legacy_index:

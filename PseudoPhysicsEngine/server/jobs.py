@@ -8,15 +8,23 @@ import traceback
 import uuid
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from cellforge.versioning import commit_changes
+from cellforge.versioning import try_commit_changes
 
 EventEmitter = Callable[[str, dict[str, Any]], None]
 JobWorker = Callable[[EventEmitter], Awaitable[dict[str, Any] | None]]
+
+# worker 以此取得自己所屬的 job id，傳給建置子程序寫入版本 manifest。
+_current_job: ContextVar[str | None] = ContextVar("cellforge_current_job", default=None)
+
+
+def current_job_id() -> str | None:
+    return _current_job.get()
 
 
 @dataclass
@@ -32,6 +40,7 @@ class Job:
     result: dict[str, Any] | None = None
     error: str | None = None
     events: list[dict[str, Any]] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
     task: asyncio.Task | None = field(default=None, repr=False)
 
     def public(self) -> dict[str, Any]:
@@ -46,6 +55,7 @@ class Job:
             "finished": self.finished,
             "result": self.result,
             "error": self.error,
+            "warnings": self.warnings,
         }
 
 
@@ -69,6 +79,7 @@ class JobRunner:
         return job
 
     async def _run(self, job: Job, worker: JobWorker) -> None:
+        _current_job.set(job.id)
         lock = self._engineering_locks[job.project_id]
         context = lock if job.owner == "engineering" else _NullAsyncContext()
         try:
@@ -77,23 +88,16 @@ class JobRunner:
                 job.started = datetime.now().astimezone().isoformat()
                 self.emit(job, "status", {"status": "running", "message": "工作開始"})
                 job.result = await worker(lambda kind, data: self.emit(job, kind, data))
+                for item in (job.result or {}).get("warnings", []):
+                    if str(item) not in job.warnings:
+                        job.warnings.append(str(item))
                 job.status = "done"
                 job.finished = datetime.now().astimezone().isoformat()
                 self.emit(job, "complete", {"status": "done", "result": job.result})
-                commit_changes(
-                    self.projects_root / job.project_id,
-                    f"job {job.id} {job.status}",
-                    [f"tasks/logs/{job.id}.jsonl"],
-                )
         except asyncio.CancelledError:
             job.status = "cancelled"
             job.finished = datetime.now().astimezone().isoformat()
             self.emit(job, "complete", {"status": "cancelled"})
-            commit_changes(
-                self.projects_root / job.project_id,
-                f"job {job.id} cancelled",
-                [f"tasks/logs/{job.id}.jsonl"],
-            )
         except Exception as error:  # The job boundary must convert failures into state.
             job.status = "failed"
             job.error = str(error)
@@ -107,11 +111,14 @@ class JobRunner:
                     "traceback": traceback.format_exc().splitlines()[-30:],
                 },
             )
-            commit_changes(
-                self.projects_root / job.project_id,
-                f"job {job.id} failed",
-                [f"tasks/logs/{job.id}.jsonl"],
-            )
+        # 工作結論已定；log 提交失敗只記警告，不可把完成的工作改判為失敗。
+        warning = try_commit_changes(
+            self.projects_root / job.project_id,
+            f"job {job.id} {job.status}",
+            [f"tasks/logs/{job.id}.jsonl"],
+        )
+        if warning:
+            self.emit(job, "warning", {"message": warning})
 
     def emit(self, job: Job, kind: str, data: dict[str, Any]) -> None:
         event = {
@@ -121,6 +128,8 @@ class JobRunner:
             **data,
         }
         job.events.append(event)
+        if kind == "warning" and data.get("message") and data["message"] not in job.warnings:
+            job.warnings.append(str(data["message"]))
         log_dir = self.projects_root / job.project_id / "tasks" / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
         with (log_dir / f"{job.id}.jsonl").open("a", encoding="utf-8") as handle:
@@ -131,6 +140,14 @@ class JobRunner:
             return self.jobs[job_id]
         except KeyError as error:
             raise KeyError(f"找不到工作：{job_id}") from error
+
+    def active(self, project_id: str) -> list[Job]:
+        """尚未結束（排隊或執行中）的工作；刪除案子前必須為空。"""
+        return [
+            job
+            for job in self.jobs.values()
+            if job.project_id == project_id and job.status in {"queued", "running"}
+        ]
 
     def cancel(self, job_id: str) -> Job:
         job = self.get(job_id)

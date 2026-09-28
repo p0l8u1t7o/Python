@@ -1,0 +1,164 @@
+units: mm
+skus: []
+variants_note: 配方 usb-2x8；usb-2x8-r90 與 ssd35-usbc 留待案例遷移（DEV-014）
+parts:
+- id: tray
+  part: parts/ssd_tray.py
+  mass_kg: 0.6
+  initial:
+    frame: conveyor_1.start
+  trust: inferred
+  source: 載盤 300 × 200 × 6 mm 複合材料，質量為推估
+- id: panel
+  part: parts/usb_panel_2x8.py
+  mass_kg: 0.06
+  initial:
+    frame: tray.panel_seat
+  trust: inferred
+  source: TestCode RobotArmPressSSD recipes.js（usb-2x8，照片目測示意值）
+- id: usb_A1
+  part: parts/usb_a_connector.py
+  mass_kg: 0.002
+  initial:
+    frame: panel.usb_A1
+  state:
+    tilt: 3.5
+  trust: inferred
+  source: TestCode RobotArmPressSSD recipes.js（usb-2x8，照片目測示意值）
+- id: usb_A2
+  part: parts/usb_a_connector.py
+  mass_kg: 0.002
+  initial:
+    frame: panel.usb_A2
+  state:
+    tilt: 4.2
+  trust: inferred
+  source: TestCode RobotArmPressSSD recipes.js（usb-2x8，照片目測示意值）
+- id: usb_A3
+  part: parts/usb_a_connector.py
+  mass_kg: 0.002
+  initial:
+    frame: panel.usb_A3
+  state:
+    tilt: 0.0
+  trust: inferred
+  source: TestCode RobotArmPressSSD recipes.js（usb-2x8，照片目測示意值）
+- id: usb_A4
+  part: parts/usb_a_connector.py
+  mass_kg: 0.002
+  initial:
+    frame: panel.usb_A4
+  state:
+    tilt: 1.2
+  trust: inferred
+  source: TestCode RobotArmPressSSD recipes.js（usb-2x8，照片目測示意值）
+- id: usb_A5
+  part: parts/usb_a_connector.py
+  mass_kg: 0.002
+  initial:
+    frame: panel.usb_A5
+  state:
+    tilt: 0.0
+  trust: inferred
+  source: TestCode RobotArmPressSSD recipes.js（usb-2x8，照片目測示意值）
+- id: usb_A6
+  part: parts/usb_a_connector.py
+  mass_kg: 0.002
+  initial:
+    frame: panel.usb_A6
+  state:
+    tilt: 2.6
+  trust: inferred
+  source: TestCode RobotArmPressSSD recipes.js（usb-2x8，照片目測示意值）
+  params:
+    rebound_deg: 1.1
+- id: usb_A7
+  part: parts/usb_a_connector.py
+  mass_kg: 0.002
+  initial:
+    frame: panel.usb_A7
+  state:
+    tilt: 0.0
+  trust: inferred
+  source: TestCode RobotArmPressSSD recipes.js（usb-2x8，照片目測示意值）
+- id: usb_A8
+  part: parts/usb_a_connector.py
+  mass_kg: 0.002
+  initial:
+    frame: panel.usb_A8
+  state:
+    tilt: 0.8
+  trust: inferred
+  source: TestCode RobotArmPressSSD recipes.js（usb-2x8，照片目測示意值）
+- id: usb_B1
+  part: parts/usb_a_connector.py
+  mass_kg: 0.002
+  initial:
+    frame: panel.usb_B1
+  state:
+    tilt: 0.0
+  trust: inferred
+  source: TestCode RobotArmPressSSD recipes.js（usb-2x8，照片目測示意值）
+- id: usb_B2
+  part: parts/usb_a_connector.py
+  mass_kg: 0.002
+  initial:
+    frame: panel.usb_B2
+  state:
+    tilt: 1.5
+  trust: inferred
+  source: TestCode RobotArmPressSSD recipes.js（usb-2x8，照片目測示意值）
+- id: usb_B3
+  part: parts/usb_a_connector.py
+  mass_kg: 0.002
+  initial:
+    frame: panel.usb_B3
+  state:
+    tilt: 0.0
+  trust: inferred
+  source: TestCode RobotArmPressSSD recipes.js（usb-2x8，照片目測示意值）
+- id: usb_B4
+  part: parts/usb_a_connector.py
+  mass_kg: 0.002
+  initial:
+    frame: panel.usb_B4
+  state:
+    tilt: 0.0
+  trust: inferred
+  source: TestCode RobotArmPressSSD recipes.js（usb-2x8，照片目測示意值）
+- id: usb_B5
+  part: parts/usb_a_connector.py
+  mass_kg: 0.002
+  initial:
+    frame: panel.usb_B5
+  state:
+    tilt: 2.2
+  trust: inferred
+  source: TestCode RobotArmPressSSD recipes.js（usb-2x8，照片目測示意值）
+- id: usb_B6
+  part: parts/usb_a_connector.py
+  mass_kg: 0.002
+  initial:
+    frame: panel.usb_B6
+  state:
+    tilt: 0.0
+  trust: inferred
+  source: TestCode RobotArmPressSSD recipes.js（usb-2x8，照片目測示意值）
+- id: usb_B7
+  part: parts/usb_a_connector.py
+  mass_kg: 0.002
+  initial:
+    frame: panel.usb_B7
+  state:
+    tilt: 0.9
+  trust: inferred
+  source: TestCode RobotArmPressSSD recipes.js（usb-2x8，照片目測示意值）
+- id: usb_B8
+  part: parts/usb_a_connector.py
+  mass_kg: 0.002
+  initial:
+    frame: panel.usb_B8
+  state:
+    tilt: 0.0
+  trust: inferred
+  source: TestCode RobotArmPressSSD recipes.js（usb-2x8，照片目測示意值）

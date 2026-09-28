@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import functools
 import http.server
-import re
 import shutil
 import socketserver
 import threading
 from pathlib import Path
+
+from cellforge.derived import record_build_snapshot
+
+VIEWPORT = (1280, 720)
 
 
 class SnapshotError(RuntimeError):
@@ -53,7 +56,7 @@ def snapshot_project(
                     raise SnapshotError(
                         "Playwright Chromium 尚未安裝；請執行 playwright install chromium"
                     ) from error
-                page = browser.new_page(viewport={"width": 1280, "height": 720})
+                page = browser.new_page(viewport={"width": VIEWPORT[0], "height": VIEWPORT[1]})
                 browser_errors: list[str] = []
                 page.on("pageerror", lambda error: browser_errors.append(str(error)))
                 page.on(
@@ -77,20 +80,10 @@ def snapshot_project(
         finally:
             server.shutdown()
             thread.join(timeout=5)
-    _copy_to_latest_version(project_dir, output)
+    # 已封存的 vN 不可改寫；截圖登記為 build/ 所鏡像版本的衍生檔。
+    record_build_snapshot(
+        project_dir,
+        output,
+        {"time_s": time_s, "camera": camera, "viewport": list(VIEWPORT), "renderer": "playwright"},
+    )
     return output
-
-
-def _copy_to_latest_version(project_dir: Path, snapshot: Path) -> None:
-    versions_dir = project_dir / ".cellforge"
-    if not versions_dir.is_dir():
-        return
-    versions = [
-        (int(match.group(1)), path)
-        for path in versions_dir.iterdir()
-        if path.is_dir() and (match := re.fullmatch(r"v(\d+)", path.name))
-    ]
-    if versions:
-        destination = max(versions)[1] / snapshot.name
-        if snapshot.resolve() != destination.resolve():
-            shutil.copy2(snapshot, destination)

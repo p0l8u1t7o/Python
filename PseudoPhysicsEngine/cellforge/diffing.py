@@ -6,24 +6,17 @@ import json
 from pathlib import Path
 from typing import Any
 
+from cellforge.versioning import VersionContext
 from cellforge.yamlio import load_yaml
 
 
 def diff_versions(project: Path, before: str, after: str) -> dict[str, Any]:
-    left = _version(project, before)
-    right = _version(project, after)
+    left = VersionContext.open(project, before).directory
+    right = VersionContext.open(project, after).directory
     changes: list[dict[str, Any]] = []
     for relative in ("source/cell.yaml", "source/process.yaml", "checks.json", "timeline.json"):
         _walk(relative, _load(left / relative), _load(right / relative), changes)
     return {"from": left.name, "to": right.name, "changes": changes, "count": len(changes)}
-
-
-def _version(project: Path, version: str) -> Path:
-    normalized = version if version.startswith("v") else f"v{version}"
-    path = project / ".cellforge" / normalized
-    if not path.is_dir():
-        raise FileNotFoundError(normalized)
-    return path
 
 
 def _load(path: Path) -> Any:

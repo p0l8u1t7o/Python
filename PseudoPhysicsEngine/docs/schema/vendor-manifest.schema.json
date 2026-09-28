@@ -52,7 +52,8 @@
         "units_in_file": {
           "enum": [
             "mm",
-            "inch"
+            "inch",
+            "m"
           ],
           "title": "Units In File",
           "type": "string"

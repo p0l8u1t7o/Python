@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -24,6 +25,8 @@ part_app = typer.Typer(help="檢查與輸出參數化模組", no_args_is_help=Tr
 app.add_typer(agent_app, name="agent")
 app.add_typer(vendor_app, name="vendor")
 app.add_typer(part_app, name="part")
+version_app = typer.Typer(help="已發布版本快照", no_args_is_help=True)
+app.add_typer(version_app, name="version")
 
 
 def _emit(payload: dict, json_output: bool) -> None:
@@ -31,6 +34,24 @@ def _emit(payload: dict, json_output: bool) -> None:
         typer.echo(json.dumps(payload, ensure_ascii=False))
     else:
         typer.echo(payload.get("message", json.dumps(payload, ensure_ascii=False, indent=2)))
+
+
+@version_app.command("verify")
+def version_verify(
+    version: str,
+    project: Path = typer.Option(Path.cwd(), "--project"),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """回讀版本 manifest、雜湊、schema 與 STEP／GLB 幾何。"""
+    from cellforge.version_verify import VersionVerificationError, verify_version
+    from cellforge.versioning import VersionError
+
+    try:
+        report = verify_version(project.resolve(), version)
+    except (VersionError, VersionVerificationError) as error:
+        _emit({"status": "failed", "message": str(error)}, json_output)
+        raise typer.Exit(2) from error
+    _emit({**report, "message": f"{report['version']} 驗證通過"}, json_output)
 
 
 @part_app.command("list")
@@ -240,7 +261,7 @@ def validate(
     except ProjectValidationError as error:
         _emit({"status": "failed", "message": str(error)}, json_output)
         raise typer.Exit(2) from error
-    warnings = placeholder_warnings(cell)
+    warnings = placeholder_warnings(cell, project.resolve())
     message = "驗證通過"
     if warnings:
         message += "\n" + "\n".join(f"[warn] {warning}" for warning in warnings)
@@ -256,14 +277,22 @@ def build(
 ) -> None:
     """建立 STEP、GLB 與 timeline。"""
     from cellforge.build.pipeline import BuildError, build_project
+    from cellforge.version_store import BUILD_ORIGIN_ENV
 
     del no_checks
+    os.environ.setdefault(BUILD_ORIGIN_ENV, "cli")
     try:
         report = build_project(project.resolve(), level.upper())
     except (BuildError, ProjectValidationError, ValueError) as error:
         _emit({"status": "failed", "message": str(error)}, json_output)
         raise typer.Exit(3) from error
-    report.update({"status": "ok", "message": "L0 建置完成；STEP 已用 OCP 重讀驗證"})
+    report.update(
+        {
+            "status": "ok",
+            "message": f"{report['level']} 建置完成並發布 {report['version_id']}；"
+            "STEP 已用 OCP 重讀驗證",
+        }
+    )
     _emit(report, json_output)
 
 
@@ -436,6 +465,52 @@ def vendor_add(
     )
 
 
+@vendor_app.command("add-urdf")
+def vendor_add_urdf(
+    vendor_id: str,
+    urdf: str,
+    files: list[str] = typer.Option([], "--file", help="URDF 引用的網格或其他原廠檔，可重複"),
+    project: Path = typer.Option(Path.cwd(), "--project"),
+    kind: str = typer.Option("robot", "--kind"),
+    flange_link: str | None = typer.Option(None, "--flange-link"),
+    flange_xyz: str = typer.Option("0,0,0", "--flange-xyz", help="mm，相對 flange link"),
+    flange_rpy: str = typer.Option("0,0,0", "--flange-rpy", help="度，相對 flange link"),
+    payload_kg: float | None = typer.Option(None, "--payload-kg"),
+    part_no: str | None = typer.Option(None, "--part-no"),
+    source_url: str | None = typer.Option(None, "--source-url"),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """登記原廠 URDF 與其網格，逐檔記錄來源與 SHA-256。"""
+    from cellforge.vendor import add_vendor_urdf
+
+    flange = None
+    if flange_link:
+        flange = {
+            "link": flange_link,
+            "xyz": [float(value) for value in flange_xyz.split(",")],
+            "rpy_deg": [float(value) for value in flange_rpy.split(",")],
+        }
+    try:
+        entry = add_vendor_urdf(
+            project.resolve(),
+            vendor_id,
+            urdf,
+            files,
+            kind=kind,
+            flange=flange,
+            limits={"payload_kg": payload_kg} if payload_kg is not None else {},
+            part_no=part_no,
+            source_url=source_url,
+        )
+    except (OSError, ValueError) as error:
+        _emit({"status": "failed", "message": str(error)}, json_output)
+        raise typer.Exit(2) from error
+    _emit(
+        {"status": "ok", "vendor": entry, "message": f"已登記原廠 URDF：{vendor_id}"},
+        json_output,
+    )
+
+
 @app.command("checks")
 def checks_command(
     project: Path = typer.Option(Path.cwd(), "--project"),
@@ -474,10 +549,19 @@ def export_command(
 ) -> None:
     """Create the complete customer delivery pack."""
     from cellforge.exports import export_project
+    from cellforge.versioning import VersionError
 
     selected = None if kinds.lower() == "all" else [item.strip() for item in kinds.split(",")]
-    report = export_project(project.resolve(), selected, version)
-    _emit({**report, "message": f"Exported {len(report['files'])} files"}, json_output)
+    try:
+        report = export_project(project.resolve(), selected, version)
+    except (VersionError, ValueError) as error:
+        _emit({"status": "failed", "message": str(error)}, json_output)
+        raise typer.Exit(2) from error
+    message = f"{report['version']} 已匯出 {len(report['files'])} 個檔案"
+    if report["missing"]:
+        details = "\n".join(f"- {item['kind']}：{item['reason']}" for item in report["missing"])
+        message += f"；交付包不完整，缺少：\n{details}"
+    _emit({**report, "message": message}, json_output)
 
 
 @app.command("serve")

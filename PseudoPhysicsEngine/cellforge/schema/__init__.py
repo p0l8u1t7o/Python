@@ -1,6 +1,6 @@
 """Public schema API."""
 
-from .base import Frame, JointOrigin, ModuleAxis, ModuleDef, ModuleMeta
+from .base import CameraSpec, Frame, JointOrigin, ModuleAxis, ModuleDef, ModuleMeta
 from .models import (
     SCHEMAS,
     Assumptions,
@@ -15,9 +15,11 @@ from .models import (
     VendorManifest,
     Workpiece,
 )
+from .versions import VersionManifest
 
 __all__ = [
     "Assumptions",
+    "CameraSpec",
     "Cell",
     "Checks",
     "Frame",
@@ -33,5 +35,6 @@ __all__ = [
     "Task",
     "Timeline",
     "VendorManifest",
+    "VersionManifest",
     "Workpiece",
 ]

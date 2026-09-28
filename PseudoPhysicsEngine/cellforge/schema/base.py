@@ -69,6 +69,42 @@ class ModuleAxis(ForgeModel):
 class ModuleMeta(ForgeModel):
     basis: str = ""
     placeholder: bool = False
+    # 以型錄尺寸參數化近似某廠商產品（例如 robot_stub），不是原廠模型；檢查與報告都要標示。
+    approximated: bool = False
+
+
+class CameraSpec(ForgeModel):
+    """相機與鏡頭的幾何參數；光學 frame 的 +Z 為視線、+X 為影像右、+Y 為影像下。"""
+
+    sensor_px: tuple[int, int]
+    pixel_um: float
+    focal_mm: float
+    working_distance_mm: float
+    f_number: float = 8.0
+    # 允許的模糊圈（像素）；景深依薄透鏡近似由此計算。
+    blur_px: float = 2.0
+    trust: Literal["confirmed", "inferred", "placeholder"] = "inferred"
+    source: str | None = None
+
+    @property
+    def sensor_mm(self) -> tuple[float, float]:
+        return (
+            self.sensor_px[0] * self.pixel_um / 1000.0,
+            self.sensor_px[1] * self.pixel_um / 1000.0,
+        )
+
+    def mm_per_px(self, distance_mm: float) -> float:
+        return distance_mm * (self.pixel_um / 1000.0) / self.focal_mm
+
+    def depth_of_field_mm(self) -> tuple[float, float]:
+        """Near and far limits of acceptable focus around the working distance."""
+        coc = self.blur_px * self.pixel_um / 1000.0
+        focus = self.working_distance_mm
+        hyperfocal = self.focal_mm**2 / (self.f_number * coc) + self.focal_mm
+        near = hyperfocal * focus / (hyperfocal + (focus - self.focal_mm))
+        far_denominator = hyperfocal - (focus - self.focal_mm)
+        far = hyperfocal * focus / far_denominator if far_denominator > 0 else float("inf")
+        return near, far
 
 
 class ModuleDef(ForgeModel):
@@ -82,6 +118,8 @@ class ModuleDef(ForgeModel):
     vendor: str | None = None
     part_no: str | None = None
     meta: ModuleMeta = Field(default_factory=ModuleMeta)
+    # 光學 frame 名稱 → 相機參數（固定相機模組或手臂工具上的相機）。
+    cameras: dict[str, CameraSpec] = Field(default_factory=dict)
 
 
 class Pose(Frame):

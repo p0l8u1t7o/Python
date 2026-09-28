@@ -1,0 +1,2484 @@
+# SSD USB 銀腳壓合站電控資料：由 TestCode circuit-data.json（P02）轉入，全部為推估（trust: inferred）。
+# 端子、線號與 I/O 點序是規劃代號，不是已選型號的原廠腳位；待確認事項見 analysis/questions.yaml。
+version: 1
+title: SSD USB 銀腳壓合與視覺檢查站 電控
+nets:
+- id: P24A
+  signal: dc_power
+  voltage: '24VDC'
+  label: +24 V
+- id: N24A
+  signal: dc_power
+  voltage: '0V'
+  label: '0 V'
+- id: PE
+  signal: ground
+  voltage: PE
+  label: 保護接地
+devices:
+- id: XS0
+  name: 現場供電（電壓、相數與接地系統待確認）
+  kind: other
+  model: 現場供電
+  location: field
+  terminals:
+  - id: L
+    signal: ac_power
+    direction: source
+    voltage: AC-L
+    label: L
+  - id: N
+    signal: ac_power
+    direction: source
+    voltage: AC-N
+    label: N
+  - id: PE
+    signal: ground
+    direction: source
+    voltage: PE
+    label: PE
+  note: 供電制式未確認；以 L／N／PE 表示電位域，不代表已確認單相供電。
+  trust: inferred
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02）
+- id: QS1
+  name: 總電源隔離開關
+  kind: isolator
+  model: 配置估算，型號待選
+  catalog_ref: '7-02'
+  catalog_quantity: null
+  panel:
+    rail: R1
+    order: 1
+  terminals:
+  - id: L1
+    signal: ac_power
+    direction: sink
+    voltage: AC-L
+    required: true
+  - id: N1
+    signal: ac_power
+    direction: sink
+    voltage: AC-N
+    required: true
+  - id: L2
+    signal: ac_power
+    direction: passive
+  - id: N2
+    signal: ac_power
+    direction: passive
+  bridges:
+  - [L1, L2]
+  - [N1, N2]
+  size_mm: [54, 75, 65]
+  location: panel
+  trust: inferred
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） components/panels
+  note: 檢修時隔離設備電源；額定電流與現場電源待確認。
+- id: QF1
+  name: 控制支路保護
+  kind: breaker
+  model: 配置估算，型號待選
+  catalog_ref: '7-02'
+  catalog_quantity: null
+  panel:
+    rail: R1
+    order: 2
+  terminals:
+  - id: '1'
+    signal: ac_power
+    direction: sink
+    voltage: AC-L
+    required: true
+  - id: '2'
+    signal: ac_power
+    direction: passive
+  - id: '3'
+    signal: ac_power
+    direction: sink
+    voltage: AC-N
+    required: true
+  - id: '4'
+    signal: ac_power
+    direction: passive
+  bridges:
+  - ['1', '2']
+  - ['3', '4']
+  size_mm: [36, 75, 65]
+  location: panel
+  trust: inferred
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） components/panels
+  note: 分支保護後供應 24 V 電源，與伺服動力分路。
+- id: PS1
+  name: '24 VDC 電源'
+  kind: psu
+  model: 配置估算，型號待選
+  catalog_ref: '7-02'
+  catalog_quantity: null
+  panel:
+    rail: R1
+    order: 3
+  terminals:
+  - id: L
+    signal: ac_power
+    direction: sink
+    voltage: AC-L
+    required: true
+    label: L
+  - id: N
+    signal: ac_power
+    direction: sink
+    voltage: AC-N
+    required: true
+    label: N
+  - id: PE
+    signal: ground
+    direction: sink
+    voltage: PE
+    required: true
+    label: PE
+  - id: V+
+    signal: dc_power
+    direction: source
+    voltage: '24VDC'
+    required: true
+    label: +24 V
+  - id: V-
+    signal: dc_power
+    direction: source
+    voltage: '0V'
+    required: true
+    label: '0 V'
+  size_mm: [65, 95, 100]
+  location: panel
+  trust: inferred
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） components/panels
+  note: 供應 PLC、I/O、光源控制及感測器；容量需依負載表確認。
+- id: GC1
+  name: 安全控制器
+  kind: safety_controller
+  model: GC-1000 規劃平台；外形 60×90×95 mm
+  catalog_ref: '7-01'
+  panel:
+    rail: R1
+    order: 4
+  terminals:
+  - id: '24V'
+    signal: dc_power
+    direction: sink
+    voltage: '24VDC'
+    required: true
+    label: '24 VDC 供電'
+  - id: '0V'
+    signal: dc_power
+    direction: sink
+    voltage: '0V'
+    required: true
+    label: '0 V'
+  - id: T0
+    signal: safety
+    direction: source
+    label: 測試輸出 T0
+  - id: T1
+    signal: safety
+    direction: source
+    label: 測試輸出 T1
+  - id: T2
+    signal: safety
+    direction: source
+    label: 測試輸出 T2
+  - id: T3
+    signal: safety
+    direction: source
+    label: 測試輸出 T3
+  - id: T4
+    signal: safety
+    direction: source
+    label: 測試輸出 T4
+  - id: X0
+    signal: safety
+    direction: sink
+    label: 安全輸入 X0
+  - id: X1
+    signal: safety
+    direction: sink
+    label: 安全輸入 X1
+  - id: X2
+    signal: safety
+    direction: sink
+    label: 安全輸入 X2
+  - id: X3
+    signal: safety
+    direction: sink
+    label: 安全輸入 X3
+  - id: X4
+    signal: safety
+    direction: sink
+    label: 安全輸入 X4
+  - id: X5
+    signal: safety
+    direction: sink
+    label: 安全輸入 X5
+  - id: Y0
+    signal: safety
+    direction: source
+    label: 安全輸出 Y0
+  - id: Y1
+    signal: safety
+    direction: source
+    label: 安全輸出 Y1
+  size_mm: [60, 90, 95]
+  location: panel
+  trust: inferred
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） components/panels
+  note: 收集急停與防護裝置訊號，交握驅動停止及重啟允許；此畫面僅呈現規劃。
+- id: K1
+  name: 監控接觸器
+  kind: contactor
+  model: 配置估算，型號待選
+  catalog_ref: '7-02'
+  catalog_quantity: null
+  panel:
+    rail: R1
+    order: 5
+  terminals:
+  - id: A1
+    signal: safety
+    direction: sink
+    required: true
+    label: 線圈 A1
+  - id: A2
+    signal: dc_power
+    direction: sink
+    voltage: '0V'
+    required: true
+    label: 線圈 A2
+  - id: '1'
+    signal: ac_power
+    direction: sink
+    voltage: AC-L
+    required: true
+  - id: '2'
+    signal: ac_power
+    direction: passive
+  - id: '3'
+    signal: ac_power
+    direction: sink
+    voltage: AC-N
+    required: true
+  - id: '4'
+    signal: ac_power
+    direction: passive
+  - id: '21'
+    signal: safety
+    direction: passive
+    label: 輔助 NC（EDM）
+  - id: '22'
+    signal: safety
+    direction: passive
+    label: 輔助 NC（EDM）
+  bridges:
+  - ['1', '2']
+  - ['3', '4']
+  - ['21', '22']
+  size_mm: [50, 75, 70]
+  location: panel
+  trust: inferred
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） components/panels
+  note: 安全輸出控制動力支路，輔助接點回授；回路需另做風險評估與設計。
+- id: QF2
+  name: 動力支路保護
+  kind: breaker
+  model: 配置估算，型號待選
+  catalog_ref: '7-02'
+  catalog_quantity: null
+  panel:
+    rail: R1
+    order: 6
+  terminals:
+  - id: '1'
+    signal: ac_power
+    direction: sink
+    voltage: AC-L
+    required: true
+  - id: '2'
+    signal: ac_power
+    direction: passive
+  - id: '3'
+    signal: ac_power
+    direction: sink
+    voltage: AC-N
+    required: true
+  - id: '4'
+    signal: ac_power
+    direction: passive
+  bridges:
+  - ['1', '2']
+  - ['3', '4']
+  size_mm: [36, 75, 65]
+  location: panel
+  trust: inferred
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） components/panels
+  note: 獨立供應驅動器／馬達支路；與控制电源分區。
+- id: PLC1
+  name: 設備 PLC
+  kind: plc
+  model: KV-X 系列規劃平台；模組外形估算
+  catalog_ref: '6-01'
+  panel:
+    rail: R2
+    order: 1
+  terminals:
+  - id: '24V'
+    signal: dc_power
+    direction: sink
+    voltage: '24VDC'
+    required: true
+    label: '24 VDC 供電'
+  - id: '0V'
+    signal: dc_power
+    direction: sink
+    voltage: '0V'
+    required: true
+    label: '0 V'
+  - id: ETH
+    signal: ethernet
+    direction: bidirectional
+    required: true
+    label: Ethernet
+  - id: FB
+    signal: fieldbus
+    direction: bidirectional
+    required: true
+    label: I/O 匯流排
+  size_mm: [100, 90, 85]
+  location: panel
+  trust: inferred
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） components/panels
+  note: 管理站序、到位互鎖與配方交握。
+- id: IO1
+  name: 分散式 I/O
+  kind: io_module
+  model: 配置估算，型號待選
+  catalog_ref: '6-01'
+  catalog_quantity: null
+  panel:
+    rail: R2
+    order: 2
+  terminals:
+  - id: '24V'
+    signal: dc_power
+    direction: sink
+    voltage: '24VDC'
+    required: true
+    label: '24 VDC 供電'
+  - id: '0V'
+    signal: dc_power
+    direction: sink
+    voltage: '0V'
+    required: true
+    label: '0 V'
+  - id: FB
+    signal: fieldbus
+    direction: bidirectional
+    required: true
+    label: I/O 匯流排
+  - id: DI00
+    signal: digital_in
+    direction: sink
+  - id: DI01
+    signal: digital_in
+    direction: sink
+  - id: DI02
+    signal: digital_in
+    direction: sink
+  - id: DI03
+    signal: digital_in
+    direction: sink
+  - id: DI04
+    signal: digital_in
+    direction: sink
+  - id: DI05
+    signal: digital_in
+    direction: sink
+  - id: DI06
+    signal: digital_in
+    direction: sink
+  - id: DI07
+    signal: digital_in
+    direction: sink
+  - id: DI08
+    signal: digital_in
+    direction: sink
+  - id: DI09
+    signal: digital_in
+    direction: sink
+  - id: DI10
+    signal: digital_in
+    direction: sink
+  - id: DI11
+    signal: digital_in
+    direction: sink
+  - id: DI12
+    signal: digital_in
+    direction: sink
+  - id: DI13
+    signal: digital_in
+    direction: sink
+  - id: DI14
+    signal: digital_in
+    direction: sink
+  - id: DI15
+    signal: digital_in
+    direction: sink
+  - id: DO00
+    signal: digital_out
+    direction: source
+  - id: DO01
+    signal: digital_out
+    direction: source
+  - id: DO02
+    signal: digital_out
+    direction: source
+  - id: DO03
+    signal: digital_out
+    direction: source
+  - id: DO04
+    signal: digital_out
+    direction: source
+  - id: DO05
+    signal: digital_out
+    direction: source
+  - id: DO06
+    signal: digital_out
+    direction: source
+  - id: DO07
+    signal: digital_out
+    direction: source
+  - id: DO08
+    signal: digital_out
+    direction: source
+  - id: DO09
+    signal: digital_out
+    direction: source
+  - id: DO10
+    signal: digital_out
+    direction: source
+  - id: DO11
+    signal: digital_out
+    direction: source
+  - id: DO12
+    signal: digital_out
+    direction: source
+  - id: DO13
+    signal: digital_out
+    direction: source
+  - id: DO14
+    signal: digital_out
+    direction: source
+  - id: DO15
+    signal: digital_out
+    direction: source
+  size_mm: [70, 80, 65]
+  location: panel
+  trust: inferred
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） components/panels
+  note: 接收止擋、夾緊、到位與壓力訊號，輸出電磁閥及指示燈。
+- id: SW1
+  name: 工業乙太網交換器
+  kind: switch
+  model: 配置估算，型號待選
+  catalog_ref: '8-02'
+  panel:
+    rail: R2
+    order: 3
+  terminals:
+  - id: '24V'
+    signal: dc_power
+    direction: sink
+    voltage: '24VDC'
+    required: true
+    label: '24 VDC 供電'
+  - id: '0V'
+    signal: dc_power
+    direction: sink
+    voltage: '0V'
+    required: true
+    label: '0 V'
+  - id: P1
+    signal: ethernet
+    direction: bidirectional
+    label: 埠 1
+  - id: P2
+    signal: ethernet
+    direction: bidirectional
+    label: 埠 2
+  - id: P3
+    signal: ethernet
+    direction: bidirectional
+    label: 埠 3
+  - id: P4
+    signal: ethernet
+    direction: bidirectional
+    label: 埠 4
+  - id: P5
+    signal: ethernet
+    direction: bidirectional
+    label: 埠 5
+  - id: P6
+    signal: ethernet
+    direction: bidirectional
+    label: 埠 6
+  - id: P7
+    signal: ethernet
+    direction: bidirectional
+    label: 埠 7
+  - id: P8
+    signal: ethernet
+    direction: bidirectional
+    label: 埠 8
+  size_mm: [40, 80, 70]
+  location: panel
+  trust: inferred
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） components/panels
+  note: 連接 PLC、視覺電腦、手臂及上位系統。
+- id: LC1
+  name: 頻閃光源控制器
+  kind: light_controller
+  model: 配置估算，型號待選
+  catalog_ref: '3-04'
+  panel:
+    rail: R2
+    order: 4
+  terminals:
+  - id: '24V'
+    signal: dc_power
+    direction: sink
+    voltage: '24VDC'
+    required: true
+    label: '24 VDC 供電'
+  - id: '0V'
+    signal: dc_power
+    direction: sink
+    voltage: '0V'
+    required: true
+    label: '0 V'
+  - id: TRIG
+    signal: digital_in
+    direction: sink
+    required: true
+    label: 觸發輸入（隔離）
+  - id: CH1
+    signal: vendor
+    direction: source
+    required: true
+    label: 光源輸出 CH1
+  size_mm: [70, 70, 70]
+  location: panel
+  trust: inferred
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） components/panels
+  note: 配合相機觸發時序驅動光源，檢視狀態隨主時間軸。
+- id: IPC1
+  name: 視覺工業電腦
+  kind: ipc
+  model: 配置估算，型號待選
+  catalog_ref: '8-01'
+  panel:
+    rail: R2
+    order: 5
+  terminals:
+  - id: L
+    signal: ac_power
+    direction: sink
+    voltage: AC-L
+    required: true
+    label: L
+  - id: N
+    signal: ac_power
+    direction: sink
+    voltage: AC-N
+    required: true
+    label: N
+  - id: PE
+    signal: ground
+    direction: sink
+    voltage: PE
+    required: true
+    label: PE
+  - id: ETH
+    signal: ethernet
+    direction: bidirectional
+    required: true
+    label: 控制網路
+  - id: G1
+    signal: gige
+    direction: bidirectional
+    label: GigE／PoE 埠 1
+  - id: G2
+    signal: gige
+    direction: bidirectional
+    label: GigE／PoE 埠 2
+  - id: G3
+    signal: gige
+    direction: bidirectional
+    label: GigE／PoE 埠 3
+  - id: G4
+    signal: gige
+    direction: bidirectional
+    label: GigE／PoE 埠 4
+  size_mm: [160, 95, 100]
+  location: panel
+  trust: inferred
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） components/panels
+  note: 相機取像、配方辨識、補正與結果紀錄；與 PLC 交換 Ready／Busy／OK／NG。
+- id: FT1
+  name: 力覺介面
+  kind: io_module
+  model: 配置估算，型號待選
+  catalog_ref: '2-01'
+  catalog_quantity: null
+  panel:
+    rail: R2
+    order: 6
+  module_ref: robot_1
+  terminals:
+  - id: '24V'
+    signal: dc_power
+    direction: sink
+    voltage: '24VDC'
+    required: true
+    label: '24 VDC 供電'
+  - id: '0V'
+    signal: dc_power
+    direction: sink
+    voltage: '0V'
+    required: true
+    label: '0 V'
+  - id: IN
+    signal: vendor
+    direction: bidirectional
+    required: true
+    label: 感測器線
+  - id: OUT
+    signal: vendor
+    direction: bidirectional
+    required: true
+    label: 至 RC1 力控介面
+  size_mm: [50, 70, 65]
+  location: panel
+  trust: inferred
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） components/panels
+  note: 接收末端 F/T 訊號，提供接觸力監看與製程判斷。
+- id: XDI
+  name: DI 端子排
+  kind: terminal_block
+  model: 端子台（型號待選）
+  catalog_ref: '7-02'
+  catalog_quantity: null
+  location: panel
+  size_mm: [84, 45, 40]
+  panel:
+    rail: R3
+    order: 1
+  terminals:
+  - id: '01'
+    signal: digital_in
+    direction: passive
+  - id: '02'
+    signal: digital_in
+    direction: passive
+  - id: '03'
+    signal: digital_in
+    direction: passive
+  - id: '04'
+    signal: digital_in
+    direction: passive
+  - id: '05'
+    signal: digital_in
+    direction: passive
+  - id: '06'
+    signal: digital_in
+    direction: passive
+  - id: '07'
+    signal: digital_in
+    direction: passive
+  - id: '08'
+    signal: digital_in
+    direction: passive
+  - id: '09'
+    signal: digital_in
+    direction: passive
+  - id: '10'
+    signal: digital_in
+    direction: passive
+  - id: '11'
+    signal: digital_in
+    direction: passive
+  - id: '12'
+    signal: digital_in
+    direction: passive
+  - id: '13'
+    signal: digital_in
+    direction: passive
+  - id: '14'
+    signal: digital_in
+    direction: passive
+  - id: '15'
+    signal: digital_in
+    direction: passive
+  - id: '16'
+    signal: digital_in
+    direction: passive
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） io.terminal；端子台外形為推估
+  trust: inferred
+- id: XDO
+  name: DO 端子排
+  kind: terminal_block
+  model: 端子台（型號待選）
+  catalog_ref: '7-02'
+  catalog_quantity: null
+  location: panel
+  size_mm: [84, 45, 40]
+  panel:
+    rail: R3
+    order: 2
+  terminals:
+  - id: '01'
+    signal: digital_out
+    direction: passive
+  - id: '02'
+    signal: digital_out
+    direction: passive
+  - id: '03'
+    signal: digital_out
+    direction: passive
+  - id: '04'
+    signal: digital_out
+    direction: passive
+  - id: '05'
+    signal: digital_out
+    direction: passive
+  - id: '06'
+    signal: digital_out
+    direction: passive
+  - id: '07'
+    signal: digital_out
+    direction: passive
+  - id: '08'
+    signal: digital_out
+    direction: passive
+  - id: '09'
+    signal: digital_out
+    direction: passive
+  - id: '10'
+    signal: digital_out
+    direction: passive
+  - id: '11'
+    signal: digital_out
+    direction: passive
+  - id: '12'
+    signal: digital_out
+    direction: passive
+  - id: '13'
+    signal: digital_out
+    direction: passive
+  - id: '14'
+    signal: digital_out
+    direction: passive
+  - id: '15'
+    signal: digital_out
+    direction: passive
+  - id: '16'
+    signal: digital_out
+    direction: passive
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） io.terminal；端子台外形為推估
+  trust: inferred
+- id: SM1
+  name: SMEMA 隔離轉接
+  kind: relay
+  model: 隔離轉接模組（型號待選）
+  location: panel
+  size_mm: [45, 75, 60]
+  panel:
+    rail: R3
+    order: 3
+  terminals:
+  - id: '24V'
+    signal: dc_power
+    direction: sink
+    voltage: '24VDC'
+    required: true
+    label: '24 VDC 供電'
+  - id: '0V'
+    signal: dc_power
+    direction: sink
+    voltage: '0V'
+    required: true
+    label: '0 V'
+  - id: UP_BA
+    signal: digital_out
+    direction: source
+    required: true
+    label: 上游有板
+  - id: DN_RDY
+    signal: digital_out
+    direction: source
+    required: true
+    label: 下游可收板
+  - id: ST_RDY
+    signal: digital_in
+    direction: sink
+    required: true
+    label: 本站可收板
+  - id: ST_BA
+    signal: digital_in
+    direction: sink
+    required: true
+    label: 本站有板
+  - id: UP1
+    signal: relay_contact
+    direction: passive
+    label: 上游介面
+  - id: UP2
+    signal: relay_contact
+    direction: passive
+    label: 上游介面
+  - id: DN1
+    signal: relay_contact
+    direction: passive
+    label: 下游介面
+  - id: DN2
+    signal: relay_contact
+    direction: passive
+    label: 下游介面
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） added：SMEMA 隔離轉接；連接器腳位未指定，外形為推估
+  trust: inferred
+- id: PE1
+  name: PE 接地排
+  kind: ground_bar
+  model: 接地銅排
+  catalog_ref: '7-02'
+  catalog_quantity: null
+  location: panel
+  size_mm: [60, 20, 20]
+  panel:
+    rail: R3
+    order: 4
+  terminals:
+  - id: PE
+    signal: ground
+    direction: passive
+    required: true
+    label: PE
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） common_notes：PE 不經開關／熔絲
+  trust: inferred
+- id: RC1
+  name: 手臂控制器
+  kind: robot_controller
+  model: RC8A 標準型包絡；357×94×320 mm
+  catalog_ref: '1-01'
+  catalog_quantity: null
+  module_ref: robot_1
+  location: field
+  size_mm: [357, 94, 320]
+  terminals:
+  - id: L
+    signal: ac_power
+    direction: sink
+    voltage: AC-L
+    required: true
+    label: L
+  - id: N
+    signal: ac_power
+    direction: sink
+    voltage: AC-N
+    required: true
+    label: N
+  - id: PE
+    signal: ground
+    direction: sink
+    voltage: PE
+    required: true
+    label: PE
+  - id: ETH
+    signal: ethernet
+    direction: bidirectional
+    required: true
+    label: Ethernet
+  - id: SAFE
+    signal: safety
+    direction: sink
+    required: true
+    label: 外部停止輸入（型式依原廠手冊定案）
+  - id: FT
+    signal: vendor
+    direction: bidirectional
+    required: true
+    label: 力控介面
+  - id: ARM
+    signal: vendor
+    direction: bidirectional
+    required: true
+    label: 手臂動力／回授
+  - id: TDO1
+    signal: digital_out
+    direction: source
+    label: 工具 I/O 輸出 1
+  - id: T0V
+    signal: dc_power
+    direction: source
+    voltage: RC-0V
+    label: 工具 I/O 0 V
+  trust: inferred
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） components/panels
+  note: RC8A 負責手臂軸控制，PLC 交握任務、完成與異常。
+- id: VS1
+  name: VS-068 手臂
+  kind: robot
+  model: DENSO VS-068（型錄近似）
+  catalog_ref: '1-01'
+  module_ref: robot_1
+  location: field
+  terminals:
+  - id: ARM
+    signal: vendor
+    direction: bidirectional
+    required: true
+    label: 動力／回授
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） robot／links
+  trust: inferred
+- id: FTS1
+  name: 六軸力覺感測器
+  kind: force_sensor
+  model: ATI F/T（型號待選）
+  catalog_ref: '2-01'
+  module_ref: robot_1
+  location: field
+  terminals:
+  - id: SIG
+    signal: vendor
+    direction: bidirectional
+    required: true
+    label: 感測器線
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） links／added
+  trust: inferred
+- id: CAM01
+  name: 斜視相機
+  kind: camera
+  model: IDS GigE（規劃）
+  catalog_ref: '3-01'
+  module_ref: robot_1
+  location: field
+  terminals:
+  - id: ETH
+    signal: gige
+    direction: bidirectional
+    required: true
+    label: GigE／PoE
+  - id: TRIG
+    signal: digital_in
+    direction: sink
+    label: 硬體觸發（腳位待選）
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） links：電源與觸發腳位待選
+  trust: inferred
+- id: L01
+  name: 條形頻閃光
+  kind: light
+  model: 條形頻閃光源（型號待選）
+  catalog_ref: '3-03'
+  catalog_quantity: null
+  module_ref: robot_1
+  location: field
+  terminals:
+  - id: IN
+    signal: vendor
+    direction: sink
+    required: true
+    label: 光源輸入
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） links
+  trust: inferred
+- id: YV-P
+  name: 補壓針閥
+  kind: valve
+  model: 機器人內建閥選件（待核）
+  catalog_ref: '6-02'
+  catalog_quantity: null
+  module_ref: robot_1
+  location: field
+  terminals:
+  - id: A1
+    signal: digital_out
+    direction: sink
+    required: true
+    label: 線圈 A1
+  - id: A2
+    signal: dc_power
+    direction: sink
+    voltage: RC-0V
+    required: true
+    label: 線圈 A2
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） links／notes：沿用 RC8A 工具 I/O，勿與
+    PLC DO 重複驅動
+  trust: inferred
+- id: CV1
+  name: 輸送控制器
+  kind: conveyor_controller
+  model: 輸送模組內建控制器（待確認）
+  catalog_ref: '4-01'
+  catalog_quantity: null
+  module_ref: conveyor_1
+  location: field
+  terminals:
+  - id: L
+    signal: ac_power
+    direction: sink
+    voltage: AC-L
+    required: true
+    label: L
+  - id: N
+    signal: ac_power
+    direction: sink
+    voltage: AC-N
+    required: true
+    label: N
+  - id: PE
+    signal: ground
+    direction: sink
+    voltage: PE
+    required: true
+    label: PE
+  - id: RUN
+    signal: digital_in
+    direction: sink
+    required: true
+    label: 運轉請求
+  - id: COM
+    signal: dc_power
+    direction: sink
+    voltage: '0V'
+    required: true
+    label: 控制輸入共點
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） added：CV1 輸送控制器；輸送馬達不得接 PLC
+    DO
+  trust: inferred
+- id: HL1
+  name: 三色燈與蜂鳴器
+  kind: signal_tower
+  model: 訊號塔（型號待選）
+  catalog_ref: '6-02'
+  catalog_quantity: null
+  location: field
+  terminals:
+  - id: G
+    signal: digital_out
+    direction: sink
+    required: true
+    label: 綠燈
+  - id: R
+    signal: digital_out
+    direction: sink
+    required: true
+    label: 紅燈／蜂鳴器
+  - id: COM
+    signal: dc_power
+    direction: sink
+    voltage: '0V'
+    required: true
+    label: 共點
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） io DO05／DO06
+  trust: inferred
+- id: ES1
+  name: 急停按鈕
+  kind: emergency_stop
+  model: 雙通道急停（型號待選）
+  catalog_ref: '7-01'
+  catalog_quantity: null
+  location: field
+  terminals:
+  - id: '11'
+    signal: safety
+    direction: passive
+  - id: '12'
+    signal: safety
+    direction: passive
+  - id: '21'
+    signal: safety
+    direction: passive
+  - id: '22'
+    signal: safety
+    direction: passive
+  bridges:
+  - ['11', '12']
+  - ['21', '22']
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） components GC1：收集急停訊號
+  trust: inferred
+- id: GS1
+  name: 防護門開關
+  kind: door_switch
+  model: 雙通道門開關（型號待選）
+  catalog_ref: '7-01'
+  catalog_quantity: null
+  location: field
+  terminals:
+  - id: '11'
+    signal: safety
+    direction: passive
+  - id: '12'
+    signal: safety
+    direction: passive
+  - id: '21'
+    signal: safety
+    direction: passive
+  - id: '22'
+    signal: safety
+    direction: passive
+  bridges:
+  - ['11', '12']
+  - ['21', '22']
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） guards：GS1 防護門雙通道
+  trust: inferred
+- id: B01
+  name: 載盤進站到位
+  kind: sensor
+  model: '24 V PNP 三線感測器（選型假設）'
+  catalog_ref: '6-02'
+  catalog_quantity: null
+  location: field
+  terminals:
+  - id: BN
+    signal: dc_power
+    direction: sink
+    voltage: '24VDC'
+    required: true
+    label: BN +24 V
+  - id: BU
+    signal: dc_power
+    direction: sink
+    voltage: '0V'
+    required: true
+    label: BU 0 V
+  - id: BK
+    signal: digital_out
+    direction: source
+    required: true
+    label: BK 訊號
+  trust: inferred
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） io DI01：24 V PNP 三線感測器（選型假設）
+  module_ref: conveyor_1
+- id: B02
+  name: 止擋升起
+  kind: sensor
+  model: '24 V PNP 三線感測器（選型假設）'
+  catalog_ref: '6-02'
+  catalog_quantity: null
+  location: field
+  terminals:
+  - id: BN
+    signal: dc_power
+    direction: sink
+    voltage: '24VDC'
+    required: true
+    label: BN +24 V
+  - id: BU
+    signal: dc_power
+    direction: sink
+    voltage: '0V'
+    required: true
+    label: BU 0 V
+  - id: BK
+    signal: digital_out
+    direction: source
+    required: true
+    label: BK 訊號
+  trust: inferred
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） io DI02：24 V PNP 三線感測器（選型假設）
+  module_ref: conveyor_1
+- id: B03
+  name: 頂升支撐到位
+  kind: sensor
+  model: '24 V PNP 三線感測器（選型假設）'
+  catalog_ref: '6-02'
+  catalog_quantity: null
+  location: field
+  terminals:
+  - id: BN
+    signal: dc_power
+    direction: sink
+    voltage: '24VDC'
+    required: true
+    label: BN +24 V
+  - id: BU
+    signal: dc_power
+    direction: sink
+    voltage: '0V'
+    required: true
+    label: BU 0 V
+  - id: BK
+    signal: digital_out
+    direction: source
+    required: true
+    label: BK 訊號
+  trust: inferred
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） io DI03：24 V PNP 三線感測器（選型假設）
+  module_ref: conveyor_1
+- id: B04
+  name: 頂升支撐退回
+  kind: sensor
+  model: '24 V PNP 三線感測器（選型假設）'
+  catalog_ref: '6-02'
+  catalog_quantity: null
+  location: field
+  terminals:
+  - id: BN
+    signal: dc_power
+    direction: sink
+    voltage: '24VDC'
+    required: true
+    label: BN +24 V
+  - id: BU
+    signal: dc_power
+    direction: sink
+    voltage: '0V'
+    required: true
+    label: BU 0 V
+  - id: BK
+    signal: digital_out
+    direction: source
+    required: true
+    label: BK 訊號
+  trust: inferred
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） io DI04：24 V PNP 三線感測器（選型假設）
+  module_ref: conveyor_1
+- id: B05
+  name: 補壓針伸出
+  kind: sensor
+  model: '24 V PNP 三線感測器（選型假設）'
+  catalog_ref: '6-02'
+  catalog_quantity: null
+  location: field
+  terminals:
+  - id: BN
+    signal: dc_power
+    direction: sink
+    voltage: '24VDC'
+    required: true
+    label: BN +24 V
+  - id: BU
+    signal: dc_power
+    direction: sink
+    voltage: '0V'
+    required: true
+    label: BU 0 V
+  - id: BK
+    signal: digital_out
+    direction: source
+    required: true
+    label: BK 訊號
+  trust: inferred
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） io DI05：24 V PNP 三線感測器（選型假設）
+  module_ref: robot_1
+- id: B06
+  name: 補壓針縮回
+  kind: sensor
+  model: '24 V PNP 三線感測器（選型假設）'
+  catalog_ref: '6-02'
+  catalog_quantity: null
+  location: field
+  terminals:
+  - id: BN
+    signal: dc_power
+    direction: sink
+    voltage: '24VDC'
+    required: true
+    label: BN +24 V
+  - id: BU
+    signal: dc_power
+    direction: sink
+    voltage: '0V'
+    required: true
+    label: BU 0 V
+  - id: BK
+    signal: digital_out
+    direction: source
+    required: true
+    label: BK 訊號
+  trust: inferred
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） io DI06：24 V PNP 三線感測器（選型假設）
+  module_ref: robot_1
+- id: B08
+  name: 出板確認
+  kind: sensor
+  model: '24 V PNP 三線感測器（選型假設）'
+  catalog_ref: '6-02'
+  catalog_quantity: null
+  location: field
+  terminals:
+  - id: BN
+    signal: dc_power
+    direction: sink
+    voltage: '24VDC'
+    required: true
+    label: BN +24 V
+  - id: BU
+    signal: dc_power
+    direction: sink
+    voltage: '0V'
+    required: true
+    label: BU 0 V
+  - id: BK
+    signal: digital_out
+    direction: source
+    required: true
+    label: BK 訊號
+  trust: inferred
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） io DI08：24 V PNP 三線感測器（選型假設）
+  module_ref: conveyor_1
+- id: B09
+  name: 氣壓正常
+  kind: sensor
+  model: '24 V PNP 三線感測器（選型假設）'
+  catalog_ref: '6-02'
+  catalog_quantity: null
+  location: field
+  terminals:
+  - id: BN
+    signal: dc_power
+    direction: sink
+    voltage: '24VDC'
+    required: true
+    label: BN +24 V
+  - id: BU
+    signal: dc_power
+    direction: sink
+    voltage: '0V'
+    required: true
+    label: BU 0 V
+  - id: BK
+    signal: digital_out
+    direction: source
+    required: true
+    label: BK 訊號
+  trust: inferred
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） io DI09：24 V PNP 三線感測器（選型假設）
+- id: YV1
+  name: 止擋電磁閥
+  kind: valve
+  model: '24 VDC 電磁閥（選型假設）'
+  catalog_ref: '6-02'
+  catalog_quantity: null
+  module_ref: conveyor_1
+  location: field
+  terminals:
+  - id: A1
+    signal: digital_out
+    direction: sink
+    required: true
+    label: 線圈 A1
+  - id: A2
+    signal: dc_power
+    direction: sink
+    voltage: '0V'
+    required: true
+    label: 線圈 A2
+  trust: inferred
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） io DO02：PNP 經保護／抑制元件至負載（選型假設）
+- id: YV2
+  name: 支撐頂升電磁閥
+  kind: valve
+  model: '24 VDC 電磁閥（選型假設）'
+  catalog_ref: '6-02'
+  catalog_quantity: null
+  module_ref: conveyor_1
+  location: field
+  terminals:
+  - id: A1
+    signal: digital_out
+    direction: sink
+    required: true
+    label: 線圈 A1
+  - id: A2
+    signal: dc_power
+    direction: sink
+    voltage: '0V'
+    required: true
+    label: 線圈 A2
+  trust: inferred
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） io DO03：PNP 經保護／抑制元件至負載（選型假設）
+connections:
+- id: PW-01
+  from:
+    device: XS0
+    terminal: L
+  to:
+    device: QS1
+    terminal: L1
+  wire_numbers: [L]
+  note: 現場電源進線
+- id: PW-02
+  from:
+    device: XS0
+    terminal: N
+  to:
+    device: QS1
+    terminal: N1
+  wire_numbers: [N]
+- id: PW-03
+  from:
+    device: XS0
+    terminal: PE
+  to:
+    net: PE
+  wire_numbers: [PE]
+  note: PE 不經開關／熔絲
+- id: PW-04
+  from:
+    device: QS1
+    terminal: L2
+  to:
+    device: QF1
+    terminal: '1'
+  wire_numbers: [L1]
+- id: PW-05
+  from:
+    device: QS1
+    terminal: N2
+  to:
+    device: QF1
+    terminal: '3'
+  wire_numbers: [N1]
+- id: PW-06
+  from:
+    device: QS1
+    terminal: L2
+  to:
+    device: QF2
+    terminal: '1'
+  wire_numbers: [L2]
+  note: 動力支路與控制支路分開
+- id: PW-07
+  from:
+    device: QS1
+    terminal: N2
+  to:
+    device: QF2
+    terminal: '3'
+  wire_numbers: [N2]
+- id: PW-08
+  from:
+    device: QF1
+    terminal: '2'
+  to:
+    device: PS1
+    terminal: L
+  wire_numbers: [L11]
+- id: PW-09
+  from:
+    device: QF1
+    terminal: '4'
+  to:
+    device: PS1
+    terminal: N
+  wire_numbers: [N11]
+- id: PW-10
+  from:
+    device: PS1
+    terminal: PE
+  to:
+    net: PE
+  wire_numbers: [PE]
+- id: PW-11
+  from:
+    device: QF1
+    terminal: '2'
+  to:
+    device: IPC1
+    terminal: L
+  wire_numbers: [L12]
+  note: IPC1 依原廠電源設計（Q-SSD-E04）
+- id: PW-12
+  from:
+    device: QF1
+    terminal: '4'
+  to:
+    device: IPC1
+    terminal: N
+  wire_numbers: [N12]
+- id: PW-13
+  from:
+    device: IPC1
+    terminal: PE
+  to:
+    net: PE
+  wire_numbers: [PE]
+- id: PW-14
+  from:
+    device: QF2
+    terminal: '2'
+  to:
+    device: RC1
+    terminal: L
+  wire_numbers: [L21]
+- id: PW-15
+  from:
+    device: QF2
+    terminal: '4'
+  to:
+    device: RC1
+    terminal: N
+  wire_numbers: [N21]
+- id: PW-16
+  from:
+    device: RC1
+    terminal: PE
+  to:
+    net: PE
+  wire_numbers: [PE]
+- id: PW-17
+  from:
+    device: QF2
+    terminal: '2'
+  to:
+    device: K1
+    terminal: '1'
+  wire_numbers: [L22]
+- id: PW-18
+  from:
+    device: QF2
+    terminal: '4'
+  to:
+    device: K1
+    terminal: '3'
+  wire_numbers: [N22]
+- id: PW-19
+  from:
+    device: K1
+    terminal: '2'
+  to:
+    device: CV1
+    terminal: L
+  wire_numbers: [L23]
+  note: 安全輸出控制動力支路
+- id: PW-20
+  from:
+    device: K1
+    terminal: '4'
+  to:
+    device: CV1
+    terminal: N
+  wire_numbers: [N23]
+- id: PW-21
+  from:
+    device: CV1
+    terminal: PE
+  to:
+    net: PE
+  wire_numbers: [PE]
+- id: PW-22
+  from:
+    device: PE1
+    terminal: PE
+  to:
+    net: PE
+  wire_numbers: [PE]
+  note: 盤內接地排
+- id: PW-30
+  from:
+    device: PS1
+    terminal: V+
+  to:
+    net: P24A
+  wire_numbers: [P24A]
+  note: '24 VDC 主幹'
+- id: PW-31
+  from:
+    device: PS1
+    terminal: V-
+  to:
+    net: N24A
+  wire_numbers: [N24A]
+- id: PW-40
+  from:
+    device: GC1
+    terminal: '24V'
+  to:
+    net: P24A
+  wire_numbers: [P24A]
+- id: PW-41
+  from:
+    device: GC1
+    terminal: '0V'
+  to:
+    net: N24A
+  wire_numbers: [N24A]
+- id: PW-42
+  from:
+    device: K1
+    terminal: A2
+  to:
+    net: N24A
+  wire_numbers: [N24A]
+- id: PW-43
+  from:
+    device: PLC1
+    terminal: '24V'
+  to:
+    net: P24A
+  wire_numbers: [P24A]
+- id: PW-44
+  from:
+    device: PLC1
+    terminal: '0V'
+  to:
+    net: N24A
+  wire_numbers: [N24A]
+- id: PW-45
+  from:
+    device: IO1
+    terminal: '24V'
+  to:
+    net: P24A
+  wire_numbers: [P24A]
+- id: PW-46
+  from:
+    device: IO1
+    terminal: '0V'
+  to:
+    net: N24A
+  wire_numbers: [N24A]
+- id: PW-47
+  from:
+    device: SW1
+    terminal: '24V'
+  to:
+    net: P24A
+  wire_numbers: [P24A]
+- id: PW-48
+  from:
+    device: SW1
+    terminal: '0V'
+  to:
+    net: N24A
+  wire_numbers: [N24A]
+- id: PW-49
+  from:
+    device: LC1
+    terminal: '24V'
+  to:
+    net: P24A
+  wire_numbers: [P24A]
+- id: PW-50
+  from:
+    device: LC1
+    terminal: '0V'
+  to:
+    net: N24A
+  wire_numbers: [N24A]
+- id: PW-51
+  from:
+    device: FT1
+    terminal: '24V'
+  to:
+    net: P24A
+  wire_numbers: [P24A]
+- id: PW-52
+  from:
+    device: FT1
+    terminal: '0V'
+  to:
+    net: N24A
+  wire_numbers: [N24A]
+- id: PW-53
+  from:
+    device: SM1
+    terminal: '24V'
+  to:
+    net: P24A
+  wire_numbers: [P24A]
+- id: PW-54
+  from:
+    device: SM1
+    terminal: '0V'
+  to:
+    net: N24A
+  wire_numbers: [N24A]
+- id: PW-55
+  from:
+    device: CV1
+    terminal: COM
+  to:
+    net: N24A
+  wire_numbers: [N24A]
+- id: PW-56
+  from:
+    device: HL1
+    terminal: COM
+  to:
+    net: N24A
+  wire_numbers: [N24A]
+- id: PW-57
+  from:
+    device: B01
+    terminal: BN
+  to:
+    net: P24A
+  wire_numbers: [P24A]
+- id: PW-58
+  from:
+    device: B01
+    terminal: BU
+  to:
+    net: N24A
+  wire_numbers: [N24A]
+- id: PW-59
+  from:
+    device: B02
+    terminal: BN
+  to:
+    net: P24A
+  wire_numbers: [P24A]
+- id: PW-60
+  from:
+    device: B02
+    terminal: BU
+  to:
+    net: N24A
+  wire_numbers: [N24A]
+- id: PW-61
+  from:
+    device: B03
+    terminal: BN
+  to:
+    net: P24A
+  wire_numbers: [P24A]
+- id: PW-62
+  from:
+    device: B03
+    terminal: BU
+  to:
+    net: N24A
+  wire_numbers: [N24A]
+- id: PW-63
+  from:
+    device: B04
+    terminal: BN
+  to:
+    net: P24A
+  wire_numbers: [P24A]
+- id: PW-64
+  from:
+    device: B04
+    terminal: BU
+  to:
+    net: N24A
+  wire_numbers: [N24A]
+- id: PW-65
+  from:
+    device: B05
+    terminal: BN
+  to:
+    net: P24A
+  wire_numbers: [P24A]
+- id: PW-66
+  from:
+    device: B05
+    terminal: BU
+  to:
+    net: N24A
+  wire_numbers: [N24A]
+- id: PW-67
+  from:
+    device: B06
+    terminal: BN
+  to:
+    net: P24A
+  wire_numbers: [P24A]
+- id: PW-68
+  from:
+    device: B06
+    terminal: BU
+  to:
+    net: N24A
+  wire_numbers: [N24A]
+- id: PW-69
+  from:
+    device: B08
+    terminal: BN
+  to:
+    net: P24A
+  wire_numbers: [P24A]
+- id: PW-70
+  from:
+    device: B08
+    terminal: BU
+  to:
+    net: N24A
+  wire_numbers: [N24A]
+- id: PW-71
+  from:
+    device: B09
+    terminal: BN
+  to:
+    net: P24A
+  wire_numbers: [P24A]
+- id: PW-72
+  from:
+    device: B09
+    terminal: BU
+  to:
+    net: N24A
+  wire_numbers: [N24A]
+- id: PW-73
+  from:
+    device: YV1
+    terminal: A2
+  to:
+    net: N24A
+  wire_numbers: [N24A]
+- id: PW-74
+  from:
+    device: YV2
+    terminal: A2
+  to:
+    net: N24A
+  wire_numbers: [N24A]
+- id: NET-01
+  from:
+    device: PLC1
+    terminal: ETH
+  to:
+    device: SW1
+    terminal: P1
+  note: 任務、Recipe、Ready、Busy、Done、Fault
+- id: NET-02
+  from:
+    device: IPC1
+    terminal: ETH
+  to:
+    device: SW1
+    terminal: P2
+  note: 接頭序號、OK/NG、影像索引
+- id: NET-03
+  from:
+    device: RC1
+    terminal: ETH
+  to:
+    device: SW1
+    terminal: P3
+  note: PLC ↔ RC8A 交握
+- id: NET-04
+  from:
+    device: PLC1
+    terminal: FB
+  to:
+    device: IO1
+    terminal: FB
+  note: I/O 匯流排型式待選
+- id: NET-05
+  from:
+    device: CAM01
+    terminal: ETH
+  to:
+    pool: IPC1-GIGE
+  wire_numbers: [C-CAM01]
+  cable_ref: '3-04'
+  note: GigE 影像
+- id: NET-06
+  from:
+    device: FTS1
+    terminal: SIG
+  to:
+    device: FT1
+    terminal: IN
+  note: 原廠感測器線
+- id: NET-07
+  from:
+    device: FT1
+    terminal: OUT
+  to:
+    device: RC1
+    terminal: FT
+  note: 原廠力控介面；PLC 僅監控
+- id: NET-08
+  from:
+    device: RC1
+    terminal: ARM
+  to:
+    device: VS1
+    terminal: ARM
+  note: 原廠動力／回授／工具線束
+- id: NET-09
+  from:
+    device: LC1
+    terminal: CH1
+  to:
+    device: L01
+    terminal: IN
+  note: 隔離觸發；曝光完成後再移動
+- id: IO-T1
+  from:
+    device: RC1
+    terminal: TDO1
+  to:
+    device: YV-P
+    terminal: A1
+  note: RC1 原廠工具 I/O 驅動補壓針閥
+- id: IO-T2
+  from:
+    device: YV-P
+    terminal: A2
+  to:
+    device: RC1
+    terminal: T0V
+- id: SF-01
+  from:
+    device: GC1
+    terminal: T0
+  to:
+    device: ES1
+    terminal: '11'
+  wire_numbers: [S-01]
+  note: 急停通道 1
+- id: SF-02
+  from:
+    device: ES1
+    terminal: '12'
+  to:
+    device: GC1
+    terminal: X0
+  wire_numbers: [S-02]
+- id: SF-03
+  from:
+    device: GC1
+    terminal: T1
+  to:
+    device: ES1
+    terminal: '21'
+  wire_numbers: [S-03]
+  note: 急停通道 2
+- id: SF-04
+  from:
+    device: ES1
+    terminal: '22'
+  to:
+    device: GC1
+    terminal: X1
+  wire_numbers: [S-04]
+- id: SF-05
+  from:
+    device: GC1
+    terminal: T2
+  to:
+    device: GS1
+    terminal: '11'
+  wire_numbers: [S-05]
+  note: 門互鎖通道 1
+- id: SF-06
+  from:
+    device: GS1
+    terminal: '12'
+  to:
+    device: GC1
+    terminal: X2
+  wire_numbers: [S-06]
+- id: SF-07
+  from:
+    device: GC1
+    terminal: T3
+  to:
+    device: GS1
+    terminal: '21'
+  wire_numbers: [S-07]
+  note: 門互鎖通道 2
+- id: SF-08
+  from:
+    device: GS1
+    terminal: '22'
+  to:
+    device: GC1
+    terminal: X3
+  wire_numbers: [S-08]
+- id: SF-09
+  from:
+    device: GC1
+    terminal: Y0
+  to:
+    device: K1
+    terminal: A1
+  wire_numbers: [S-09]
+  note: 安全輸出 → 監控接觸器線圈
+- id: SF-10
+  from:
+    device: GC1
+    terminal: T4
+  to:
+    device: K1
+    terminal: '21'
+  wire_numbers: [S-10]
+  note: EDM 回授
+- id: SF-11
+  from:
+    device: K1
+    terminal: '22'
+  to:
+    device: GC1
+    terminal: X4
+  wire_numbers: [S-11]
+- id: SF-12
+  from:
+    device: GC1
+    terminal: Y1
+  to:
+    device: RC1
+    terminal: SAFE
+  wire_numbers: [S-12]
+  note: 安全輸出 → RC1 外部停止
+pools:
+- id: IO1-DI
+  device: IO1
+  signal: digital_in
+  terminals:
+  - DI00
+  - DI01
+  - DI02
+  - DI03
+  - DI04
+  - DI05
+  - DI06
+  - DI07
+  - DI08
+  - DI09
+  - DI10
+  - DI11
+  - DI12
+  - DI13
+  - DI14
+  - DI15
+- id: IO1-DO
+  device: IO1
+  signal: digital_out
+  terminals:
+  - DO00
+  - DO01
+  - DO02
+  - DO03
+  - DO04
+  - DO05
+  - DO06
+  - DO07
+  - DO08
+  - DO09
+  - DO10
+  - DO11
+  - DO12
+  - DO13
+  - DO14
+  - DO15
+- id: XDI
+  device: XDI
+  signal: digital_in
+  terminals:
+  - '01'
+  - '02'
+  - '03'
+  - '04'
+  - '05'
+  - '06'
+  - '07'
+  - '08'
+  - '09'
+  - '10'
+  - '11'
+  - '12'
+  - '13'
+  - '14'
+  - '15'
+  - '16'
+- id: XDO
+  device: XDO
+  signal: digital_out
+  terminals:
+  - '01'
+  - '02'
+  - '03'
+  - '04'
+  - '05'
+  - '06'
+  - '07'
+  - '08'
+  - '09'
+  - '10'
+  - '11'
+  - '12'
+  - '13'
+  - '14'
+  - '15'
+  - '16'
+- id: SW1-ETH
+  device: SW1
+  signal: ethernet
+  terminals:
+  - P1
+  - P2
+  - P3
+  - P4
+  - P5
+  - P6
+  - P7
+  - P8
+- id: IPC1-GIGE
+  device: IPC1
+  signal: gige
+  terminals:
+  - G1
+  - G2
+  - G3
+  - G4
+io:
+- id: DI00
+  signal: digital_in
+  function: SMEMA 上游有板（隔離）
+  channel_device: IO1
+  address: DI00
+  via:
+    device: XDI
+    terminal: '01'
+  field:
+    device: SM1
+    terminal: UP_BA
+  wire: W-DI00
+  note: 隔離介面／控制器端，非直接負載
+- id: DI01
+  signal: digital_in
+  function: 載盤進站到位
+  channel_device: IO1
+  address: DI01
+  via:
+    device: XDI
+    terminal: '02'
+  field:
+    device: B01
+    terminal: BK
+  wire: W-DI01
+  note: '24 V PNP 三線感測器（選型假設）'
+- id: DI02
+  signal: digital_in
+  function: 止擋升起
+  channel_device: IO1
+  address: DI02
+  via:
+    device: XDI
+    terminal: '03'
+  field:
+    device: B02
+    terminal: BK
+  wire: W-DI02
+  note: '24 V PNP 三線感測器（選型假設）'
+- id: DI03
+  signal: digital_in
+  function: 頂升支撐到位
+  channel_device: IO1
+  address: DI03
+  via:
+    device: XDI
+    terminal: '04'
+  field:
+    device: B03
+    terminal: BK
+  wire: W-DI03
+  note: '24 V PNP 三線感測器（選型假設）'
+- id: DI04
+  signal: digital_in
+  function: 頂升支撐退回
+  channel_device: IO1
+  address: DI04
+  via:
+    device: XDI
+    terminal: '05'
+  field:
+    device: B04
+    terminal: BK
+  wire: W-DI04
+  note: '24 V PNP 三線感測器（選型假設）'
+- id: DI05
+  signal: digital_in
+  function: 補壓針伸出
+  channel_device: IO1
+  address: DI05
+  via:
+    device: XDI
+    terminal: '06'
+  field:
+    device: B05
+    terminal: BK
+  wire: W-DI05
+  note: '24 V PNP 三線感測器（選型假設）'
+- id: DI06
+  signal: digital_in
+  function: 補壓針縮回
+  channel_device: IO1
+  address: DI06
+  via:
+    device: XDI
+    terminal: '07'
+  field:
+    device: B06
+    terminal: BK
+  wire: W-DI06
+  note: '24 V PNP 三線感測器（選型假設）'
+- id: DI07
+  signal: digital_in
+  function: SMEMA 下游可收板（隔離）
+  channel_device: IO1
+  address: DI07
+  via:
+    device: XDI
+    terminal: '08'
+  field:
+    device: SM1
+    terminal: DN_RDY
+  wire: W-DI07
+  note: 隔離介面／控制器端，非直接負載
+- id: DI08
+  signal: digital_in
+  function: 出板確認
+  channel_device: IO1
+  address: DI08
+  via:
+    device: XDI
+    terminal: '09'
+  field:
+    device: B08
+    terminal: BK
+  wire: W-DI08
+  note: '24 V PNP 三線感測器（選型假設）'
+- id: DI09
+  signal: digital_in
+  function: 氣壓正常
+  channel_device: IO1
+  address: DI09
+  via:
+    device: XDI
+    terminal: '10'
+  field:
+    device: B09
+    terminal: BK
+  wire: W-DI09
+  note: '24 V PNP 三線感測器（選型假設）'
+- id: DO00
+  signal: digital_out
+  function: SMEMA 本站可收板（乾接點）
+  channel_device: IO1
+  address: DO00
+  via:
+    device: XDO
+    terminal: '01'
+  field:
+    device: SM1
+    terminal: ST_RDY
+  wire: W-DO00
+  note: 隔離介面／控制器端，非直接負載
+- id: DO01
+  signal: digital_out
+  function: SMEMA 本站有板（乾接點）
+  channel_device: IO1
+  address: DO01
+  via:
+    device: XDO
+    terminal: '02'
+  field:
+    device: SM1
+    terminal: ST_BA
+  wire: W-DO01
+  note: 隔離介面／控制器端，非直接負載
+- id: DO02
+  signal: digital_out
+  function: 止擋電磁閥
+  channel_device: IO1
+  address: DO02
+  via:
+    device: XDO
+    terminal: '03'
+  field:
+    device: YV1
+    terminal: A1
+  wire: W-DO02
+  note: PNP 經保護／抑制元件至負載（選型假設）
+- id: DO03
+  signal: digital_out
+  function: 支撐頂升電磁閥
+  channel_device: IO1
+  address: DO03
+  via:
+    device: XDO
+    terminal: '04'
+  field:
+    device: YV2
+    terminal: A1
+  wire: W-DO03
+  note: PNP 經保護／抑制元件至負載（選型假設）
+- id: DO04
+  signal: digital_out
+  function: 輸送運轉請求（至控制器）
+  channel_device: IO1
+  address: DO04
+  via:
+    device: XDO
+    terminal: '05'
+  field:
+    device: CV1
+    terminal: RUN
+  wire: W-DO04
+  note: 隔離介面／控制器端，非直接負載
+- id: DO05
+  signal: digital_out
+  function: 狀態綠燈
+  channel_device: IO1
+  address: DO05
+  via:
+    device: XDO
+    terminal: '06'
+  field:
+    device: HL1
+    terminal: G
+  wire: W-DO05
+  note: PNP 經保護／抑制元件至負載（選型假設）
+- id: DO06
+  signal: digital_out
+  function: 異常紅燈／蜂鳴器
+  channel_device: IO1
+  address: DO06
+  via:
+    device: XDO
+    terminal: '07'
+  field:
+    device: HL1
+    terminal: R
+  wire: W-DO06
+  note: PNP 經保護／抑制元件至負載（選型假設）
+- id: TRG-LC1
+  signal: digital_out
+  function: 頻閃光源觸發（隔離）
+  pool: IO1-DO
+  via:
+    pool: XDO
+  field:
+    device: LC1
+    terminal: TRIG
+  wire: W-TRG-LC1
+  note: TestCode links「IO1 觸發 → LC1」；點位未列於 I/O 表，由點位池配置（Q-SSD-E03）
+equipment:
+- id: EQ-fixed-camera
+  match:
+    part: parts/global_camera.py
+  devices:
+  - id: CAM-{module}
+    name: 固定相機 {module}
+    kind: camera
+    model: '20MP GigE 相機（配置估算）'
+    catalog_ref: '3-01'
+    module_ref: '{module}'
+    location: field
+    terminals:
+    - id: ETH
+      signal: gige
+      direction: bidirectional
+      required: true
+      label: GigE／PoE
+    - id: TRIG
+      signal: digital_in
+      direction: sink
+      required: true
+      label: 硬體觸發
+    trust: inferred
+    source: CellForge SSD 範例固定相機（DEV-008）；觸發來源待確認（Q-SSD-E03）
+  connections:
+  - id: NET-CAM-{module}
+    from:
+      device: CAM-{module}
+      terminal: ETH
+    to:
+      pool: IPC1-GIGE
+    wire_numbers: ['C-CAM-{module}']
+    cable_ref: '3-04'
+    note: GigE 影像（PoE）
+  io:
+  - id: TRG-{module}
+    signal: digital_out
+    function: 固定相機 {module} 硬體觸發
+    pool: IO1-DO
+    via:
+      pool: XDO
+    field:
+      device: CAM-{module}
+      terminal: TRIG
+    wire: W-TRG-{module}
+    note: 由點位池配置
+safety:
+- id: SC-EMO
+  name: 急停回路
+  devices: [ES1]
+  controller: GC1
+  outputs: [K1, RC1]
+  requirement: 按下急停：GC1 雙通道偵測（測試輸出 T0／T1），Y0 斷開 K1 動力支路、Y1 對 RC1 外部停止；K1 輔助 NC 回授 EDM（T4→X4）；復歸需人工確認
+- id: SC-DOOR
+  name: 防護門互鎖回路
+  devices: [GS1]
+  controller: GC1
+  outputs: [K1, RC1]
+  requirement: 防護門開啟：GC1 雙通道偵測（T2／T3），停止動力支路與手臂；SMEMA 交握不是安全允許
+panel:
+  width_mm: 970
+  height_mm: 600
+  depth_mm: null
+  margin_mm: 20
+  clearance_mm: 10
+  rails:
+  - id: D1
+    y_mm: 45
+    kind: duct
+    height_mm: 40
+  - id: R1
+    y_mm: 140
+    kind: din_rail
+  - id: D2
+    y_mm: 230
+    kind: duct
+    height_mm: 40
+  - id: R2
+    y_mm: 320
+    kind: din_rail
+  - id: D3
+    y_mm: 410
+    kind: duct
+    height_mm: 40
+  - id: R3
+    y_mm: 490
+    kind: din_rail
+  - id: D4
+    y_mm: 560
+    kind: duct
+    height_mm: 30
+  source: TestCode RobotArmPressSSD docs/electrical/circuit-data.json（P02） panels.ssd（970×600、兩列器件）；線槽與端子軌為推估（A-SSD-PANEL）
+drawing:
+  paper: A3
+  orientation: landscape
+  logo: null
+  company: ''
+  drawing_no: SSD-E
+  revision: V1
+  date: '2026-09-27'
+  drawn_by: CellForge
+  designed_by: 待確認
+  checked_by: 待確認
+  approved_by: 待確認
+  status: 工程規劃圖／非施工放行版
+notes:
+- 所有 X 端子、DI/DO 點序與 W 線號為本圖規劃代號，不是已選 PLC／原廠接頭腳位。
+- 現場 AC 電壓、相數、中性線需求、短路容量與接地系統待確認；不以圖上線數推定供電制式。
+- GC1 只採安全功能連接；安全輸出型式／隔離、測試脈衝、接觸器冗餘與 EDM 配置需按原廠手冊定案。
+- K2、端子、保護器與安全轉接為候選新增項；未宣稱安全等級或最終停止類別。
+- PE 不經開關／熔絲，門板與機架各自等電位連接；0 V 與 PE 的單點連接策略尚待確認。
+- DC 負載的 24 V 額定為選型假設；PLC、光源、感測器與閥必須逐一核對，禁止以展示色當施工線色。
+- 補壓針閥沿用 RC8A／手臂工具 I/O 方案；與 PLC 現場輸出分開，不做雙主控。
+- 力覺訊號送原廠力控介面，非接一般 DI；壓合力與允收需實物試驗。
+- SMEMA 經隔離轉接，兩條傳送方向各自分線；未指定連接器腳位。
+- 支撐頂升與止擋到位才允許壓合；相機複檢 NG 後保持載盤並等待處置。

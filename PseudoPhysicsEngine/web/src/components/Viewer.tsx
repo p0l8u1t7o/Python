@@ -179,12 +179,13 @@ export function Viewer({
         camera.near = Math.max(1, globalBounds.span / 10000);
         camera.far = globalBounds.span * 10;
         camera.updateProjectionMatrix();
-        applyCameraPreset(
-          camera,
-          controls,
-          stationBoundsRef.current.get(initialCamera) ?? globalBounds,
-          initialCamera,
-        );
+        if (!applyDeviceCamera(camera, controls, gltf.scene, initialCamera))
+          applyCameraPreset(
+            camera,
+            controls,
+            stationBoundsRef.current.get(initialCamera) ?? globalBounds,
+            initialCamera,
+          );
         setLoaded((value) => value + 1);
         if (snapshotMode)
           requestAnimationFrame(
@@ -644,6 +645,37 @@ function boxBounds(box: THREE.Box3): ViewBounds {
     center: box.getCenter(new THREE.Vector3()),
     span: Math.max(...box.getSize(new THREE.Vector3()).toArray(), 100),
   };
+}
+
+/** 以 GLB 相機節點（extras.camera，光學 +Z 為視線、+Y 向下）的位姿與垂直視角出圖。 */
+function applyDeviceCamera(
+  camera: THREE.PerspectiveCamera,
+  controls: OrbitControls,
+  root: THREE.Object3D,
+  name: string,
+): boolean {
+  const node = findSceneNode(root, name);
+  const spec = node?.userData.camera as
+    | { vfov_deg?: number; working_distance_mm?: number }
+    | undefined;
+  if (!node || !spec?.vfov_deg) return false;
+  root.updateMatrixWorld(true);
+  const position = new THREE.Vector3();
+  const quaternion = new THREE.Quaternion();
+  node.matrixWorld.decompose(position, quaternion, new THREE.Vector3());
+  // 光學座標 → three.js 相機（視線 −Z、上方 +Y）：繞 X 轉 180°
+  quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI));
+  camera.position.copy(position);
+  camera.quaternion.copy(quaternion);
+  camera.up.copy(new THREE.Vector3(0, 1, 0).applyQuaternion(quaternion));
+  camera.fov = spec.vfov_deg;
+  camera.near = 5;
+  camera.updateProjectionMatrix();
+  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(quaternion);
+  controls.target.copy(position).addScaledVector(forward, spec.working_distance_mm ?? 200);
+  controls.update();
+  camera.quaternion.copy(quaternion);
+  return true;
 }
 
 function applyCameraPreset(

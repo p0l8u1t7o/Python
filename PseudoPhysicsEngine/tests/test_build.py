@@ -48,9 +48,12 @@ def test_l0_build_round_trips_step_and_names(tmp_path):
     shutil.copytree(SOURCE, project, ignore=shutil.ignore_patterns("build"))
     report = build_project(project)
     assert report["duration_s"] >= 40
-    assert report["warnings"] == []
+    # Getac 範例的兩台手臂都是 robot_stub 型錄近似；除了這個標示之外不應有其他建置警告。
+    assert report["warnings"]
+    assert all("approximated stub" in message for message in report["warnings"])
+    assert {message.split()[1] for message in report["warnings"]} == {"robot_1", "robot_2"}
     brief = (project / "build" / "render_brief.md").read_text("utf-8")
-    assert "## 建置警告\n- 無。" in brief
+    assert "approximated stub" in brief
     inspection = inspect_step(project / "build" / "scene.step")
     assert [part.part_name for part in inspection.components] == STEP_EXPECTED
     assert [part.instance_name for part in inspection.components] == STEP_EXPECTED
@@ -256,6 +259,7 @@ def test_vendor_robot_glb_uses_the_same_fk_aligned_connected_geometry(tmp_path):
         {
             "catalog_robot": {
                 "kind": "robot",
+                "approximated": True,
                 "limits": {"reach_mm": 905, "payload_kg": 7},
             }
         },

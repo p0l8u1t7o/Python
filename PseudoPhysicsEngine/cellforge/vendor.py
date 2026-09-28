@@ -97,6 +97,80 @@ def add_vendor_file(
     return _upsert(project, entry)
 
 
+def add_vendor_urdf(
+    project: Path,
+    vendor_id: str,
+    urdf: str,
+    extra_sources: list[str],
+    *,
+    kind: str = "robot",
+    flange: dict | None = None,
+    limits: dict | None = None,
+    part_no: str | None = None,
+    source_url: str | None = None,
+) -> dict:
+    """Register a vendor URDF with its meshes; every file gets its own SHA-256.
+
+    URDF 依規範為公尺與弧度；網格引用必須能在同一個廠商資料夾內解析，否則拒絕登記。
+    """
+
+    import xml.etree.ElementTree as ET
+
+    from cellforge.vendor_model import _resolve_mesh, verify_vendor_files
+
+    vendor_dir = project / "vendor" / vendor_id
+    vendor_dir.mkdir(parents=True, exist_ok=True)
+    files: dict[str, str] = {}
+    hashes: dict[str, str] = {}
+    for key, source in [("urdf", urdf), *((None, item) for item in extra_sources)]:
+        target = _fetch(source, vendor_dir)
+        name = key or f"file:{target.name}"
+        files[name] = target.relative_to(project).as_posix()
+        hashes[name] = _sha256(target)
+    urdf_path = project / files["urdf"]
+    missing = []
+    for mesh in ET.parse(urdf_path).getroot().iter("mesh"):
+        try:
+            _resolve_mesh(str(mesh.get("filename", "")), urdf_path, project)
+        except ValueError:
+            missing.append(str(mesh.get("filename")))
+    if missing:
+        raise ValueError("URDF 引用的網格未一併提供：" + "、".join(sorted(set(missing))))
+    frames: dict = {"base": {"xyz": [0, 0, 0], "rpy_deg": [0, 0, 0]}}
+    if flange:
+        frames["flange"] = flange
+    entry = {
+        "id": vendor_id,
+        "kind": kind,
+        "files": files,
+        "source_url": source_url or urdf,
+        "downloaded": date.today().isoformat(),
+        "sha256": hashes,
+        "units_in_file": "m",
+        "up_axis": "z",
+        "approximated": False,
+        "frames": frames,
+        "limits": limits or {},
+    }
+    if part_no:
+        entry["part_no"] = part_no
+    verify_vendor_files(project, entry)
+    return _upsert(project, entry)
+
+
+def _fetch(source: str, directory: Path) -> Path:
+    name = Path(source.split("?", 1)[0]).name
+    if not name:
+        raise ValueError(f"無法由來源推得檔名：{source}")
+    target = directory / name
+    if source.startswith(("https://", "http://")):
+        with urllib.request.urlopen(source, timeout=60) as response, target.open("wb") as output:
+            shutil.copyfileobj(response, output)
+    else:
+        shutil.copy2(Path(source), target)
+    return target
+
+
 def _upsert(project: Path, entry: dict) -> dict:
     manifest_path = project / "vendor" / "manifest.yaml"
     manifest = load_yaml(manifest_path) or {"vendors": []}

@@ -1,0 +1,447 @@
+{
+  "$defs": {
+    "ManifestBuild": {
+      "additionalProperties": true,
+      "properties": {
+        "level": {
+          "enum": [
+            "L0",
+            "L1"
+          ],
+          "title": "Level",
+          "type": "string"
+        },
+        "status": {
+          "const": "succeeded",
+          "title": "Status",
+          "type": "string"
+        },
+        "started": {
+          "format": "date-time",
+          "title": "Started",
+          "type": "string"
+        },
+        "finished": {
+          "format": "date-time",
+          "title": "Finished",
+          "type": "string"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        },
+        "origin": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Origin"
+        },
+        "job_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Job Id"
+        }
+      },
+      "required": [
+        "level",
+        "status",
+        "started",
+        "finished"
+      ],
+      "title": "ManifestBuild",
+      "type": "object"
+    },
+    "ManifestEngine": {
+      "additionalProperties": true,
+      "properties": {
+        "package_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Package Version"
+        },
+        "git_commit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Git Commit"
+        },
+        "git_dirty": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Git Dirty"
+        },
+        "python": {
+          "title": "Python",
+          "type": "string"
+        },
+        "platform": {
+          "title": "Platform",
+          "type": "string"
+        },
+        "packages": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": "Packages",
+          "type": "object"
+        }
+      },
+      "required": [
+        "python",
+        "platform"
+      ],
+      "title": "ManifestEngine",
+      "type": "object"
+    },
+    "ManifestEngineering": {
+      "additionalProperties": true,
+      "description": "工程檢查結論，與建置是否成功分開；L0 版本一律為 not_evaluated。",
+      "properties": {
+        "status": {
+          "enum": [
+            "pass",
+            "warning",
+            "fail",
+            "not_evaluated"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Summary"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "ManifestEngineering",
+      "type": "object"
+    },
+    "ManifestFile": {
+      "additionalProperties": true,
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size": {
+          "title": "Size",
+          "type": "integer"
+        },
+        "stored": {
+          "default": "copy",
+          "enum": [
+            "copy",
+            "object"
+          ],
+          "title": "Stored",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "sha256",
+        "size"
+      ],
+      "title": "ManifestFile",
+      "type": "object"
+    },
+    "ManifestModule": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "module_file": {
+          "title": "Module File",
+          "type": "string"
+        },
+        "module_sha256": {
+          "title": "Module Sha256",
+          "type": "string"
+        },
+        "params": {
+          "additionalProperties": true,
+          "title": "Params",
+          "type": "object"
+        },
+        "expanded_params": {
+          "additionalProperties": true,
+          "title": "Expanded Params",
+          "type": "object"
+        },
+        "model_source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Source"
+        },
+        "approximated": {
+          "default": false,
+          "title": "Approximated",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "source",
+        "module_file",
+        "module_sha256"
+      ],
+      "title": "ManifestModule",
+      "type": "object"
+    },
+    "ManifestPart": {
+      "additionalProperties": true,
+      "description": "產品零件實例；SKU 方塊零件沒有 module_file。",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "sku": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sku"
+        },
+        "module_file": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Module File"
+        },
+        "module_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Module Sha256"
+        },
+        "mass_kg": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mass Kg"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "ManifestPart",
+      "type": "object"
+    },
+    "SourcePolicy": {
+      "additionalProperties": true,
+      "properties": {
+        "include": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Include",
+          "type": "array"
+        },
+        "exclude": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Exclude",
+          "type": "array"
+        },
+        "object_threshold_bytes": {
+          "title": "Object Threshold Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "include",
+        "object_threshold_bytes"
+      ],
+      "title": "SourcePolicy",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "properties": {
+    "manifest_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Manifest Version",
+      "type": "integer"
+    },
+    "version": {
+      "title": "Version",
+      "type": "string"
+    },
+    "number": {
+      "title": "Number",
+      "type": "integer"
+    },
+    "created": {
+      "format": "date-time",
+      "title": "Created",
+      "type": "string"
+    },
+    "project_name": {
+      "title": "Project Name",
+      "type": "string"
+    },
+    "build": {
+      "$ref": "#/$defs/ManifestBuild"
+    },
+    "engineering": {
+      "$ref": "#/$defs/ManifestEngineering"
+    },
+    "engine": {
+      "$ref": "#/$defs/ManifestEngine"
+    },
+    "schema_fingerprint": {
+      "title": "Schema Fingerprint",
+      "type": "string"
+    },
+    "source_policy": {
+      "$ref": "#/$defs/SourcePolicy"
+    },
+    "sources": {
+      "items": {
+        "$ref": "#/$defs/ManifestFile"
+      },
+      "title": "Sources",
+      "type": "array"
+    },
+    "library": {
+      "items": {
+        "$ref": "#/$defs/ManifestFile"
+      },
+      "title": "Library",
+      "type": "array"
+    },
+    "modules": {
+      "items": {
+        "$ref": "#/$defs/ManifestModule"
+      },
+      "title": "Modules",
+      "type": "array"
+    },
+    "parts": {
+      "items": {
+        "$ref": "#/$defs/ManifestPart"
+      },
+      "title": "Parts",
+      "type": "array"
+    },
+    "artifacts": {
+      "items": {
+        "$ref": "#/$defs/ManifestFile"
+      },
+      "title": "Artifacts",
+      "type": "array"
+    }
+  },
+  "required": [
+    "version",
+    "number",
+    "created",
+    "project_name",
+    "build",
+    "engineering",
+    "engine",
+    "schema_fingerprint",
+    "source_policy"
+  ],
+  "title": "VersionManifest",
+  "type": "object"
+}

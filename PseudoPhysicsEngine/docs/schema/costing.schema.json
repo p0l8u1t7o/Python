@@ -1,0 +1,805 @@
+{
+  "$defs": {
+    "BomLine": {
+      "additionalProperties": true,
+      "description": "不隨模組實例增減的固定列（例如控制器、安全元件）；for 標示所屬設備以檢查重複。",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "item": {
+          "title": "Item",
+          "type": "string"
+        },
+        "quantity": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Quantity"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "for": {
+          "items": {
+            "type": "string"
+          },
+          "title": "For",
+          "type": "array"
+        },
+        "note": {
+          "default": "",
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "item",
+        "quantity"
+      ],
+      "title": "BomLine",
+      "type": "object"
+    },
+    "ComponentRef": {
+      "additionalProperties": true,
+      "properties": {
+        "item": {
+          "title": "Item",
+          "type": "string"
+        },
+        "quantity": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Quantity"
+        }
+      },
+      "required": [
+        "item",
+        "quantity"
+      ],
+      "title": "ComponentRef",
+      "type": "object"
+    },
+    "CostItem": {
+      "additionalProperties": true,
+      "description": "採購項型錄：同一料號只列一次，由設備對應與 BOM 列引用。",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "purchased",
+            "fabricated",
+            "consumable",
+            "module",
+            "service"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "subsystem": {
+          "title": "Subsystem",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        },
+        "price": {
+          "$ref": "#/$defs/Price"
+        },
+        "spec": {
+          "default": "",
+          "title": "Spec",
+          "type": "string"
+        },
+        "model": {
+          "default": "",
+          "title": "Model",
+          "type": "string"
+        },
+        "supplier": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Supplier"
+        },
+        "part_no": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Part No"
+        },
+        "rationale": {
+          "default": "",
+          "title": "Rationale",
+          "type": "string"
+        },
+        "alternative": {
+          "default": "",
+          "title": "Alternative",
+          "type": "string"
+        },
+        "applies_to": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Applies To"
+        },
+        "components": {
+          "items": {
+            "$ref": "#/$defs/ComponentRef"
+          },
+          "title": "Components",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "subsystem",
+        "name",
+        "unit"
+      ],
+      "title": "CostItem",
+      "type": "object"
+    },
+    "CostPolicy": {
+      "additionalProperties": true,
+      "properties": {
+        "currency": {
+          "default": "TWD",
+          "title": "Currency",
+          "type": "string"
+        },
+        "overhead_rate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "default": "0",
+          "title": "Overhead Rate"
+        },
+        "contingency_rate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "default": "0",
+          "title": "Contingency Rate"
+        },
+        "tax_rate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "default": "0",
+          "title": "Tax Rate"
+        },
+        "rounding": {
+          "$ref": "#/$defs/Rounding"
+        },
+        "pricing": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Pricing"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "CostPolicy",
+      "type": "object"
+    },
+    "EquipmentMatch": {
+      "additionalProperties": true,
+      "description": "選出 cell.yaml 的模組實例；多個條件須同時成立。",
+      "properties": {
+        "part": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Part"
+        },
+        "vendor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Vendor"
+        },
+        "module": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Module"
+        },
+        "tool": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool"
+        }
+      },
+      "title": "EquipmentMatch",
+      "type": "object"
+    },
+    "EquipmentRule": {
+      "additionalProperties": true,
+      "description": "每個符合條件的模組實例各計一次 items；增刪設備時採購數量與成本自動同步。",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "match": {
+          "$ref": "#/$defs/EquipmentMatch"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/ItemQuantity"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "match",
+        "items"
+      ],
+      "title": "EquipmentRule",
+      "type": "object"
+    },
+    "ExchangeRate": {
+      "additionalProperties": true,
+      "properties": {
+        "from": {
+          "title": "From",
+          "type": "string"
+        },
+        "to": {
+          "title": "To",
+          "type": "string"
+        },
+        "rate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Rate"
+        },
+        "date": {
+          "format": "date",
+          "title": "Date",
+          "type": "string"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "to",
+        "rate",
+        "date",
+        "source"
+      ],
+      "title": "ExchangeRate",
+      "type": "object"
+    },
+    "ItemQuantity": {
+      "additionalProperties": true,
+      "properties": {
+        "item": {
+          "title": "Item",
+          "type": "string"
+        },
+        "quantity": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "default": "1",
+          "title": "Quantity"
+        }
+      },
+      "required": [
+        "item"
+      ],
+      "title": "ItemQuantity",
+      "type": "object"
+    },
+    "Labor": {
+      "additionalProperties": true,
+      "properties": {
+        "rates": {
+          "items": {
+            "$ref": "#/$defs/LaborRate"
+          },
+          "title": "Rates",
+          "type": "array"
+        },
+        "tasks": {
+          "items": {
+            "$ref": "#/$defs/LaborTask"
+          },
+          "title": "Tasks",
+          "type": "array"
+        }
+      },
+      "title": "Labor",
+      "type": "object"
+    },
+    "LaborRate": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "rate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Rate"
+        },
+        "currency": {
+          "default": "TWD",
+          "title": "Currency",
+          "type": "string"
+        },
+        "unit": {
+          "default": "人日",
+          "title": "Unit",
+          "type": "string"
+        },
+        "basis": {
+          "default": "",
+          "title": "Basis",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "rate"
+      ],
+      "title": "LaborRate",
+      "type": "object"
+    },
+    "LaborTask": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "category": {
+          "enum": [
+            "mechanical",
+            "electrical",
+            "software",
+            "assembly",
+            "wiring",
+            "commissioning",
+            "validation",
+            "documentation",
+            "poc",
+            "management",
+            "other"
+          ],
+          "title": "Category",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "quantity": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Quantity"
+        },
+        "rate": {
+          "title": "Rate",
+          "type": "string"
+        },
+        "basis": {
+          "default": "",
+          "title": "Basis",
+          "type": "string"
+        },
+        "grade": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Grade"
+        },
+        "range_pct": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Range Pct"
+        }
+      },
+      "required": [
+        "id",
+        "category",
+        "name",
+        "quantity",
+        "rate"
+      ],
+      "title": "LaborTask",
+      "type": "object"
+    },
+    "Price": {
+      "additionalProperties": true,
+      "description": "單價；amount 為 null 表示待報價。",
+      "properties": {
+        "amount": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Amount"
+        },
+        "currency": {
+          "default": "TWD",
+          "title": "Currency",
+          "type": "string"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "quote_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Quote Date"
+        },
+        "valid_until": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Valid Until"
+        },
+        "trust": {
+          "default": "estimate",
+          "enum": [
+            "quoted",
+            "catalog",
+            "estimate",
+            "placeholder"
+          ],
+          "title": "Trust",
+          "type": "string"
+        },
+        "grade": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Grade"
+        },
+        "range_pct": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Range Pct"
+        }
+      },
+      "title": "Price",
+      "type": "object"
+    },
+    "Pricing": {
+      "additionalProperties": true,
+      "description": "銷售報價：margin 為毛利率（售價 = 成本 ÷ (1 − 毛利率)），markup 為加價率\n（售價 = 成本 × (1 + 加價率)），兩者擇一、不可混用。",
+      "properties": {
+        "method": {
+          "enum": [
+            "margin",
+            "markup"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "rate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Rate"
+        },
+        "basis": {
+          "default": "",
+          "title": "Basis",
+          "type": "string"
+        }
+      },
+      "required": [
+        "method",
+        "rate"
+      ],
+      "title": "Pricing",
+      "type": "object"
+    },
+    "Rounding": {
+      "additionalProperties": true,
+      "description": "捨入階段：明細小計到 line_decimals；預備費、稅額與報價到 total_decimals。",
+      "properties": {
+        "line_decimals": {
+          "default": 2,
+          "title": "Line Decimals",
+          "type": "integer"
+        },
+        "total_decimals": {
+          "default": 0,
+          "title": "Total Decimals",
+          "type": "integer"
+        },
+        "mode": {
+          "default": "half_up",
+          "enum": [
+            "half_up",
+            "half_even"
+          ],
+          "title": "Mode",
+          "type": "string"
+        }
+      },
+      "title": "Rounding",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "properties": {
+    "version": {
+      "const": 1,
+      "default": 1,
+      "title": "Version",
+      "type": "integer"
+    },
+    "title": {
+      "default": "",
+      "title": "Title",
+      "type": "string"
+    },
+    "as_of": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "As Of"
+    },
+    "policy": {
+      "$ref": "#/$defs/CostPolicy"
+    },
+    "exchange_rates": {
+      "items": {
+        "$ref": "#/$defs/ExchangeRate"
+      },
+      "title": "Exchange Rates",
+      "type": "array"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/CostItem"
+      },
+      "title": "Items",
+      "type": "array"
+    },
+    "equipment": {
+      "items": {
+        "$ref": "#/$defs/EquipmentRule"
+      },
+      "title": "Equipment",
+      "type": "array"
+    },
+    "bom": {
+      "items": {
+        "$ref": "#/$defs/BomLine"
+      },
+      "title": "Bom",
+      "type": "array"
+    },
+    "labor": {
+      "$ref": "#/$defs/Labor"
+    },
+    "notes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Notes",
+      "type": "array"
+    }
+  },
+  "title": "Costing",
+  "type": "object"
+}

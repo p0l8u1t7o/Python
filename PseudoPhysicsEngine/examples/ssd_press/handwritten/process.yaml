@@ -1,0 +1,396 @@
+stations:
+- id: S0
+  name: 進板定位
+  modules:
+  - conveyor_1
+  - robot_1
+  outputs: 載盤停在壓合位
+- id: S1
+  name: 全局定位
+  modules:
+  - global_camera
+  outputs: 整盤影像
+- id: S2
+  name: 整排壓合
+  modules:
+  - robot_1
+  outputs: A、B 排接頭壓回焊墊
+- id: S3
+  name: 相機檢查
+  modules:
+  - robot_1
+  outputs: 每顆接頭的間隙判定
+- id: S4
+  name: 補壓判定
+  modules:
+  - robot_1
+  outputs: 不合格排原位補壓並複檢
+- id: S5
+  name: 出板
+  modules:
+  - conveyor_1
+  - robot_1
+  outputs: 載盤送往迴焊爐
+steps:
+- id: S0.park
+  station: S0
+  actor: robot_1
+  action: move_joint
+  value:
+    joints_deg:
+    - 90
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+- id: S0.convey_in
+  station: S0
+  actor: conveyor_1
+  action: transfer
+  object: tray
+  target:
+    frame: conveyor_1.stop
+- id: S1.locate
+  station: S1
+  actor: global_camera
+  action: inspect
+  objects:
+  - panel
+  duration_s: 0.5
+  inspect:
+    camera: global_camera.optical
+    roi: roi_panel
+    roi_size_mm:
+    - 180
+    - 100
+    max_mm_per_px: 0.1
+- id: S2.press_A
+  station: S2
+  actor: robot_1
+  action: press
+  objects: &id001
+  - usb_A1
+  - usb_A2
+  - usb_A3
+  - usb_A4
+  - usb_A5
+  - usb_A6
+  - usb_A7
+  - usb_A8
+  target:
+    frame: conveyor_1.stop
+    offset: &id002
+      xyz:
+      - 0.0
+      - 47.0
+      - 10.5
+      rpy_deg:
+      - 0.0
+      - 0.0
+      - 0.0
+  tool: parts/press_camera_eoat.py
+  path:
+    approach_mm: 20
+    depth_mm: 1.0
+    hold_s: 0.5
+    speed_scale: 0.5
+  press:
+    spring_mm: 3.0
+    pad_size_mm:
+    - 7
+    - 9
+    face: press_face
+    pads:
+    - pad_1
+    - pad_2
+    - pad_3
+    - pad_4
+    - pad_5
+    - pad_6
+    - pad_7
+    - pad_8
+  contact: C-press-A
+- id: S2.press_B
+  station: S2
+  actor: robot_1
+  action: press
+  objects:
+  - usb_B1
+  - usb_B2
+  - usb_B3
+  - usb_B4
+  - usb_B5
+  - usb_B6
+  - usb_B7
+  - usb_B8
+  target:
+    frame: conveyor_1.stop
+    offset:
+      xyz:
+      - 0.0
+      - -47.0
+      - 10.5
+      rpy_deg:
+      - 0
+      - 0
+      - 180
+  tool: parts/press_camera_eoat.py
+  path:
+    approach_mm: 20
+    depth_mm: 1.0
+    hold_s: 0.5
+    speed_scale: 0.5
+  press:
+    spring_mm: 3.0
+    pad_size_mm:
+    - 7
+    - 9
+    face: press_face
+    pads:
+    - pad_8
+    - pad_7
+    - pad_6
+    - pad_5
+    - pad_4
+    - pad_3
+    - pad_2
+    - pad_1
+  contact: C-press-B
+- id: S3.inspect_A1_4
+  station: S3
+  actor: robot_1
+  action: inspect
+  objects:
+  - usb_A1
+  - usb_A2
+  - usb_A3
+  - usb_A4
+  target:
+    frame: conveyor_1.stop
+    offset:
+      xyz:
+      - -42.0
+      - -11.494
+      - 85.744
+      rpy_deg:
+      - -0.0
+      - 0.0
+      - 0.0
+  tool: parts/press_camera_eoat.py
+  duration_s: 0.3
+  inspect:
+    camera: robot_1.camera
+    roi: roi
+    roi_size_mm:
+    - 4
+    - 10
+    max_mm_per_px: 0.02
+    gap_frames:
+    - lead_tip
+    - pad
+    max_gap_mm: 0.1
+- id: S3.inspect_A5_8
+  station: S3
+  actor: robot_1
+  action: inspect
+  objects:
+  - usb_A5
+  - usb_A6
+  - usb_A7
+  - usb_A8
+  target:
+    frame: conveyor_1.stop
+    offset: &id003
+      xyz:
+      - 42.0
+      - -11.494
+      - 85.744
+      rpy_deg:
+      - -0.0
+      - 0.0
+      - 0.0
+  tool: parts/press_camera_eoat.py
+  duration_s: 0.3
+  inspect:
+    camera: robot_1.camera
+    roi: roi
+    roi_size_mm:
+    - 4
+    - 10
+    max_mm_per_px: 0.02
+    gap_frames:
+    - lead_tip
+    - pad
+    max_gap_mm: 0.1
+- id: S3.inspect_B1_4
+  station: S3
+  actor: robot_1
+  action: inspect
+  objects:
+  - usb_B1
+  - usb_B2
+  - usb_B3
+  - usb_B4
+  target:
+    frame: conveyor_1.stop
+    offset:
+      xyz:
+      - -42.0
+      - 11.494
+      - 85.744
+      rpy_deg:
+      - 0.0
+      - 0.0
+      - 180.0
+  tool: parts/press_camera_eoat.py
+  duration_s: 0.3
+  inspect:
+    camera: robot_1.camera
+    roi: roi
+    roi_size_mm:
+    - 4
+    - 10
+    max_mm_per_px: 0.02
+    gap_frames:
+    - lead_tip
+    - pad
+    max_gap_mm: 0.1
+- id: S3.inspect_B5_8
+  station: S3
+  actor: robot_1
+  action: inspect
+  objects:
+  - usb_B5
+  - usb_B6
+  - usb_B7
+  - usb_B8
+  target:
+    frame: conveyor_1.stop
+    offset:
+      xyz:
+      - 42.0
+      - 11.494
+      - 85.744
+      rpy_deg:
+      - 0.0
+      - 0.0
+      - 180.0
+  tool: parts/press_camera_eoat.py
+  duration_s: 0.3
+  inspect:
+    camera: robot_1.camera
+    roi: roi
+    roi_size_mm:
+    - 4
+    - 10
+    max_mm_per_px: 0.02
+    gap_frames:
+    - lead_tip
+    - pad
+    max_gap_mm: 0.1
+- id: S4.repress_A
+  station: S4
+  actor: robot_1
+  action: press
+  objects: *id001
+  target:
+    frame: conveyor_1.stop
+    offset: *id002
+  tool: parts/press_camera_eoat.py
+  path:
+    approach_mm: 20
+    depth_mm: 1.0
+    hold_s: 0.5
+    speed_scale: 0.5
+  press:
+    spring_mm: 3.0
+    pad_size_mm:
+    - 7
+    - 9
+    face: press_face
+    pads:
+    - pad_1
+    - pad_2
+    - pad_3
+    - pad_4
+    - pad_5
+    - pad_6
+    - pad_7
+    - pad_8
+  contact: C-press-A
+- id: S4.recheck_A5_8
+  station: S4
+  actor: robot_1
+  action: inspect
+  objects:
+  - usb_A5
+  - usb_A6
+  - usb_A7
+  - usb_A8
+  target:
+    frame: conveyor_1.stop
+    offset: *id003
+  tool: parts/press_camera_eoat.py
+  duration_s: 0.3
+  inspect:
+    camera: robot_1.camera
+    roi: roi
+    roi_size_mm:
+    - 4
+    - 10
+    max_mm_per_px: 0.02
+    gap_frames:
+    - lead_tip
+    - pad
+    max_gap_mm: 0.1
+- id: S5.home
+  station: S5
+  actor: robot_1
+  action: move_joint
+  value: home
+- id: S5.convey_out
+  station: S5
+  actor: conveyor_1
+  action: transfer
+  object: tray
+  target:
+    frame: conveyor_1.end
+takt:
+  target_s: 40
+contacts:
+- id: C-press-A
+  pair:
+  - robot_1.tool
+  - usb_A*
+  window:
+  - S2.press_A
+  - S4.repress_A
+  tolerance_mm: 3.2
+  region:
+    frame: panel.press_A
+    size_mm:
+    - 178
+    - 14
+  direction:
+  - 0
+  - 0
+  - -1
+  source: 8 頭壓墊壓在接頭殼體頂面；彈簧行程 3 mm 加 0.2 mm 外形誤差
+- id: C-press-B
+  pair:
+  - robot_1.tool
+  - usb_B*
+  window:
+  - S2.press_B
+  tolerance_mm: 3.2
+  region:
+    frame: panel.press_B
+    size_mm:
+    - 178
+    - 14
+  direction:
+  - 0
+  - 0
+  - -1
+  source: 8 頭壓墊壓在接頭殼體頂面；彈簧行程 3 mm 加 0.2 mm 外形誤差

@@ -49,7 +49,7 @@ try {
     Add-Slide '01 / Design basis and assumptions' $assumptionText 14851914 | Out-Null
     $stationText = ($data.stations | ForEach-Object { '- ' + $_ }) -join "`n"
     $stationSlide = Add-Slide '02 / Five-station cell architecture' $stationText 14851914
-    if (Test-Path -LiteralPath $data.snapshot) {
+    if ($data.snapshot -and (Test-Path -LiteralPath $data.snapshot)) {
         $stationSlide.Shapes.AddPicture($data.snapshot, 0, -1, 550, 180, 350, 250) | Out-Null
     }
     $checkText = "Red $($data.checks.red)    Yellow $($data.checks.yellow)    Green $($data.checks.green)`n`n" + (($data.checkItems | ForEach-Object { '- ' + $_ }) -join "`n")
