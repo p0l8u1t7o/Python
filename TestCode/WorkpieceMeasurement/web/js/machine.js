@@ -2,6 +2,8 @@
 import * as THREE from 'three';
 import { Y0, X1, X2, YM, YA, YS, YT, DIR_A, DIR_R, TRAYS, PITCH, DEMO, fixedBodies, transferBodies, trayPose, traySize, pocket, occupied, partPose } from './spec.js';
 import { createPart } from './product.js';
+import { applyFinishes, cabinetDoorMaterial } from './render-finishes.js';
+import { addEquipmentDetail } from './equipment-detail.js';
 
 const M = (color, metalness, roughness, o = {}) => new THREE.MeshStandardMaterial({ color, metalness, roughness, ...o });
 const MAT = {
@@ -17,7 +19,12 @@ const beamMat = (color, opacity) => new THREE.MeshBasicMaterial({ color, transpa
 function mesh(b) {
   let m;
   if (b.kind === 'box') {
-    m = new THREE.Mesh(new THREE.BoxGeometry(b.max[0] - b.min[0], b.max[1] - b.min[1], b.max[2] - b.min[2]), MAT[b.mat]);
+    const w=b.max[0]-b.min[0],h=b.max[1]-b.min[1],d=b.max[2]-b.min[2];
+    if(Array.isArray(b.bore)){
+      const sh=new THREE.Shape();sh.moveTo(-w/2,-d/2);sh.lineTo(w/2,-d/2);sh.lineTo(w/2,d/2);sh.lineTo(-w/2,d/2);sh.closePath();
+      const hole=new THREE.Path();hole.absarc(b.bore[0]-(b.min[0]+b.max[0])/2,b.bore[1]-(b.min[2]+b.max[2])/2,b.bore[2],0,Math.PI*2,true);sh.holes.push(hole);
+      const geo=new THREE.ExtrudeGeometry(sh,{depth:h,bevelEnabled:false});geo.rotateX(Math.PI/2);geo.translate(0,h/2,0);m=new THREE.Mesh(geo,MAT[b.mat]);
+    }else m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), MAT[b.mat]);
     m.position.set((b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2, (b.min[2] + b.max[2]) / 2);
   } else {
     const p0 = V(...b.p0), p1 = V(...b.p1), len = p0.distanceTo(p1);
@@ -31,6 +38,7 @@ function mesh(b) {
 const addBox = (g, mat, w, h, d, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; g.add(m); return m; };
 
 export function createMachine(scene, s) {
+  applyFinishes(MAT);
   const root = new THREE.Group(); scene.add(root);
   const fixed = fixedBodies(s), byId = {};
   // 旋轉件與 C 型架各自成群，其餘固定
@@ -49,10 +57,11 @@ export function createMachine(scene, s) {
   const ringLight = new THREE.Mesh(new THREE.TorusGeometry(8.5, 1.1, 12, 48), M(0xffffff, 0, 0.4, { emissive: 0xfff2c4, emissiveIntensity: 0 })); ringLight.rotation.x = Math.PI / 2; ringLight.position.set(X1, YM + 3, 0); root.add(ringLight);
 
   // ---------------------------------------------- 底櫃、避震腳座、外罩、HMI、三色燈
-  const deco = new THREE.Group(), hood = new THREE.Group(); root.add(deco, hood);
-  addBox(deco, MAT.cabinet, 700, 760, 500, 0, 60 + 380, 0);
+  const deco = new THREE.Group(), hood = new THREE.Group(), cabinetFaces=[]; root.add(deco, hood);
+  for(const [size,at] of [[[4,760,500],[-348,440,0]],[[4,760,500],[348,440,0]],[[692,760,4],[0,440,-248]],[[692,4,492],[0,62,0]]])cabinetFaces.push(addBox(deco,MAT.cabinet,...size,...at));
   for (const x of [-320, 320]) for (const z of [-220, 220]) { addBox(deco, MAT.axis, 50, 60, 50, x, 30, z); const iso = new THREE.Mesh(new THREE.CylinderGeometry(22, 26, Y0 - 42 - 820, 24), MAT.anodized); iso.position.set(x * 0.85, 820 + (Y0 - 42 - 820) / 2, z * 0.85); deco.add(iso); }
-  for (const x of [-170, 170]) { const door = addBox(deco, M(0x465362, 0.35, 0.55), 320, 640, 4, x, 420, 252); door.name = 'door'; addBox(deco, MAT.steel, 8, 90, 6, x + (x < 0 ? 130 : -130), 470, 256); }
+  const doorFinish = cabinetDoorMaterial();
+  for (const x of [-170, 170]) { const door = addBox(deco, [MAT.cabinet, MAT.cabinet, MAT.cabinet, MAT.cabinet, doorFinish, MAT.cabinet], 320, 640, 4, x, 420, 252); door.name = 'door'; cabinetFaces.push(door,addBox(deco, MAT.steel, 8, 90, 6, x + (x < 0 ? 130 : -130), 470, 256)); }
   const H = 470, top = Y0 - 42 + H;
   for (const x of [-345, 345]) for (const z of [-245, 245]) addBox(hood, MAT.frame, 20, H, 20, x, Y0 - 42 + H / 2, z);
   for (const z of [-245, 245]) addBox(hood, MAT.frame, 710, 20, 20, 0, top, z);
@@ -63,6 +72,7 @@ export function createMachine(scene, s) {
   addBox(deco, MAT.frame, 30, 30, 30, 395, top - 120, 200); addBox(deco, MAT.frame, 14, 14, 60, 370, top - 120, 215);
   const hmi = addBox(deco, MAT.axis, 370, 235, 22, 470, top - 110, 270); hmi.rotation.y = -0.45; hmi.rotation.x = -0.12;
   const screenTex = new THREE.CanvasTexture(document.createElement('canvas'));
+  screenTex.colorSpace = THREE.SRGBColorSpace; screenTex.anisotropy = 4;
   const screen = new THREE.Mesh(new THREE.PlaneGeometry(340, 205), new THREE.MeshBasicMaterial({ map: screenTex })); screen.position.set(0, 0, 11.6); hmi.add(screen);
   // 三色燈
   const tower = {}; [['red', 0xff3b30], ['yellow', 0xffc400], ['green', 0x2ee67a]].forEach(([k, c], i) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(16, 16, 28, 24), M(c, 0, 0.35, { emissive: c, emissiveIntensity: 0.05, transparent: true, opacity: 0.92 })); m.position.set(330, top + 90 - i * 30, -230); deco.add(m); tower[k] = m; });
@@ -108,9 +118,9 @@ export function createMachine(scene, s) {
   };
   { const m = new THREE.Mesh(new THREE.CylinderGeometry(9, 9, 105, 32, 1, true), beamMat(0x8dff8a, 0.22)); m.rotation.z = Math.PI / 2; m.position.set(X1 - 7.5, YA, 0); beams.add(m); beam.B.push(m); }
   { const m = new THREE.Mesh(new THREE.CylinderGeometry(4, 4, 80, 32, 1, true), beamMat(0xfff0b0, 0.3)); m.position.set(X1, YM + 40, 0); beams.add(m); beam.C.push(m); }
-  const upY = YS + s.base + s.wd, na = s.id === 'C' ? 0.10 : 0.18, coneUp = new THREE.Mesh(new THREE.ConeGeometry(s.wd * Math.tan(Math.asin(na)), s.wd, 32, 1, true), beamMat(0xa77bff, 0.45));
+  const upY = YS + s.base + s.wd, coneUp = new THREE.Mesh(new THREE.CylinderGeometry(.08,.08,s.wd,12), beamMat(0xa77bff, 0.45));
   coneUp.rotation.x = Math.PI; coneUp.position.set(0, upY - s.wd / 2, 0);
-  const coneDn = new THREE.Mesh(new THREE.ConeGeometry(15 * Math.tan(Math.asin(0.25)), 15, 32, 1, true), beamMat(0xa77bff, 0.45)); coneDn.position.set(0, YS - 7.5, 0);
+  const coneDn = new THREE.Mesh(new THREE.CylinderGeometry(.08,.08,15,12), beamMat(0xa77bff, 0.45)); coneDn.position.set(0, YS - 7.5, 0);
   const cf = new THREE.Group(); cf.add(coneUp, coneDn); cf.position.x = X2; beams.add(cf); beam.CF.push(cf);
   // 螺旋掃描軌跡（隨工件旋轉）
   const N = 600, spiral = new THREE.Line(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(N * 3), 3)), new THREE.LineBasicMaterial({ color: 0xd9b8ff, transparent: true, opacity: 0.95 }));
@@ -118,10 +128,13 @@ export function createMachine(scene, s) {
   spiral.position.y = s.base + 0.01; part.add(spiral); spiral.frustumCulled = false;
 
   // ---------------------------------------------- 套用狀態
+  const details=addEquipmentDetail({root,deco,byId,cabinetFaces,rotor1,rotor2,s});
   const state = { last: null };
   function apply(S) {
     state.last = S;
     rotor1.rotation.y = -S.th1; rotor2.rotation.y = -S.th2; cframe.position.x = S.r2; cf.position.x = X2 + S.r2;
+    byId.sensorUp.position.y = YS + s.base + s.wd + 35 + S.headLift;
+    details.update(S);
     for (const j of jaws) j.m.position.x = j.r + S.jaw * 1.2;
     for (const id of Object.keys(TRAYS)) { const p = trayPose(id, S), occ = new Set(occupied(id, S)); trays[id].grp.position.set(p.x, 0, p.z); trays[id].parts.forEach((m, i) => { m.visible = occ.has(i) && !(id === 'IN' && i === DEMO.k) && !(S.loc === 'out:' + id && i === DEMO.filled[id]); }); }
     tables.in.position.z = S.inZ; tables.out.position.z = S.outZ;
@@ -144,5 +157,5 @@ export function createMachine(scene, s) {
     g.font = '22px "Microsoft JhengHei",sans-serif'; lines.slice(1).forEach((t, i) => { g.fillStyle = i === 0 ? color : '#a9c0d2'; g.fillText(t, 18, 96 + i * 38); });
     screenTex.needsUpdate = true;
   }
-  return { root, hood, part, apply, setTower, drawScreen, partWorld: () => part.position.clone().add(V(0, s.len / 2, 0)), byId, trays };
+  return { root, hood, part, apply, setTower, drawScreen, partWorld: () => part.position.clone().add(V(0, s.len / 2, 0)), byId, trays, details };
 }

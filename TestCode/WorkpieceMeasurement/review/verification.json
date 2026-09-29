@@ -1,13 +1,13 @@
 {
-  "generated": "2026-09-29T06:50:40.260Z",
+  "generated": "2026-09-29T10:37:51.017Z",
   "minGap": 0.2,
   "cases": [
     {
       "spec": "A",
       "scenario": "OK",
-      "steps": 46,
-      "total": 10.413,
-      "uph": 346,
+      "steps": 48,
+      "total": 11.613,
+      "uph": 310,
       "vmax": {
         "tx": 1199,
         "zt": 306,
@@ -52,9 +52,9 @@
     {
       "spec": "A",
       "scenario": "NG-D",
-      "steps": 46,
-      "total": 10.338,
-      "uph": 348,
+      "steps": 48,
+      "total": 11.538,
+      "uph": 312,
       "vmax": {
         "tx": 1154,
         "zt": 306,
@@ -99,9 +99,9 @@
     {
       "spec": "A",
       "scenario": "NG-A",
-      "steps": 46,
-      "total": 10.308,
-      "uph": 349,
+      "steps": 48,
+      "total": 11.508,
+      "uph": 313,
       "vmax": {
         "tx": 1154,
         "zt": 306,
@@ -146,9 +146,9 @@
     {
       "spec": "A",
       "scenario": "NG-T",
-      "steps": 46,
-      "total": 10.338,
-      "uph": 348,
+      "steps": 48,
+      "total": 11.538,
+      "uph": 312,
       "vmax": {
         "tx": 1154,
         "zt": 306,
@@ -193,9 +193,9 @@
     {
       "spec": "A",
       "scenario": "ERR",
-      "steps": 56,
-      "total": 14.32,
-      "uph": 251,
+      "steps": 60,
+      "total": 16.72,
+      "uph": 215,
       "vmax": {
         "tx": 1199,
         "zt": 306,
@@ -240,9 +240,9 @@
     {
       "spec": "B",
       "scenario": "OK",
-      "steps": 46,
-      "total": 10.355,
-      "uph": 348,
+      "steps": 48,
+      "total": 11.555,
+      "uph": 312,
       "vmax": {
         "tx": 1199,
         "zt": 284,
@@ -287,9 +287,9 @@
     {
       "spec": "B",
       "scenario": "NG-D",
-      "steps": 46,
-      "total": 10.281,
-      "uph": 350,
+      "steps": 48,
+      "total": 11.481,
+      "uph": 314,
       "vmax": {
         "tx": 1154,
         "zt": 284,
@@ -334,9 +334,9 @@
     {
       "spec": "B",
       "scenario": "NG-A",
-      "steps": 46,
-      "total": 10.251,
-      "uph": 351,
+      "steps": 48,
+      "total": 11.451,
+      "uph": 314,
       "vmax": {
         "tx": 1154,
         "zt": 284,
@@ -381,9 +381,9 @@
     {
       "spec": "B",
       "scenario": "NG-T",
-      "steps": 46,
-      "total": 10.281,
-      "uph": 350,
+      "steps": 48,
+      "total": 11.481,
+      "uph": 314,
       "vmax": {
         "tx": 1154,
         "zt": 284,
@@ -428,9 +428,9 @@
     {
       "spec": "B",
       "scenario": "ERR",
-      "steps": 56,
-      "total": 14.263,
-      "uph": 252,
+      "steps": 60,
+      "total": 16.663,
+      "uph": 216,
       "vmax": {
         "tx": 1199,
         "zt": 284,
@@ -438,7 +438,7 @@
         "outZ": 0
       },
       "gapFixed": {
-        "d": 0.7074627724255151,
+        "d": 0.7074627724223319,
         "moving": "heldPart",
         "fixed": "ring",
         "at": [
@@ -446,7 +446,7 @@
           1036.71,
           0
         ],
-        "t": 12.9
+        "t": 15.3
       },
       "gapJaw": {
         "d": 5.978933132087907,
@@ -475,9 +475,9 @@
     {
       "spec": "C",
       "scenario": "OK",
-      "steps": 46,
-      "total": 10.313,
-      "uph": 349,
+      "steps": 48,
+      "total": 11.513,
+      "uph": 313,
       "vmax": {
         "tx": 1199,
         "zt": 279,
@@ -522,9 +522,9 @@
     {
       "spec": "C",
       "scenario": "NG-D",
-      "steps": 46,
-      "total": 10.239,
-      "uph": 352,
+      "steps": 48,
+      "total": 11.439,
+      "uph": 315,
       "vmax": {
         "tx": 1154,
         "zt": 279,
@@ -569,9 +569,9 @@
     {
       "spec": "C",
       "scenario": "NG-A",
-      "steps": 46,
-      "total": 10.209,
-      "uph": 353,
+      "steps": 48,
+      "total": 11.409,
+      "uph": 316,
       "vmax": {
         "tx": 1154,
         "zt": 279,
@@ -616,9 +616,9 @@
     {
       "spec": "C",
       "scenario": "NG-T",
-      "steps": 46,
-      "total": 10.239,
-      "uph": 352,
+      "steps": 48,
+      "total": 11.439,
+      "uph": 315,
       "vmax": {
         "tx": 1154,
         "zt": 279,
@@ -663,9 +663,9 @@
     {
       "spec": "C",
       "scenario": "ERR",
-      "steps": 56,
-      "total": 14.221,
-      "uph": 253,
+      "steps": 60,
+      "total": 16.621,
+      "uph": 217,
       "vmax": {
         "tx": 1199,
         "zt": 279,
@@ -711,32 +711,27 @@
   "cone": [
     {
       "spec": "A",
-      "sensor": "IFD2410-6",
-      "na": 0.18,
-      "depth": 3.94,
-      "beamAtLip": 1.44,
-      "bore": 4.28,
-      "marginPerSide": 1.42
+      "sensor": "CL-S015",
+      "referenceDistance": 15,
+      "verified": false,
+      "status": "待原廠光路圖與實物可及性驗證"
     },
     {
       "spec": "B",
-      "sensor": "IFD2410-6",
-      "na": 0.18,
-      "depth": 9.68,
-      "beamAtLip": 3.54,
-      "bore": 4.44,
-      "marginPerSide": 0.45
+      "sensor": "CL-S015",
+      "referenceDistance": 15,
+      "verified": false,
+      "status": "待原廠光路圖與實物可及性驗證"
     },
     {
       "spec": "C",
-      "sensor": "IFC2411＋IFS 光纖探頭",
-      "na": 0.1,
-      "depth": 12.87,
-      "beamAtLip": 2.59,
-      "bore": 3.77,
-      "marginPerSide": 0.59
+      "sensor": "CL-S015",
+      "referenceDistance": 15,
+      "verified": false,
+      "status": "待原廠光路圖與實物可及性驗證"
     }
   ],
+  "scope": "離散幾何與狀態檢查；不包含光學可及性、精度或現場安全認證",
   "failures": [],
   "pass": true
 }

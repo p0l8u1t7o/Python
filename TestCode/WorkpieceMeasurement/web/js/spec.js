@@ -16,25 +16,25 @@ export const LIMIT = { vx: 1200, ax: 12000, vz: 400, az: 6000, vShuttle: 300, aS
 
 export const SPECS = {
   A: {
-    id: 'A', name: '規格 A（4.2 短杯）', recipe: 'SHELL-A-0420', ring: 'RING-A-40', ringBore: 4.0,
+    id: 'A', name: '規格 A（4.2 短杯）', recipe: 'CUP-A-0420', ring: 'RING-A-40', ringBore: 4.0,
     od: 4.805, bore: 4.28, len: 4.2, base: 0.26, hole: 2.6, rOuter: 0.38, rInner: 0.13,
-    gripR: 2.4025, padR: 2.4025, upper: 'IFD2410-6', wd: 30, probeR: 14,
+    gripR: 2.4025, padR: 2.4025, upper: 'CL-S015（光路待驗證）', wd: 15, probeR: 14,
     scan: { r0: 1.45, r1: 1.85, rev: 5, rpm: 120 },
     criteria: { od: [4.78, 4.83], length: [4.15, 4.25], idLip: [4.26, 4.31], wallLip: [0.235, 0.285], thk: [0.221, 0.297], tir: 0.03, flat: 0.008 },
     note: '底部 Ø2.60 依圖面判讀為貫穿孔，厚度量測區為環帶（待確認）',
   },
   B: {
-    id: 'B', name: '規格 B（9.91 中杯）', recipe: 'SHELL-B-0980-0991', ring: 'RING-B-40', ringBore: 4.0,
+    id: 'B', name: '規格 B（9.91 中杯）', recipe: 'CUP-B-0980-0991', ring: 'RING-B-40', ringBore: 4.0,
     od: 4.76, bore: 4.44, len: 9.86, base: 0.18, hole: 0, rOuter: 0.38, rInner: 0.2, flare: { len: 0.45, dr: 0.1 },
-    gripR: 2.43, padR: 2.38, upper: 'IFD2410-6', wd: 30, probeR: 14,
+    gripR: 2.43, padR: 2.38, upper: 'CL-S015（光路待驗證）', wd: 15, probeR: 14,
     scan: { r0: 0.05, r1: 1.8, rev: 5, rpm: 120 },
     criteria: { od: [4.72, 4.80], length: [9.81, 9.91], idLip: [4.42, 4.47], wallLip: [0.16, 0.20], flare: 37, thk: [0.16, 0.20], tir: 0.024, flat: 0.008 },
     note: '壁厚 0.18 mm，夾持力上限 2 N',
   },
   C: {
-    id: 'C', name: '規格 C（13.8 長管）', recipe: 'SHELL-C-1380', ring: 'RING-C-34', ringBore: 3.4,
+    id: 'C', name: '規格 C（13.8 長管）', recipe: 'CUP-C-1380', ring: 'RING-C-34', ringBore: 3.4,
     od: 4.85, bore: 3.77, len: 13.75, base: 0.88, hole: 2.34, rOuter: 0.25, rInner: 0, neck: { od: 4.25, len: 1.8 },
-    gripR: 2.125, padR: 2.425, upper: 'IFC2411＋IFS 光纖探頭', wd: 45, probeR: 5,
+    gripR: 2.125, padR: 2.425, upper: 'CL-S015（光路待驗證）', wd: 15, probeR: 14,
     scan: { r0: 1.30, r1: 1.62, rev: 5, rpm: 120 },
     criteria: { od: [4.80, 4.90], length: [13.70, 13.80], idLip: [3.72, 3.82], wallLip: [0.19, 0.29], thk: [0.80, 0.95], tir: 0.05, flat: 0.008 },
     note: '口部依圖面判讀為外徑 Ø4.3 縮頸、內孔 Ø3.72 直通；底孔 Ø2.34 視為貫穿（R-02 待確認）',
@@ -87,7 +87,7 @@ export function occupied(tray, state) {
 }
 
 // ---------------------------------------------------------------- 固定機構（顯示與干涉檢查共用）
-const box = (id, x0, x1, y0, y1, z0, z1, mat = 'frame') => ({ id, kind: 'box', min: [x0, y0, z0], max: [x1, y1, z1], mat });
+const box = (id, x0, x1, y0, y1, z0, z1, mat = 'frame', o = {}) => ({ id, kind: 'box', min: [x0, y0, z0], max: [x1, y1, z1], mat, ...o });
 const cyl = (id, p0, p1, r, mat = 'steel', o = {}) => ({ id, kind: 'cyl', p0, p1, r, mat, ...o });
 export const DIR_A = [0.5, 0, Math.sin(Math.PI / 3)];              // 通道 A：前右 60°
 export const DIR_R = [-Math.SQRT1_2, 0, Math.SQRT1_2];             // 紅光暗場：與相機軸夾 75°
@@ -124,7 +124,7 @@ export function fixedBodies(s) {
   B.push(box('rstage', 268, 308, Y0, Y0 + 25, -40, 40, 'axis', { cframe: 0 }));
   B.push(box('colC', 275, 301, Y0 + 25, Y0 + 360, -25, 25, 'frame', { cframe: 1 }), box('armUp', X2 - 22, 301, Y0 + 330, Y0 + 360, -20, 20, 'frame', { cframe: 1 }), box('armDn', X2 - 18, 280, Y0 + 28, Y0 + 44, -14, 14, 'frame', { cframe: 1 }));
   B.push(cyl('sensorDn', [X2, Y0 + 44, 0], [X2, YS - 15, 0], 13.5, 'sensor', { cframe: 1 }));
-  B.push(box('zadj', X2 - 20, X2 + 20, up + 70, Y0 + 330, -18, 18, 'axis', { cframe: 1 }), cyl('sensorUp', [X2, up, 0], [X2, up + 70, 0], s.probeR, 'sensor', { cframe: 1 }));
+  B.push(box('zadj', X2 - 20, X2 + 20, up + 35, Y0 + 330, -43, -20, 'axis', { cframe: 1 }), cyl('sensorUp', [X2, up, 0], [X2, up + 70, 0], s.probeR, 'sensor', { cframe: 1 }));
   return B;
 }
 

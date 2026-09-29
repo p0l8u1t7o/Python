@@ -156,3 +156,30 @@ body.capture #c{height:calc(100% - 132px)}body.capture #bottombar{display:none}
 #detailNote{position:absolute;top:140px;left:20px;z-index:3;white-space:pre-line;line-height:1.8;font-size:12px;color:#d5e5e2;background:#14212be8;border-left:2px solid #73cfc3;padding:9px 13px;border-radius:3px;pointer-events:none}
 @media(max-width:1100px){#detailNote{top:170px;font-size:11px}}
 .resultRow{align-items:center}
+#infoToggle{position:absolute;right:342px;top:135px;z-index:12;width:36px;height:36px;font-size:22px;line-height:1;padding:4px}
+body.info-hidden #side{display:none}body.info-hidden #c{width:100%}body.info-hidden #bottombar{right:16px}body.info-hidden #infoToggle{right:16px}
+.views{overflow-x:auto;scrollbar-width:thin}.views button{white-space:nowrap;flex-shrink:0}
+.views,#stations{color-scheme:dark;scrollbar-color:#486170 #172431}
+@media(max-width:1100px){#infoToggle{right:296px;top:162px}}
+@media(max-width:760px){
+ #topbar{height:128px;grid-template-rows:36px 36px 38px}.brand .title{font-size:13px}.brand .sub{display:none}
+ #stations{overflow-x:auto;white-space:nowrap}#stations .st{flex-shrink:0}.views button{font-size:11px;padding:5px 8px}
+ #c,body.info-hidden #c{top:134px;width:100%;height:calc(100% - 300px)}
+ #side{top:174px;bottom:160px;right:10px;width:min(310px,calc(100% - 20px));z-index:10;background:#10202bf5}
+ #infoToggle,body.info-hidden #infoToggle{top:138px;right:12px}
+ #bottombar{left:8px;right:8px;bottom:8px;padding:8px;min-height:128px}
+ #detailNote{top:138px;left:8px;font-size:10px;max-width:calc(100% - 62px);padding:5px 7px}
+ #pipFrame{width:150px;left:8px;bottom:160px}
+}
+@media(max-height:520px){
+ #topbar{height:92px;padding:3px 10px;grid-template-columns:1fr;grid-template-rows:22px 28px 32px}
+ .brand .title{font-size:13px}.brand .sub{display:none}#stations{grid-row:2;overflow:auto;white-space:nowrap}#stations .st{padding:3px 7px;flex-shrink:0;font-size:10px}
+ .views{grid-row:3;gap:4px}.views button{padding:3px 7px;font-size:10px}.views select{font-size:10px}
+ #c,body.info-hidden #c{top:98px;width:100%;height:calc(100% - 177px)}
+ #side{top:98px;right:8px;bottom:80px;width:290px;z-index:10;background:#10202bf5}
+ #infoToggle,body.info-hidden #infoToggle{top:102px;right:12px}
+ #bottombar,body.info-hidden #bottombar{left:8px;right:8px;bottom:5px;min-height:0;padding:5px 10px;gap:4px;grid-template-rows:30px 25px}
+ #bottombar .stepRow{display:none}#bottombar .clock{grid-row:2}
+ #detailNote{top:102px;left:8px;font-size:10px;max-width:calc(100% - 65px);padding:3px 7px}
+ #pipFrame{width:135px;bottom:83px}
+}

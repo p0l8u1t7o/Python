@@ -1,5 +1,5 @@
 """
-鋁質殼體 AOI＋共焦量測半自動設備 — 3D 設備模擬（Three.js / WebGL）
+杯體加工件 AOI＋共焦量測半自動設備 — 3D 設備模擬（Three.js / WebGL）
 啟動本地 HTTP 伺服器並開啟瀏覽器。
 
     python serve.py            # 預設 http://localhost:8774

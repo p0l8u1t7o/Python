@@ -7,13 +7,13 @@ const trap = u => { const k = 0.12; return u < k ? u * u / (2 * k * (1 - k)) : u
 const EASE = { smooth, trap, linear: u => u };
 // smoothstep 的峰值速度 1.5 d/T、峰值加速度 6 d/T²，由限速反推時間
 const dur = (d, v, a) => Math.max(0.06, 1.5 * Math.abs(d) / v, Math.sqrt(6 * Math.abs(d) / a));
-const AXES = ['tx', 'zt', 'a', 'jaw', 'th1', 'th2', 'r2', 'inZ', 'outZ'];
+const AXES = ['tx', 'zt', 'a', 'jaw', 'th1', 'th2', 'r2', 'inZ', 'outZ', 'headLift'];
 const TAU = Math.PI * 2;
 
 export function createSequence({ spec = 'B', scenario = 'OK', apply } = {}) {
   const s = SPECS[spec], sc = SCENARIOS[scenario], steps = [];
   const pin = pocket('IN', DEMO.k), outTray = sc.out === 'IN' ? null : sc.out, pout = outTray ? pocket(outTray, DEMO.filled[outTray]) : pin;
-  const ax = { tx: pin.x, zt: YC, a: RETRACT, jaw: 1, th1: 0, th2: 0, r2: s.scan.r0, inZ: shuttleFor('IN', DEMO.k), outZ: shuttleFor('OK', DEMO.filled.OK) };
+  const ax = { tx: pin.x, zt: YC, a: RETRACT, jaw: 1, th1: 0, th2: 0, r2: s.scan.r0, inZ: shuttleFor('IN', DEMO.k), outZ: shuttleFor('OK', DEMO.filled.OK), headLift: 30 };
   const dis = { loc: 'in', vac: 0, optic: null, pip: 'idle', shotB: 0, zone: 'free', scanNo: 0 };
   let t = 0, station = 0;
   function step(action, sub, o = {}) {
@@ -64,9 +64,11 @@ export function createSequence({ spec = 'B', scenario = 'OK', apply } = {}) {
   // ------------------------------------------------ S3 ST2
   station = 3;
   const scan = (n, id) => {
+    step('上感測頭下降到量測位置', '杯體已落座、吸嘴退開；15 mm 參考距離，實際光路待樣品驗證', { dur: .6, to: { headLift: 0 }, set: { optic: null, pip: 'CF' } });
     step('落座穩定', '掃描期間移載模組不動作', { dur: 0.3, set: { pip: 'CF', optic: null, scanNo: n } });
-    step(`螺旋掃描 ${s.scan.rev} 圈（上下共焦同步）`, `R ${s.scan.r0.toFixed(2)} → ${s.scan.r1.toFixed(2)} mm・${s.scan.rpm} rpm・編碼器位置觸發 4 kHz`, { dur: s.scan.rev * 60 / s.scan.rpm, to: { th2: TAU * s.scan.rev * (n + 1), r2: s.scan.r1 }, ease: 'trap', set: { optic: 'CF', pip: 'CF', scanNo: n }, prog: 'spiral' + n, done: id, exposure: 'CF' });
+    step(`螺旋掃描 ${s.scan.rev} 圈（上下共焦同步）`, `R ${s.scan.r0.toFixed(2)} → ${s.scan.r1.toFixed(2)} mm・${s.scan.rpm} rpm・上下同步與取樣率待 POC；動畫示意`, { dur: s.scan.rev * 60 / s.scan.rpm, to: { th2: TAU * s.scan.rev * (n + 1), r2: s.scan.r1 }, ease: 'trap', set: { optic: 'CF', pip: 'CF', scanNo: n }, prog: 'spiral' + n, done: id, exposure: 'CF' });
     step('R 軸回起始半徑', '', { dur: 0.15, to: { r2: s.scan.r0 }, set: { optic: null } });
+    step('上感測頭上升避讓', '上頭退回後才允許重新取件；避讓軸為新增規劃', { dur: .6, to: { headLift: 30 } });
   };
   scan(0, 'spiral0');
   if (sc.id === 'ERR') {

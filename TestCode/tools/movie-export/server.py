@@ -1,18 +1,23 @@
 """Loopback-only deterministic JPEG receiver; MP4 and samples stay in TEMP."""
-import argparse, functools, hashlib, http.server, json, secrets, subprocess, threading
+import argparse, functools, hashlib, http.server, json, re, secrets, socket, subprocess, threading
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / 'TEMP' / 'videos'
 SITE = ROOT / 'TEMP' / 'movie-site'
 FFMPEG = ROOT / 'MilitaryGradePC' / 'tools' / 'bin' / 'ffmpeg.exe'
 PORT = 8782
+ENCODER = 'h264_nvenc'
 JOBS = {}
 LOCK = threading.Lock()
-PROJECTS = ['RobotArmPressSSD', 'shutter assembly', 'PCB-CopperAssembly', 'MilitaryGradePC', 'AutomaticAcid-BaseTitration']
+PROJECTS = ['RobotArmPressSSD', 'shutter assembly', 'PCB-CopperAssembly', 'MilitaryGradePC', 'AutomaticAcid-BaseTitration', 'WorkpieceMeasurement']
 
 class Handler(http.server.SimpleHTTPRequestHandler):
+    protocol_version='HTTP/1.1'
+    def setup(self):
+        super().setup()
+        self.connection.setsockopt(socket.IPPROTO_TCP,socket.TCP_NODELAY,1)
     def log_message(self, *args): pass
     def answer(self, status, obj):
         body = json.dumps(obj, ensure_ascii=False).encode()
@@ -29,6 +34,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         body=self.rfile.read(length)
         with LOCK:
             try:
+                if self.path=='/render/audit-start':
+                    spec=json.loads(body);name=spec['project']
+                    if name not in PROJECTS:raise ValueError('Invalid project')
+                    audit=OUT/'audit'/name;audit.mkdir(parents=True,exist_ok=True)
+                    (audit/'spec.json').write_text(json.dumps(spec,ensure_ascii=False,indent=2),encoding='utf-8')
+                    return self.answer(200,{'ok':True})
+                if self.path=='/render/audit-frame':
+                    name=unquote(self.headers.get('X-Project',''));sample_name=self.headers.get('X-Sample-Name','')
+                    if name not in PROJECTS or not re.fullmatch(r'(frame-\d{6}|repeat-\d{2})',sample_name) or not body.startswith(b'\xff\xd8'):raise ValueError('Invalid audit sample')
+                    audit=OUT/'audit'/name;audit.mkdir(parents=True,exist_ok=True)
+                    (audit/(sample_name+'.jpg')).write_bytes(body)
+                    (audit/(sample_name+'.json')).write_text(json.dumps(json.loads(self.headers['X-Telemetry']),indent=2),encoding='utf-8')
+                    return self.answer(200,{'ok':True})
                 if self.path=='/render/start':
                     spec=json.loads(body);name=spec['project']
                     if name not in PROJECTS or (spec['width'],spec['height'],spec['fps'])!=(1920,1080,30) or not 1<=spec['frames']<=150000:raise ValueError('Invalid specification')
@@ -40,13 +58,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     file=OUT/(name+'_1080p30.mp4')
                     if file.exists():raise ValueError('Output already exists: '+str(file))
                     log=file.with_suffix('.encode.log').open('wb')
-                    cmd=[str(FFMPEG),'-hide_banner','-n','-f','image2pipe','-framerate','30','-vcodec','mjpeg','-i','pipe:0','-an','-c:v','h264_nvenc','-preset','p5','-tune','hq','-rc','vbr','-cq','19','-b:v','0','-pix_fmt','yuv420p','-movflags','+faststart',str(file)]
+                    encoding=['-c:v','h264_nvenc','-preset','p6','-tune','hq','-rc','vbr','-cq','18','-b:v','0'] if ENCODER=='h264_nvenc' else ['-c:v','libx264','-preset','medium','-crf','18']
+                    cmd=[str(FFMPEG),'-hide_banner','-n','-f','image2pipe','-framerate','30','-vcodec','mjpeg','-i','pipe:0','-an',*encoding,'-pix_fmt','yuv420p','-movflags','+faststart',str(file)]
                     proc=subprocess.Popen(cmd,stdin=subprocess.PIPE,stdout=log,stderr=log,creationflags=subprocess.CREATE_NO_WINDOW)
                     samples={0,spec['frames']-1}
                     for s in spec['shots']:
                         if s['kind']!='process' or s.get('firstInPhase'):samples.add(min(spec['frames']-1,s['startFrame']+int(s['frameCount']*.6)))
+                    samples.update(round(i*(spec['frames']-1)/24) for i in range(25))
                     JOBS[name]={'spec':spec,'token':secrets.token_urlsafe(24),'process':proc,'file':file,'log':log,'frames':0,'complete':False,'samples':samples}
-                    file.with_suffix('.shots.json').write_text(json.dumps(spec,ensure_ascii=False,indent=2),encoding='utf-8')
+                    file.with_suffix('.shots.json').write_text(json.dumps(dict(spec,encoder=ENCODER),ensure_ascii=False,indent=2),encoding='utf-8')
                     print('START',name,spec['frames'],flush=True)
                     return self.answer(200,{'token':JOBS[name]['token'],'nextFrame':0})
                 j=next((j for j in JOBS.values() if secrets.compare_digest(self.headers.get('X-Render-Token',''),j['token'])),None)
@@ -61,6 +81,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     if i%900==0:print('FRAME',j['spec']['project'],i,j['spec']['frames'],flush=True)
                     return self.answer(200,{'frame':i})
                 if self.path=='/render/finish':
+                    if j['complete']:return self.answer(200,{'file':str(j['file'])})
                     if j['frames']!=j['spec']['frames']:raise ValueError('Incomplete film')
                     j['process'].stdin.close();code=j['process'].wait(timeout=60);j['log'].close()
                     if code:raise ValueError('Encoding failed')
@@ -74,5 +95,8 @@ if __name__=='__main__':
     if args.output_subdir:
         if Path(args.output_subdir).name!=args.output_subdir or args.output_subdir in ('.','..'):raise ValueError('Invalid output subdirectory')
         OUT=OUT/args.output_subdir
+    probe=subprocess.run([str(FFMPEG),'-v','error','-f','lavfi','-i','color=size=1920x1080:rate=30','-frames:v','3','-c:v','h264_nvenc','-f','null','-'],capture_output=True,creationflags=subprocess.CREATE_NO_WINDOW,timeout=20)
+    if probe.returncode:ENCODER='libx264'
+    print('Encoder:',ENCODER,flush=True)
     print(f'Movie server http://127.0.0.1:{PORT}',flush=True)
     http.server.ThreadingHTTPServer(('127.0.0.1',PORT),functools.partial(Handler,directory=str(SITE))).serve_forever()

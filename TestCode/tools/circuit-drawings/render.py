@@ -196,7 +196,8 @@ class Drawing:
         if self.d.get('added'):
             index+=['','## 相對現有 3D 新增／補齊的規劃','']+['- '+x for x in self.d['added']]
         index+=['','## 專案來源','']+[f'- [{s}](../{s})' for s in self.d['sources']]
-        index+=['','## 核對來源（2026-09-27）','']+[f'- [{title}]({url})' for title,url in self.d['references']]
+        reference_date=self.d['date'] if self.d['code']=='WPM' else '2026-09-27'
+        index+=['',f'## 核對來源（{reference_date}）','']+[f'- [{title}]({url})' for title,url in self.d['references']]
         if self.d['references']:index+=['','原廠來源用於核對控制器安全介面型式；本圖沒有擅填原廠端子腳位或宣稱安全等級。']
         index+=['','## 編修與重建','',f'在 TestCode 根目錄執行 `python tools/circuit-drawings/render.py "{self.d["project"]}"`。圖紙、清單與 PDF 使用同一份專案內 JSON 資料。','']
         (self.docs/'circuit-diagrams.md').write_text('\n'.join(index),encoding='utf-8')
@@ -331,7 +332,11 @@ def main():
     files=[ROOT/p/'docs/electrical/circuit-data.json' for p in args.projects] if args.projects else sorted(ROOT.glob('*/docs/electrical/circuit-data.json'))
     for f in files:
         d=json.loads(f.read_text(encoding='utf-8'));g=Drawing(d)
-        if d['code']=='DEP':workstation_layout(g);workstation(g)
+        if d['code']=='WPM':
+            import importlib.util
+            spec=importlib.util.spec_from_file_location('wpm_circuit',ROOT/'WorkpieceMeasurement/tools/circuit_sheets.py')
+            module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module);module.build(g)
+        elif d['code']=='DEP':workstation_layout(g);workstation(g)
         else:panel_layout(g);cad_power(g);interfaces(g);safety(g);typical_io(g);point_wiring(g);drive_wiring(g);schedules(g);register(g)
         g.save();print(d['project'],len(g.pages),'pages;',len(g.errors),'layout issues')
     qa=ROOT/'TEMP/circuit-review';qa.mkdir(parents=True,exist_ok=True)

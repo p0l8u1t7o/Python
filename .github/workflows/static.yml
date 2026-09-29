@@ -24,7 +24,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Collect the five demos and create a homepage
+      - name: Collect the demos and create a homepage
         shell: bash
         run: |
           python3 - <<'PY'
@@ -39,13 +39,14 @@ jobs:
               "PCB-CopperAssembly": "PCB 銅箔基板散熱板組裝",
               "RobotArmPressSSD": "SSD USB 接頭壓合站",
               "shutter assembly": "快門葉片與上蓋組裝站",
+              "WorkpieceMeasurement": "杯體加工件 AOI 與共焦量測",
           }
           sources = {}
           for name in projects:
               candidates = [Path("TestCode") / name / "web", Path(name) / "web", Path(name)]
               source = next((p for p in candidates if (p / "index.html").is_file()), None)
               if source is None:
-                  raise SystemExit(f"Missing {name}/web/index.html; upload all five web folders first.")
+                  raise SystemExit(f"Missing {name}/web/index.html; upload all required web folders first.")
               sources[name] = source
 
           output = Path(os.environ.get("PAGES_OUTPUT", "_site"))

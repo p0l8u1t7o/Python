@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>鋁質殼體 AOI＋共焦量測半自動設備 — 3D 設備模擬</title>
+<title>杯體加工件 AOI＋共焦量測半自動設備 — 3D 設備模擬</title>
 <link rel="stylesheet" href="css/style.css">
 <script type="importmap">
 { "imports": {
@@ -15,11 +15,12 @@
 </head>
 <body>
 <div id="app">
+  <button id="infoToggle" aria-label="顯示或隱藏資訊" aria-controls="side" aria-expanded="true">ⓘ</button>
   <canvas id="c"></canvas>
 
   <header id="topbar">
     <div class="brand">
-      <div class="title">鋁質殼體 AOI＋共焦量測半自動設備</div>
+      <div class="title">杯體加工件 AOI＋共焦量測半自動設備</div>
       <div class="sub" id="subtitle">人工擺盤 · 機內自動取放與量測｜ST1 懸掛夾持旋轉＋三通道光學 · ST2 薄環座＋上下對置共焦差分測厚</div>
     </div>
     <nav id="stations"></nav>
@@ -32,12 +33,18 @@
       <button data-view="trays">托盤</button>
       <button data-view="part">工件跟拍</button>
       <button data-view="top">俯視</button>
+      <button data-view="electrical">電盤剖視</button>
+      <button data-view="xray">電盤透視</button>
+      <button data-view="wiring">整線配置</button>
+      <button data-view="carriers">拖鏈特寫</button>
+      <button data-view="fibers">光纖整線</button>
       <select id="specSel" aria-label="工件規格"></select>
       <select id="result" aria-label="模擬情境"></select>
     </div>
   </header>
 
   <aside id="side">
+    <section class="card small"><h3>共焦與治具配置</h3><p>CL-3000 ×1、CL-S015 ×2、CL-S015N ×2、CL-CV5 ×2；OP-88864 用於感測頭對置調整，工件由獨立夾頭與環座定位。</p><p class="scopeNote">參考距離 15 mm；狹口內底光路須以樣品 POC 驗證。光束、量測結果與零件外形為規劃示意。</p></section>
     <section class="card identity"><span class="eyebrow">ENGINEERING SIMULATION</span><div id="phase">HOLD</div><p id="specName"></p><small id="specNote"></small></section>
     <section class="card">
       <h3>目前動作</h3>

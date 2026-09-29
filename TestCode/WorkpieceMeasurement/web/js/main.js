@@ -6,8 +6,11 @@ import { SPECS, SCENARIOS, TRAYS, DEMO, X1, X2, Y0, YA, YM, YS, YT, DIR_A, occup
 import { createSequence, smooth, STATIONS } from './sequence.js';
 import { createMachine } from './machine.js';
 import { createCameraSim, TITLES } from './camera-sim.js';
+import { surfaceTexture, overviewFrame } from './render-finishes.js';
 
 const qp = new URLSearchParams(location.search);
+const compactViewport=matchMedia('(max-width:900px), (max-height:520px)').matches;
+document.body.classList.toggle('info-hidden',compactViewport);
 const specId = SPECS[qp.get('spec')] ? qp.get('spec') : 'B', scenarioId = SCENARIOS[qp.get('result')] ? qp.get('result') : 'OK';
 const s = SPECS[specId], sc = SCENARIOS[scenarioId], m = measurement(s, scenarioId);
 
@@ -16,8 +19,9 @@ const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', logarithmicDepthBuffer: true, preserveDrawingBuffer: qp.has('shot') });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = qp.get('shadow') !== '0'; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05; renderer.outputColorSpace = THREE.SRGBColorSpace;
-const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0d1117);
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = .94; renderer.outputColorSpace = THREE.SRGBColorSpace;
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x202a34);
+scene.fog = new THREE.Fog(0x202a34, 4500, 16000);
 const pmrem = new THREE.PMREMGenerator(renderer), room = new RoomEnvironment(renderer);
 scene.environment = pmrem.fromScene(room, 0.04).texture; room.dispose(); pmrem.dispose();
 const camera = new THREE.PerspectiveCamera(38, 1, 2, 20000), controls = new OrbitControls(camera, canvas);
@@ -27,8 +31,12 @@ const sun = new THREE.DirectionalLight(0xffffff, 1.4); sun.position.set(-900, 26
 sun.castShadow = renderer.shadowMap.enabled; sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -700, right: 700, top: 700, bottom: -700, near: 300, far: 5000 }); sun.shadow.bias = -0.0001; sun.shadow.normalBias = 0.4;
 scene.add(sun, sun.target);
 const fill = new THREE.DirectionalLight(0x9fb8ff, 0.5); fill.position.set(1200, 1500, -1500); scene.add(fill);
-const floor = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000), new THREE.MeshStandardMaterial({ color: 0x161c24, roughness: 0.9, metalness: 0 })); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+sun.shadow.mapSize.set(innerWidth > 900 ? 4096 : 2048, innerWidth > 900 ? 4096 : 2048);
+const rim = new THREE.DirectionalLight(0xffead2, .65); rim.position.set(700, 2100, -500); scene.add(rim);
+const floorFinish = surfaceTexture('powder').clone(); floorFinish.repeat.set(240, 240); floorFinish.needsUpdate = true;
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(100000, 100000), new THREE.MeshStandardMaterial({ color: 0x29323a, roughness: .86, roughnessMap: floorFinish, metalness: 0 })); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
 const grid = new THREE.GridHelper(6000, 60, 0x2a3644, 0x1c2530); grid.position.y = 0.5; scene.add(grid);
+grid.visible = qp.has('grid');
 
 const machine = createMachine(scene, s);
 const pipCanvas = document.getElementById('pipImage'), sim = createCameraSim(pipCanvas, s, m, scenarioId);
@@ -39,7 +47,7 @@ for (const v of Object.values(SCENARIOS)) ui.result.add(new Option('情境：' +
 ui.specSel.value = specId; ui.result.value = scenarioId;
 const reload = (k, v) => { const q = new URLSearchParams(location.search); q.set(k, v); ['step', 'st', 'time'].forEach(x => q.delete(x)); location.search = q.toString(); };
 ui.specSel.onchange = () => reload('spec', ui.specSel.value); ui.result.onchange = () => reload('result', ui.result.value);
-ui.specName.textContent = `${s.name} · 配方 ${s.recipe}`; ui.specNote.textContent = `${s.note}。工件與機構為實際尺寸；量測值、缺陷與節拍為模擬示意，待樣品與 POC 校正。`;
+ui.specName.textContent = `${s.name} · 配方 ${s.recipe}`; ui.specNote.textContent = `${s.note}。工件採圖面尺寸、設備為規劃包絡；量測值、缺陷與節拍為模擬示意，待樣品與 POC 校正。`;
 
 // 3D 標籤
 const V = (x, y, z) => new THREE.Vector3(x, y, z), labels = [];
@@ -48,7 +56,7 @@ addLabel('<b>A</b> 4K 線掃＋1.5× 遠心', V(X1 + DIR_A[0] * 150, YA + 30, DI
 addLabel('<b>B</b> 0.5× 雙遠心鏡頭', V(X1 - 150, YA + 28, 0)); addLabel('<b>B</b> 遠心平行背光', V(X1 + 80, YA + 24, 0));
 addLabel('<b>C</b> 口部端面（經中空軸）', V(X1, YM + 250, 0)); addLabel('DD 中空軸馬達＋三爪 PEEK 夾頭', V(X1, YM + 78, 40));
 addLabel('RGB 三角度線光源', V(X1 - 20, YA + 22, 48)); addLabel('移載：X 軸＋Z 軸＋貼靠氣缸＋側向真空吸嘴', V(-60, Y0 + 210, -160));
-addLabel(`上共焦 ${s.upper}`, V(X2, YS + s.wd + 90, 0)); addLabel('下共焦 IFD2410-1（伸入空心軸）', V(X2, Y0 + 50, 80));
+addLabel(`上共焦 ${s.upper}`, V(X2, YS + s.wd + 90, 0)); addLabel('下共焦 CL-S015（參考距離 15 mm）', V(X2, Y0 + 50, 80));
 addLabel(`空心軸 θ 平台＋${s.ring} 薄環座`, V(X2 - 40, YS + 8, 40)); addLabel('C 型架（R 軸微動台）', V(300, Y0 + 370, 0));
 addLabel('入料托盤', V(TRAYS.IN.cx, YT + 25, 40)); addLabel('OK', V(TRAYS.OK.cx, YT + 25, 40)); addLabel('NG1', V(TRAYS.NG1.cx, YT + 25, 40)); addLabel('NG2', V(TRAYS.NG2.cx, YT + 25, 40));
 addLabel('花崗岩平台 620 × 430 × 42', V(-200, Y0 + 6, 205));
@@ -72,21 +80,31 @@ const checklist = [
 
 // 視角
 const views = {
-  iso: () => [[-640, 1560, 1020], [10, 1000, 0]], top: () => [[0, 2050, 1], [0, 900, 0]],
+  iso: () => overviewFrame(machine.root, camera), top: () => [[0, 2050, 1], [0, 900, 0]],
   st1: () => [[X1 - 105, YA + 60, -150], [X1 + 5, YA - 2, 5]], chuck: () => [[X1 - 38, YM + 6, -40], [X1, YM - s.len / 2, 0]],
   st2: () => [[X2 - 110, YS + 170, 300], [X2 + 10, YS + 25, 0]], seat: () => [[X2 - 40, YS + 26, -46], [X2, YS + s.len / 2, 0]],
   trays: () => [[-240, YT + 190, 260], [-160, YT, 0]],
+  electrical: () => [[0, 470, 1230], [0, 430, -135]],
+  xray: () => [[860, 910, 1330], [0, 470, -70]],
+  wiring: () => [[-1000, 1460, -1280], [0, 1010, 0]],
+  carriers: () => [[-420, 1240, -710], [-40, 1030, -175]],
+  fibers: () => [[130, 1270, 530], [270, 1135, 65]],
   part: () => { const p = machine.partWorld(); return [p.clone().add(V(-26, 16, -34)).toArray(), p.toArray()]; },
 };
 const NEAR = { chuck: 0.5, seat: 0.5, part: 0.5 };
 let selectedView = 'iso', camAnim = null; const lastPart = V(0, 0, 0);
 function setView(name, instant = false) {
   if (!views[name]) return; selectedView = name; camera.near = NEAR[name] || 4; camera.updateProjectionMatrix();
+  machine.details.setMode(name === 'electrical' ? 'cutaway' : name === 'xray' ? 'xray' : 'shell');
   const [p, t] = views[name]().map(a => V(...a));
   if (instant) { camAnim = null; camera.position.copy(p); controls.target.copy(t); controls.update(); } else camAnim = { p0: camera.position.clone(), t0: controls.target.clone(), p, t, u: 0 };
   document.querySelectorAll('.views button').forEach(b => b.classList.toggle('selected', b.dataset.view === name));
-  ui.detailNote.hidden = !['chuck', 'seat', 'part'].includes(name);
+  ui.detailNote.hidden = !['chuck', 'seat', 'part', 'electrical', 'xray', 'wiring', 'carriers', 'fibers'].includes(name);
   ui.detailNote.textContent = { chuck: `夾頭特寫 · 夾持帶只在杯口 1.5 mm\n吸嘴由後方爪間空隙伸入，貼靠中心距底面 1.8 mm`, seat: `環座特寫 · ${s.ring} 內孔 Ø${s.ringBore}\n下感測器由空心軸內向上量外底面，上感測器穿過杯口量內底面`, part: `工件跟拍 · Ø${s.od} × ${s.len} mm，實際尺寸` }[name] || '';
+  if (['electrical', 'xray'].includes(name)) ui.detailNote.textContent = '電控配置規劃 · CL-3000＋兩組 CL-S015N 光學模組\n8 軸驅動／24 V 控制／獨立視覺網路；外形為安裝包絡，非原廠 CAD';
+  if (name === 'wiring') ui.detailNote.textContent = '整線配置 · 固定線槽／移動服務環／桌板穿線護口\n動力與量測訊號分路；光纖彎曲半徑及拖鏈適用性待原廠核定';
+  if (name === 'carriers') ui.detailNote.textContent = 'X 拖鏈 650 mm／R35 · Z 拖鏈 180 mm／R22\n固定長度折返，兩端固定於軸座；氣管另行管理';
+  if (name === 'fibers') ui.detailNote.textContent = '共焦光纖 · 上頭升降環 R27.5／R 軸補償環 R40\n曲率為配置預留，原廠動態彎曲與壽命尚待確認';
 }
 document.querySelectorAll('.views button').forEach(b => b.onclick = () => setView(b.dataset.view));
 const setPlaying = v => { playing = v; ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放'; };
@@ -138,7 +156,7 @@ function exportReport() {
     physicalMeasurement: false, mesConnected: false,
   };
   const url = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' })), a = document.createElement('a');
-  a.href = url; a.download = `SHELL-${specId}-${scenarioId}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  a.href = url; a.download = `CUP-${specId}-${scenarioId}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 ui.exportBtn.onclick = exportReport;
 ui.showBeams.onchange = () => seekTo(T);
@@ -170,7 +188,10 @@ function drawHud() {
   for (const l of labels) { const p = l.pos.clone().project(camera), vis = ui.showLabels.checked && p.z < 1 && Math.abs(p.x) < 0.98 && Math.abs(p.y) < 0.95; l.el.style.display = vis ? 'block' : 'none'; if (vis) { l.el.style.left = canvas.offsetLeft + (p.x * 0.5 + 0.5) * canvas.clientWidth + 'px'; l.el.style.top = canvas.offsetTop + (-p.y * 0.5 + 0.5) * canvas.clientHeight + 'px'; } }
   document.getElementById('diagnostics').textContent = JSON.stringify({ time: T, total, step: current.index, station: S.station, action: S.action, loc: S.loc, optic: S.optic, pip: S.pip, playing, spec: specId, scenario: scenarioId });
 }
-function resize() { const w = canvas.clientWidth, h = canvas.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+function resize() { const w = canvas.clientWidth, h = canvas.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); if (selectedView === 'iso') setView('iso', true); }
+const infoToggle=document.getElementById('infoToggle');
+infoToggle.setAttribute('aria-expanded',String(!document.body.classList.contains('info-hidden')));
+infoToggle.onclick=()=>{document.body.classList.toggle('info-hidden');infoToggle.setAttribute('aria-expanded',String(!document.body.classList.contains('info-hidden')));resize();};
 window.addEventListener('resize', resize);
 function render() { drawHud(); renderer.render(scene, camera); }
 const clock = new THREE.Clock();
@@ -192,5 +213,6 @@ if (qp.has('view')) { lastPart.copy(machine.partWorld()); setView(qp.get('view')
 if (qp.has('labels')) ui.showLabels.checked = true;
 if (qp.get('hood') === '0') ui.showGuards.checked = false;
 if (qp.get('pip') === '0') ui.showPip.checked = false;
+if (compactViewport && qp.get('pip') !== '1') ui.showPip.checked = false;
 if (qp.has('cam')) { const a = qp.get('cam').split(',').map(Number); if (a.length === 6 && a.every(Number.isFinite)) { camera.position.set(...a.slice(0, 3)); controls.target.set(...a.slice(3)); controls.update(); } }
 document.getElementById('loading').classList.add('hide'); render(); frame();

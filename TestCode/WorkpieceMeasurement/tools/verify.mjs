@@ -49,7 +49,15 @@ for (const spec of Object.keys(SPECS)) for (const scenario of Object.keys(SCENAR
     // 工件落座或夾持時，接觸的那個機構不算干涉
     const touching = st.loc === 'noz' && st.jaw < 0.99 ? ['jaw0', 'jaw1', 'jaw2', 'chuck'] : [];
     const seatTouch = st.loc === 'noz' && Math.abs(st.zt - YS) < 0.5 && Math.abs(st.tx - 215) < 0.5 ? ['ring'] : [];
-    const g = clearance(moving, statics.filter(b => !seatTouch.includes(b.id) && !touching.includes(b.id)), 2.5);
+    const dynamicStatics = statics.map(b => {
+      if (!b.cframe) return b;
+      const dy = b.id === 'sensorUp' ? st.headLift : 0;
+      return b.kind === 'box' ? {...b,min:[b.min[0]+st.r2,b.min[1]+dy,b.min[2]],max:[b.max[0]+st.r2,b.max[1]+dy,b.max[2]]}
+        : {...b,p0:[b.p0[0]+st.r2,b.p0[1]+dy,b.p0[2]],p1:[b.p1[0]+st.r2,b.p1[1]+dy,b.p1[2]]};
+    });
+    if (st.loc === 'noz' && Math.abs(st.tx-215)<20 && st.headLift<29.9) fail(tag, '上頭未退回，移載已進入 ST2');
+    if (st.optic === 'CF' && st.headLift > .001) fail(tag, '上頭未到量測位置');
+    const g = clearance(moving, dynamicStatics.filter(b => !seatTouch.includes(b.id) && !touching.includes(b.id)), 2.5);
     if (g.d < gap.d) gap = { ...g, t: +T.toFixed(2) };
     const gj = clearance(arm, jaws, 1); if (gj.d < gapJaw.d) gapJaw = { ...gj, t: +T.toFixed(2) };
     // 托盤：吸附中的工件不與自己比；放在穴內時穴位本身不算
@@ -76,13 +84,9 @@ for (const spec of Object.keys(SPECS)) for (const scenario of Object.keys(SCENAR
   console.log(`${tag.padEnd(7)} ${String(c.steps).padStart(2)} 步 ${c.total.toFixed(2)} s ${c.uph} UPH｜間隙 固定 ${gap.d.toFixed(2)}（${gap.moving}↔${gap.fixed}） 夾爪 ${gapJaw.d.toFixed(2)} 托盤 ${gapTray.d.toFixed(2)}（${gapTray.moving}↔${gapTray.fixed}）`);
 }
 
-// 6. 光錐可及性：杯口處光束直徑須小於通過處內徑
-report.cone = Object.values(SPECS).map(s => {
-  const na = s.id === 'C' ? 0.10 : 0.18, h = s.len - s.base, d = 2 * h * Math.tan(Math.asin(na)), margin = (s.bore - d) / 2;
-  if (margin <= 0) fail(s.id, `上感測器光錐 Ø${d.toFixed(2)} 超過內徑 Ø${s.bore}`);
-  return { spec: s.id, sensor: s.upper, na, depth: +h.toFixed(2), beamAtLip: +d.toFixed(2), bore: s.bore, marginPerSide: +margin.toFixed(2) };
-});
-for (const c of report.cone) console.log(`光錐 ${c.spec}: NA ${c.na}、杯口光束 Ø${c.beamAtLip}、內徑 Ø${c.bore}、單邊餘裕 ${c.marginPerSide} mm`);
+// KEYENCE quotation/spec sheet does not give the aperture cone; do not reuse the old sensor's NA.
+report.cone = Object.values(SPECS).map(s => ({spec:s.id,sensor:'CL-S015',referenceDistance:15,verified:false,status:'待原廠光路圖與實物可及性驗證'}));
+report.scope='離散幾何與狀態檢查；不包含光學可及性、精度或現場安全認證';
 
 report.failures = failures; report.pass = failures.length === 0;
 const out = join(dirname(fileURLToPath(import.meta.url)), '..', 'review'); mkdirSync(out, { recursive: true });
