@@ -109,6 +109,8 @@ class Group:
     estimate: dict = None
     grade: str = ""
     measurements: dict = field(default_factory=dict)
+    source: str = "auto"               # auto = 模組自動分群；region = 檢測區域「視為一個陣列」
+    label: str = ""                    # 顯示名稱 (region 時為區域名稱)
 
 
 @dataclass
@@ -147,6 +149,8 @@ class InspectionModule:
     translations = None
     # 報告與檢閱畫面的物件排行表 (選用)：dict(category=物件類別, sort=排序量測值, columns=(量測值, ...), limit=筆數)
     finding_table = None
+    # 是否支援檢測區域的「視為一個陣列」(ctx.region_group)；不支援的模組忽略該設定
+    supports_region_arrays = False
 
     def run(self, ctx, params):
         raise NotImplementedError
@@ -191,7 +195,7 @@ class InspectionModule:
                     quality_rules=[r.to_dict() for r in cls.quality_rules],
                     overlay_styles={k: dict(v, color="#{2:02x}{1:02x}{0:02x}".format(*v["color"]))
                                     for k, v in cls.overlay_styles.items() if "color" in v},
-                    summary_vector=cls.summary_vector,
+                    summary_vector=cls.summary_vector, supports_region_arrays=bool(cls.supports_region_arrays),
                     finding_table=dict(cls.finding_table, columns=list(cls.finding_table["columns"]))
                     if cls.finding_table else None)
 

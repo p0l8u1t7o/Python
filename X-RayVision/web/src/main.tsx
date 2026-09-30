@@ -5,6 +5,7 @@ import { AppProvider } from "./app/context";
 import { Audit, Diagnostics, WatchFolders } from "./pages/Admin";
 import { AuthGate } from "./pages/Auth";
 import { Imports } from "./pages/Imports";
+import { ManualInspection } from "./pages/ManualInspection";
 import { Overview } from "./pages/Overview";
 import { RecipeEditor } from "./pages/RecipeEditor";
 import { Recipes } from "./pages/Recipes";
@@ -30,6 +31,7 @@ createRoot(document.getElementById("root")!).render(
           <Route path="/runs/:id/annotate" element={<Annotate />} />
           <Route path="/imports" element={<Imports />} />
           <Route path="/recipes" element={<Recipes />} />
+          <Route path="/manual" element={<ManualInspection />} />
           <Route path="/recipes/new/:moduleId" element={<RecipeEditor />} />
           <Route path="/recipes/:pk" element={<RecipeEditor />} />
           <Route path="/watch" element={<WatchFolders />} />

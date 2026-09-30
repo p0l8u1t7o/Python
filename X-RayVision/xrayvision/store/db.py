@@ -251,6 +251,10 @@ MIGRATIONS = [
     """
     CREATE INDEX runs_image_latest ON runs (image_id, id);
     """,
+    # 7：本影像自訂檢測區域 (PLAN-004 第 6 節)；NULL 表示使用配方的檢測區域
+    """
+    ALTER TABLE jobs ADD COLUMN regions_json TEXT;
+    """,
 ]
 
 

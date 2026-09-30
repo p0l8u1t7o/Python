@@ -14,6 +14,7 @@ export function ReanalyzeDialog({ runIds, onClose, onDone }: { runIds: number[];
   const [recipes] = useLoad(() => get<RecipeSummary[]>("/api/recipes"), []);
   const [mode, setMode] = useState<"latest" | "pick">("latest");
   const [pk, setPk] = useState<number | null>(null);
+  const [keepRegions, setKeepRegions] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [result, setResult] = useState<Result | null>(null);
@@ -22,7 +23,7 @@ export function ReanalyzeDialog({ runIds, onClose, onDone }: { runIds: number[];
   const submit = async () => {
     setBusy(true);
     try {
-      setResult(await send<Result>("POST", "/api/runs/reanalyze", { run_ids: runIds, recipe_pk: mode === "pick" ? pk : null }));
+      setResult(await send<Result>("POST", "/api/runs/reanalyze", { run_ids: runIds, recipe_pk: mode === "pick" ? pk : null, keep_image_regions: keepRegions }));
       setError(null);
       onDone?.();
     } catch (e) {
@@ -61,6 +62,9 @@ export function ReanalyzeDialog({ runIds, onClose, onDone }: { runIds: number[];
           </select>
         </label>
       )}
+      <label className="check" title={t("ui.image_regions.keep_hint")}>
+        <input type="checkbox" checked={keepRegions} onChange={(e) => setKeepRegions(e.target.checked)} />{t("ui.image_regions.keep_batch")}
+      </label>
       <p className="muted">{t("ui.reanalysis.hint")}</p>
       <ErrorBox error={error} />
     </Modal>

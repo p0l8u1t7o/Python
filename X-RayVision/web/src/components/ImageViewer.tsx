@@ -23,6 +23,20 @@ export interface View {
   oy: number;
 }
 
+// 檢視器上的互動工具 (例如檢測區域編輯)；座標為原始影像座標
+export interface ViewerTool {
+  cursor?: string;
+  // 按下左鍵；回傳 true 表示由工具處理 (不平移)
+  down?: (x: number, y: number, e: React.MouseEvent, view: View) => boolean;
+  // 滑鼠移動 (未按下時也會呼叫，供游標提示)
+  move?: (x: number, y: number, e: React.MouseEvent, view: View) => void;
+  up?: (x: number, y: number, e: React.MouseEvent, view: View) => void;
+  // 連按兩下；回傳 true 表示已處理 (不縮放至全圖)
+  dblclick?: (x: number, y: number, e: React.MouseEvent, view: View) => boolean;
+  // 在疊圖之上繪製 (螢幕座標，view 換算)
+  paint?: (ctx: CanvasRenderingContext2D, view: View) => void;
+}
+
 interface Props {
   src: string;
   width: number;             // 原始影像寬
@@ -34,16 +48,20 @@ interface Props {
   contrast: number;
   selected?: string | null;
   onPick?: (x: number, y: number) => void;
+  tool?: ViewerTool;
+  preserveView?: boolean;    // 換影像且尺寸相同時保持目前的縮放與位置 (多張影像比對同一位置)
 }
 
-export function ImageViewer({ src, width, height, shapes, hiddenLayers, opacity, brightness, contrast, selected, onPick }: Props) {
+export function ImageViewer({ src, width, height, shapes, hiddenLayers, opacity, brightness, contrast, selected, onPick, tool, preserveView }: Props) {
   const wrap = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const img = useRef<HTMLImageElement | null>(null);
   const [ready, setReady] = useState(false);
   const [view, setView] = useState<View>({ zoom: 1, ox: 0, oy: 0 });
-  const drag = useRef<{ x: number; y: number; ox: number; oy: number; moved: boolean } | null>(null);
+  const drag = useRef<{ x: number; y: number; ox: number; oy: number; moved: boolean; tool: boolean } | null>(null);
   const [dragging, setDragging] = useState(false);
+  const space = useRef(false);                 // 按住空白鍵時左鍵一律平移
+  const lastSize = useRef<string>("");
 
   const fit = useCallback(() => {
     const el = wrap.current;
@@ -58,7 +76,9 @@ export function ImageViewer({ src, width, height, shapes, hiddenLayers, opacity,
     im.onload = () => {
       img.current = im;
       setReady(true);
-      fit();
+      const size = `${width}x${height}`;
+      if (!(preserveView && lastSize.current === size)) fit();
+      lastSize.current = size;
     };
     im.src = src;
   }, [src, fit]);
@@ -87,7 +107,17 @@ export function ImageViewer({ src, width, height, shapes, hiddenLayers, opacity,
     ctx.restore();
     // 疊圖在螢幕座標繪製，放大時線條仍保持細而清晰
     paintShapes(ctx, shapes, view, hiddenLayers, opacity, selected ?? null);
-  }, [ready, view, shapes, hiddenLayers, opacity, brightness, contrast, selected, width, height]);
+    tool?.paint?.(ctx, view);
+  }, [ready, view, shapes, hiddenLayers, opacity, brightness, contrast, selected, width, height, tool]);
+
+  useEffect(() => {
+    if (!tool) return;
+    const kd = (e: KeyboardEvent) => { if (e.code === "Space" && !isTyping(e)) { space.current = true; } };
+    const ku = (e: KeyboardEvent) => { if (e.code === "Space") space.current = false; };
+    window.addEventListener("keydown", kd);
+    window.addEventListener("keyup", ku);
+    return () => { window.removeEventListener("keydown", kd); window.removeEventListener("keyup", ku); };
+  }, [tool]);
 
   useEffect(draw, [draw]);
 
@@ -112,26 +142,40 @@ export function ImageViewer({ src, width, height, shapes, hiddenLayers, opacity,
     });
   };
 
+  const toImage = (e: React.MouseEvent): [number, number] => {
+    const rect = canvas.current!.getBoundingClientRect();
+    return [(e.clientX - rect.left - view.ox) / view.zoom, (e.clientY - rect.top - view.oy) / view.zoom];
+  };
+
   const onDown = (e: React.MouseEvent) => {
-    drag.current = { x: e.clientX, y: e.clientY, ox: view.ox, oy: view.oy, moved: false };
-    setDragging(true);
+    // 工具優先處理左鍵；右鍵、中鍵與空白鍵＋左鍵一律平移
+    const panOnly = e.button !== 0 || space.current;
+    const byTool = !panOnly && !!tool?.down && tool.down(...toImage(e), e, view);
+    drag.current = { x: e.clientX, y: e.clientY, ox: view.ox, oy: view.oy, moved: false, tool: byTool };
+    if (!byTool) setDragging(true);
   };
   const onMove = (e: React.MouseEvent) => {
     const d = drag.current;
+    if (tool?.move && (!d || d.tool)) tool.move(...toImage(e), e, view);
     if (!d) return;
     const dx = e.clientX - d.x;
     const dy = e.clientY - d.y;
     if (Math.abs(dx) + Math.abs(dy) > 3) d.moved = true;
-    setView((v) => ({ ...v, ox: d.ox + dx, oy: d.oy + dy }));
+    if (!d.tool) setView((v) => ({ ...v, ox: d.ox + dx, oy: d.oy + dy }));
   };
   const onUp = (e: React.MouseEvent) => {
     const d = drag.current;
     drag.current = null;
     setDragging(false);
-    if (d && !d.moved && onPick) {
-      const rect = canvas.current!.getBoundingClientRect();
-      onPick((e.clientX - rect.left - view.ox) / view.zoom, (e.clientY - rect.top - view.oy) / view.zoom);
+    if (d?.tool) {
+      tool?.up?.(...toImage(e), e, view);
+      return;
     }
+    if (d && !d.moved && onPick) onPick(...toImage(e));
+  };
+  const onDbl = (e: React.MouseEvent) => {
+    if (tool?.dblclick && tool.dblclick(...toImage(e), e, view)) return;
+    fit();
   };
 
   return (
@@ -139,18 +183,26 @@ export function ImageViewer({ src, width, height, shapes, hiddenLayers, opacity,
       <canvas
         ref={canvas}
         className={dragging ? "dragging" : ""}
+        style={tool?.cursor && !dragging ? { cursor: tool.cursor } : undefined}
+        onContextMenu={(e) => e.preventDefault()}
         onWheel={onWheel}
         onMouseDown={onDown}
         onMouseMove={onMove}
         onMouseUp={onUp}
-        onMouseLeave={() => {
+        onMouseLeave={(e) => {
+          if (drag.current?.tool) tool?.up?.(...toImage(e), e, view);
           drag.current = null;
           setDragging(false);
         }}
-        onDoubleClick={fit}
+        onDoubleClick={onDbl}
       />
     </div>
   );
+}
+
+function isTyping(e: KeyboardEvent) {
+  const el = e.target as HTMLElement | null;
+  return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
 }
 
 // ---------------------------------------------------------------------------
@@ -289,7 +341,8 @@ export function buildShapes(result: AnalysisResult, modules: Record<string, Modu
       if (!g.bbox) continue;
       const [x0, y0, x1, y1] = g.bbox;
       out.push({ kind: "rect", layer: `${m.module_id}.group`, color: gs.color, width: 2, x: x0, y: y0, x2: x1, y2: y1 });
-      out.push({ kind: "text", layer: `${m.module_id}.group`, color: gs.color, width: 1, x: x0 + 4, y: y0 + 18, text: `${groupLabel} ${g.id}` });
+      out.push({ kind: "text", layer: `${m.module_id}.group`, color: gs.color, width: 1, x: x0 + 4, y: y0 + 18,
+        text: g.source === "region" && g.label ? `${groupLabel} ${g.id}（${g.label}）` : `${groupLabel} ${g.id}` });
       const e = g.estimate;
       if (e) {
         const k = (ga.scale || 40) * (vectorScale / ((styles.offset?.scale as number) || 10));

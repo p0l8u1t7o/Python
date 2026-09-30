@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 
 from .. import PRODUCT_NAME, __version__
 from ..core import acquisition, inference, plugin
+from ..core import regions as regions_mod
 from ..core.calibration import to_display
 from ..core.io import IMAGE_EXTENSIONS, ImageFormatError, load_image
 from ..core.plugin import JUDGE_FAIL, JUDGE_PASS, JUDGE_REVIEW
@@ -35,7 +36,9 @@ from . import auth, diagnostics
 from . import modules as module_validation
 from . import models as model_store
 from . import annotations
-from .jobs import ImportFailed, TrialBusy, build_payload, image_path, import_image, queue_reanalysis
+from .jobs import ImportFailed, build_payload, image_path, import_image, latest_image_regions, queue_reanalysis
+from . import workspace as ws_mod
+from .workspace import Workspace, WorkspaceError
 from . import license as lic
 from . import maintenance
 from . import archive_import, updates
@@ -76,11 +79,40 @@ class Reanalyze(BaseModel):
 class BatchReanalyze(BaseModel):
     run_ids: List[int]
     recipe_pk: Optional[int] = None          # 未指定時使用各紀錄所用配方的最新發布版本
+    keep_image_regions: bool = True          # 沿用影像的自訂檢測區域 (PLAN-004 第 6.3 節)
 
 
 class ReleaseBody(BaseModel):
     reanalyze: str = "none"                  # all_previous／lot／none (PLAN-003 第 5.2 節)
     lot_no: str = ""
+    keep_image_regions: bool = True          # 沿用影像的自訂檢測區域 (PLAN-004 第 6.3 節)
+
+
+class RegionsBody(BaseModel):
+    regions: Optional[dict] = None           # 本影像自訂檢測區域；None 表示改回配方區域
+
+
+class WorkspaceParams(BaseModel):
+    body: dict                               # 參數組 (與配方內容同格式)
+
+
+class WorkspaceFromRuns(BaseModel):
+    run_ids: List[int]
+
+
+class WorkspaceFromRecipe(BaseModel):
+    recipe_pk: int
+
+
+class WorkspaceAnalyze(BaseModel):
+    body: Optional[dict] = None              # 同時更新參數組 (避免前端尚未存檔就分析)
+
+
+class WorkspaceSaveRecipe(BaseModel):
+    mode: str                                # revise：存為來源配方的下一版草稿；new：另存為新配方
+    recipe_id: str = ""
+    name: dict = {}
+    overwrite_draft: bool = False
 
 
 class TrialBody(BaseModel):
@@ -163,6 +195,7 @@ class SettingsBody(BaseModel):
     retention_days: Optional[int] = None
     disk_warn_gb: Optional[float] = None
     gpu_inference: Optional[bool] = None
+    workspace_retention_days: Optional[int] = None
 
 
 class ModelStatusBody(BaseModel):
@@ -459,6 +492,7 @@ def create_app(settings, workers=None, watch=True, start=True, enforce_license=T
                 lots[i["lot_no"]] = lots.get(i["lot_no"], 0) + 1
         avg = db.one("SELECT AVG(elapsed_s) AS s FROM (SELECT elapsed_s FROM runs ORDER BY id DESC LIMIT 50)")["s"]
         return dict(total=len(imgs), skipped=sum(1 for i in imgs if image_path(i) is None),
+                    image_regions=sum(1 for i in imgs if latest_image_regions(db, i["id"])),
                     lots=[dict(lot_no=k, n=v) for k, v in sorted(lots.items())],
                     avg_elapsed_s=avg, workers=plat.queue.workers)
 
@@ -479,9 +513,10 @@ def create_app(settings, workers=None, watch=True, start=True, enforce_license=T
             raise _recipe_err(e)
         if b.reanalyze != "none":
             imgs = _scope_images(out, b.lot_no if b.reanalyze == "lot" else "")
-            q = queue_reanalysis(db, [(i["id"], pk) for i in imgs], who)
+            q = queue_reanalysis(db, [(i["id"], pk) for i in imgs], who, keep_image_regions=b.keep_image_regions)
             db.audit(who, "recipe.release_reanalyze", "recipe", pk, recipe_id=out["recipe_id"], version=out["version"],
                      scope=b.reanalyze, lot_no=b.lot_no, queued=len(q["job_ids"]), skipped=len(q["skipped"]),
+                     keep_image_regions=b.keep_image_regions,
                      job_ids=f"{q['job_ids'][0]}-{q['job_ids'][-1]}" if q["job_ids"] else "")
             plat.queue.notify()
             out["reanalysis"] = dict(queued=len(q["job_ids"]), skipped=q["skipped"])
@@ -510,10 +545,7 @@ def create_app(settings, workers=None, watch=True, start=True, enforce_license=T
             raise ApiError(410, "image_unavailable", img["file_name"])
         payload = build_payload(settings, db, img, recipe.to_dict(), json.loads(r["acquisition_json"] or "{}"), None)
         t0 = time.time()
-        try:
-            out = plat.trial.run(payload)
-        except TrialBusy:
-            raise ApiError(409, "trial_busy")
+        out = plat.interactive.run(payload, key=("trial", who))
         db.audit(who, "recipe.trial", "recipe", body["recipe_id"], run_id=b.run_id, image_id=img["id"],
                  ok=bool(out["ok"]), elapsed_s=round(time.time() - t0, 1))
         if not out["ok"]:
@@ -631,9 +663,9 @@ def create_app(settings, workers=None, watch=True, start=True, enforce_license=T
                     continue
                 pk = latest["id"]
             items.append((r["image_id"], pk))
-        q = queue_reanalysis(db, items, who)
+        q = queue_reanalysis(db, items, who, keep_image_regions=b.keep_image_regions)
         db.audit(who, "runs.reanalyze", "run", "", runs=len(b.run_ids), queued=len(q["job_ids"]),
-                 skipped=len(q["skipped"]), recipe_pk=b.recipe_pk)
+                 skipped=len(q["skipped"]), recipe_pk=b.recipe_pk, keep_image_regions=b.keep_image_regions)
         plat.queue.notify()
         return dict(queued=len(q["job_ids"]), skipped=q["skipped"], no_recipe=no_recipe)
 
@@ -655,7 +687,8 @@ def create_app(settings, workers=None, watch=True, start=True, enforce_license=T
     RUN_SELECT = ("SELECT r.id, r.created_at, r.quality_level, r.reference_only, r.auto_judgment, r.final_judgment, "
                   "r.summary_json, r.elapsed_s, r.software_version, r.image_id, r.job_id, i.file_name, i.sample_no, "
                   "i.kind, i.width, i.height, l.lot_no, rc.recipe_id, rc.version AS recipe_version, r.recipe_pk, "
-                  "(SELECT MAX(r2.id) FROM runs r2 WHERE r2.image_id = r.image_id) AS latest_run_id "
+                  "(SELECT MAX(r2.id) FROM runs r2 WHERE r2.image_id = r.image_id) AS latest_run_id, "
+                  "(SELECT j.regions_json IS NOT NULL FROM jobs j WHERE j.id = r.job_id) AS image_regions "
                   "FROM runs r JOIN images i ON i.id = r.image_id LEFT JOIN lots l ON l.id = i.lot_id "
                   "JOIN recipes rc ON rc.id = r.recipe_pk ")
 
@@ -663,6 +696,7 @@ def create_app(settings, workers=None, watch=True, start=True, enforce_license=T
         r = dict(r)
         r["summary"] = json.loads(r.pop("summary_json"))
         r["reference_only"] = bool(r["reference_only"])
+        r["image_regions"] = bool(r["image_regions"])
         latest = r.pop("latest_run_id")
         r["superseded_by"] = latest if latest != r["id"] else None     # 已被同一影像較新的紀錄取代
         return r
@@ -721,9 +755,11 @@ def create_app(settings, workers=None, watch=True, start=True, enforce_license=T
         reviews = db.all("SELECT * FROM reviews WHERE run_id = ? ORDER BY id", (run_id,))
         # 分析歷程：同一影像的所有紀錄 (新到舊)，附各筆的人工複判供參考
         history = db.all("SELECT r.id, r.created_at, r.auto_judgment, r.final_judgment, r.quality_level, "
-                         "rc.recipe_id, rc.version AS recipe_version FROM runs r JOIN recipes rc ON rc.id = r.recipe_pk "
+                         "rc.recipe_id, rc.version AS recipe_version, j.regions_json IS NOT NULL AS image_regions "
+                         "FROM runs r JOIN recipes rc ON rc.id = r.recipe_pk JOIN jobs j ON j.id = r.job_id "
                          "WHERE r.image_id = ? ORDER BY r.id DESC", (r["image_id"],))
         for h in history:
+            h["image_regions"] = bool(h["image_regions"])
             h["reviews"] = db.all("SELECT judgment, comment, reviewer, created_at FROM reviews WHERE run_id = ? "
                                   "ORDER BY id", (h["id"],))
         return dict(run=_run_row(r), result=result, reviews=reviews, history=history)
@@ -735,6 +771,10 @@ def create_app(settings, workers=None, watch=True, start=True, enforce_license=T
         if r is None:
             raise ApiError(404, "run_not_found", run_id)
         path = r["archive_path"] if r["archive_path"] and os.path.isfile(r["archive_path"]) else r["original_path"]
+        return _image_png(path, max_size, low, high)
+
+    def _image_png(path, max_size, low, high):
+        """影像轉顯示用 PNG (長邊縮至 max_size)；伺服器快取最近幾張"""
         if not os.path.isfile(path):
             raise ApiError(410, "image_unavailable", os.path.basename(path))
         key = (path, os.path.getmtime(path), max_size, low, high)
@@ -761,6 +801,370 @@ def create_app(settings, workers=None, watch=True, start=True, enforce_license=T
                 img_cache.popitem(last=False)
         return Response(buf.tobytes(), media_type="image/png", headers={"X-Image-Scale": f"{s:.6f}",
                                                                          "Cache-Control": "private, max-age=3600"})
+
+    # ---- 本影像自訂檢測區域 (PLAN-004 第 6 節) ----
+    def _run_recipe(run_id):
+        r = db.one("SELECT r.image_id, r.recipe_pk, j.acquisition_json FROM runs r JOIN jobs j ON j.id = r.job_id "
+                   "WHERE r.id = ?", (run_id,))
+        if r is None:
+            raise ApiError(404, "run_not_found", run_id)
+        img = db.one("SELECT * FROM images WHERE id = ?", (r["image_id"],))
+        if image_path(img) is None:
+            raise ApiError(410, "image_unavailable", img["file_name"])
+        try:
+            recipe = recipes.to_recipe(recipes.get(r["recipe_pk"]))
+        except RecipeStoreError as e:
+            raise _recipe_err(e)
+        return r, img, recipe
+
+    def _norm_regions(d):
+        try:
+            return regions_mod.normalize(d) if d else None
+        except regions_mod.RegionError as e:
+            raise ApiError(400, "invalid_regions", str(e))
+
+    @app.post("/api/runs/{run_id}/regions/trial")
+    def trial_image_regions(run_id: int, b: RegionsBody, who: str = Depends(require("image_regions"))):
+        """以同一配方版本＋自訂檢測區域試跑本影像；不產生紀錄"""
+        _require_license()
+        reg = _norm_regions(b.regions)
+        r, img, recipe = _run_recipe(run_id)
+        payload = build_payload(settings, db, img, recipe.to_dict(), json.loads(r["acquisition_json"] or "{}"), None,
+                                image_regions=reg)
+        out = plat.interactive.run(payload, key=("regions", who))
+        db.audit(who, "run.regions_trial", "run", run_id, image_id=img["id"], ok=bool(out["ok"]))
+        if not out["ok"]:
+            raise ApiError(422, out["error"], out.get("detail", ""))
+        return dict(result=out["result"])
+
+    @app.post("/api/runs/{run_id}/regions")
+    def apply_image_regions(run_id: int, b: RegionsBody, who: str = Depends(require("image_regions"))):
+        """套用自訂檢測區域並重新分析 (regions 為 None 時改回配方區域)；新紀錄成為本影像的目前結果"""
+        _require_license()
+        reg = _norm_regions(b.regions)
+        r, img, _recipe = _run_recipe(run_id)
+        rc = recipes.get(r["recipe_pk"])
+        if rc["status"] != "released":
+            raise ApiError(400, "recipe_not_released", f"{rc['recipe_id']} v{rc['version']}")
+        q = queue_reanalysis(db, [(img["id"], r["recipe_pk"])], who, source="regions", regions_override=reg or {})
+        if not q["job_ids"]:
+            raise ApiError(410, "image_unavailable", img["file_name"])
+        db.audit(who, "run.regions_override", "run", run_id, image_id=img["id"], job_id=q["job_ids"][0],
+                 recipe_id=rc["recipe_id"], recipe_version=rc["version"], regions=reg)
+        plat.queue.notify()
+        return dict(job_id=q["job_ids"][0])
+
+    # ---- 手動檢測工作區 (PLAN-004 第 4 節) ----
+    ws_batches, ws_batch_lock = {}, threading.Lock()
+
+    def _ws(who):
+        return Workspace(settings, who)
+
+    def _ws_err(e):
+        status = 404 if e.code in ("workspace_image_not_found", "run_not_found") else \
+            410 if e.code == "image_unavailable" else 413 if e.code in ("workspace_full", "workspace_too_large") else 400
+        return ApiError(status, e.code, e.detail)
+
+    def _ws_recipe(params):
+        """參數組 → 已驗證的 pipeline.Recipe (手動檢測不屬於任何配方)"""
+        if not params:
+            raise ApiError(400, "workspace_no_params")
+        try:
+            recipe = RecipeStore._validate(ws_mod.analysis_body(params))
+        except RecipeStoreError as e:
+            raise _recipe_err(e)
+        for m in recipe.modules:
+            if m.enabled and not plat.module_allowed(m.module_id):
+                raise ApiError(403, "module_not_licensed", m.module_id)
+        return recipe
+
+    def _ws_analyze_one(who, ws, item, recipe, h):
+        if not os.path.isfile(item["path"]):
+            return dict(ok=False, error="image_unavailable", detail=item["name"])
+        payload = build_payload(settings, db, None, recipe.to_dict(), item.get("acquisition") or {}, None,
+                                path=item["path"])
+        payload.update(manual=True, overlay_path=ws.overlay_path(item["id"]))
+        os.makedirs(os.path.dirname(payload["overlay_path"]), exist_ok=True)
+        out = plat.interactive.run(payload, key=(who, item["id"]))
+        if out["ok"]:
+            out["summary"] = ws.record_result(item["id"], h, out["result"])
+        return out
+
+    def _ws_batch_state(who):
+        with ws_batch_lock:
+            st = ws_batches.get(who)
+            return dict(st) if st else None
+
+    @app.get("/api/workspace")
+    def workspace_view(who: str = Depends(require("manual_inspect"))):
+        out = _ws(who).view()
+        out["batch"] = _ws_batch_state(who)
+        out["waiting"] = plat.interactive.waiting()
+        out["analysis_allowed"] = plat.analysis_allowed()
+        return out
+
+    @app.post("/api/workspace/images")
+    def workspace_upload(files: List[UploadFile] = File(...), who: str = Depends(require("manual_inspect"))):
+        """上傳影像 (可一併上傳同名拍攝參數檔 .json／.txt／.ini)"""
+        ws = _ws(who)
+        sidecars, images = {}, []
+        for f in files:
+            name = os.path.basename(f.filename or "upload")
+            if name.lower().endswith(ws_mod.SIDECAR_EXTENSIONS):
+                sidecars[name] = f.file.read(1 << 20)
+            else:
+                images.append((name, f))
+        added, errors = [], []
+        for name, f in images:
+            stem = os.path.splitext(name)[0]
+            try:
+                it = ws.add_upload(name, f.file, {k: v for k, v in sidecars.items() if os.path.splitext(k)[0] == stem})
+                added.append(it["id"])
+            except WorkspaceError as e:
+                errors.append(dict(file=name, error=e.code))
+        if added:
+            db.audit(who, "workspace.add_images", "workspace", who, source="upload", count=len(added))
+        return dict(added=added, errors=errors)
+
+    @app.post("/api/workspace/images/from-runs")
+    def workspace_from_runs(b: WorkspaceFromRuns, who: str = Depends(require("manual_inspect"))):
+        ws = _ws(who)
+        added, skipped, errors = [], 0, []
+        for rid in b.run_ids:
+            try:
+                it = ws.add_from_run(db, rid, image_path)
+            except WorkspaceError as e:
+                errors.append(dict(run_id=rid, error=e.code))
+                if e.code in ("workspace_full",):
+                    break
+                continue
+            if it is None:
+                skipped += 1
+            else:
+                added.append(it["id"])
+        if added:
+            db.audit(who, "workspace.add_images", "workspace", who, source="runs", count=len(added))
+        return dict(added=added, skipped=skipped, errors=errors)
+
+    @app.delete("/api/workspace/images/{item_id}")
+    def workspace_remove(item_id: int, who: str = Depends(require("manual_inspect"))):
+        try:
+            _ws(who).remove(item_id)
+        except WorkspaceError as e:
+            raise _ws_err(e)
+        return dict(ok=True)
+
+    @app.delete("/api/workspace")
+    def workspace_clear(who: str = Depends(require("manual_inspect"))):
+        with ws_batch_lock:
+            st = ws_batches.get(who)
+            if st and st["running"]:
+                st["cancel"] = True
+        _ws(who).clear()
+        db.audit(who, "workspace.clear", "workspace", who)
+        return dict(ok=True)
+
+    @app.get("/api/workspace/images/{item_id}/image")
+    def workspace_image(item_id: int, max_size: int = Query(2048, ge=256, le=8192), low: float = 0.5,
+                        high: float = 99.5, who: str = Depends(require("manual_inspect"))):
+        try:
+            it = _ws(who).item(item_id)
+        except WorkspaceError as e:
+            raise _ws_err(e)
+        return _image_png(it["path"], max_size, low, high)
+
+    @app.get("/api/workspace/images/{item_id}/result")
+    def workspace_result(item_id: int, who: str = Depends(require("manual_inspect"))):
+        ws = _ws(who)
+        try:
+            ws.item(item_id)
+        except WorkspaceError as e:
+            raise _ws_err(e)
+        res = ws.get_result(item_id)
+        if res is None:
+            raise ApiError(404, "workspace_no_result", item_id)
+        return res
+
+    @app.put("/api/workspace/params")
+    def workspace_params(b: WorkspaceParams, who: str = Depends(require("manual_inspect"))):
+        try:
+            d = _ws(who).set_params(b.body)
+        except WorkspaceError as e:
+            raise _ws_err(e)
+        return dict(params_hash=ws_mod.params_hash(d["params"]))
+
+    @app.post("/api/workspace/params/from-recipe")
+    def workspace_from_recipe(b: WorkspaceFromRecipe, who: str = Depends(require("manual_inspect"))):
+        """由配方版本帶入參數組 (覆蓋目前參數)；記錄來源供差異標示與另存"""
+        row = recipes.get(b.recipe_pk)
+        if row is None:
+            raise ApiError(404, "recipe_not_found", b.recipe_pk)
+        body = dict(row["body"], modules=[{k: v for k, v in m.items() if k != "module_version"}
+                                          for m in row["body"]["modules"]])
+        src = dict(recipe_pk=row["id"], recipe_id=row["recipe_id"], version=row["version"], status=row["status"],
+                   name=row["name"], body=body)
+        _ws(who).set_params(body, source=src)
+        db.audit(who, "workspace.load_recipe", "workspace", who, recipe_id=row["recipe_id"], version=row["version"])
+        return dict(params=body, source=src)
+
+    @app.post("/api/workspace/images/{item_id}/analyze")
+    def workspace_analyze(item_id: int, b: Optional[WorkspaceAnalyze] = None, who: str = Depends(require("manual_inspect"))):
+        """以目前參數組分析一張影像 (同步)；結果不寫入正式紀錄"""
+        _require_license()
+        ws = _ws(who)
+        try:
+            if b and b.body is not None:
+                ws.set_params(b.body)
+            d = ws.load()
+            it = ws.item(item_id, d)
+        except WorkspaceError as e:
+            raise _ws_err(e)
+        recipe = _ws_recipe(d["params"])
+        h = ws_mod.params_hash(d["params"])
+        t0 = time.time()
+        out = _ws_analyze_one(who, ws, it, recipe, h)
+        db.audit(who, "workspace.analyze", "workspace", who, image=it["name"], params_hash=h, ok=bool(out["ok"]),
+                 elapsed_s=round(time.time() - t0, 1))
+        if not out["ok"]:
+            raise ApiError(410 if out["error"] == "image_unavailable" else 422, out["error"], out.get("detail", ""))
+        return dict(result=out["result"], summary=out["summary"], params_hash=h)
+
+    @app.post("/api/workspace/analyze-all")
+    def workspace_analyze_all(b: Optional[WorkspaceAnalyze] = None, who: str = Depends(require("manual_inspect"))):
+        """依清單順序逐張分析 (背景執行，可取消)；已有相同參數結果的影像略過"""
+        _require_license()
+        ws = _ws(who)
+        if b and b.body is not None:
+            try:
+                ws.set_params(b.body)
+            except WorkspaceError as e:
+                raise _ws_err(e)
+        d = ws.load()
+        recipe = _ws_recipe(d["params"])
+        h = ws_mod.params_hash(d["params"])
+        todo = [it for it in d["images"] if not (it.get("result") and it["result"].get("hash") == h)]
+        with ws_batch_lock:
+            st = ws_batches.get(who)
+            if st and st["running"]:
+                raise ApiError(409, "workspace_batch_running")
+            st = ws_batches[who] = dict(running=True, cancel=False, total=len(todo), done=0, failed=0, current=None,
+                                        params_hash=h, started_at=now())
+
+        def work():
+            try:
+                for it in todo:
+                    with ws_batch_lock:
+                        if st["cancel"]:
+                            break
+                        st["current"] = it["id"]
+                    try:
+                        out = _ws_analyze_one(who, ws, it, recipe, h)
+                    except Exception as e:                        # noqa: BLE001  單張失敗不中斷整批
+                        out = dict(ok=False, error="analysis_exception", detail=repr(e))
+                    with ws_batch_lock:
+                        st["done"] += 1
+                        if not out["ok"]:
+                            st["failed"] += 1
+            finally:
+                with ws_batch_lock:
+                    st.update(running=False, current=None, finished_at=now())
+
+        db.audit(who, "workspace.analyze_all", "workspace", who, count=len(todo), params_hash=h)
+        threading.Thread(target=work, name=f"workspace-{who}", daemon=True).start()
+        return dict(total=len(todo))
+
+    @app.post("/api/workspace/analyze-all/cancel")
+    def workspace_cancel_all(who: str = Depends(require("manual_inspect"))):
+        with ws_batch_lock:
+            st = ws_batches.get(who)
+            if st and st["running"]:
+                st["cancel"] = True
+        return dict(ok=True)
+
+    @app.post("/api/workspace/save-recipe")
+    def workspace_save_recipe(b: WorkspaceSaveRecipe, who: str = Depends(require("recipe_edit"))):
+        """另存為配方草稿：revise = 來源配方的下一版草稿；new = 新配方 (之後依正常流程審閱、發布)"""
+        ws = _ws(who)
+        d = ws.load()
+        _ws_recipe(d["params"])
+        body = dict(d["params"])
+        body["modules"] = [{k: v for k, v in m.items() if k != "module_version"} for m in body.get("modules", [])]
+        try:
+            if b.mode == "revise":
+                src = d.get("source")
+                row = recipes.get(src["recipe_pk"]) if src else None
+                if row is None:
+                    raise ApiError(400, "workspace_no_source")
+                draft = db.one("SELECT id, version FROM recipes WHERE recipe_id = ? AND status = 'draft' "
+                               "ORDER BY version DESC LIMIT 1", (row["recipe_id"],))
+                if draft and not b.overwrite_draft:
+                    raise ApiError(409, "draft_exists", f"{row['recipe_id']} v{draft['version']}")
+                target = recipes.revise(row["id"], who)
+                out = recipes.update_draft(target["id"], dict(body, name=row["name"]), who)
+            elif b.mode == "new":
+                rid = b.recipe_id.strip()
+                if not rid:
+                    raise ApiError(400, "invalid_recipe", "recipe_id")
+                if db.one("SELECT 1 AS x FROM recipes WHERE recipe_id = ?", (rid,)):
+                    raise ApiError(409, "recipe_id_exists", rid)
+                out = recipes.create_draft(dict(body, recipe_id=rid, name=b.name or {}), who, note="manual")
+            else:
+                raise ApiError(400, "invalid_request", b.mode)
+        except RecipeStoreError as e:
+            raise _recipe_err(e)
+        db.audit(who, "workspace.save_recipe", "recipe", out["id"], recipe_id=out["recipe_id"], version=out["version"],
+                 mode=b.mode)
+        return out
+
+    @app.get("/api/workspace/export")
+    def workspace_export(locale: str = "zh-TW", who: str = Depends(require("manual_inspect"))):
+        """匯出 ZIP：結果 JSON、疊圖、結果總表 CSV、參數組；標示為手動檢測 (非正式結果)"""
+        import csv
+        import io
+        import zipfile
+        from ..i18n import t
+        ws = _ws(who)
+        d = ws.load()
+        h = ws_mod.params_hash(d["params"]) if d["params"] else None
+        os.makedirs(settings.exports_dir, exist_ok=True)
+        name = f"manual_inspection_{time.strftime('%Y%m%d_%H%M%S')}.zip"
+        path = os.path.join(settings.exports_dir, name)
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(["file_name", "source", "kind", "width", "height", "params_current", "quality", "judgment", "module",
+                    "die_shift_dx_px", "die_shift_dy_px", "die_shift_se_px", "die_shift_dx_um", "die_shift_dy_um",
+                    "sites_used", "analyzed_at"])
+        with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+            z.writestr("README.txt", t("ui.manual.export_readme", locale) + "\n")
+            z.writestr("params.json", json.dumps(dict(params=d["params"], source={k: v for k, v in (d["source"] or {}).items()
+                                                                                    if k != "body"} or None,
+                                                      params_hash=h), ensure_ascii=False, indent=1))
+            used = set()
+            for it in d["images"]:
+                r = it.get("result")
+                stem = os.path.splitext(it["name"])[0]
+                while stem in used:
+                    stem += "_"
+                used.add(stem)
+                if r:
+                    res = ws.get_result(it["id"])
+                    if res is not None:
+                        z.writestr(f"results/{stem}.json", json.dumps(res, ensure_ascii=False, indent=1))
+                    if os.path.isfile(ws.overlay_path(it["id"])):
+                        z.write(ws.overlay_path(it["id"]), f"overlays/{stem}.jpg")
+                mods = ((r or {}).get("summary") or {}).get("modules") or {"": {}}
+                for mid, m in mods.items():
+                    s_ = (m or {}).get("summary") or {}
+                    dd = s_.get("die_shift") or {}
+                    w.writerow([it["name"], it["source"], it["kind"], it["width"], it["height"],
+                                "" if not r else ("yes" if r.get("hash") == h else "no"),
+                                t(f"quality.{r['quality']}", locale) if r else "",
+                                t(f"judgment.{r['judgment']}", locale) if r else "", mid, dd.get("dx", ""),
+                                dd.get("dy", ""), dd.get("se", ""), dd.get("dx_um", ""), dd.get("dy_um", ""),
+                                s_.get("sites_used", ""), r.get("analyzed_at", "") if r else ""])
+            z.writestr("summary.csv", ("﻿" + buf.getvalue()).encode("utf-8"))
+        db.audit(who, "workspace.export", "workspace", who, file=name, images=len(d["images"]))
+        return FileResponse(path, media_type="application/zip", filename=name)
 
     @app.post("/api/runs/{run_id}/review")
     def review(run_id: int, b: ReviewBody, who: str = Depends(require("review"))):
@@ -899,7 +1303,8 @@ def create_app(settings, workers=None, watch=True, start=True, enforce_license=T
     @app.get("/api/settings")
     def get_settings(_u: str = Depends(require("settings"))):
         return dict(maintenance.get_settings(db), archive_originals=settings.archive_originals,
-                    data_dir=settings.data_dir, workers=plat.queue.workers, inference=inference.available())
+                    data_dir=settings.data_dir, workers=plat.queue.workers, inference=inference.available(),
+                    workspace_mb=round(ws_mod.disk_usage_bytes(settings) / 1e6, 1))
 
     @app.put("/api/settings")
     def put_settings(b: SettingsBody, who: str = Depends(require("settings"))):

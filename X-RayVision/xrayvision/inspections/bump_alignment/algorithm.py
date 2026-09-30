@@ -5,6 +5,8 @@
 → 放射線取高等高線 = 凸塊圓、低等高線 (凸塊 ∪ 焊墊外緣) = 焊墊圓 → 依 pitch 連結成陣列
 → 各陣列以相似變換穩健估計晶片偏移。詳細說明見 docs/bump-pad-detection-flow.md。
 """
+import weakref
+
 import cv2
 import numpy as np
 
@@ -57,8 +59,26 @@ DEFAULTS = dict(
 # ---------------------------------------------------------------------------
 # 偵測
 # ---------------------------------------------------------------------------
-def detect_blobs(A, kind, cfg):
-    """LoG 尺度空間偵測暗圓盤；回傳 (凸塊候選, 大球, 標準凸塊半徑 R0)。候選為 (x, y, r, 響應)"""
+# 尺度空間偵測結果快取：只取決於影像與固定的偵測設定 (det_*)，與使用者參數無關。
+# 互動分析 (試跑、手動檢測) 對同一張已載入的影像換參數重新分析時直接沿用，結果完全相同。
+_BLOB_CACHE = []
+_BLOB_CACHE_ITEMS = 4
+_BLOB_KEYS = ("det_r_lo", "det_r_hi", "det_n_scales", "det_rel", "det_rel_rgb")
+
+
+def scale_space_blobs(A, kind, cfg):
+    """LoG 尺度空間的暗圓盤極大值 (已去除同一物件的重複)；回傳 [(x, y, r, 響應)]，依響應由大到小"""
+    key = (kind, A.shape) + tuple(cfg[k] for k in _BLOB_KEYS)
+    for ref, k, blobs in _BLOB_CACHE:
+        if ref() is A and k == key:
+            return blobs
+    blobs = _scale_space_blobs(A, kind, cfg)
+    _BLOB_CACHE.insert(0, (weakref.ref(A), key, blobs))
+    del _BLOB_CACHE[_BLOB_CACHE_ITEMS:]
+    return blobs
+
+
+def _scale_space_blobs(A, kind, cfg):
     radii = np.geomspace(cfg["det_r_lo"], cfg["det_r_hi"], cfg["det_n_scales"])
     best = np.full(A.shape, -np.inf, np.float32)
     arg = np.zeros(A.shape, np.float32)
@@ -83,6 +103,12 @@ def detect_blobs(A, kind, cfg):
         if any((x - b[0]) ** 2 + (y - b[1]) ** 2 < (0.6 * max(r, b[2])) ** 2 for b in blobs):
             continue
         blobs.append((float(x), float(y), r, float(resp[i])))
+    return blobs
+
+
+def detect_blobs(A, kind, cfg):
+    """LoG 尺度空間偵測暗圓盤；回傳 (凸塊候選, 大球, 標準凸塊半徑 R0)。候選為 (x, y, r, 響應)"""
+    blobs = scale_space_blobs(A, kind, cfg)
     rs = np.array([b[2] for b in blobs])
     sel = rs[(rs >= cfg["bump_r_min"]) & (rs <= cfg["bump_r_max"])]
     if len(sel) < 5:
@@ -357,6 +383,24 @@ def group_arrays(sites, cfg):
     return out
 
 
+def assign_arrays(sites, cfg, array_of=None):
+    """
+    陣列編號：中心落在「視為一個陣列」區域內的位點直接歸入該區域的陣列 (不套用最少凸塊數)，
+    其餘位點自動分群。自動陣列先編號 (1…k)，區域陣列依區域序號接在後面。
+    回傳 (每個位點的陣列編號, {陣列編號: 區域序號})
+    """
+    region = np.array([array_of(s["x0"], s["y0"]) if array_of else 0 for s in sites], int)
+    out = np.zeros(len(sites), int)
+    auto = np.flatnonzero(region == 0)
+    out[auto] = group_arrays([sites[i] for i in auto], cfg)
+    forced, aid = {}, int(out.max()) + 1 if len(out) else 1
+    for g in sorted(set(region.tolist()) - {0}):
+        out[region == g] = aid
+        forced[aid] = g
+        aid += 1
+    return out, forced
+
+
 def resolve_fixed_pads(group):
     """
     露出弧太短的焊墊先前以「與聯集外緣同大」的半徑解圓心；改用同陣列可靠的焊墊半徑重解：
@@ -417,10 +461,11 @@ def bbox_of(ss):
 # ---------------------------------------------------------------------------
 # 整張影像
 # ---------------------------------------------------------------------------
-def analyze(A, kind, cfg, in_region=None):
+def analyze(A, kind, cfg, in_region=None, array_of=None):
     """
     回傳 dict：R0、n_cand、n_balls、sites、rejects、rejected、arrays、est (整張)、grade。
     找不到足夠凸塊時 R0 為 None。in_region(x, y)：檢測區域判斷，區域外的凸塊不量測 (None 為整張)。
+    array_of(x, y)：檢測區域「視為一個陣列」的序號 (0 = 自動分群)；None 表示全部自動分群。
     """
     H, W = A.shape
     bumps, balls, R0 = detect_blobs(A, kind, cfg)
@@ -464,7 +509,7 @@ def analyze(A, kind, cfg, in_region=None):
             continue
         sites.append(s)
 
-    arr = group_arrays(sites, cfg)
+    arr, forced = assign_arrays(sites, cfg, array_of)
     for s, a in zip(sites, arr):
         s["array"] = int(a)
         s["used"] = a > 0
@@ -485,7 +530,7 @@ def analyze(A, kind, cfg, in_region=None):
     for a in sorted(set(arr.tolist()) - {0}):
         use = [s for s in sites if s["array"] == a and s["used"]]
         est = estimate(use, cfg)
-        arrays.append(dict(id=a, n_sites=int((arr == a).sum()), est=est, grade=grade(est),
+        arrays.append(dict(id=a, n_sites=int((arr == a).sum()), est=est, grade=grade(est), region=forced.get(a, 0),
                            bump_r=float(np.median([s["bump"]["r"] for s in use])) if use else None,
                            pad_r=float(np.median([s["pad"]["r"] for s in use])) if use else None,
                            pitch=pitch_of(use), bbox=bbox_of([s for s in sites if s["array"] == a])))

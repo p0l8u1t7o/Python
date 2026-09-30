@@ -11,6 +11,8 @@ interface Settings {
   data_dir: string;
   workers: number;
   gpu_inference: boolean;
+  workspace_retention_days: number | null;
+  workspace_mb: number;
   inference: { installed: boolean; providers: string[]; version: string | null };
 }
 
@@ -69,15 +71,17 @@ export function SystemPage() {
 function DiskAndRetention() {
   const { t, system } = useApp();
   const [s, error, reload] = useLoad(() => get<Settings>("/api/settings"), []);
-  const [draft, setDraft] = useState<{ retention: string; warn: string } | null>(null);
+  const [draft, setDraft] = useState<{ retention: string; warn: string; ws: string } | null>(null);
   const [err, setErr] = useState<unknown>(null);
   const [msg, setMsg] = useState("");
   const d = system?.disk;
   if (!s) return <Card title={t("ui.system.storage")}><ErrorBox error={error} /></Card>;
-  const cur = draft ?? { retention: s.retention_days ? String(s.retention_days) : "", warn: String(s.disk_warn_gb) };
+  const cur = draft ?? { retention: s.retention_days ? String(s.retention_days) : "", warn: String(s.disk_warn_gb),
+    ws: s.workspace_retention_days ? String(s.workspace_retention_days) : "" };
   const save = async () => {
     try {
-      await send("PUT", "/api/settings", { retention_days: cur.retention ? Number(cur.retention) : null, disk_warn_gb: Number(cur.warn) });
+      await send("PUT", "/api/settings", { retention_days: cur.retention ? Number(cur.retention) : null, disk_warn_gb: Number(cur.warn),
+        workspace_retention_days: cur.ws ? Number(cur.ws) : null });
       setDraft(null);
       setErr(null);
       setMsg(t("ui.saved"));
@@ -104,6 +108,7 @@ function DiskAndRetention() {
           <dt>{t("ui.system.data_dir")}</dt><dd className="mono">{s.data_dir}</dd>
           <dt>{t("ui.system.archive_originals")}</dt><dd>{s.archive_originals ? t("ui.enabled") : t("ui.disabled")}</dd>
           <dt>{t("ui.system.workers")}</dt><dd>{s.workers}</dd>
+          <dt>{t("ui.system.workspace_usage")}</dt><dd>{fmt(s.workspace_mb, 1)} MB</dd>
         </dl>
         <div className="form-grid">
           <label className="field">{t("ui.system.retention_days")}
@@ -113,6 +118,11 @@ function DiskAndRetention() {
           </label>
           <label className="field">{t("ui.system.disk_warn")} (GB)
             <input type="number" min={0} value={cur.warn} onChange={(e) => setDraft({ ...cur, warn: e.target.value })} />
+          </label>
+          <label className="field">{t("ui.system.workspace_retention")}
+            <input type="number" min={1} value={cur.ws} placeholder={t("ui.system.retention_keep")}
+              onChange={(e) => setDraft({ ...cur, ws: e.target.value })} />
+            <span className="hint">{t("ui.system.workspace_retention_hint")}</span>
           </label>
         </div>
         <div className="row">

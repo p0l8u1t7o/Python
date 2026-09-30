@@ -485,6 +485,11 @@ tools/                 原廠端工具（不隨產品發布）
 | 成像品質 | Image Quality | 影像是否適合量測 |
 | 需複判 | Review Required | 需人工確認的結果 |
 | 標準樣品 | Golden Sample | 每日點檢用的固定樣品 |
+| 手動檢測 | Manual Inspection | 不綁定配方、結果不寫入正式紀錄的參數調整與分析（PLAN-004） |
+| 工作區 | Workspace | 手動檢測的個人暫存空間 |
+| 檢測區域 | Inspection Region | 配方中限定檢測範圍的包含／排除區域 |
+| 自訂檢測區域 | Image-specific Region | 只套用於單張影像、取代配方區域的檢測區域 |
+| 視為一個陣列 | Treat as One Array | 區域內的凸塊強制成為同一陣列 |
 
 ---
 

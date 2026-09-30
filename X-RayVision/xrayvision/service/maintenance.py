@@ -1,7 +1,8 @@
 """
 資料保留與維護
 
-- 預設不自動刪除任何資料；磁碟剩餘空間低於門檻時警示。
+- 預設不自動刪除檢測資料；磁碟剩餘空間低於門檻時警示。
+- 手動檢測工作區 (暫存，非正式紀錄) 預設 7 天未使用即清除。
 - 管理員可設定封存影像保留天數：超過天數的封存影像檔會被刪除，
   但分析紀錄、結果檔、複判與稽核紀錄全部保留 (影像檢視改用原始路徑，若原始檔也不存在則無法顯示)。
 - 設定存於資料庫 settings 表，變更寫入稽核紀錄。
@@ -21,6 +22,7 @@ DEFAULTS = dict(
     retention_days=None,        # 封存影像保留天數；None = 不自動刪除
     disk_warn_gb=20.0,          # 剩餘空間低於此值警示 (GB)
     gpu_inference=False,        # 深度學習推論使用 GPU；預設關閉 (設備可能用 GPU 做 3D 重建)
+    workspace_retention_days=7, # 手動檢測工作區未使用超過此天數即清除 (PLAN-004)；None = 不自動清除
 )
 
 
@@ -38,7 +40,7 @@ def put_settings(db, changes, actor):
     for k, v in changes.items():
         if k not in DEFAULTS:
             raise ValueError(k)
-        if k == "retention_days" and v is not None:
+        if k in ("retention_days", "workspace_retention_days") and v is not None:
             v = int(v)
             if v < 1:
                 raise ValueError(k)
@@ -116,6 +118,12 @@ class Maintenance:
         out = {}
         if s["retention_days"]:
             out = purge_archive(self.settings, db, s["retention_days"])
+        if s["workspace_retention_days"]:
+            from .workspace import purge_stale
+            n = purge_stale(self.settings, s["workspace_retention_days"])
+            if n:
+                db.audit("system", "workspace.purge", "workspace", "", count=n, days=s["workspace_retention_days"])
+                out["workspaces_purged"] = n
         d = disk_status(self.settings, db)
         if d and d["low"]:
             log.warning("low disk space: %.1f GB free", d["free_gb"])

@@ -5,6 +5,7 @@ import type { Finding, HistoryItem, Judgment, ModuleResult, RunDetail as RunDeta
 import { reasonText, useApp } from "../app/context";
 import { FindingTable, SummaryKV } from "../components/ModuleSummary";
 import { DiagnosticsDialog } from "../components/DiagnosticsDialog";
+import { ImageRegionsDialog } from "../components/ImageRegionsDialog";
 import { ImageViewer, buildShapes, layersOf, pickFinding } from "../components/ImageViewer";
 import { Layout } from "../components/Layout";
 import { ReanalyzeDialog } from "../components/ReanalyzeDialog";
@@ -38,6 +39,7 @@ export function RunDetail() {
   const [picked, setPicked] = useState<{ moduleId: string; finding: Finding } | null>(null);
   const [showDiag, setShowDiag] = useState(false);
   const [showReanalyze, setShowReanalyze] = useState(false);
+  const [showRegions, setShowRegions] = useState(false);
   useEffect(() => setPicked(null), [runId]);          // 上一張／下一張切換時清除點選的物件
 
   const shapes = useMemo(() => (data ? buildShapes(data.result, modules, vscale, t("ui.group")) : []),
@@ -65,6 +67,7 @@ export function RunDetail() {
         </>}
         <Link className="btn" to={`/runs/${runId}/report`}>{t("ui.report")}</Link>
         {can("import") && <button className="btn" onClick={() => setShowReanalyze(true)}>{t("ui.reanalyze")}</button>}
+        {can("image_regions") && <button className="btn" onClick={() => setShowRegions(true)}>{t("ui.image_regions.open")}</button>}
         {result.modules.some((m) => m.module_id === "void") && (
           <Link className="btn" to={`/runs/${runId}/annotate`}>{t(can("annotate") ? "ui.annot.open" : "ui.annot.view")}</Link>
         )}
@@ -122,6 +125,7 @@ export function RunDetail() {
             )}
             {result.reference_only && <div className="alert info">{t("note.non_raw_image")}</div>}
             {result.notes.includes("regions_scaled") && <div className="alert info">{t("note.regions_scaled")}</div>}
+            {result.regions_source === "image" && <div className="alert info">{t("ui.image_regions.notice")}</div>}
             <dl className="kv">
               <dt>{t("ui.lot")}</dt><dd>{run.lot_no || "–"}</dd>
               <dt>{t("ui.sample")}</dt><dd>{run.sample_no}</dd>
@@ -147,6 +151,7 @@ export function RunDetail() {
       </div>
       {showDiag && <DiagnosticsDialog runIds={[runId]} onClose={() => setShowDiag(false)} />}
       {showReanalyze && <ReanalyzeDialog runIds={[runId]} onClose={() => setShowReanalyze(false)} />}
+      {showRegions && <ImageRegionsDialog data={data} onClose={() => setShowRegions(false)} />}
     </Layout>
   );
 }
@@ -250,7 +255,7 @@ function GroupsTab({ modules }: { modules: ModuleResult[] }) {
           <tbody>
             {m.groups.map((g) => (
               <tr key={g.id}>
-                <td>{g.id}</td><td className="num">{g.estimate ? `${g.estimate.n_in}/${g.size}` : g.size}</td>
+                <td>{g.id}{g.source === "region" ? `（${g.label || t("ui.manual.group_region")}）` : ""}</td><td className="num">{g.estimate ? `${g.estimate.n_in}/${g.size}` : g.size}</td>
                 <td className="num">{fmtSigned(g.estimate?.dx)}</td><td className="num">{fmtSigned(g.estimate?.dy)}</td>
                 <td className="num">{fmt(g.estimate?.se, 3)}</td><td className="num">{fmt(g.estimate?.scale_ppm, 0)}</td>
                 <td>{g.grade ? t(`grade.${g.grade}`) : "–"}</td>
@@ -364,6 +369,7 @@ function HistoryTab({ items, current }: { items: HistoryItem[]; current: number 
             {h.id === current ? <b>#{h.id}</b> : <Link to={`/runs/${h.id}`}>#{h.id}</Link>}
             <span className="muted">{fmtTime(h.created_at)}</span>
             <span>{h.recipe_id} v{h.recipe_version}</span>
+            {h.image_regions && <span className="tag">{t("ui.image_regions.tag")}</span>}
             <span className="spacer" />
             {i === 0 ? <span className="tag">{t("ui.history.current")}</span> : <span className="tag">{t("ui.run.superseded_tag")}</span>}
             <JudgmentBadge value={h.final_judgment} />

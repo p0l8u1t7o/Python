@@ -29,9 +29,10 @@ _BOTH = (KIND_RAW16, KIND_RGB8)
 @register
 class BumpAlignment(InspectionModule):
     module_id = "bump_alignment"
-    version = "1.1.0"
+    version = "1.1.1"
     names = {"zh-TW": "微凸塊對位", "en": "Micro Bump Alignment"}
     supported_kinds = _BOTH
+    supports_region_arrays = True
     params = (
         Param("bump_level", "float", 0.75, {"zh-TW": "凸塊輪廓高度", "en": "Bump contour level"},
               min=0.5, max=0.95, unit="ratio"),
@@ -96,7 +97,8 @@ class BumpAlignment(InspectionModule):
             if _PARAM_TO_CFG[k]:
                 cfg[_PARAM_TO_CFG[k]] = v
         res = algorithm.analyze(ctx.prepared.absorption, ctx.image.kind, cfg,
-                                in_region=ctx.in_region if ctx.region_mask is not None else None)
+                                in_region=ctx.in_region if ctx.region_mask is not None else None,
+                                array_of=ctx.region_group if ctx.region_groups is not None else None)
         result = ModuleResult(module_id=self.module_id, module_version=self.version, status=STATUS_OK,
                               params=dict(params), rejects=res["rejects"], rejected=res["rejected"])
         result.metrics = {f"{self.module_id}.{k}": v for k, v in res["metrics"].items()}
@@ -121,8 +123,12 @@ class BumpAlignment(InspectionModule):
         for a in res["arrays"]:
             est = _est_um(a["est"], px_um)
             meas = add_um(dict(bump_r_px=a["bump_r"], pad_r_px=a["pad_r"], pitch_px=a["pitch"]), px_um)
+            label = (ctx.region_labels or {}).get(a["region"], "") if a["region"] else ""
             result.groups.append(Group(id=a["id"], category="bump_array", bbox=a["bbox"], size=a["n_sites"],
-                                       estimate=est, grade=a["grade"], measurements=meas))
+                                       estimate=est, grade=a["grade"], measurements=meas,
+                                       source="region" if a["region"] else "auto", label=label))
+            if a["region"] and est is None:
+                result.reasons.append(f"region_array_insufficient_sites:group{a['id']}")
         used = [s for s in res["sites"] if s["used"]]
         result.summary = dict(die_shift=_est_um(res["est"], px_um), grade=res["grade"], bump_radius_px=res["R0"],
                               candidates=res["n_cand"], large_balls=res["n_balls"],

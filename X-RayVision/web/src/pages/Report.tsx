@@ -38,6 +38,7 @@ export function Report() {
           <div>{t("product.name")}</div>
         </div>
         {run.superseded_by && <p><b>{t("ui.report.superseded").replace("{id}", String(run.superseded_by))}</b></p>}
+        {result.regions_source === "image" && <p><b>{t("ui.image_regions.notice")}</b></p>}
         <table>
           <tbody>
             <tr><th>{t("ui.lot")}</th><td>{run.lot_no || "–"}</td><th>{t("ui.sample")}</th><td>{run.sample_no}</td></tr>

@@ -147,3 +147,14 @@ void = "xrayvision_void:VoidInspection"
 | `validation_metrics(pairs, spec)`／`validation_criteria` | 模組驗證工具 `validate-module` 的指標與驗收標準 |
 
 完整開發流程見 [GUIDE-001 模組開發指南](module-development-guide.md)。
+
+## 11. 檢測區域「視為一個陣列」（PLAN-004）
+
+| 項目 | 說明 |
+|---|---|
+| 區域格式 | 圖形新增選用欄位 `label`（最多 32 字）與 `as_array`（僅包含區域）；未設定時與舊格式相同 |
+| `supports_region_arrays` | 模組類別屬性（預設 False）；宣告支援時介面才提供「視為一個陣列」 |
+| `ctx.region_group(x, y)` | 目標所在「視為一個陣列」區域的序號（0 表示由模組自動分群）；`ctx.region_labels` 為 `{序號: 名稱}`；重疊時屬於較後面的區域 |
+| `Group.source`／`Group.label` | 群組來源 `auto`／`region` 與區域名稱，疊圖以名稱標示 |
+
+微凸塊對位 1.1.1：強制陣列不套用最少凸塊數；可採用位點少於 3 個時不估計偏移，模組原因 `region_array_insufficient_sites:groupN`。未使用此功能時結果與 1.1.0 相同。

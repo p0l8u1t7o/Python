@@ -131,6 +131,7 @@ export function RunPreview({ runId, onReanalyze }: { runId: number; onReanalyze?
               <Link to={`/runs?sel=${run.superseded_by}&all=1`}>{t("ui.run.goto_current")}</Link></div>
           )}
           {result.reference_only && <div className="alert info">{t("note.non_raw_image")}</div>}
+          {result.regions_source === "image" && <div className="alert info">{t("ui.image_regions.notice")}</div>}
           <dl className="kv">
             <dt>{t("ui.lot")}</dt><dd>{run.lot_no || "–"}</dd>
             <dt>{t("ui.sample")}</dt><dd>{run.sample_no}</dd>

@@ -113,12 +113,18 @@ class AnalysisContext:
     prepared: object       # calibration.Prepared
     pixel_size_um: float = None
     region_mask: object = None     # 檢測區域遮罩 (bool 陣列，True = 檢測)；None 為整張影像
+    region_groups: object = None   # 「視為一個陣列」區域編號遮罩 (int32，0 = 無)；None 為沒有這類區域
+    region_labels: dict = None     # {強制陣列序號: 區域名稱}
     models: dict = None            # 深度學習模型 {"模型代碼@版本": dict(path, meta)}
     gpu: bool = False              # 推論使用 GPU (系統設定)
 
     def in_region(self, x, y):
         """模組以此判斷目標中心是否在檢測區域內"""
         return regions_mod.inside(self.region_mask, x, y)
+
+    def region_group(self, x, y):
+        """支援 supports_region_arrays 的模組以此取得目標所在的強制陣列序號 (0 = 由模組自動分群)"""
+        return regions_mod.group_at(self.region_groups, x, y)
 
 
 @dataclass
@@ -137,6 +143,8 @@ class AnalysisResult:
     elapsed_s: float
     started_at: str
     unvalidated_modules: list = field(default_factory=list)    # 未驗證的模組 (判定最多需複判)
+    regions_source: str = "recipe"     # 生效的檢測區域來源：recipe = 配方；image = 本影像自訂檢測區域 (PLAN-004)
+    manual: bool = False               # 手動檢測 (非正式結果，不寫入紀錄)
 
 
 def load_profile(recipe, calibration_root):
@@ -151,7 +159,7 @@ def module_series(version):
 
 
 def analyze_image(path, recipe, calibration_root=None, acquisition_manual=None, profile=None,
-                  acquisition_record=None, validated=None, models=None, gpu=False):
+                  acquisition_record=None, validated=None, models=None, gpu=False, preloaded=None):
     """
     分析一張影像。無法讀取的影像拋出 io.ImageFormatError；校正設定檔錯誤拋出 CalibrationError。
     個別模組執行失敗時該模組狀態為 error，不影響其他模組。
@@ -159,16 +167,22 @@ def analyze_image(path, recipe, calibration_root=None, acquisition_manual=None, 
     models：配方參照的深度學習模型 {"模型代碼@版本": dict(path, meta)}；gpu：推論使用 GPU。
     validated：已驗證的 (模組代碼, 主版.次版) 集合；給定時，不在其中的模組判定最多為需複判
                (None 表示不檢查，例如工程用命令列)。
+    preloaded：(ImageData, Prepared) 已載入並校正的影像 (互動分析快取)；給定時不重新讀檔與校正。
     回傳 (AnalysisResult, Prepared)
     """
     t0 = time.time()
     started = time.strftime("%Y-%m-%dT%H:%M:%S")
-    img = load_image(path)
-    if profile is None:
-        profile = load_profile(recipe, calibration_root)
-    prep = prepare(img, profile=profile)
+    if preloaded is not None:
+        img, prep = preloaded
+    else:
+        img = load_image(path)
+        if profile is None:
+            profile = load_profile(recipe, calibration_root)
+        prep = prepare(img, profile=profile)
     region_mask, region_scaled = regions_mod.build_mask(recipe.regions, img.shape)
     ctx = AnalysisContext(image=img, prepared=prep, pixel_size_um=recipe.pixel_size_um, region_mask=region_mask,
+                          region_groups=regions_mod.build_groups(recipe.regions, img.shape),
+                          region_labels={i: s.get("label") or str(i) for i, s in regions_mod.array_shapes(recipe.regions)},
                           models=dict(models or {}), gpu=bool(gpu))
     resolved = recipe.validate()
     notes = []

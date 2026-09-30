@@ -54,6 +54,7 @@ export interface ModuleInfo {
   quality_rules: QualityRule[];
   overlay_styles: Record<string, OverlayStyle>;
   summary_vector: string;
+  supports_region_arrays?: boolean;
   finding_table?: { category: string; sort: string; columns: string[]; limit: number } | null;
   validation?: "validated" | "unvalidated";
 }
@@ -108,6 +109,8 @@ export interface RegionShape {
   type: "rect" | "polygon";
   x0?: number; y0?: number; x1?: number; y1?: number;
   points?: number[][];
+  label?: string;
+  as_array?: boolean;             // 僅包含區域：區域內的目標視為一個陣列
 }
 
 export interface Regions {
@@ -183,6 +186,7 @@ export interface RunRow {
   recipe_version: number;
   recipe_pk: number;
   superseded_by: number | null;   // 已被同一影像較新的紀錄取代時為該紀錄編號
+  image_regions?: boolean;        // 使用本影像自訂檢測區域 (PLAN-004)
 }
 
 export interface Geometry {
@@ -218,6 +222,8 @@ export interface Group {
   estimate: ShiftEstimate | null;
   grade: string;
   measurements: Record<string, number | null>;
+  source?: "auto" | "region";     // region = 檢測區域「視為一個陣列」
+  label?: string;
 }
 
 export interface QualityCheck {
@@ -259,6 +265,8 @@ export interface AnalysisResult {
   elapsed_s: number;
   started_at: string;
   unvalidated_modules?: string[];
+  regions_source?: "recipe" | "image";   // 生效的檢測區域來源 (image = 本影像自訂檢測區域)
+  manual?: boolean;                      // 手動檢測 (非正式結果)
 }
 
 export interface Review {
@@ -286,6 +294,7 @@ export interface HistoryItem {
   quality_level: QualityLevel;
   recipe_id: string;
   recipe_version: number;
+  image_regions?: boolean;
   reviews: { judgment: Judgment; comment: string; reviewer: string; created_at: string }[];
 }
 
@@ -297,6 +306,7 @@ export interface RecipeDiff {
 export interface ReanalysisScope {
   total: number;
   skipped: number;
+  image_regions?: number;         // 其中使用自訂檢測區域的影像數
   lots: { lot_no: string; n: number }[];
   avg_elapsed_s: number | null;
   workers: number;
@@ -395,4 +405,60 @@ export interface AuthState {
   user: User | null;
   permissions: string[];
   license: { state: string; analysis_allowed: boolean; days_left?: number; expires?: string; warn: boolean; enforced: boolean } | null;
+}
+
+// 手動檢測工作區 (PLAN-004 第 4 節)
+export interface WorkspaceResultSummary {
+  hash: string;
+  judgment: Judgment;
+  quality: QualityLevel;
+  summary: RunRow["summary"];
+  elapsed_s: number;
+  analyzed_at: string;
+  stale?: boolean;
+}
+
+export interface WorkspaceItem {
+  id: number;
+  name: string;
+  source: "upload" | "run";
+  image_id: number | null;
+  run_id: number | null;
+  kind: string;
+  width: number;
+  height: number;
+  size_bytes: number;
+  added_at: string;
+  available: boolean;
+  result: WorkspaceResultSummary | null;
+}
+
+export interface WorkspaceSource {
+  recipe_pk: number;
+  recipe_id: string;
+  version: number;
+  status: RecipeRow["status"];
+  name: Labels;
+  body: RecipeBody;
+}
+
+export interface WorkspaceBatch {
+  running: boolean;
+  total: number;
+  done: number;
+  failed: number;
+  current: number | null;
+  params_hash: string;
+}
+
+export interface WorkspaceView {
+  params: RecipeBody | null;
+  source: WorkspaceSource | null;
+  images: WorkspaceItem[];
+  params_hash: string | null;
+  usage: { images: number; bytes: number; max_images: number; max_bytes: number };
+  updated_at: string;
+  batch: WorkspaceBatch | null;
+  waiting: number;
+  analysis_allowed: boolean;
 }

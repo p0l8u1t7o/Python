@@ -209,6 +209,7 @@ export function Runs() {
                       <span>{keyMeasure(t, r.summary.modules)}</span>
                       {r.superseded_by && <span className="tag">{t("ui.run.superseded_tag")}</span>}
                       {r.final_judgment !== r.auto_judgment && <span className="tag">{t("ui.reviewed")}</span>}
+                      {r.image_regions && <span className="tag">{t("ui.image_regions.tag")}</span>}
                     </div>
                   </div>
                 </div>
@@ -271,6 +272,7 @@ function RunsTable({ items, selected, setSelected, toggle }:
                   {r.final_judgment !== r.auto_judgment && <span className="muted" style={{ fontSize: "var(--fs-xs)" }}> {t("ui.reviewed")}</span>}
                   {r.reference_only && <span className="muted" style={{ fontSize: "var(--fs-xs)" }}> {t("ui.reference_only")}</span>}
                   {r.superseded_by && <span className="tag" style={{ marginLeft: 6 }}>{t("ui.run.superseded_tag")}</span>}
+                  {r.image_regions && <span className="tag" style={{ marginLeft: 6 }}>{t("ui.image_regions.tag")}</span>}
                 </td>
                 <td className="num">{d ? (um ? `${fmtSigned(d.dx_um)} µm` : `${fmtSigned(d.dx)} px`) : "–"}</td>
                 <td className="num">{d ? (um ? `${fmtSigned(d.dy_um)} µm` : `${fmtSigned(d.dy)} px`) : "–"}</td>

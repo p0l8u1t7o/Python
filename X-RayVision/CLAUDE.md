@@ -51,6 +51,7 @@
 | 2026-09-23 | 5c 同意：產品加入 ONNX Runtime（DirectML 版）、開發機裝 PyTorch CPU 訓練示範模型；5c～5e 一次做完，待辦寫在 README，開發完一起檢討 |
 | 2026-09-24 | 使用情境為產線 QC 站抽檢，非連續生產；不需為即時檢測調整佇列優先權 |
 | 2026-09-24 | PLAN-003：紀錄頁左清單＋右預覽；已發布配方以「修改」建新版本、發布時挑選重跑範圍（預設舊版本全部影像）；新結果成為目前結果、舊結果標示已被取代；不沿用人工複判；配方編輯器草稿試跑 |
+| 2026-09-30 | PLAN-004：手動檢測不進正式紀錄（工作區暫存、可另存配方草稿與匯出）、工程師以上；正式流程保留配方區域並加檢閱頁單張自訂檢測區域（新紀錄、可追溯）；包含區域可勾選「視為一個陣列」；重新分析預設沿用自訂區域；工作區 7 天未用清除、每人 50 張／2 GB；不做參數並列比較；微凸塊對位升 1.1.1 而非 1.2.0（避免既有已發布配方版本鎖定失效） |
 
 ## 目前狀態
 
@@ -113,6 +114,12 @@
   - 試跑（`jobs.TrialRunner`，`POST /api/recipes/trial`，不寫紀錄）。重新分析不沿用人工複判。
   - `tests/test_iteration.py` 4 項；全部 103 項（不含 slow）通過。
   - 截圖腳本：Edge 無頭模式要用絕對路徑的 `--user-data-dir`，並加 `--no-first-run --disable-sync --disable-extensions`；`edge.kill()` 只結束主程序，殘留程序要另外清掉，否則會拖慢之後的截圖。
+- **PLAN-004（手動檢測與手動檢測區域）已完成**（2026-09-30），規劃書 [docs/manual-inspection-and-roi-plan.md](docs/manual-inspection-and-roi-plan.md) 第 10 節有完成紀錄，待使用者審閱：
+  - 區域格式 `label`／`as_array`（視為一個陣列）；`RegionCanvas`（可縮放平移、選取移動、復原）三處共用；微凸塊對位 1.1.1（舊配方結果不變，不升次版以免既有配方版本鎖定失效）。
+  - 手動檢測 `/#/manual`：`service/workspace.py`（每人 50 張／2 GB，7 天未用清除）、`jobs.InteractiveRunner`（試跑與手動檢測共用、影像快取、同 key 取代）、尺度空間偵測快取 `algorithm.scale_space_blobs`（重複分析約 1.7 秒；第一次約 9 秒）。
+  - 本影像自訂檢測區域：結構 7 `jobs.regions_json`、`/api/runs/{id}/regions(/trial)`、權限 `image_regions`、重新分析預設沿用。
+  - `tests/test_manual_inspection.py` 9 項；全部 112 項（不含 slow）＋slow 通過；回歸 0 差異。
+  - 截圖／操作腳本：Node 24 內建 WebSocket 走 CDP 控制 Edge 無頭模式即可（不需裝套件）；注意 hash 導覽不會重新載入頁面，改 localStorage 後要 `Page.reload`。
 - **第 0 階段（平台基礎）已完成**：
   - `xrayvision/` 套件：平台核心、檢測模組介面、微凸塊對位模組、命令列、語系檔。
   - 模組介面規格見 [docs/inspection-module-interface.md](docs/inspection-module-interface.md)（SPEC-001）。
@@ -134,7 +141,8 @@
 | `xrayvision/i18n/` | 語系檔；所有原因代碼與顯示文字都要有 zh-TW 與 en |
 | `xrayvision/service/`、`store/`、`ingest/` | 平台服務：API、帳號、授權、更新、保留、佇列、配方、回報包；SQLite；資料夾監看 |
 | `xrayvision/keys/`、`selftest/` | 公鑰（目前為開發用）；內建標準影像與預期結果（進版自我檢查） |
-| `web/` | React＋TypeScript 前端；`web/dist/` 由後端提供（紀錄清單＋預覽、配方修改／發布／試跑元件見 PLAN-003） |
+| `web/` | React＋TypeScript 前端；`web/dist/` 由後端提供（紀錄清單＋預覽、配方修改／發布／試跑元件見 PLAN-003；手動檢測、`RegionCanvas`、`RecipeForm`、`ImageRegionsDialog` 見 PLAN-004） |
+| `xrayvision/service/workspace.py` | 手動檢測工作區（PLAN-004）：每位使用者的影像、參數組、結果；不寫入正式紀錄 |
 | `launcher/launcher.py` | 啟動器（Windows 服務主程式）：啟動平台服務、進版、退版 |
 | `installer/xrayvision.iss` | Inno Setup 安裝腳本（由 build_release.py 呼叫） |
 | `installer/scripts/` | 安裝版服務控制腳本（`service-control.ps1` 與 `start-service.cmd` 等），建置時複製到安裝目錄 `service\`，開始功能表有捷徑 |

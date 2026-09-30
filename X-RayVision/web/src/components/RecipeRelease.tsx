@@ -67,6 +67,7 @@ export function ReleaseDialog({ pk, name, onClose, onReleased }:
   const [scope, setScope] = useState<ReanalysisScope | null>(null);
   const [mode, setMode] = useState<Scope>("all_previous");
   const [lot, setLot] = useState("");
+  const [keepRegions, setKeepRegions] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [done, setDone] = useState<(RecipeRow & { reanalysis?: { queued: number; skipped: string[] } }) | null>(null);
@@ -87,7 +88,7 @@ export function ReleaseDialog({ pk, name, onClose, onReleased }:
     setBusy(true);
     try {
       const r = await send<RecipeRow & { reanalysis?: { queued: number; skipped: string[] } }>("POST", `/api/recipes/${pk}/release`,
-        { reanalyze: mode, lot_no: mode === "lot" ? lot : "" });
+        { reanalyze: mode, lot_no: mode === "lot" ? lot : "", keep_image_regions: keepRegions });
       setDone(r);
       setError(null);
       onReleased(r);
@@ -136,6 +137,12 @@ export function ReleaseDialog({ pk, name, onClose, onReleased }:
           {scope?.lots.map((l) => <option key={l.lot_no} value={l.lot_no}>{l.lot_no}（{l.n}）</option>)}
         </select></label>
       <label className="check"><input type="radio" checked={mode === "none"} onChange={() => setMode("none")} />{t("ui.recipe.scope_none")}</label>
+      {mode !== "none" && !!scope?.image_regions && (
+        <label className="check" title={t("ui.image_regions.keep_hint")}>
+          <input type="checkbox" checked={keepRegions} onChange={(e) => setKeepRegions(e.target.checked)} />
+          {t("ui.image_regions.keep").replace("{n}", String(scope.image_regions))}
+        </label>
+      )}
       {minutes > 0 && <p className="muted">{t("ui.recipe.scope_estimate").replace("{n}", String(count)).replace("{m}", String(minutes))}</p>}
       <p className="muted">{t("ui.recipe.confirm_release_hint")}</p>
       <ErrorBox error={error} />

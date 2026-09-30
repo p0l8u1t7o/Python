@@ -5,20 +5,22 @@
 - 佇列：工作存於資料庫；服務重啟時把「執行中」的工作放回佇列，不會遺失。
 - 執行：分析在子行程中以較低優先權執行 (與設備控制軟體共用電腦)；單張失敗不影響其他工作。
 - 重新分析：同一張影像可多次分析，最新一筆紀錄為「目前結果」，較早的紀錄保留為歷程 (PLAN-003)。
-- 試跑：以未發布的配方內容分析一張影像，結果不寫入紀錄 (TrialRunner)。
+- 試跑與手動檢測：以未發布的參數分析，結果不寫入紀錄 (InteractiveRunner，PLAN-004 第 4.2 節)。
+- 本影像自訂檢測區域：工作的 regions_json 取代配方的檢測區域 (PLAN-004 第 6 節)。
 """
 import json
 import logging
 import os
 import threading
 import time
-from concurrent.futures import ProcessPoolExecutor
+from collections import OrderedDict
+from concurrent.futures import CancelledError, ProcessPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 
-from ..core import acquisition, runtime, serialize
-from ..core.calibration import CalibrationError
+from ..core import acquisition, regions, runtime, serialize
+from ..core.calibration import CalibrationError, prepare
 from ..core.io import ImageFormatError, load_image
-from ..core.pipeline import analyze_image
+from ..core.pipeline import analyze_image, load_profile
 from . import maintenance, modules
 from . import models as model_store
 from ..store import archive
@@ -91,18 +93,51 @@ def _init_worker():
     runtime.apply_limits(low_priority=True, cv_threads=1)
 
 
+_IMAGE_CACHE = OrderedDict()           # 互動分析子行程：最近載入並校正的影像 (換參數重新分析時不必重新讀檔)
+IMAGE_CACHE_ITEMS = 4
+
+
+def _preloaded(path, recipe, calibration_root):
+    key = (os.path.abspath(path), os.path.getmtime(path), recipe.calibration_profile or "", calibration_root or "")
+    hit = _IMAGE_CACHE.get(key)
+    if hit is None:
+        img = load_image(path)
+        hit = (img, prepare(img, profile=load_profile(recipe, calibration_root)))
+        _IMAGE_CACHE[key] = hit
+        while len(_IMAGE_CACHE) > IMAGE_CACHE_ITEMS:
+            _IMAGE_CACHE.popitem(last=False)
+    else:
+        _IMAGE_CACHE.move_to_end(key)
+    return hit
+
+
 def run_analysis(payload):
-    """子行程：分析並寫出結果 JSON；回傳 dict(ok, result | error)"""
+    """
+    子行程：分析並寫出結果 JSON；回傳 dict(ok, result | error)
+    選用鍵：cache_image (互動分析使用影像快取)、overlay_path (寫出疊圖 JPEG)、regions_source、manual
+    """
     from ..core.pipeline import Recipe
+    from ..core.render import render
     try:
         recipe = Recipe.from_dict(payload["recipe"])
-        res, _ = analyze_image(payload["image_path"], recipe, calibration_root=payload["calibration_root"],
-                               acquisition_record=payload["acquisition"], validated=payload.get("validated"),
-                               models=payload.get("models"), gpu=payload.get("gpu", False))
+        pre = _preloaded(payload["image_path"], recipe, payload["calibration_root"]) if payload.get("cache_image") else None
+        res, prep = analyze_image(payload["image_path"], recipe, calibration_root=payload["calibration_root"],
+                                  acquisition_record=payload["acquisition"], validated=payload.get("validated"),
+                                  models=payload.get("models"), gpu=payload.get("gpu", False), preloaded=pre)
+        res.regions_source = payload.get("regions_source", "recipe")
+        res.manual = bool(payload.get("manual"))
         data = serialize.to_jsonable(res)
         if payload.get("result_path"):                            # 試跑不寫出結果檔
             os.makedirs(os.path.dirname(payload["result_path"]), exist_ok=True)
             serialize.dump(res, payload["result_path"])
+        if payload.get("overlay_path"):
+            import cv2
+            vis = render(prep.display, res)
+            s = min(1.0, 2048 / max(vis.shape[:2]))
+            if s < 1.0:
+                vis = cv2.resize(vis, (int(round(vis.shape[1] * s)), int(round(vis.shape[0] * s))),
+                                 interpolation=cv2.INTER_AREA)
+            cv2.imwrite(payload["overlay_path"], vis, [cv2.IMWRITE_JPEG_QUALITY, 88])
         return dict(ok=True, result=data)
     except (ImageFormatError, CalibrationError) as e:
         return dict(ok=False, error=e.code)
@@ -118,18 +153,39 @@ def image_path(img):
     return None
 
 
-def build_payload(settings, db, img, recipe_dict, acquisition_record, result_path):
-    """分析子行程的輸入 (佇列工作與試跑共用)"""
-    return dict(image_path=image_path(img) or img["original_path"], recipe=recipe_dict,
+def build_payload(settings, db, img, recipe_dict, acquisition_record, result_path, image_regions=None, path=None):
+    """
+    分析子行程的輸入 (佇列工作、試跑、手動檢測共用)。
+    image_regions：本影像自訂檢測區域 (取代配方的檢測區域)；path：直接指定影像檔 (手動檢測上傳的影像)
+    """
+    recipe_dict = dict(recipe_dict)
+    if image_regions:
+        recipe_dict["regions"] = image_regions
+    return dict(image_path=path or image_path(img) or img["original_path"], recipe=recipe_dict,
                 calibration_root=settings.calibration_dir, acquisition=acquisition_record,
                 validated=modules.validated_set(db), models=model_store.resolve(db, recipe_dict),
-                gpu=bool(maintenance.get_settings(db)["gpu_inference"]), result_path=result_path)
+                gpu=bool(maintenance.get_settings(db)["gpu_inference"]), result_path=result_path,
+                regions_source="image" if image_regions else "recipe")
 
 
-def queue_reanalysis(db, items, actor, source="reanalyze"):
+def job_regions(job):
+    """工作的本影像自訂檢測區域 (None 表示使用配方區域)"""
+    raw = job.get("regions_json") if job else None
+    return regions.normalize(json.loads(raw)) if raw else None
+
+
+def latest_image_regions(db, image_id):
+    """該影像最近一個工作的自訂檢測區域 JSON (None 表示使用配方區域)"""
+    last = db.one("SELECT regions_json FROM jobs WHERE image_id = ? ORDER BY id DESC LIMIT 1", (image_id,))
+    return last["regions_json"] if last and last["regions_json"] else None
+
+
+def queue_reanalysis(db, items, actor, source="reanalyze", keep_image_regions=True, regions_override=None):
     """
     建立重新分析工作。items：[(image_id, recipe_pk)]；同一影像只建立一個工作。
-    沿用該影像最近一次工作的拍攝參數。回傳 dict(job_ids, skipped=[檔名])，影像檔已不存在者略過。
+    沿用該影像最近一次工作的拍攝參數；keep_image_regions 時也沿用自訂檢測區域 (PLAN-004 第 6.3 節)。
+    regions_override：指定自訂檢測區域 (dict；空 dict 表示改回配方區域)，優先於沿用。
+    回傳 dict(job_ids, skipped=[檔名])，影像檔已不存在者略過。
     """
     job_ids, skipped, seen = [], [], set()
     for image_id, recipe_pk in items:
@@ -142,10 +198,15 @@ def queue_reanalysis(db, items, actor, source="reanalyze"):
         if image_path(img) is None:
             skipped.append(img["file_name"])
             continue
-        last = db.one("SELECT acquisition_json FROM jobs WHERE image_id = ? ORDER BY id DESC LIMIT 1", (image_id,))
+        last = db.one("SELECT acquisition_json, regions_json FROM jobs WHERE image_id = ? ORDER BY id DESC LIMIT 1",
+                      (image_id,))
+        if regions_override is not None:
+            reg = json.dumps(regions_override, ensure_ascii=False) if regions_override else None
+        else:
+            reg = last["regions_json"] if last and keep_image_regions else None
         job_ids.append(db.insert("jobs", image_id=image_id, recipe_pk=recipe_pk, status="queued", priority=1,
                                  acquisition_json=last["acquisition_json"] if last else "{}", source=source,
-                                 created_at=now()))
+                                 regions_json=reg, created_at=now()))
     return dict(job_ids=job_ids, skipped=skipped)
 
 
@@ -225,7 +286,8 @@ class JobQueue:
                 raise RecipeStoreError("module_not_licensed", m.module_id)
         day = time.strftime("%Y%m%d")
         return build_payload(self.settings, db, img, recipe.to_dict(), json.loads(job["acquisition_json"]),
-                             os.path.join(self.settings.results_dir, day, f"job{job_id}.json"))
+                             os.path.join(self.settings.results_dir, day, f"job{job_id}.json"),
+                             image_regions=job_regions(job))
 
     def _loop(self):
         while not self._stop.is_set():
@@ -240,7 +302,7 @@ class JobQueue:
                     break
                 try:
                     payload = self._payload(job_id)
-                except (RecipeStoreError, OSError, KeyError) as e:
+                except (RecipeStoreError, OSError, KeyError, ValueError) as e:
                     self._finish_failed(job_id, getattr(e, "code", "job_prepare_failed"), str(e), retry=False)
                     continue
                 fut = self._pool.submit(run_analysis, payload)
@@ -339,40 +401,66 @@ class JobQueue:
 
 
 # ---------------------------------------------------------------------------
-# 試跑 (配方編輯器)：同步分析一張影像，不寫入紀錄；同時只允許一個
+# 互動分析 (配方試跑、手動檢測)：同步分析，不寫入紀錄
 # ---------------------------------------------------------------------------
-class TrialBusy(Exception):
-    pass
+class InteractiveRunner:
+    """
+    一個常駐低優先權子行程，依序處理請求；子行程保留最近載入的影像 (換參數重新分析時不必重新讀檔與校正)。
+    同一 key (使用者＋影像) 送出新請求時，取消尚未開始的舊請求。單次執行逾時中止子行程。
+    """
 
-
-class TrialRunner:
     def __init__(self, timeout_s=180):
         self.timeout_s = timeout_s
         self._pool = None
-        self._busy = threading.Lock()
+        self._lock = threading.Lock()
+        self._pending = {}                  # key -> future
 
-    def run(self, payload):
-        """回傳 run_analysis 的輸出；已有試跑進行中時拋出 TrialBusy，逾時回傳 error=trial_timeout"""
-        if not self._busy.acquire(blocking=False):
-            raise TrialBusy()
+    def _ensure_pool(self):
+        if self._pool is None:
+            self._pool = ProcessPoolExecutor(1, initializer=_init_worker)
+        return self._pool
+
+    def waiting(self):
+        """尚未完成的請求數 (含執行中)"""
+        with self._lock:
+            return sum(1 for f in self._pending.values() if not f.done())
+
+    def run(self, payload, key=None):
+        """回傳 run_analysis 的輸出；被同 key 的新請求取代時回傳 error=superseded，逾時回傳 error=trial_timeout"""
+        payload = dict(payload, cache_image=True)
+        with self._lock:
+            old = self._pending.get(key) if key is not None else None
+            if old is not None and not old.running():
+                old.cancel()
+            fut = self._ensure_pool().submit(run_analysis, payload)
+            if key is not None:
+                self._pending[key] = fut
+        started = None
         try:
-            if self._pool is None:
-                self._pool = ProcessPoolExecutor(1, initializer=_init_worker)
-            fut = self._pool.submit(run_analysis, payload)
-            try:
-                return fut.result(timeout=self.timeout_s)
-            except FutureTimeout:
-                self._kill()
-                return dict(ok=False, error="trial_timeout")
-            except Exception as e:                                # noqa: BLE001  子行程異常終止
-                self._kill()
-                return dict(ok=False, error="worker_crashed", detail=repr(e))
+            while True:
+                try:
+                    return fut.result(timeout=0.25)
+                except FutureTimeout:
+                    if fut.running():
+                        started = started or time.time()
+                        if time.time() - started > self.timeout_s:
+                            self._kill()
+                            return dict(ok=False, error="trial_timeout")
+                except CancelledError:
+                    return dict(ok=False, error="superseded")
+                except Exception as e:                            # noqa: BLE001  子行程異常終止
+                    self._kill()
+                    return dict(ok=False, error="worker_crashed", detail=repr(e))
         finally:
-            self._busy.release()
+            with self._lock:
+                if key is not None and self._pending.get(key) is fut:
+                    del self._pending[key]
 
     def _kill(self):
-        """中止卡住的試跑子行程並丟棄行程池 (下次試跑重新建立)"""
-        pool, self._pool = self._pool, None
+        """中止卡住的子行程並丟棄行程池 (下次請求重新建立)"""
+        with self._lock:
+            pool, self._pool = self._pool, None
+            self._pending.clear()
         if pool is None:
             return
         for p in list(getattr(pool, "_processes", {}).values()):

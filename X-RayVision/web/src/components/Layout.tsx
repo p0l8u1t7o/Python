@@ -20,6 +20,7 @@ const NAV: { section: string; items: { to: string; key: string; perm: string }[]
     section: "ui.nav.section.engineering",
     items: [
       { to: "/recipes", key: "ui.nav.recipes", perm: "view" },
+      { to: "/manual", key: "ui.nav.manual", perm: "manual_inspect" },
       { to: "/watch", key: "ui.nav.watch", perm: "view" },
       { to: "/diagnostics", key: "ui.nav.diagnostics", perm: "diagnostics" },
     ],
