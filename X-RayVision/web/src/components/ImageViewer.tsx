@@ -335,6 +335,21 @@ export function buildShapes(result: AnalysisResult, modules: Record<string, Modu
       if (r.reason === "border" || r.reason === "on_ball" || r.reason === "not_ball") continue;
       out.push({ kind: "cross", layer: `${m.module_id}.rejected`, color: "#ff3cc8", width: 1.5, x: r.x, y: r.y, r: r.r });
     }
+    // 判定標示：被判定原因指到的焊點與陣列以判定色標示 (PLAN-005 第 3 節)
+    const judged = judgedTargets(m.judgment_reasons);
+    const layerJ = `${m.module_id}.judgment`;
+    if (judged.size) {
+      for (const f of m.findings) {
+        const lv = judged.get(String(f.flags?.label ?? "")) || judged.get(`ball${f.id}`);
+        const g = Object.values(f.geometry).find((q) => q.type === "circle");
+        if (lv && g && (f.flags?.label !== undefined || f.category === "ball"))
+          out.push({ kind: "circle", layer: layerJ, color: JUDGE_COLORS[lv], width: 3, x: g.x!, y: g.y!, r: (g.r || 10) * 1.18 });
+      }
+      for (const g of m.groups) {
+        const lv = judged.get(`group${g.id}`);
+        if (lv && g.bbox) out.push({ kind: "rect", layer: layerJ, color: JUDGE_COLORS[lv], width: 4, x: g.bbox[0] - 6, y: g.bbox[1] - 6, x2: g.bbox[2] + 6, y2: g.bbox[3] + 6 });
+      }
+    }
     const gs = styles.group || { color: "#00a0ff", thickness: 2 };
     const ga = styles.group_shift || { color: "#00a0ff", thickness: 3, scale: 40 };
     for (const g of m.groups) {
@@ -349,6 +364,19 @@ export function buildShapes(result: AnalysisResult, modules: Record<string, Modu
         out.push({ kind: "arrow", layer: `${m.module_id}.group`, color: ga.color, width: 3, x: e.cx, y: e.cy, x2: e.cx + k * e.dx, y2: e.cy + k * e.dy });
       }
     }
+  }
+  return out;
+}
+
+// 判定原因指到的目標 (「…:ballN」「…:groupN」)：超出規格 → fail，其餘 (接近規格、方法差異) → review
+export const JUDGE_COLORS = { fail: "#d64545", review: "#c98200" };
+export function judgedTargets(reasons: string[]): Map<string, "fail" | "review"> {
+  const out = new Map<string, "fail" | "review">();
+  for (const code of reasons || []) {
+    const [head, target] = code.split(":");
+    if (!target || target === "image") continue;
+    const level = head.includes("exceeds") ? "fail" : "review";
+    if (out.get(target) !== "fail") out.set(target, level);
   }
   return out;
 }

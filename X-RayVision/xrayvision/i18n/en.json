@@ -958,5 +958,12 @@
   "ui.system.workspace_usage": "Manual inspection workspaces",
   "ui.system.workspace_retention": "Manual inspection workspace retention (days)",
   "ui.system.workspace_retention_hint": "Workspaces unused for longer than this are cleared; leave blank to keep them.",
-  "error.warm_failed": "Background preparation failed (analysis is not affected)"
+  "error.warm_failed": "Background preparation failed (analysis is not affected)",
+  "notice.void_model_missing": "No void inspection model has been imported, so the rule-based segmentation method is used. After an administrator imports a model, new recipes use the model by default.",
+  "ui.layer.judgment": "Judgment marks",
+  "ui.annot.tool.brush": "Brush",
+  "ui.annot.tool.eraser": "Eraser",
+  "ui.annot.brush_size": "Brush size",
+  "ui.annot.help.brush": "Paint over a ball to add void areas; strokes touching an existing void are merged. Use [ ] to change the brush size, scroll to zoom, drag with Shift or the middle button to pan; Ctrl+Z/Ctrl+Y to undo/redo.",
+  "ui.annot.help.eraser": "Painted areas are removed from voids; a void can be split in two. Use [ ] to change the size; drag with Shift or the middle button to pan."
 }

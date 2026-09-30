@@ -36,6 +36,22 @@ def _draw_geom(img, g, style):
         cv2.polylines(img, [pts], True, col, th, cv2.LINE_AA, shift=_SHIFT)
 
 
+JUDGE_BGR = {"fail": (69, 69, 214), "review": (0, 130, 201)}     # 固定判定色 (與介面相同)
+
+
+def judged_targets(reasons):
+    """判定原因指到的目標 {"ballN"/"groupN": "fail"|"review"}：超出規格為 fail，其餘為 review"""
+    out = {}
+    for code in reasons or []:
+        head, _, target = code.partition(":")
+        if not target or target == "image":
+            continue
+        level = "fail" if "exceeds" in head else "review"
+        if out.get(target) != "fail":
+            out[target] = level
+    return out
+
+
 def render(display, result, show_rejected=True):
     """display：uint8 灰階；result：pipeline.AnalysisResult。回傳 BGR 影像"""
     vis = cv2.cvtColor(display, cv2.COLOR_GRAY2BGR)
@@ -55,12 +71,22 @@ def render(display, result, show_rejected=True):
                     continue
                 c = (int(round(rj["x"])), int(round(rj["y"])))
                 cv2.drawMarker(vis, c, (255, 0, 200), cv2.MARKER_TILTED_CROSS, max(int(rj["r"]), 8), 2)
+        judged = judged_targets(mr.judgment_reasons)
+        for f in mr.findings:
+            lv = judged.get(f.flags.get("label", f"ball{f.id}")) if judged else None
+            g = next((q for q in f.geometry.values() if q.get("type") == "circle"), None)
+            if lv and g:
+                _draw_geom(vis, dict(g, r=g["r"] * 1.18), dict(color=JUDGE_BGR[lv], thickness=3))
         gs, ga = styles.get("group", {}), styles.get("group_shift", {})
         for g in mr.groups:
             if g.bbox is None:
                 continue
             x0, y0, x1, y1 = g.bbox
             _draw_geom(vis, dict(type="bbox", x0=x0, y0=y0, x1=x1, y1=y1), gs)
+            lv = judged.get(f"group{g.id}")
+            if lv:
+                _draw_geom(vis, dict(type="bbox", x0=x0 - 6, y0=y0 - 6, x1=x1 + 6, y1=y1 + 6),
+                           dict(color=JUDGE_BGR[lv], thickness=4))
             e = g.estimate
             txt = f"G{g.id} n={g.size}"
             if e:

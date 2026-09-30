@@ -7,7 +7,7 @@ import { ImageViewer, buildShapes } from "../components/ImageViewer";
 import { Layout } from "../components/Layout";
 import { summaryEntries } from "../components/ModuleSummary";
 import { RecipeDiffView, ReleaseDialog } from "../components/RecipeRelease";
-import { AcqLimitsForm, ModuleParamsForm, QualityRulesForm, arraysSupported } from "../components/RecipeForm";
+import { AcqLimitsForm, ModuleParamsForm, QualityRulesForm, arraysSupported, loadTemplate } from "../components/RecipeForm";
 import { RegionEditor } from "../components/RegionEditor";
 import { loadRun } from "../components/RunPreview";
 import { Card, ErrorBox, JudgmentBadge, QualityBadge, fmt, fmtSigned, fmtTime, useLoad } from "../components/ui";
@@ -26,6 +26,7 @@ export function RecipeEditor() {
   const [diff, setDiff] = useState<RecipeDiff | null>(null);
   const [showDiff, setShowDiff] = useState(false);
   const [releasing, setReleasing] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const isNew = !pk;
   const edit = can("recipe_edit");
   const readOnly = (!!row && row.status !== "draft") || !edit;
@@ -41,7 +42,7 @@ export function RecipeEditor() {
         if (r.status === "draft") loadDiff(r.id);
       }).catch(setError);
     } else if (moduleId) {
-      get<RecipeBody>(`/api/recipe-template/${moduleId}`).then(setBody).catch(setError);
+      loadTemplate(moduleId).then((r) => { setBody(r.body); setNotice(r.notice); }).catch(setError);
     }
   }, [pk, moduleId]);
 
@@ -107,6 +108,7 @@ export function RecipeEditor() {
             </div>
           )}
           {saved && <div className="alert info">{t("ui.saved")}</div>}
+          {isNew && notice && <div className="alert info">{t(`notice.${notice}`, notice)}</div>}
           <ErrorBox error={error} />
           <Card title={t("ui.recipe.basic")}>
             <div className="form-grid">

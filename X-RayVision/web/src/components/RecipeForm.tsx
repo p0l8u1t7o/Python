@@ -104,6 +104,12 @@ export function AcqLimitsForm({ body, upd }: { body: RecipeBody; upd: (p: Partia
   );
 }
 
+// 新增配方範本 (依模組宣告，可能預設使用深度學習模型)；notice 為提示代碼 (例如尚未匯入模型)
+export async function loadTemplate(moduleId: string): Promise<{ body: RecipeBody; notice: string | null }> {
+  const { _notice, ...body } = await get<RecipeBody & { _notice?: string | null }>(`/api/recipe-template/${moduleId}`);
+  return { body, notice: _notice || null };
+}
+
 // 是否有啟用中的模組支援「視為一個陣列」
 export function arraysSupported(body: RecipeBody, modules: Record<string, ModuleInfo>) {
   return body.modules.some((m) => m.enabled !== false && modules[m.module_id]?.supports_region_arrays);

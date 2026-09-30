@@ -52,6 +52,7 @@
 | 2026-09-24 | 使用情境為產線 QC 站抽檢，非連續生產；不需為即時檢測調整佇列優先權 |
 | 2026-09-24 | PLAN-003：紀錄頁左清單＋右預覽；已發布配方以「修改」建新版本、發布時挑選重跑範圍（預設舊版本全部影像）；新結果成為目前結果、舊結果標示已被取代；不沿用人工複判；配方編輯器草稿試跑 |
 | 2026-09-30 | PLAN-004：手動檢測不進正式紀錄（工作區暫存、可另存配方草稿與匯出）、工程師以上；正式流程保留配方區域並加檢閱頁單張自訂檢測區域（新紀錄、可追溯）；包含區域可勾選「視為一個陣列」；重新分析預設沿用自訂區域；工作區 7 天未用清除、每人 50 張／2 GB；不做參數並列比較；微凸塊對位升 1.1.1 而非 1.2.0（避免既有已發布配方版本鎖定失效） |
+| 2026-09-30 | README 檢討：空洞預設用模型（範本預設，既有配方不變、不升版）；檢測區域自動對位先觀察現場；先不新增檢測模組；做疊圖依判定著色與標註筆刷（PLAN-005）；操作手冊英文版暫不做 |
 
 ## 目前狀態
 
@@ -120,6 +121,7 @@
   - 本影像自訂檢測區域：結構 7 `jobs.regions_json`、`/api/runs/{id}/regions(/trial)`、權限 `image_regions`、重新分析預設沿用。
   - `tests/test_manual_inspection.py` 11 項（含預先準備與授權不可分析）；回歸 0 差異。主體已提交 170acce；審閱後追加的預先載入與授權測試見規劃書第 10.1 節。
   - 截圖／操作腳本：Node 24 內建 WebSocket 走 CDP 控制 Edge 無頭模式即可（不需裝套件）；注意 hash 導覽不會重新載入頁面，改 localStorage 後要 `Page.reload`。
+- **PLAN-005（README 檢討後續）已完成**（2026-09-30），規劃書 [docs/review-followups-plan.md](docs/review-followups-plan.md) 第 7 節有完成紀錄，待審閱：空洞新增配方範本預設模型（`template_model_defaults`，模組預設與版本不變）、疊圖「判定標示」圖層（前端 `judgedTargets`、後端 `render.judged_targets`）、標註筆刷／橡皮擦（`web/src/components/maskPoly.ts`）與復原；`tests/test_review_followups.py` 3 項，全部 117 項通過。
 - **第 0 階段（平台基礎）已完成**：
   - `xrayvision/` 套件：平台核心、檢測模組介面、微凸塊對位模組、命令列、語系檔。
   - 模組介面規格見 [docs/inspection-module-interface.md](docs/inspection-module-interface.md)（SPEC-001）。

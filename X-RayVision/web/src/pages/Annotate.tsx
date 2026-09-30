@@ -4,6 +4,7 @@ import { get, send } from "../api/client";
 import type { RunDetail } from "../api/types";
 import { useApp } from "../app/context";
 import { Layout } from "../components/Layout";
+import { applyStroke, type Pt } from "../components/maskPoly";
 import { ErrorBox, fmtTime, useLoad } from "../components/ui";
 
 interface AnnotationData { balls: number[][]; voids: number[][][] }
@@ -12,7 +13,8 @@ interface AnnotationInfo {
   history_count: number;
   base: AnnotationData;
 }
-type Tool = "select" | "polygon" | "erase";
+type Tool = "select" | "polygon" | "brush" | "eraser" | "erase";
+const PAINT: Tool[] = ["polygon", "brush", "eraser"];         // 左鍵拖拉用於繪製 (平移改用中鍵或 Shift＋拖拉)
 
 // 空洞標註 (規劃書 PLAN-002 第 6 節)：修正空洞輪廓，作為訓練資料與模組驗證的正確答案
 export function Annotate() {
@@ -37,6 +39,15 @@ export function Annotate() {
   const view = useRef({ zoom: 1, ox: 0, oy: 0 });
   const drag = useRef<{ x: number; y: number; ox: number; oy: number; moved: boolean } | null>(null);
   const [, redraw] = useState(0);
+  const [brush, setBrush] = useState(() => { try { return Number(localStorage.getItem("xrv.annot.brush")) || 6; } catch { return 6; } });
+  const stroke = useRef<Pt[] | null>(null);                    // 繪製中的筆畫 (影像座標)
+  const past = useRef<AnnotationData[]>([]);
+  const future = useRef<AnnotationData[]>([]);
+  const setBrushSize = (v: number) => {
+    const n = Math.min(80, Math.max(1, Math.round(v)));
+    setBrush(n);
+    try { localStorage.setItem("xrv.annot.brush", String(n)); } catch { /* 無法儲存時忽略 */ }
+  };
 
   useEffect(() => {
     if (info && !data) setData(info.current ? info.current.data : info.base);
@@ -105,6 +116,25 @@ export function Annotate() {
       g.lineWidth = 2 / zoom;
       g.stroke();
     });
+    // 筆畫預覽與筆刷游標
+    const st = stroke.current;
+    if (st && st.length) {
+      g.beginPath();
+      st.forEach((p, j) => (j ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])));
+      if (st.length === 1) g.lineTo(st[0][0] + 0.01, st[0][1]);
+      g.lineCap = "round";
+      g.lineJoin = "round";
+      g.lineWidth = brush * 2;
+      g.strokeStyle = tool === "eraser" ? "rgba(255,255,255,0.45)" : "rgba(239,68,68,0.45)";
+      g.stroke();
+    }
+    if ((tool === "brush" || tool === "eraser") && hover) {
+      g.beginPath();
+      g.arc(hover[0], hover[1], brush, 0, Math.PI * 2);
+      g.lineWidth = 1.5 / zoom;
+      g.strokeStyle = tool === "eraser" ? "#ffffff" : "#facc15";
+      g.stroke();
+    }
     if (draft) {
       g.beginPath();
       [...draft, ...(hover ? [hover] : [])].forEach((p, j) => (j ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])));
@@ -127,7 +157,24 @@ export function Annotate() {
     const { zoom, ox, oy } = view.current;
     return [(e.clientX - b.left - ox) / zoom, (e.clientY - b.top - oy) / zoom];
   };
-  const update = (d: AnnotationData) => { setData(d); setDirty(true); setMsg(""); };
+  const update = (d: AnnotationData) => {
+    if (data) {
+      past.current.push(data);
+      if (past.current.length > 100) past.current.shift();
+      future.current = [];
+    }
+    setData(d); setDirty(true); setMsg("");
+  };
+  const undo = () => {
+    if (!past.current.length || !data) return;
+    future.current.push(data);
+    setData(past.current.pop()!); setDirty(true); setSel(null);
+  };
+  const redo = () => {
+    if (!future.current.length || !data) return;
+    past.current.push(data);
+    setData(future.current.pop()!); setDirty(true); setSel(null);
+  };
 
   const inside = (p: number[], poly: number[][]) => {
     let c = false;
@@ -158,6 +205,10 @@ export function Annotate() {
       if (e.key === "Delete" || e.key === "Backspace") removeSelected();
       if (e.key === "Escape") { setDraft(null); setSel(null); }
       if (e.key === "Enter") finishPolygon();
+      if (e.ctrlKey && e.key.toLowerCase() === "z") { e.preventDefault(); undo(); }
+      if (e.ctrlKey && e.key.toLowerCase() === "y") { e.preventDefault(); redo(); }
+      if (e.key === "[") setBrushSize(brush - (brush > 10 ? 2 : 1));
+      if (e.key === "]") setBrushSize(brush + (brush >= 10 ? 2 : 1));
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -165,22 +216,42 @@ export function Annotate() {
 
   const onDown = (e: React.MouseEvent) => {
     drag.current = { x: e.clientX, y: e.clientY, ox: view.current.ox, oy: view.current.oy, moved: false };
+    if (edit && data && e.button === 0 && !e.shiftKey && (tool === "brush" || tool === "eraser")) {
+      const p = toImg(e);
+      stroke.current = [[p[0], p[1]]];
+      redraw((n) => n + 1);
+    }
   };
   const onMove = (e: React.MouseEvent) => {
     const d = drag.current;
+    const st = stroke.current;
+    if (st && e.buttons & 1) {
+      const p = toImg(e), q = st[st.length - 1];
+      if (Math.hypot(p[0] - q[0], p[1] - q[1]) >= Math.max(0.3, brush * 0.25)) st.push([p[0], p[1]]);
+      setHover(p);
+      redraw((n) => n + 1);
+      return;
+    }
     if (d && (e.buttons & 1 || e.buttons & 4)) {
       const dx = e.clientX - d.x, dy = e.clientY - d.y;
-      if (Math.abs(dx) + Math.abs(dy) > 4 && (tool !== "polygon" || e.buttons & 4 || e.shiftKey)) {
+      if (Math.abs(dx) + Math.abs(dy) > 4 && (!PAINT.includes(tool) || e.buttons & 4 || e.shiftKey)) {
         d.moved = true;
         view.current = { ...view.current, ox: d.ox + dx, oy: d.oy + dy };
         redraw((n) => n + 1);
       }
     }
-    if (draft) setHover(toImg(e));
+    if (draft || tool === "brush" || tool === "eraser") setHover(toImg(e));
   };
   const onUp = (e: React.MouseEvent) => {
     const d = drag.current;
     drag.current = null;
+    const st = stroke.current;
+    if (st) {
+      stroke.current = null;
+      if (data) update({ ...data, voids: applyStroke(data.voids, st, brush, tool === "eraser" ? "erase" : "add") });
+      setSel(null);
+      return;
+    }
     if (!data || !edit || (d && d.moved) || e.button !== 0) return;
     const p = toImg(e);
     if (tool === "polygon") setDraft([...(draft || []), p]);
@@ -227,16 +298,24 @@ export function Annotate() {
       <div className="review-layout">
         <div style={{ position: "relative", minHeight: 0 }}>
           <div className="viewer-tools no-print"><div className="panel">
-            {edit && (["polygon", "select", "erase"] as Tool[]).map((k) => (
+            {edit && (["brush", "eraser", "polygon", "select", "erase"] as Tool[]).map((k) => (
               <button key={k} className={`btn small ${tool === k ? "primary" : ""}`} onClick={() => { setTool(k); setDraft(null); }}>{t(`ui.annot.tool.${k}`)}</button>
             ))}
+            {edit && (tool === "brush" || tool === "eraser") && (
+              <label title="[ ]">{t("ui.annot.brush_size")}
+                <input type="range" min={1} max={80} value={brush} onChange={(e) => setBrushSize(+e.target.value)} /> {brush} px
+              </label>
+            )}
+            {edit && <button className="btn small" disabled={!past.current.length} onClick={undo} title="Ctrl+Z">{t("ui.region.undo")}</button>}
+            {edit && <button className="btn small" disabled={!future.current.length} onClick={redo} title="Ctrl+Y">{t("ui.region.redo")}</button>}
             {edit && sel !== null && <button className="btn small danger" onClick={removeSelected}>{t("ui.delete")}</button>}
             {draft && <button className="btn small" onClick={finishPolygon}>{t("ui.annot.finish")}</button>}
             <button className="btn small" onClick={fit}>{t("ui.annot.fit")}</button>
           </div></div>
           <div ref={wrap} style={{ position: "absolute", inset: 0 }}>
-            <canvas ref={canvas} style={{ display: "block", cursor: tool === "polygon" ? "crosshair" : "default" }}
+            <canvas ref={canvas} style={{ display: "block", cursor: tool === "polygon" ? "crosshair" : tool === "brush" || tool === "eraser" ? "none" : "default" }}
               onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onWheel={onWheel}
+              onMouseLeave={(e) => { if (stroke.current) onUp(e); setHover(null); }}
               onDoubleClick={() => tool === "polygon" && finishPolygon()} onContextMenu={(e) => e.preventDefault()} />
           </div>
         </div>

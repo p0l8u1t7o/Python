@@ -5,7 +5,7 @@ import type { AnalysisResult, RecipeBody, RecipeModule, RecipeRow, RecipeSummary
 import { reasonText, useApp } from "../app/context";
 import { ImageViewer, buildShapes } from "../components/ImageViewer";
 import { Layout } from "../components/Layout";
-import { ModuleParamsForm, QualityRulesForm, arraysSupported } from "../components/RecipeForm";
+import { ModuleParamsForm, QualityRulesForm, arraysSupported, loadTemplate } from "../components/RecipeForm";
 import { RegionCanvas } from "../components/RegionEditor";
 import { ModuleMeasures, keyMeasure } from "../components/RunPreview";
 import { Empty, ErrorBox, JudgmentBadge, Modal, QualityBadge, fmt, fmtSigned, fmtTime } from "../components/ui";
@@ -85,8 +85,9 @@ export function ManualInspection() {
       } else {
         const mid = modules.bump_alignment ? "bump_alignment" : Object.keys(modules)[0];
         if (!mid) return;
-        const tpl = await get<RecipeBody>(`/api/recipe-template/${mid}`);
-        setBody({ ...tpl, recipe_id: "", name: {} });
+        const tpl = await loadTemplate(mid);
+        setBody({ ...tpl.body, recipe_id: "", name: {} });
+        if (tpl.notice) setNotice(t(`notice.${tpl.notice}`, tpl.notice));
       }
     }).catch(setError);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -255,8 +256,10 @@ export function ManualInspection() {
       upd({ modules: body.modules.filter((m) => m.module_id !== mid) });
       return;
     }
-    const tpl = await get<RecipeBody>(`/api/recipe-template/${mid}`).catch((e) => { setError(e); return null; });
-    if (tpl) setBody((b) => b && { ...b, modules: [...b.modules, tpl.modules[0]] });
+    const tpl = await loadTemplate(mid).catch((e) => { setError(e); return null; });
+    if (!tpl) return;
+    setBody((b) => b && { ...b, modules: [...b.modules, tpl.body.modules[0]] });
+    setNotice(tpl.notice ? t(`notice.${tpl.notice}`, tpl.notice) : "");
   };
 
   if (!body || !ws) {

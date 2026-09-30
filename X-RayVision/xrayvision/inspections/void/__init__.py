@@ -49,6 +49,8 @@ class VoidInspection(InspectionModule):
         Param("model", "model", "", {"zh-TW": "深度學習模型", "en": "Deep learning model"},
               choices=("void_segmentation",)),
     )
+    # 新增配方預設使用深度學習模型 (有啟用中的空洞模型時)；沒有模型時範本維持規則式
+    template_model_defaults = {"method": "model"}
     # 品質規則初始值 (依合成影像與 Batch2 訂定；取得實際空洞影像後校正)
     quality_rules = (
         QualityRule("void.measurable_ratio", warn_below=0.5, fail_below=0.2, kinds=_BOTH),

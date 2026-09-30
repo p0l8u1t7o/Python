@@ -151,6 +151,9 @@ class InspectionModule:
     finding_table = None
     # 是否支援檢測區域的「視為一個陣列」(ctx.region_group)；不支援的模組忽略該設定
     supports_region_arrays = False
+    # 新增配方範本的模型預設 (選用)：有啟用中的適用模型時，範本改用這些參數值並帶入最新模型；
+    # 模組參數預設值不變，既有配方結果不受影響 (PLAN-005 第 2 節)。例如 {"method": "model"}
+    template_model_defaults = None
 
     def run(self, ctx, params):
         raise NotImplementedError

@@ -958,5 +958,12 @@
   "ui.system.workspace_usage": "手動檢測工作區占用",
   "ui.system.workspace_retention": "手動檢測工作區保留天數",
   "ui.system.workspace_retention_hint": "工作區超過此天數未使用即清除；空白表示不自動清除。",
-  "error.warm_failed": "背景預先準備失敗（不影響分析）"
+  "error.warm_failed": "背景預先準備失敗（不影響分析）",
+  "notice.void_model_missing": "尚未匯入空洞檢測模型，空洞分割方法暫用規則式；系統管理員匯入模型後，新增的配方會預設使用模型。",
+  "ui.layer.judgment": "判定標示",
+  "ui.annot.tool.brush": "筆刷",
+  "ui.annot.tool.eraser": "橡皮擦",
+  "ui.annot.brush_size": "筆刷大小",
+  "ui.annot.help.brush": "在焊點上塗抹新增空洞區域，與既有空洞相接時合併。[ ] 調整筆刷大小；滾輪縮放，按住 Shift 或中鍵拖曳平移；Ctrl+Z／Ctrl+Y 復原／重做。",
+  "ui.annot.help.eraser": "塗抹處從空洞區域扣除，可把一個空洞切成兩個。[ ] 調整大小；按住 Shift 或中鍵拖曳平移。"
 }

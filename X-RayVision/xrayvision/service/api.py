@@ -440,10 +440,23 @@ def create_app(settings, workers=None, watch=True, start=True, enforce_license=T
             cls = plugin.get(module_id)
         except KeyError:
             raise ApiError(404, "unknown_module", module_id)
+        params = {p.key: p.default for p in cls.params}
+        notice = None
+        if cls.template_model_defaults:
+            # 範本預設使用模型：帶入最新啟用、任務相符的模型；沒有時維持模組預設並提示
+            mparam = next((p for p in cls.params if p.type == "model"), None)
+            usable = [m for m in model_store.list_models(db, module_id, include_retired=False)
+                      if mparam and (not mparam.choices or m["task"] in mparam.choices)]
+            if usable:
+                params.update(cls.template_model_defaults)
+                params[mparam.key] = max(usable, key=lambda m: m["id"])["ref"]
+            else:
+                notice = f"{module_id}_model_missing"
         return dict(recipe_id="", version=1, name={"zh-TW": "", "en": ""}, pixel_size_um=None,
                     calibration_profile=None, quality_rules=[], acquisition_limits={},
-                    modules=[dict(module_id=module_id, params={p.key: p.default for p in cls.params},
-                                  judgment={p.key: p.default for p in cls.judgment_params})])
+                    modules=[dict(module_id=module_id, params=params,
+                                  judgment={p.key: p.default for p in cls.judgment_params})],
+                    _notice=notice)
 
     @app.post("/api/recipes")
     def create_recipe(b: RecipeBody, who: str = Depends(require("recipe_edit"))):
