@@ -155,6 +155,12 @@ class InspectionModule:
     def run(self, ctx, params):
         raise NotImplementedError
 
+    def warm(self, ctx, params):
+        """
+        預先準備 (選用)：互動分析在使用者切換影像前，於背景先做與參數無關、耗時的步驟並快取，
+        之後 run() 直接沿用。不得改變 run() 的結果。預設不做事。
+        """
+
     def judge(self, result, spec, pixel_size_um=None):
         """
         依判定規格判定模組結果；回傳 (level, reasons)。

@@ -91,11 +91,20 @@ class BumpAlignment(InspectionModule):
         "group_shift": {"color": (255, 160, 0), "thickness": 5, "scale": 40.0},
     }
 
-    def run(self, ctx, params):
+    @staticmethod
+    def _cfg(params):
         cfg = dict(algorithm.DEFAULTS)
         for k, v in params.items():
             if _PARAM_TO_CFG[k]:
                 cfg[_PARAM_TO_CFG[k]] = v
+        return cfg
+
+    def warm(self, ctx, params):
+        """尺度空間偵測只取決於影像與固定設定，先算好快取 (algorithm.scale_space_blobs)"""
+        algorithm.scale_space_blobs(ctx.prepared.absorption, ctx.image.kind, self._cfg(params))
+
+    def run(self, ctx, params):
+        cfg = self._cfg(params)
         res = algorithm.analyze(ctx.prepared.absorption, ctx.image.kind, cfg,
                                 in_region=ctx.in_region if ctx.region_mask is not None else None,
                                 array_of=ctx.region_group if ctx.region_groups is not None else None)

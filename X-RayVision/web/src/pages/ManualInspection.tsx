@@ -127,12 +127,23 @@ export function ManualInspection() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cur?.id, cur?.result?.hash]);
 
-  // 前後各預先載入一張影像
+  // 前後各預先載入一張影像 (瀏覽器端縮圖)
   useEffect(() => {
     if (!cur) return;
     const i = images.findIndex((x) => x.id === cur.id);
     for (const j of [i - 1, i + 1]) if (images[j]) { const im = new Image(); im.src = imgSrc(images[j].id); }
   }, [cur, images]);
+
+  // 後端背景預先準備 (載入、校正、與參數無關的偵測)：目前、下一張、上一張中尚無最新結果者；停留 0.5 秒後才送出
+  const curIdx = cur ? images.findIndex((x) => x.id === cur.id) : -1;
+  useEffect(() => {
+    if (curIdx < 0 || !ws?.analysis_allowed || batchRunning || busy !== null) return;
+    const ids = [curIdx, curIdx + 1, curIdx - 1].map((j) => images[j]).filter((x) => x && isStale(x)).map((x) => x.id);
+    if (!ids.length) return;
+    const h = setTimeout(() => send("POST", "/api/workspace/prefetch", { ids }).catch(() => undefined), 500);
+    return () => clearTimeout(h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cur?.id, curIdx, paramsHash, ws?.analysis_allowed]);
 
   const analyze = useCallback(async (it: WorkspaceItem | null) => {
     if (!it || !body) return;

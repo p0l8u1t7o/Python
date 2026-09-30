@@ -104,6 +104,10 @@ class WorkspaceFromRecipe(BaseModel):
     recipe_pk: int
 
 
+class WorkspacePrefetch(BaseModel):
+    ids: List[int]                           # 依優先順序 (目前影像、下一張、上一張)
+
+
 class WorkspaceAnalyze(BaseModel):
     body: Optional[dict] = None              # 同時更新參數組 (避免前端尚未存檔就分析)
 
@@ -1028,6 +1032,25 @@ def create_app(settings, workers=None, watch=True, start=True, enforce_license=T
         if not out["ok"]:
             raise ApiError(410 if out["error"] == "image_unavailable" else 422, out["error"], out.get("detail", ""))
         return dict(result=out["result"], summary=out["summary"], params_hash=h)
+
+    @app.post("/api/workspace/prefetch")
+    def workspace_prefetch(b: WorkspacePrefetch, who: str = Depends(require("manual_inspect"))):
+        """背景預先載入影像並做與參數無關的準備 (最多 3 張)；不產生結果、不寫稽核。授權不可分析或參數無效時略過"""
+        if not plat.analysis_allowed():
+            return dict(queued=0)
+        ws = _ws(who)
+        d = ws.load()
+        try:
+            recipe = _ws_recipe(d["params"])
+        except ApiError:
+            return dict(queued=0)
+        items = {it["id"]: it for it in d["images"]}
+        payloads = []
+        for i in b.ids[:3]:
+            it = items.get(i)
+            if it and os.path.isfile(it["path"]):
+                payloads.append((i, build_payload(settings, db, None, recipe.to_dict(), {}, None, path=it["path"])))
+        return dict(queued=plat.interactive.prefetch(payloads, who))
 
     @app.post("/api/workspace/analyze-all")
     def workspace_analyze_all(b: Optional[WorkspaceAnalyze] = None, who: str = Depends(require("manual_inspect"))):

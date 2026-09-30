@@ -116,9 +116,9 @@
   - 截圖腳本：Edge 無頭模式要用絕對路徑的 `--user-data-dir`，並加 `--no-first-run --disable-sync --disable-extensions`；`edge.kill()` 只結束主程序，殘留程序要另外清掉，否則會拖慢之後的截圖。
 - **PLAN-004（手動檢測與手動檢測區域）已完成**（2026-09-30），規劃書 [docs/manual-inspection-and-roi-plan.md](docs/manual-inspection-and-roi-plan.md) 第 10 節有完成紀錄，待使用者審閱：
   - 區域格式 `label`／`as_array`（視為一個陣列）；`RegionCanvas`（可縮放平移、選取移動、復原）三處共用；微凸塊對位 1.1.1（舊配方結果不變，不升次版以免既有配方版本鎖定失效）。
-  - 手動檢測 `/#/manual`：`service/workspace.py`（每人 50 張／2 GB，7 天未用清除）、`jobs.InteractiveRunner`（試跑與手動檢測共用、影像快取、同 key 取代）、尺度空間偵測快取 `algorithm.scale_space_blobs`（重複分析約 1.7 秒；第一次約 9 秒）。
+  - 手動檢測 `/#/manual`：`service/workspace.py`（每人 50 張／2 GB，7 天未用清除）、`jobs.InteractiveRunner`（試跑與手動檢測共用、影像快取、同 key 取代）、尺度空間偵測快取 `algorithm.scale_space_blobs`（重複分析約 1.7 秒）；切換影像時背景預先準備（`/api/workspace/prefetch` → `jobs.warm_image` → 模組 `warm()`），預先載入後第一次分析約 2.3 秒。
   - 本影像自訂檢測區域：結構 7 `jobs.regions_json`、`/api/runs/{id}/regions(/trial)`、權限 `image_regions`、重新分析預設沿用。
-  - `tests/test_manual_inspection.py` 9 項；全部 112 項（不含 slow）＋slow 通過；回歸 0 差異。
+  - `tests/test_manual_inspection.py` 11 項（含預先準備與授權不可分析）；回歸 0 差異。主體已提交 170acce；審閱後追加的預先載入與授權測試見規劃書第 10.1 節。
   - 截圖／操作腳本：Node 24 內建 WebSocket 走 CDP 控制 Edge 無頭模式即可（不需裝套件）；注意 hash 導覽不會重新載入頁面，改 localStorage 後要 `Page.reload`。
 - **第 0 階段（平台基礎）已完成**：
   - `xrayvision/` 套件：平台核心、檢測模組介面、微凸塊對位模組、命令列、語系檔。

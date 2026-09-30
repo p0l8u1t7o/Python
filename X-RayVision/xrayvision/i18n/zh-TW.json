@@ -957,5 +957,6 @@
   "ui.manual.add_n": "加入 {n} 張",
   "ui.system.workspace_usage": "手動檢測工作區占用",
   "ui.system.workspace_retention": "手動檢測工作區保留天數",
-  "ui.system.workspace_retention_hint": "工作區超過此天數未使用即清除；空白表示不自動清除。"
+  "ui.system.workspace_retention_hint": "工作區超過此天數未使用即清除；空白表示不自動清除。",
+  "error.warm_failed": "背景預先準備失敗（不影響分析）"
 }

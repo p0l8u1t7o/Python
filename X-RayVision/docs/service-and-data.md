@@ -184,7 +184,7 @@ python -m xrayvision serve --data D:\XRV                                        
 | 工作 | `GET /api/jobs`、`POST /api/jobs/{id}/cancel`、`POST /api/jobs/{id}/retry`、`POST /api/images/{id}/reanalyze`、`GET /api/jobs/reanalysis`、`POST /api/jobs/reanalysis/cancel` |
 | 分析紀錄 | `GET /api/runs`（篩選：判定、批號、配方、日期、`current_only`；回傳 `image_regions`）、`GET /api/runs/{id}`（含 `history`）、`GET /api/runs/{id}/image`（伺服器端快取最近 24 張）、`POST /api/runs/{id}/review`、`POST /api/runs/reanalyze`（`keep_image_regions`） |
 | 自訂檢測區域 | `POST /api/runs/{id}/regions/trial`、`POST /api/runs/{id}/regions`（`regions` 為 null 時改回配方區域）；權限 `image_regions` |
-| 手動檢測 | `GET/DELETE /api/workspace`、`POST /api/workspace/images`（上傳，可附同名拍攝參數檔）、`POST /api/workspace/images/from-runs`、`DELETE /api/workspace/images/{id}`、`GET /api/workspace/images/{id}/image`、`GET /api/workspace/images/{id}/result`、`PUT /api/workspace/params`、`POST /api/workspace/params/from-recipe`、`POST /api/workspace/images/{id}/analyze`、`POST /api/workspace/analyze-all`、`POST /api/workspace/analyze-all/cancel`、`POST /api/workspace/save-recipe`、`GET /api/workspace/export`；權限 `manual_inspect`（另存配方需 `recipe_edit`） |
+| 手動檢測 | `GET/DELETE /api/workspace`、`POST /api/workspace/images`（上傳，可附同名拍攝參數檔）、`POST /api/workspace/images/from-runs`、`DELETE /api/workspace/images/{id}`、`GET /api/workspace/images/{id}/image`、`GET /api/workspace/images/{id}/result`、`PUT /api/workspace/params`、`POST /api/workspace/params/from-recipe`、`POST /api/workspace/images/{id}/analyze`、`POST /api/workspace/prefetch`、`POST /api/workspace/analyze-all`、`POST /api/workspace/analyze-all/cancel`、`POST /api/workspace/save-recipe`、`GET /api/workspace/export`；權限 `manual_inspect`（另存配方需 `recipe_edit`） |
 | 統計 | `GET /api/stats`、`GET /api/lots` |
 | 資料夾監看 | `GET/POST /api/watch-folders`、`PATCH /api/watch-folders/{id}`、`POST /api/watch-folders/scan` |
 | 問題回報 | `POST/GET /api/diagnostics`、`GET /api/diagnostics/files/{name}` |
@@ -196,7 +196,7 @@ python -m xrayvision serve --data D:\XRV                                        
 
 - **工作區**：`service/workspace.py`，每位使用者一個目錄 `<資料目錄>/workspace/<帳號代碼>/`（`workspace.json` 影像清單、參數組、帶入來源、結果摘要；`images/` 上傳的影像；`results/` 結果 JSON 與疊圖）。不寫入 `images`／`jobs`／`runs`，總覽、紀錄、CSV 不含手動檢測結果。上限每人 50 張、上傳合計 2 GB；系統設定 `workspace_retention_days`（預設 7 天）未使用即由維護工作清除。
 - **參數組**：與配方內容同格式；分析時補上代碼 `manual`、版本 1。結果以參數組雜湊判斷是否過期（`stale`）。結果標示 `manual: true`。
-- **互動分析執行器**：`jobs.InteractiveRunner` 取代 `TrialRunner`，配方試跑、手動檢測、自訂區域試跑共用；一個常駐低優先權子行程依序處理，同一使用者＋影像的新請求取消尚未開始的舊請求；單次逾時 180 秒中止子行程。子行程保留最近 4 張已載入並校正的影像（`jobs._preloaded`），微凸塊模組另快取尺度空間偵測結果（`algorithm.scale_space_blobs`，只取決於影像與固定的 `det_*` 設定），同一影像換參數重新分析時結果完全相同、時間由約 9 秒降為約 1.7 秒（Batch2）。
+- **互動分析執行器**：`jobs.InteractiveRunner` 取代 `TrialRunner`，配方試跑、手動檢測、自訂區域試跑共用；一個常駐低優先權子行程依序處理，同一使用者＋影像的新請求取消尚未開始的舊請求；單次逾時 180 秒中止子行程。子行程保留最近 4 張已載入並校正的影像（`jobs._preloaded`），微凸塊模組另快取尺度空間偵測結果（`algorithm.scale_space_blobs`，只取決於影像與固定的 `det_*` 設定），同一影像換參數重新分析時結果完全相同、時間由約 9 秒降為約 1.7 秒（Batch2）。`prefetch()` 在背景執行 `warm_image`（載入、校正、模組 `warm()`），使用者的分析請求優先（取消尚未開始的預先準備）；手動檢測切換影像時預先準備目前與前後各一張，第一次分析約 2.3 秒。
 - **本影像自訂檢測區域**：資料庫結構 7 `jobs.regions_json`（NULL 表示使用配方區域）；`build_payload(image_regions=)` 以其取代配方區域，結果記錄 `regions_source`（`recipe`／`image`）。`queue_reanalysis` 預設沿用影像最近一個工作的自訂區域（`keep_image_regions`），`regions_override` 可指定或清除。
 
 ## 9. 實測

@@ -153,6 +153,27 @@ def image_path(img):
     return None
 
 
+def warm_image(payload):
+    """
+    子行程：預先載入並校正影像，並執行各模組的 warm() (例如尺度空間偵測) 存入快取；不產生結果。
+    互動分析 (手動檢測) 在使用者切換到該影像前於背景執行，第一次分析即可沿用。
+    """
+    from ..core import plugin
+    from ..core.pipeline import AnalysisContext, Recipe
+    try:
+        recipe = Recipe.from_dict(payload["recipe"])
+        img, prep = _preloaded(payload["image_path"], recipe, payload["calibration_root"])
+        ctx = AnalysisContext(image=img, prepared=prep, pixel_size_um=recipe.pixel_size_um)
+        resolved = recipe.validate()
+        for spec in recipe.modules:
+            cls = plugin.get(spec.module_id)
+            if spec.enabled and img.kind in cls.supported_kinds:
+                cls().warm(ctx, resolved[spec.module_id])
+        return dict(ok=True)
+    except Exception as e:                                        # noqa: BLE001  預先準備失敗不影響之後的分析
+        return dict(ok=False, error="warm_failed", detail=repr(e))
+
+
 def build_payload(settings, db, img, recipe_dict, acquisition_record, result_path, image_regions=None, path=None):
     """
     分析子行程的輸入 (佇列工作、試跑、手動檢測共用)。
@@ -414,6 +435,7 @@ class InteractiveRunner:
         self._pool = None
         self._lock = threading.Lock()
         self._pending = {}                  # key -> future
+        self._background = {}               # 預先準備：key -> future (新的分析請求會取消尚未開始的)
 
     def _ensure_pool(self):
         if self._pool is None:
@@ -429,6 +451,10 @@ class InteractiveRunner:
         """回傳 run_analysis 的輸出；被同 key 的新請求取代時回傳 error=superseded，逾時回傳 error=trial_timeout"""
         payload = dict(payload, cache_image=True)
         with self._lock:
+            for f in self._background.values():               # 使用者的分析優先於背景預先準備
+                if not f.running():
+                    f.cancel()
+            self._background = {k: f for k, f in self._background.items() if not f.done()}
             old = self._pending.get(key) if key is not None else None
             if old is not None and not old.running():
                 old.cancel()
@@ -456,11 +482,30 @@ class InteractiveRunner:
                 if key is not None and self._pending.get(key) is fut:
                     del self._pending[key]
 
+    def prefetch(self, payloads, owner):
+        """
+        背景預先準備 (不等待結果)：取消同一 owner 尚未開始的預先準備後，依序送出 [(key, payload)]。
+        回傳送出的數量。
+        """
+        with self._lock:
+            for (o, _k), f in list(self._background.items()):
+                if o == owner and not f.running():
+                    f.cancel()
+            self._background = {k: f for k, f in self._background.items() if not f.done()}
+            n = 0
+            for key, payload in payloads:
+                if (owner, key) in self._background:
+                    continue
+                self._background[(owner, key)] = self._ensure_pool().submit(warm_image, payload)
+                n += 1
+            return n
+
     def _kill(self):
         """中止卡住的子行程並丟棄行程池 (下次請求重新建立)"""
         with self._lock:
             pool, self._pool = self._pool, None
             self._pending.clear()
+            self._background.clear()
         if pool is None:
             return
         for p in list(getattr(pool, "_processes", {}).values()):

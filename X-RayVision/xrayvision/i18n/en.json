@@ -957,5 +957,6 @@
   "ui.manual.add_n": "Add {n}",
   "ui.system.workspace_usage": "Manual inspection workspaces",
   "ui.system.workspace_retention": "Manual inspection workspace retention (days)",
-  "ui.system.workspace_retention_hint": "Workspaces unused for longer than this are cleared; leave blank to keep them."
+  "ui.system.workspace_retention_hint": "Workspaces unused for longer than this are cleared; leave blank to keep them.",
+  "error.warm_failed": "Background preparation failed (analysis is not affected)"
 }

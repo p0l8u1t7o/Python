@@ -277,3 +277,46 @@ def test_blob_cache_same_result(tmp_path):
     fresh, _ = analyze_image(p, rec2)
     assert cached.modules[0].summary == fresh.modules[0].summary
     assert a.modules[0].summary != cached.modules[0].summary or a.modules[0].summary["die_shift"] is not None
+
+
+def test_warm_image_fills_caches(tmp_path):
+    """背景預先準備：載入影像與尺度空間偵測存入快取，之後的分析沿用且結果相同"""
+    from xrayvision.inspections.bump_alignment import algorithm as alg
+    from xrayvision.service import jobs
+    p = synth_raw16(str(tmp_path / "w.tiff"), shift=(0.4, 0.0))
+    body = dict(recipe_id="b", version=1, name={}, modules=[dict(module_id="bump_alignment", params={})])
+    jobs._IMAGE_CACHE.clear()
+    alg._BLOB_CACHE.clear()
+    out = jobs.warm_image(dict(image_path=p, recipe=body, calibration_root=None))
+    assert out["ok"] and len(jobs._IMAGE_CACHE) == 1 and len(alg._BLOB_CACHE) == 1
+    rec = Recipe.from_dict(body)
+    pre = jobs._preloaded(p, rec, None)
+    assert alg._BLOB_CACHE[0][0]() is pre[1].absorption
+    warm, _ = analyze_image(p, rec, preloaded=pre)
+    alg._BLOB_CACHE.clear()
+    fresh, _ = analyze_image(p, rec)
+    assert warm.modules[0].summary == fresh.modules[0].summary
+    assert not jobs.warm_image(dict(image_path=str(tmp_path / "none.tiff"), recipe=body, calibration_root=None))["ok"]
+
+
+def test_workspace_prefetch_and_license_blocked(client, tmp_path):
+    up = _ws_upload(client, tmp_path, ["p1.tiff", "p2.tiff"])
+    tpl = client.get("/api/recipe-template/bump_alignment").json()
+    client.put("/api/workspace/params", json={"body": tpl})
+    r = client.post("/api/workspace/prefetch", json={"ids": up["added"] + [999]})
+    assert r.status_code == 200 and r.json()["queued"] == 2
+    it = up["added"][0]
+    assert client.post(f"/api/workspace/images/{it}/analyze", json={}).status_code == 200
+    # 授權不可分析：手動檢測、試跑、自訂區域的分析都拒絕；檢視結果與匯出仍可用
+    plat = client.platform
+    plat.enforce_license = True
+    plat._lic_cache = (0.0, None)
+    assert not plat.analysis_allowed()
+    for path, body in ((f"/api/workspace/images/{it}/analyze", {}), ("/api/workspace/analyze-all", {}),
+                       ("/api/recipes/trial", {"body": tpl, "run_id": 1}), ("/api/runs/1/regions/trial", {"regions": None})):
+        r = client.post(path, json=body)
+        assert r.status_code == 403 and r.json()["error"].startswith("license_"), (path, r.text)
+    assert client.post("/api/workspace/prefetch", json={"ids": up["added"]}).json()["queued"] == 0
+    assert client.get("/api/workspace").json()["analysis_allowed"] is False
+    assert client.get(f"/api/workspace/images/{it}/result").status_code == 200
+    assert client.get("/api/workspace/export").status_code == 200
