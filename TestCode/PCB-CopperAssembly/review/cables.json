@@ -7,7 +7,7 @@
       "scenario": "obround-138",
       "samples": 2507,
       "routes": 51,
-      "supports": 172,
+      "supports": 176,
       "carriers": 12,
       "feedthroughs": {
         "plates": 1,
@@ -22,7 +22,7 @@
       "scenario": "round-72",
       "samples": 1389,
       "routes": 51,
-      "supports": 172,
+      "supports": 176,
       "carriers": 12,
       "feedthroughs": {
         "plates": 1,

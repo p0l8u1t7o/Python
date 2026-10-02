@@ -1,0 +1,24 @@
+{
+  "ok": true,
+  "variants": [
+    {
+      "variant": "預設",
+      "params": {},
+      "ok": true,
+      "objects": 2815,
+      "samples": 40,
+      "failures": []
+    },
+    {
+      "variant": "round-72",
+      "params": {
+        "recipe": "round-72"
+      },
+      "ok": true,
+      "objects": 2815,
+      "samples": 40,
+      "failures": []
+    }
+  ],
+  "seconds": 0.6
+}

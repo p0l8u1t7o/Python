@@ -49,7 +49,7 @@ node ../core/tools/serve.mjs PCB-CopperAssembly --no-open
 - 右側顯示兩頭的放置進度、目前最大放置誤差（對照 ±6 mil），以及各站當下的動作。
 - 「匯出紀錄」產生 JSON：每顆的放置頭、吸嘴、趟次、時間與模擬誤差。**無實拍影像、無實測值。**
 
-網址參數：`?recipe=round-72`、`?t=14.24&view=s2&pip=upA`、`?shadow=0`；主控台：`window.sim.seekTo(sec)`、`setView(name)`、`plan`。
+網址參數：`?recipe=round-72`、`?t=14.24&view=s2&pip=upA`、`?shadow=0`；主控台：`window.sim.seekTo(sec)`、`setView(name)`、`views`、`total`、`play()`、`pause()`、`plan`。
 
 ## 檔案
 
@@ -60,16 +60,20 @@ node ../core/tools/serve.mjs PCB-CopperAssembly --no-open
 | `web/js/board.js` | 基板（依配方的長圓孔或圓孔＋黏紙）、銅片、量測與檢查標記 |
 | `web/js/machine.js` | 輸送線、料倉與上下料、相機龍門、雙龍門與吸嘴頭、供料盤、仰視相機、外罩 |
 | `web/js/sim.js` | 把排程在任一時間的狀態套到機台（畫面與驗證共用） |
-| `web/js/main.js` | 場景、時間軸、UI、相機子畫面、紀錄匯出 |
+| `web/js/project.js` | 專案介面 `createProject({ scene, recipe })`：建立機台、基板與排程，`apply(t)` 把整個場景放到時間 t；網頁與 core 統一檢查共用同一份（含 `layoutChecks` 與全場檢查設定） |
+| `web/js/main.js` | 時間軸、UI、相機子畫面、紀錄匯出（場景物件與逐時狀態都取自 `project.js`） |
 | `tools/verify.mjs` | 排程與幾何驗證 |
 
 ## 驗證
 
-需要 Node.js 22 以上，不需 npm 套件：
+需要 Node.js 22 以上，不需 npm 套件。統一檢查（import 路徑、倒序一致、空間檢核、全場干涉與重合面，再加上本專案 `project.json` 列的驗證腳本）：
 
 ```powershell
-node --import ../core/tools/register.mjs tools/verify.mjs
+node ../core/tools/check.mjs PCB-CopperAssembly          # 在本資料夾；在 TestCode 則為 node core/tools/check.mjs PCB
+node --import ../core/tools/register.mjs tools/verify.mjs  # 只跑排程驗證
 ```
+
+core 內建檢查以預設配方（長圓孔 138）與 `project.json` 的 `variants`（圓孔 72）各跑一次；全場檢查結果在 `review/scene-verification.txt`。
 
 兩個機種各檢查一次：
 - 節拍 ≤ 60 s。
@@ -96,7 +100,7 @@ node --import ../core/tools/register.mjs tools/verify.mjs
 
 預覽：`http://127.0.0.1:8770/PCB-CopperAssembly/?pause&t=20&view=hole`；圓片加上 `&recipe=round-72`。`hole=23` 可指定第 23 孔。
 
-350×350 mm 是用戶給定的板面尺寸；其餘現有配方尺寸仍為示意。銅箔單層 0.035 mm、長條孔圓角 R0.85、長條散熱片圓角 R0.65、散熱片倒角 0.045 mm 是本次外觀假設，沒有從照片推定為實測值。刮痕、色澤分布也是程序化外觀，不代表實際缺陷；紅藍手寫檢查記號不作為自動檢查結果。
+350×350 mm 是用戶給定的板面尺寸；其餘現有配方尺寸仍為示意。銅箔單層 0.035 mm 低於顯示的深度精度，畫面上以零厚度表皮呈現（上下各一面，芯材上下蓋面不繪製；黏紙為孔底可見的一個面），避免薄層互搶深度閃爍；長條孔圓角 R0.85、長條散熱片圓角 R0.65、散熱片倒角 0.045 mm 是本次外觀假設，沒有從照片推定為實測值。刮痕、色澤分布也是程序化外觀，不代表實際缺陷；紅藍手寫檢查記號不作為自動檢查結果。
 
 幾何回歸驗證（兩種配方）：
 

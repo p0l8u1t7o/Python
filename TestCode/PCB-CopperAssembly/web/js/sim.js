@@ -17,7 +17,8 @@ export function createSim(scene) {
   for (const b of Object.values(boards)) scene.add(b.group);
   const N = plan.holes.length; boards.s2.setCoins(N); boards.s3.setCoins(N); boards.s2.setMapped(0);
   // 料倉：上料剩餘（不含最上面那片）、收料已疊
-  for (const [key, n] of [['S0', STACK.in - 1], ['S4', STACK.out]]) { const s = m.stacks[key].stack; s.scale.y = n * PITCH; s.position.y = STACK.base + n * PITCH / 2; }
+  // 疊料方塊頂面比最上一片基板底面低 1 mm：方塊代表下面整疊，頂面不與基板黏紙面同平面（避免閃爍）
+  for (const [key, n] of [['S0', STACK.in - 1], ['S4', STACK.out]]) { const s = m.stacks[key].stack, h = n * PITCH - 1; s.scale.y = h; s.position.y = STACK.base + h / 2; }
   const count = (list, key, T) => { let n = 0; for (const h of list) if (h[key] <= T) n++; else break; return n; };
   const upcamEv = { A: plan.events.filter(e => e.type === 'upcam' && e.H === 'A').map(e => e.t), B: plan.events.filter(e => e.type === 'upcam' && e.H === 'B').map(e => e.t) };
   const near = (list, T, w = 0.03) => list.some(t => Math.abs(t - T) < w);

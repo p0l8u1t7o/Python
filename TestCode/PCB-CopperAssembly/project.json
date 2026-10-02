@@ -10,5 +10,8 @@
       "tools/verify-clearance.mjs",
       "tools/verify-geometry.mjs"
     ]
-  }
+  },
+  "variants": [
+    { "name": "round-72", "params": { "recipe": "round-72" } }
+  ]
 }

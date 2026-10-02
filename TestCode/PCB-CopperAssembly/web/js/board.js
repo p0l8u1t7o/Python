@@ -3,11 +3,15 @@ import * as THREE from 'three';
 import { PRODUCT, HOLES } from './layout.js';
 import { matCopper, matCoin, matCoinBack, matCoinEdge, surfaceUV } from './surfaces.js';
 export { matCopper, matCoinBack } from './surfaces.js';
-const B = PRODUCT.board, foil = .035; // Visual estimate, not a measured stack-up.
+const B = PRODUCT.board;
+// 銅箔（約 0.035 mm）遠薄於深度緩衝精度，做成實體只會與芯材、黏紙、輸送皮帶面互搶深度；
+// 改為零厚度表皮：上銅箔朝上、下銅箔朝下（BackSide），芯材上下蓋面不繪製，只留孔壁與板邊。
 const matAdhesive = new THREE.MeshStandardMaterial({ color: 0x9ca99b, roughness: .95 });
 const matCore = new THREE.MeshStandardMaterial({ color: 0x4b5134, roughness: .87 });
+const matCopperBelow = matCopper.clone(); matCopperBelow.side = THREE.BackSide;
 // Copper covers the core caps; omitting those hidden faces avoids depth fighting at overview distances.
 const hiddenCoreCap = new THREE.MeshBasicMaterial({ visible: false });
+const CORE_INSET = .01;   // 芯材蓋面略縮進表皮內，射線與排序永遠先碰到銅箔表皮
 /** Rounded rectangle; photo shows straight ends with corner radii. Shape y maps to -z. */
 export function obround(w, l, cx = 0, cz = 0, path = new THREE.Shape(), radius = w / 2) {
   const r = Math.min(radius, w / 2, l / 2), x = cx - w / 2, y = -cz - l / 2;
@@ -43,16 +47,24 @@ function layerGeometry(depth) {
     g.rotateX(-Math.PI / 2); return surfaceUV(g, 70);
   });
 }
+/** 銅箔表皮：與芯材同一個外形與孔位，法向朝上 */
+function skinGeometry() {
+  return cached('skin', () => {
+    const g = new THREE.ShapeGeometry(boardShape(), 16);
+    g.rotateX(-Math.PI / 2); return surfaceUV(g, 70);
+  });
+}
 export function createBoard({ placedOrder = HOLES, pose = h => ({ x: h.x, z: h.z, a: 0 }), mapOrder = HOLES, inspOrder = HOLES } = {}) {
   const group = new THREE.Group(); group.name = 'copper-clad-board';
-  const adhesive = new THREE.Mesh(new THREE.BoxGeometry(B.w - 2, B.adhesive, B.d - 2), matAdhesive);
-  adhesive.name = 'adhesive'; adhesive.position.y = B.adhesive / 2; adhesive.receiveShadow = true; group.add(adhesive);
-  for (const [name, depth, y, material] of [
-    ['bottom-copper', foil, B.adhesive, matCopper],
-    ['laminate-core', B.t - foil * 2, B.adhesive + foil, [hiddenCoreCap, matCore]],
-    ['top-copper', foil, B.adhesive + B.t - foil, matCopper],
+  // 黏紙：只在孔底看得到，以朝上的面放在黏紙上表面（銅片落座高度）；z 向留在輸送皮帶（|z| ≥ 170）內側
+  const adhesive = new THREE.Mesh(new THREE.PlaneGeometry(B.w - 2, B.d - 14), matAdhesive);
+  adhesive.name = 'adhesive'; adhesive.rotation.x = -Math.PI / 2; adhesive.position.y = B.adhesive; adhesive.receiveShadow = true; group.add(adhesive);
+  for (const [name, geometry, y, material] of [
+    ['bottom-copper', skinGeometry(), B.adhesive, matCopperBelow],
+    ['laminate-core', layerGeometry(B.t - CORE_INSET * 2), B.adhesive + CORE_INSET, [hiddenCoreCap, matCore]],
+    ['top-copper', skinGeometry(), B.adhesive + B.t, matCopper],
   ]) {
-    const layer = new THREE.Mesh(layerGeometry(depth), material); layer.name = name;
+    const layer = new THREE.Mesh(geometry, material); layer.name = name;
     layer.position.y = y; layer.castShadow = layer.receiveShadow = true; group.add(layer);
   }
   const coins = new THREE.InstancedMesh(coinGeometry(), [matCoin, matCoinEdge], placedOrder.length);

@@ -1,0 +1,14 @@
+# 預設
+DYN -46.8 2.99-8.06s machine/Box@(572,1410,-140) 70×90×70 <> machine/Box@(610,1420,0) 30×30×550
+DYN -46.6 3.51-8.84s machine/Box@(-656,1410,-140) 70×90×70 <> machine/Box@(-610,1420,0) 30×30×550
+DYN -14.8 7.28-7.28s machine/S3 / camera vertical lead / jacket:Tube@(613,1431,10) 9×6×6 <> machine/Box@(610,1420,0) 30×30×550
+DYN -14.6 3.64-8.84s machine/S1 / camera vertical lead / jacket:Tube@(-594,1431,-200) 9×6×6 <> machine/Box@(-610,1420,0) 30×30×550
+DYN -8.3 2.99-7.8s machine/Box@(572,1210,-140) 44×47×34 <> machine/S2 Y 軌:Box@(520,1230,0) 70×60×1010
+DYN -8.3 3.77-8.71s machine/Box@(-569,1210,-140) 44×47×34 <> machine/S2 Y 軌:Box@(-520,1230,0) 70×60×1010
+# round-72
+DYN -46.7 2.96-8.07s machine/Box@(586,1410,-142) 70×90×70 <> machine/Box@(610,1420,0) 30×30×550
+DYN -46.7 3.4-8.81s machine/Box@(-656,1410,-140) 70×90×70 <> machine/Box@(-610,1420,0) 30×30×550
+DYN -14.7 4.96-7.84s machine/S3 / camera vertical lead / jacket:Tube@(625,1431,-130) 9×6×6 <> machine/Box@(610,1420,0) 30×30×550
+DYN -14.7 3.63-6.51s machine/S1 / camera vertical lead / jacket:Tube@(-607,1431,-200) 9×6×6 <> machine/Box@(-610,1420,0) 30×30×550
+DYN -8.3 3.03-7.77s machine/Box@(569,1210,-140) 44×47×34 <> machine/S2 Y 軌:Box@(520,1230,0) 70×60×1010
+DYN -8.3 3.7-8.73s machine/Box@(-569,1210,-140) 44×47×34 <> machine/S2 Y 軌:Box@(-520,1230,0) 70×60×1010

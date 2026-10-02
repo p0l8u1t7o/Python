@@ -67,7 +67,8 @@ export function createMachine(scene) {
     entryGland(g,'BASE / camera gland '+i,{at:[e.x,780,e.z],hole:e.hole,wire:2.4,thickness:16});
     panelFeed(g,'BASE / camera to terminal '+i,[[e.x,e.sourceY,e.z],[e.x,720,e.z],[e.x,675,-390],[basePanel.ports[i*3][0],675,-390],basePanel.ports[i*3]],{radius:2.4});
   }
-  perforated(g,[1200,60,1000],[0,810,0],Object.values(LAYOUT.upCam).filter(u=>typeof u==='object').map(u=>[u.x,u.z,60]),matGranite).name='granite-camera-service-bores';
+  // 花崗岩底面嵌入電控箱頂板 1 mm、前後內縮 2 mm：與頂板、進線固定頭、仰視相機座都不同平面
+  perforated(g,[1200,61,996],[0,809.5,0],Object.values(LAYOUT.upCam).filter(u=>typeof u==='object').map(u=>[u.x,u.z,60]),matGranite).name='granite-camera-service-bores';
   const beltMarks = new THREE.Group(); g.add(beltMarks);
   for (const s of [-1, 1]) {
     block(g, [3400, 40, 16], [0, top - 12, s * (LAYOUT.railInner + 8)], matAlu);
@@ -95,10 +96,10 @@ export function createMachine(scene) {
     ko(block(g, [40, 40, LAYOUT.stackZ + 300], [x - 230, 1500, (LAYOUT.stackZ - 60) / 2], matFrame), label + '橫樑');
     ko(block(g, [40, 40, LAYOUT.stackZ + 300], [x + 230, 1500, (LAYOUT.stackZ - 60) / 2], matFrame), label + '橫樑');
     const car = new THREE.Group(); g.add(car); car.position.x = x;
-    block(car, [500, 40, 80], [0, 1500, 0], matAlu);
+    block(car, [494, 46, 80], [0, 1500, 0], matAlu);                    // 兩端縮進固定橫樑外側 3 mm、上下各高出 3 mm：不與橫樑同平面，也不碰拖鏈軌支撐
     const zAxis = new THREE.Group(); car.add(zAxis);
-    block(zAxis, [60, 300, 60], [0, 150, 0], matDark);
-    const frame = new THREE.Group(); zAxis.add(frame);
+    block(zAxis, [60, 290, 60], [0, 155, 0], matDark);                 // 升降柱底在吸盤架之上，不碰基板
+    const frame = new THREE.Group(); frame.position.y = 7; zAxis.add(frame);   // 吸盤底面＝zAxis 原點（cupY），吸盤不再陷入基板
     block(frame, [330, 12, 20], [0, 6, 0], matAlu); block(frame, [20, 12, 330], [0, 6, 0], matAlu);
     for (const cx of [-140, 0, 140]) for (const cz of [-140, 0, 140]) cylinder(frame, 12, 10, [cx, -2, cz], matDark);
     loaders[key] = { car, zAxis };
@@ -117,7 +118,7 @@ export function createMachine(scene) {
   for (const [key, i] of [['S1', 1], ['S3', 3]]) {
     const x0 = ST[i];
     // Cantilever the inner end; its posts must stay outside S2's full-width moving beams.
-    for (const dx of (key==='S1'?[-250,90]:[-90,250])) { ko(block(g,[40,600,40],[x0+dx,1120,-260],matFrame),key+'立柱');ko(block(g,[40,600,40],[x0+dx,1120,260],matFrame),key+'立柱');block(g,[30,30,560],[x0+dx,1420,0],matAlu); }
+    for (const dx of (key==='S1'?[-250,90]:[-90,250])) { ko(block(g,[40,600,40],[x0+dx,1120,-260],matFrame),key+'立柱');ko(block(g,[40,600,40],[x0+dx,1120,260],matFrame),key+'立柱');block(g,[30,30,550],[x0+dx,1420,0],matAlu); }
     const beam = new THREE.Group(); g.add(beam);
     block(beam, [540, 40, 50], [x0, 1450, 0], matAlu);
     const car = new THREE.Group(); beam.add(car);
@@ -131,14 +132,15 @@ export function createMachine(scene) {
     const out=key==='S1'?-1:1;
     cable(car,key+' / camera vertical lead',[[0,1558,0],[0,1575,-55],[0,1500,-60],[0,1400,-60],[0,1275,-42]],{radius:3,color:CABLE.signal,clips:4,backing:{offset:[out*18,0,0],feet:[[2,[out*18,1455,-35]],[4,[out*10,1275,-10]]]}});
     for(const dx of [-120,160])support(beam,key+' / carrier standoff',[x0+dx,1470,0],[x0+dx,1477,0]);
-    cable(beam,key+' / axis junction',[[x0+(key==='S1'?-290:290),1670,0],[x0,1685,0],[x0,1488,0]],{radius:3,color:CABLE.signal,backing:{offset:[0,0,18],feet:[[0,[x0+(key==='S1'?-260:260),1470,0]],[2,[x0,1470,0]]]}});
+    // 進線在拖鏈側邊（z +30）下降，再橫向接入固定端：相機車在固定端另一側時，上層鏈節與活動端不會掃過線材
+    cable(beam,key+' / axis junction',[[x0+(key==='S1'?-290:290),1670,0],[x0+(key==='S1'?-40:40),1685,0],[x0,1685,30],[x0,1488,30],[x0,1488,0]],{radius:3,color:CABLE.signal,backing:{path:[[x0+(key==='S1'?-290:290),1670,18],[x0+(key==='S1'?-40:40),1685,18],[x0,1685,48],[x0,1488,48]],feet:[[0,[x0+(key==='S1'?-260:260),1470,0]],[3,[x0,1470,18]]]}});
     for(const z of [40,190]){support(g,key+' / fixed scan guide foot',[x0+out*265,1420,z],[x0+out*290,1420,z],6);support(g,key+' / fixed scan guide mount',[x0+out*290,1420,z],[x0+out*290,1589,z],6);}
     routingUpdates.push(()=>{scanX.set(car.position.x-x0);scanZ.set(beam.position.z);});
   }
 
   // ---- S2 雙龍門放置 ----
   for (const s of [-1, 1]) {
-    for (const z of [-470, 470]) ko(block(g, [70, G.beamY - 840, 70], [s * G.railX, (G.beamY + 840) / 2 - 40, z], matFrame), 'S2 立柱');
+    for (const z of [-470, 470]) ko(block(g, [70, G.beamY - 850, 70], [s * G.railX, (G.beamY + 850) / 2 - 50, z], matFrame), 'S2 立柱');   // 立柱頂＝Y 軌底
     ko(block(g, [70, 60, 1010], [s * G.railX, G.beamY - 20, 0], matAlu), 'S2 Y 軌');
   }
   const heads = {};
@@ -151,19 +153,21 @@ export function createMachine(scene) {
     const bodyZ=-side*(G.beamDepth/2+10),bracketZ=-side*(G.overhang+32)/2;
     const guide=perforated(head,[120,180,60],[0,G.beamY-50,bodyZ],G.nozzleDX.map(x=>[x,-side*G.overhang-bodyZ,6]),matDark);guide.name='spindle-guide';
     const bracket=perforated(head,[110,40,G.overhang-8],[0,G.beamY-160,bracketZ],G.nozzleDX.map(x=>[x,-side*G.overhang-bracketZ,10.3]),matAlu);bracket.name='spindle-bracket';
+    // 主軸（含 θ 馬達）在吸嘴座與導向座的鏜孔內上下滑動：以 core 導軌標記（guide／on）宣告，孔內穿過不算干涉
+    guide.userData.guide=bracket.userData.guide=H+' spindle bores';
     // Side mount keeps both lenses out of the shared corridor between the heads.
     const camZ=-side*(G.overhang-G.downCamOut);
-    block(head,[70,12,34],[side*77.5,1120.5,camZ],matAlu).name='camera-side-mount';
+    block(head,[70,12,36],[side*77.5,1121.5,camZ],matAlu).name='camera-side-mount';   // 頂面高於鏡筒端面、前後各寬出相機本體 1 mm
     const downCam = camera(head, [side*G.downCamDX,1090,camZ], 'down', { fov: 22, ringR: 16, leadSide:side });
     const nozzles = G.nozzleDX.map(dx => {
       const n = new THREE.Group(); n.position.set(dx, 0, -side * G.overhang); head.add(n);
-      const spindle = new THREE.Group(); n.add(spindle);
+      const spindle = new THREE.Group(); spindle.userData.on = H + ' spindle bores'; n.add(spindle);
       cylinder(spindle, 5, 144, [0, 78, 0], matAlu, 'y', 32); // 主軸從 y=6 起，讓細吸嘴露出
       const tip = new THREE.Mesh(new THREE.CylinderGeometry(PRODUCT.nozzleR, PRODUCT.nozzleR, 6, 40, 1, true), matDark);
       tip.position.y = 3; tip.castShadow = true; spindle.add(tip);
       annulus(spindle, PRODUCT.nozzleR, PRODUCT.nozzleR * .43, 0, matDark);
-      for (const y of [7, 12, 95]) cylinder(spindle, 5.5, 2, [0, y, 0], matDark, 'y', 32);
-      block(spindle, [14, 30, 14], [0, 120, 0], matDark);                // θ 馬達
+      for (const y of [6, 12, 95]) cylinder(spindle, 5.5, 2, [0, y, 0], matDark, 'y', 32);   // 第一道套環蓋住主軸端面、底面低 1 mm（仰視相機看到深色背景，不與端面互搶深度）
+      block(spindle, [14, 30, 14], [0, 119, 0], matDark);                // θ 馬達：安全高度時頂面低於吸嘴座頂面／導向座底面 1 mm（不同平面、不頂到 Ø12 導孔）
       const coin = createCoin(); coin.position.y = -PRODUCT.coin.t; coin.visible = false; spindle.add(coin);
       return { n, spindle, coin };
     });
@@ -171,7 +175,8 @@ export function createMachine(scene) {
     // Carriers sit above the fixed feeder camera bridges, on the outside of each beam.
     const routeX=carrier(beam,H+' / gantry X carrier',{origin:[0,1620,side*80],min:-430,max:430,radius:38,width:26,pitch:18});
     const routeZ=carrier(g,H+' / gantry Y carrier',{origin:[side*585,1680,0],axis:[0,0,1],min:-510,max:510,radius:40,width:24,pitch:18});
-    cable(beam,H+' / beam feed',[[side*585,1760,0],[side*585,1800,side*80],[0,1790,side*80],[0,1620,side*80]],{radius:4.5,color:CABLE.sleeve,clips:5,backing:{offset:[0,0,side*20],feet:[[0,[side*180,1740,side*20]],[3,[0,1340,side*50]]],radius:8}});
+    // 進線在 X 拖鏈外側（z ±110）下降，再橫向接入固定端：吸嘴頭在固定端另一側時，上層鏈節與活動端不會掃過線材
+    cable(beam,H+' / beam feed',[[side*585,1760,0],[side*585,1800,side*80],[side*60,1795,side*80],[0,1790,side*110],[0,1620,side*110],[0,1620,side*80]],{radius:4.5,color:CABLE.sleeve,clips:5,backing:{path:[[side*585,1760,side*20],[side*585,1800,side*100],[side*60,1795,side*100],[0,1790,side*130],[0,1630,side*130]],feet:[[0,[side*180,1740,side*20]],[4,[0,1340,side*50]]],radius:8}});
     support(beam,H+' / feed mast',[side*180,1340,side*20],[side*180,1740,side*20],8);
     cable(head,H+' / moving head service',[[0,1696,side*80],[70*side,1630,side*82],[80*side,1400,side*82],[73*side,1290,side*82],[73*side,1258,side*82]],{radius:4,color:CABLE.sleeve,clips:4,backing:{offset:[18*side,0,0],feet:[[2,[side*98,1200,side*82]],[4,[side*84,1252,side*82]]]}});
     support(head,H+' / head rail foot',[side*60,1200,bodyZ],[side*98,1200,bodyZ],6);

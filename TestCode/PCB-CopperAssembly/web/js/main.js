@@ -10,11 +10,11 @@ import { copperResults } from './vision-results.js';
 const vision = createVisionOverlay();
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { LAYOUT, PRODUCT, RECIPES, setRecipe, smooth } from './layout.js';
+import { LAYOUT, PRODUCT, RECIPES, smooth } from './layout.js';
 
 const qp = new URLSearchParams(location.search);
-setRecipe(qp.get('recipe'));                            // 先套配方，再建機台與排程
-const { createSim } = await import('./sim.js');
+// 場景物件與每個時間點的狀態都來自 project.js（與 core 統一檢查共用）；配方在建立時套用
+const { createProject } = await import('./project.js');
 const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: qp.get('aa') !== '0', powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -32,10 +32,10 @@ Object.assign(sun.shadow.camera, { left: -2200, right: 2200, top: 2200, bottom: 
 sun.shadow.normalBias = .05;
 const fill = new THREE.DirectionalLight(0x9fb8ff, 0.5); fill.position.set(1800, 1500, -1800); scene.add(fill);
 
-const sim = createSim(scene), plan = sim.plan, M = sim.machine;
+const project = createProject({ scene, recipe: qp.get('recipe') }), sim = project.sim, plan = project.plan, M = project.machine;
 const ui = Object.fromEntries(['phase', 'cycleHint', 'pA', 'pB', 'pT', 'nA', 'nB', 'nT', 'errBar', 'errVal', 'errLim', 'stationStatus', 'showPip', 'showGuards', 'showLabels', 'exportBtn', 'pipFrame', 'pipTitle', 'pipResult', 'pipSel',
   'playBtn', 'restartBtn', 'speed', 'speedVal', 'loop', 'previous', 'next', 'stepSelect', 'cycleTime', 'timeline', 'progBar', 'clock', 'stations'].map(id => [id, document.getElementById(id)]));
-const total = plan.cycle, nA = plan.heads.A.trips.flat().length, nB = plan.heads.B.trips.flat().length, N = plan.holes.length;
+const total = project.total, nA = plan.heads.A.trips.flat().length, nB = plan.heads.B.trips.flat().length, N = plan.holes.length;
 // 機種選單：換配方即重建頁面（實機：切換配方、供料盤清料換料、吸嘴快換）
 for (const [key, r] of Object.entries(RECIPES)) { const o = document.createElement('option'); o.value = key; o.textContent = `機種：${r.name}`; document.getElementById('recipe').appendChild(o); }
 document.getElementById('recipe').value = PRODUCT.recipe;
@@ -152,7 +152,7 @@ ui.exportBtn.onclick = () => {
 };
 
 function drawHud() {
-  info = sim.apply(T);
+  info = project.apply(T, { playing });
   if (lastFocus) {
     const now = focusPoint(currentView === 'hole'), delta = now.clone().sub(lastFocus);
     camera.position.add(delta); controls.target.add(delta);
@@ -169,7 +169,7 @@ function drawHud() {
   ui.errVal.textContent = tot ? `最大 ${info.maxErr.toFixed(3)} mm（${(info.maxErr / 0.0254).toFixed(1)} mil）` : '—';
   for (const [key] of STATUS) statusEls[key].textContent = info.status[key] || '—';
   ui.phase.textContent = T >= total ? 'CYCLE END · 本節拍完成' : playing ? 'AUTO · 五站並行' : 'HOLD · 暫停';
-  M.tower.set(playing ? 'green' : 'yellow'); M.occluders.visible = ui.showGuards.checked;
+  M.occluders.visible = ui.showGuards.checked;
   ui.timeline.value = T; ui.progBar.style.width = T / total * 100 + '%';
   ui.clock.textContent = `${Math.floor(T / 60).toString().padStart(2, '0')}:${(T % 60).toFixed(1).padStart(4, '0')}`;
   let mi = 0; plan.milestones.forEach((m, j) => { if (m.t <= T + 1e-6) mi = j; }); ui.stepSelect.value = mi;
@@ -201,6 +201,8 @@ function frame() {
 resize(); ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放';
 if (qp.has('t')) { playing = false; T = +qp.get('t') || 0; ui.playBtn.textContent = '▶ 播放'; }
 if (qp.has('pip')) ui.pipSel.value = qp.get('pip');
-T = THREE.MathUtils.clamp(T, 0, total); sim.apply(T); setView(qp.get('view') || 'iso', true);
-window.sim = { plan, seekTo, get T() { return T; }, setView };
+T = THREE.MathUtils.clamp(T, 0, total); project.apply(T, { playing }); setView(qp.get('view') || 'iso', true);
+const play = () => { if (T >= total) T = 0; playing = true; ui.playBtn.textContent = '⏸ 暫停'; };
+const pause = () => { playing = false; ui.playBtn.textContent = '▶ 播放'; };
+window.sim = { plan, seekTo, get T() { return T; }, setView, views: Object.keys(views), total, play, pause, project };
 document.getElementById('loading').classList.add('hide'); render(); frame();

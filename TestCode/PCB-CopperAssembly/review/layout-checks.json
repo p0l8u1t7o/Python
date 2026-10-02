@@ -1,0 +1,134 @@
+{
+  "ok": true,
+  "variants": [
+    {
+      "variant": "預設",
+      "params": {},
+      "ok": true,
+      "count": 8,
+      "failures": [],
+      "rows": [
+        {
+          "group": "obround-138",
+          "name": "節拍 ≤ 60 s",
+          "ok": true,
+          "value": 53.94,
+          "note": "s"
+        },
+        {
+          "group": "obround-138",
+          "name": "最大放置誤差 ≤ ±6 mil",
+          "ok": true,
+          "value": 0.0555,
+          "note": "mm"
+        },
+        {
+          "group": "obround-138",
+          "name": "孔數＝排程放置數",
+          "ok": true,
+          "value": 138
+        },
+        {
+          "group": "obround-138",
+          "name": "供料盤 A 在龍門 X 行程內",
+          "ok": true,
+          "value": -300,
+          "note": "mm"
+        },
+        {
+          "group": "obround-138",
+          "name": "仰視相機 A 在龍門 X 行程內",
+          "ok": true,
+          "value": -120,
+          "note": "mm"
+        },
+        {
+          "group": "obround-138",
+          "name": "供料盤 B 在龍門 X 行程內",
+          "ok": true,
+          "value": 300,
+          "note": "mm"
+        },
+        {
+          "group": "obround-138",
+          "name": "仰視相機 B 在龍門 X 行程內",
+          "ok": true,
+          "value": 120,
+          "note": "mm"
+        },
+        {
+          "group": "obround-138",
+          "name": "配方存在",
+          "ok": true,
+          "value": "obround-138"
+        }
+      ]
+    },
+    {
+      "variant": "round-72",
+      "params": {
+        "recipe": "round-72"
+      },
+      "ok": true,
+      "count": 8,
+      "failures": [],
+      "rows": [
+        {
+          "group": "round-72",
+          "name": "節拍 ≤ 60 s",
+          "ok": true,
+          "value": 29.47,
+          "note": "s"
+        },
+        {
+          "group": "round-72",
+          "name": "最大放置誤差 ≤ ±6 mil",
+          "ok": true,
+          "value": 0.0659,
+          "note": "mm"
+        },
+        {
+          "group": "round-72",
+          "name": "孔數＝排程放置數",
+          "ok": true,
+          "value": 72
+        },
+        {
+          "group": "round-72",
+          "name": "供料盤 A 在龍門 X 行程內",
+          "ok": true,
+          "value": -300,
+          "note": "mm"
+        },
+        {
+          "group": "round-72",
+          "name": "仰視相機 A 在龍門 X 行程內",
+          "ok": true,
+          "value": -120,
+          "note": "mm"
+        },
+        {
+          "group": "round-72",
+          "name": "供料盤 B 在龍門 X 行程內",
+          "ok": true,
+          "value": 300,
+          "note": "mm"
+        },
+        {
+          "group": "round-72",
+          "name": "仰視相機 B 在龍門 X 行程內",
+          "ok": true,
+          "value": 120,
+          "note": "mm"
+        },
+        {
+          "group": "round-72",
+          "name": "配方存在",
+          "ok": true,
+          "value": "round-72"
+        }
+      ]
+    }
+  ],
+  "seconds": 0.4
+}
