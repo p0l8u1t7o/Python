@@ -1,6 +1,6 @@
 // 穿梭車密集架、棧板、架上桶槽（靜態以 InstancedMesh 繪製）、示範車道與穿梭車。
 import * as THREE from 'three';
-import { RACK, PALLET, DRUM } from './layout.js';
+import { RACK, PALLET, DRUM, lanePositions } from './layout.js';
 import { MAT, box, plate } from './parts.js';
 import { createDrumInstances } from './drum.js';
 
@@ -16,28 +16,34 @@ const rand = seed => () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 3
 export function createStorage(scene, makeDrum) {
   const group = new THREE.Group(); group.name = 'storage'; scene.add(group);
   const half = RACK.pitch / 2;
-  // ---- 架體：立柱（藍）、軌道（橘）、頂樑 ----
+  // ---- 架體：立柱（藍）、軌道（橘）、頂樑；最西一道只做 3 深 ----
   const blocks = [[0, 1, 2], [3, 4]];
-  const zFrames = [RACK.zBack, 1450, 2750, 4050, RACK.zFront - 50];
+  const front = l => l === RACK.shortLane ? RACK.shortFront : RACK.zFront;
+  const framesTo = f => [RACK.zBack, 1450, 2750, 4050, f - 50].filter((z, i, a) => z <= f - 50 && (i === 0 || z - a[i - 1] > 300));
   for (const lanes of blocks) {
-    const xs = [RACK.lanes[lanes[0]] - half, ...lanes.map(i => RACK.lanes[i] + half)];
-    for (const x of xs) for (const z of zFrames) box(group, 90, RACK.topBeam, 90, MAT.steelBlue, x, RACK.topBeam / 2, z);
-    for (const z of [RACK.zBack, RACK.zFront - 50]) box(group, xs.at(-1) - xs[0] + 90, 120, 70, MAT.steelBlue, (xs[0] + xs.at(-1)) / 2, RACK.topBeam - 60, z);
-    for (const x of xs) for (let k = 0; k < zFrames.length - 1; k++) box(group, 40, 40, zFrames[k + 1] - zFrames[k], MAT.steelBlue, x, RACK.topBeam - 300, (zFrames[k] + zFrames[k + 1]) / 2);
-    for (const i of lanes) for (const y of RACK.levels) for (const s of [-1, 1]) {
-      box(group, 80, 105, RACK.zFront - RACK.zBack, MAT.steelOrange, RACK.lanes[i] + s * 600, y - 52, (RACK.zBack + RACK.zFront) / 2);
-      box(group, 60, 220, 60, MAT.steelOrange, RACK.lanes[i] + s * 650, y + 60, RACK.zFront - 30);   // 入口導引
+    // 每支立柱的深度取兩側車道較深者
+    const xs = [[RACK.lanes[lanes[0]] - half, front(lanes[0])], ...lanes.map((l, k) => [RACK.lanes[l] + half, Math.max(front(l), k + 1 < lanes.length ? front(lanes[k + 1]) : 0)])];
+    for (const [x, f] of xs) {
+      const zs = framesTo(f);
+      for (const z of zs) box(group, 90, RACK.topBeam, 90, MAT.steelBlue, x, RACK.topBeam / 2, z);
+      for (let k = 0; k < zs.length - 1; k++) box(group, 40, 40, zs[k + 1] - zs[k], MAT.steelBlue, x, RACK.topBeam - 300, (zs[k] + zs[k + 1]) / 2);
     }
-    for (const i of lanes) plate(group, [`第 ${i + 1} 道`], 520, 130, [RACK.lanes[i], RACK.topBeam + 90, RACK.zFront - 10], 0, { w: 512, h: 128 });
+    for (const l of lanes) for (const z of [RACK.zBack, front(l) - 50]) box(group, RACK.pitch + 90, 120, 70, MAT.steelBlue, RACK.lanes[l], RACK.topBeam - 60, z);
+    for (const i of lanes) for (const y of RACK.levels) for (const s of [-1, 1]) {
+      box(group, 80, 105, front(i) - RACK.zBack, MAT.steelOrange, RACK.lanes[i] + s * 600, y - 52, (RACK.zBack + front(i)) / 2);
+      box(group, 60, 220, 60, MAT.steelOrange, RACK.lanes[i] + s * 650, y + 60, front(i) - 30);   // 入口導引
+    }
+    for (const i of lanes) plate(group, [`第 ${i + 1} 道`], 520, 130, [RACK.lanes[i], RACK.topBeam + 90, front(i) - 10], 0, { w: 512, h: 128 });
   }
 
   // ---- 架上棧板與桶槽 ----
   const key = (l, v, p) => `${l},${v},${p}`;
-  const emptySlots = new Set([key(0, 2, 0), key(2, 0, 0), key(3, 2, 0), key(3, 2, 1), key(4, 1, 0), key(4, 2, 0)]);
+  // 空位：第 3 道底層前位留給動畫入庫，其餘為零星空位
+  const emptySlots = new Set([key(2, 0, 0), key(3, 2, 0), key(4, 1, 0), key(4, 2, 0)]);
   const inst = createDrumInstances(200), palletDeck = [], r = rand(11);
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), Y = new THREE.Vector3(0, 1, 0), one = new THREE.Vector3(1, 1, 1);
   let full = 0;
-  for (let l = 0; l < RACK.lanes.length; l++) for (let v = 0; v < RACK.levels.length; v++) for (let p = 0; p < RACK.pos.length; p++) {
+  for (let l = 0; l < RACK.lanes.length; l++) for (let v = 0; v < RACK.levels.length; v++) for (const p of lanePositions(l)) {
     if (l === RACK.demo.lane && v === RACK.demo.level) continue;
     if (l === RACK.emptyLane && v === RACK.emptyLevel) continue;
     if (emptySlots.has(key(l, v, p))) continue;

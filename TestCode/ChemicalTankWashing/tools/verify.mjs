@@ -5,9 +5,9 @@
 // 以 0.05 s 取樣，屬於有限取樣檢查，不是連續碰撞證明。
 import * as THREE from 'three';
 import { writeFileSync, mkdirSync } from 'node:fs';
-import { layoutChecks, BOOTH, UPRIGHT, OUT, FENCE, COLUMN, rackBlocks, RACK, GANTRY, AGV, PALLET, DRUM, pointInPolygon, OUTLINE, DECAP, ROBOT } from '../web/js/layout.js';
+import { layoutChecks, BOOTH, UPRIGHT, FENCE, COLUMN, rackBlocks, RACK, GANTRY, AGV, PALLET, DRUM, pointInPolygon, OUTLINE, DECAP, ROBOT, FOOTPRINTS } from '../web/js/layout.js';
 import { createRobot, LIMITS, SPEED, JOINTS } from '../web/js/robot.js';
-import { createSequence, drumWorld, DRUM_IDS } from '../web/js/sequence.js';
+import { createSequence, drumWorld, DRUM_KEYS } from '../web/js/sequence.js';
 
 const D2R = Math.PI / 180, DT = .05;
 const robot = createRobot(), seq = createSequence({ robot });
@@ -26,15 +26,14 @@ const boothBoxes = [
 ];
 const conveyorBoxes = [
   [UPRIGHT.x - 350, 0, UPRIGHT.z0 + 450, UPRIGHT.x + 350, UPRIGHT.top - 5, UPRIGHT.z1],
-  [OUT.x0, 0, OUT.z - 350, OUT.x1, OUT.top - 5, OUT.z + 350],
   ...[[-650, -400], [650, -400], [-650, 400], [650, 400]].map(([dx, dz]) => [UPRIGHT.x + dx - 50, 0, DECAP.z + dz - 50, UPRIGHT.x + dx + 50, 2600, DECAP.z + dz + 50]),
 ];
 // 龍門：四支立柱＋兩道 X 樑（樑底在 beamY + 100）
 const gantryBoxes = [...GANTRY.posts.map(([x, z]) => [x - 100, 0, z - 100, x + 100, GANTRY.beamY + 100, z + 100]), ...[GANTRY.posts[0][1], GANTRY.posts[2][1]].map(z => [GANTRY.posts[0][0] - 100, GANTRY.beamY + 100, z - 100, GANTRY.posts[1][0] + 100, GANTRY.beamY + 320, z + 100])];
 const robotBase = [ROBOT.x - 500, 0, ROBOT.z - 500, ROBOT.x + 500, 380, ROBOT.z + 500];
 const distToBox = (p, a) => Math.hypot(Math.max(a[0] - p.x, 0, p.x - a[3]), Math.max(a[1] - p.y, 0, p.y - a[4]), Math.max(a[2] - p.z, 0, p.z - a[5]));
-const fenceX0 = FENCE[1][0], fenceX1 = FENCE[2][0], fenceZ0 = FENCE[1][1];
-const insideFence = (p, r) => p.x - r > fenceX0 && p.x + r < fenceX1 && p.z - r > fenceZ0;
+// 圍籬內：多邊形內且距各邊 ≥ r（南側為牆）
+const insideFence = (p, r) => { if (!pointInPolygon([p.x, p.z], FENCE)) return false; for (let i = 1; i < FENCE.length; i++) { const [ax, az] = FENCE[i - 1], [bx, bz] = FENCE[i], L = Math.hypot(bx - ax, bz - az), t = Math.max(0, Math.min(1, ((p.x - ax) * (bx - ax) + (p.z - az) * (bz - az)) / (L * L))); if (Math.hypot(p.x - ax - t * (bx - ax), p.z - az - t * (bz - az)) < r) return false; } return true; };
 // 桶表面取樣點（局部）
 const drumPts = [];
 for (const y of [-DRUM.H / 2, -DRUM.H / 4, 0, DRUM.H / 4, DRUM.H / 2]) for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; drumPts.push(new THREE.Vector3(DRUM.R * Math.cos(a), y, DRUM.R * Math.sin(a))); }
@@ -45,7 +44,7 @@ const inDrum = (p, w, margin) => { const l = p.clone().sub(w.pos).applyQuaternio
 // ---------------------------------------------------------------- 2–6. 逐時取樣
 const maxErr = { position: 0, angle: 0 }, speedRatio = Object.fromEntries(JOINTS.map(n => [n, 0])), jump = { mm: 0, at: 0, drum: '' };
 let prevJ = null, prevT = 0, prevPos = null, prevStep = null, samples = 0, minDrumGap = Infinity, minRobotClear = Infinity, minRobotClearAt = '';
-const agvRects = [['柱', [COLUMN.x - 400, COLUMN.z - 400, COLUMN.x + 400, COLUMN.z + 400]], ...GANTRY.posts.map(([x, z]) => ['龍門柱', [x - 100, z - 100, x + 100, z + 100]])];
+const agvRects = [['柱', [COLUMN.x - 400, COLUMN.z - 400, COLUMN.x + 400, COLUMN.z + 400]], ['懸臂吊', FOOTPRINTS.jib.slice(0, 4)], ...GANTRY.posts.map(([x, z]) => ['龍門柱', [x - 100, z - 100, x + 100, z + 100]])];
 const rect = (cx, cz, yaw, x0, z0, x1, z1) => { const c = Math.cos(yaw * D2R), s = Math.sin(yaw * D2R); return [[x0, z0], [x1, z0], [x1, z1], [x0, z1]].map(([lx, lz]) => [cx + lx * c + lz * s, cz - lx * s + lz * c]); };
 const polyRect = (poly, r) => {   // 凸多邊形 vs 軸向矩形（SAT）
   const axes = [[1, 0], [0, 1]]; for (let i = 0; i < 4; i++) { const [ax, az] = poly[i], [bx, bz] = poly[(i + 1) % 4]; axes.push([-(bz - az), bx - ax]); }
@@ -72,24 +71,30 @@ for (let t = 0; t <= seq.total + 1e-9; t += DT) {
     }
   }
   // 桶：位置、互相重疊、夾持中的桶對障礙物
-  const ws = DRUM_IDS.map((_, k) => drumWorld(k, st, robot.tcp.matrixWorld));
-  for (let i = 0; i < 4; i++) for (let j = i + 1; j < 4; j++) {
+  const ws = DRUM_KEYS.map(k => drumWorld(k, st, robot.tcp.matrixWorld)), N = ws.length;
+  for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) {
+    if (ws[i].hidden || ws[j].hidden) continue;
     minDrumGap = Math.min(minDrumGap, ws[i].pos.distanceTo(ws[j].pos));
-    if (ws[i].pos.distanceTo(ws[j].pos) < 2 * Math.hypot(DRUM.R, DRUM.H / 2) && worldPts(ws[i]).some(p => inDrum(p, ws[j], 3))) fail('drum-overlap', `${t.toFixed(2)} s ${DRUM_IDS[i]} 與 ${DRUM_IDS[j]} 重疊（${st['drum' + i].mode}/${st['drum' + j].mode}）`);
+    if (ws[i].pos.distanceTo(ws[j].pos) < 2 * Math.hypot(DRUM.R, DRUM.H / 2) && worldPts(ws[i]).some(p => inDrum(p, ws[j], 3))) fail('drum-overlap', `${t.toFixed(2)} s ${DRUM_KEYS[i]} 與 ${DRUM_KEYS[j]} 重疊（${st[DRUM_KEYS[i]].mode}/${st[DRUM_KEYS[j]].mode}）`);
   }
   ws.forEach((w, k) => {
-    const mode = st['drum' + k].mode;
+    if (w.hidden) return;
+    const mode = st[DRUM_KEYS[k]].mode;
+    // 手臂連桿與夾爪不得碰到未夾持的桶（例如在取桶位等候的下一桶）
+    // 例外：夾爪本體（連桿 5）在取放瞬間本來就貼著要夾的桶
+    const gripping = robot.tcp.getWorldPosition(new THREE.Vector3()).distanceTo(w.pos) < 450;
+    if (mode !== 'robot' && w.pos.distanceTo(robot.root.position) < 3500) robot.links().forEach(([a, c, r], li) => { if (li === 5 && gripping) return; const n = Math.ceil(a.distanceTo(c) / 50); for (let i = 0; i <= n; i++) if (inDrum(a.clone().lerp(c, i / n), w, -r * .6)) { fail('arm-drum', `${t.toFixed(2)} s 手臂連桿 ${li} 碰到 ${DRUM_KEYS[k]}（${mode}）`); break; } });
     if (mode === 'robot' || mode === 'gantry') {
       const pts = worldPts(w);
       const boxes = mode === 'robot' ? [...boothBoxes, ...conveyorBoxes, robotBase] : gantryBoxes;
-      for (const box of boxes) if (pts.some(p => distToBox(p, box) < 5)) fail('drum-hit', `${t.toFixed(2)} s ${DRUM_IDS[k]}（${mode}）碰到 [${box.map(v => v.toFixed(0)).join(',')}]`);
-      if (mode === 'robot' && pts.some(p => !insideFence(p, 0))) fail('drum-fence', `${t.toFixed(2)} s ${DRUM_IDS[k]} 超出清洗區圍籬`);
-      if (mode === 'robot') robot.links().forEach(([a, c, r], li) => { if (li < 4) { const n = Math.ceil(a.distanceTo(c) / 50); for (let i = 0; i <= n; i++) if (inDrum(a.clone().lerp(c, i / n), w, -r * .6)) { fail('drum-arm', `${t.toFixed(2)} s ${DRUM_IDS[k]} 碰到手臂連桿 ${li}`); break; } } });
+      for (const box of boxes) if (pts.some(p => distToBox(p, box) < 5)) fail('drum-hit', `${t.toFixed(2)} s ${DRUM_KEYS[k]}（${mode}）碰到 [${box.map(v => v.toFixed(0)).join(',')}]`);
+      if (mode === 'robot' && pts.some(p => !insideFence(p, 0))) fail('drum-fence', `${t.toFixed(2)} s ${DRUM_KEYS[k]} 超出清洗區圍籬`);
+      if (mode === 'robot') robot.links().forEach(([a, c, r], li) => { if (li < 4) { const n = Math.ceil(a.distanceTo(c) / 50); for (let i = 0; i <= n; i++) if (inDrum(a.clone().lerp(c, i / n), w, -r * .6)) { fail('drum-arm', `${t.toFixed(2)} s ${DRUM_KEYS[k]} 碰到手臂連桿 ${li}`); break; } } });
     }
   });
   // 交接瞬間不得跳動
   const pos = ws.map(w => w.pos);
-  if (prevPos) pos.forEach((p, k) => { const d = p.distanceTo(prevPos[k]) / (t - prevT) * DT; if (d > jump.mm) { jump.mm = d; jump.at = t; jump.drum = DRUM_IDS[k]; } if (d > 150) fail('drum-jump', `${t.toFixed(2)} s ${DRUM_IDS[k]} 一步移動 ${d.toFixed(0)} mm（${st['drum' + k].mode}）`); });
+  if (prevPos) pos.forEach((p, k) => { if (ws[k].hidden || prevPos[k].y < -1000) return; const d = p.distanceTo(prevPos[k]) / (t - prevT) * DT; if (d > jump.mm) { jump.mm = d; jump.at = t; jump.drum = DRUM_KEYS[k]; } if (d > 150) fail('drum-jump', `${t.toFixed(2)} s ${DRUM_KEYS[k]} 一步移動 ${d.toFixed(0)} mm（${st['drum' + k].mode}）`); });
   prevPos = pos.map(p => p.clone()); prevT = t;
   // AGV 車身與載物
   const a = st.agv, loaded = st.pallet.mode === 'agv';
@@ -107,14 +112,14 @@ for (let t = 0; t <= seq.total + 1e-9; t += DT) {
 }
 
 // ---------------------------------------------------------------- 7. 倒退／跳轉一致性
-const probe = [3, 61.2, 94, 112, 150, 161, 230, 410, 470];
-const snap = t => { const st = seq.sample(t).st; robot.root.updateMatrixWorld(true); return DRUM_IDS.map((_, k) => drumWorld(k, st, robot.tcp.matrixWorld).pos.toArray()).flat().concat(JOINTS.map(n => robot.q[n])); };
+const probe = [3, 61.2, 94, 112, 150, 161, 190, 232, 260, 410, 590];
+const snap = t => { const st = seq.sample(t).st; robot.root.updateMatrixWorld(true); return DRUM_KEYS.map(k => drumWorld(k, st, robot.tcp.matrixWorld).pos.toArray()).flat().concat(JOINTS.map(n => robot.q[n])); };
 const ref = probe.map(snap), again = [...probe].reverse().map(snap).reverse();
 const maxDiff = Math.max(...ref.flatMap((r, i) => r.map((v, j) => Math.abs(v - again[i][j]))));
 if (maxDiff > .5) fail('determinism', `倒序取樣差異 ${maxDiff.toFixed(3)}`);
 
 const result = {
-  ok: fails.length === 0, samples, dt: DT, total: +seq.total.toFixed(1), robotCycle: +((seq.events.filter(e => e.label.endsWith('放上出料輸送')).at(-1).time - seq.events.filter(e => e.label.endsWith('放上出料輸送')).at(-2).time)).toFixed(1),
+  ok: fails.length === 0, samples, dt: DT, total: +seq.total.toFixed(1), robotCycle: +((seq.events.filter(e => e.label.endsWith('放回輸送線')).at(-1).time - seq.events.filter(e => e.label.endsWith('放回輸送線')).at(-2).time)).toFixed(1),
   robotTrackingMax: { mm: +maxErr.position.toFixed(3), deg: +maxErr.angle.toFixed(3) },
   jointSpeedRatioMax: Object.fromEntries(Object.entries(speedRatio).map(([k, v]) => [k, +v.toFixed(2)])),
   minRobotClearance: { mm: +minRobotClear.toFixed(0), at: minRobotClearAt }, maxDrumStep: { mm: +jump.mm.toFixed(1), at: +jump.at.toFixed(2), drum: jump.drum }, determinismMaxDiff: +maxDiff.toFixed(4),

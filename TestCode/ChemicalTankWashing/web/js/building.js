@@ -1,16 +1,18 @@
 // 洗桶區建築：地坪、牆、門窗、柱、分區標線、樓高與尺寸標註。
 import * as THREE from 'three';
-import { ROOM, OUTLINE, DOORS, COLUMN, AISLE, AGV, FOOTPRINTS, WALKWAYS, FILLING, SHUTTLE_BAY, WASTE, RACK, AGV_TURNS, agvSweep, pointInPolygon, doorSwing, ROBOT, rackBlocks, FENCE } from './layout.js';
+import { ROOM, OUTLINE, DOORS, COLUMN, AISLE, AGV, FOOTPRINTS, WALKWAYS, FILLING, SHUTTLE_BAY, WASTE, RACK, AGV_TURNS, agvSweep, pointInPolygon, doorSwing, ROBOT, rackBlocks, FENCE, INBOUND, INBOUND_AREA, inboundArcPoses } from './layout.js';
 import { MAT, box, rod, floorText } from './parts.js';
 
 const line = (pts, color, opacity = 1) => {
   const g = new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(...p)));
   return new THREE.Line(g, new THREE.LineBasicMaterial({ color, transparent: opacity < 1, opacity }));
 };
+// 地面分區：每塊固定 renderOrder 與 polygonOffset，重疊的半透明面不會隨視角翻轉排序而閃爍
+let zoneOrder = 1;
 function zone(parent, [x0, z0, x1, z1], color, opacity = .14, y = 3) {
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, z1 - z0), new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false }));
-  m.rotation.x = -Math.PI / 2; m.position.set((x0 + x1) / 2, y, (z0 + z1) / 2); m.renderOrder = 1; parent.add(m);
-  parent.add(Object.assign(line([[x0, y + 1, z0], [x1, y + 1, z0], [x1, y + 1, z1], [x0, y + 1, z1], [x0, y + 1, z0]], color, .8), { renderOrder: 1 }));
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, z1 - z0), new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -zoneOrder }));
+  m.rotation.x = -Math.PI / 2; m.position.set((x0 + x1) / 2, y, (z0 + z1) / 2); m.renderOrder = zoneOrder++; parent.add(m);
+  parent.add(Object.assign(line([[x0, y + 1, z0], [x1, y + 1, z0], [x1, y + 1, z1], [x0, y + 1, z1], [x0, y + 1, z0]], color, .8), { renderOrder: zoneOrder++ }));
   return m;
 }
 function ring(parent, x, z, r, color, opacity = .7, y = 8) {
@@ -73,15 +75,18 @@ export function createBuilding(scene) {
   zone(zones, [1770, AISLE.z0, ROOM.W, AISLE.z1], 0xffc233, .1);
   for (const w of WALKWAYS) zone(zones, w, 0x3dd68c, .12);
   zone(zones, FILLING, 0x9aa7b3, .12);
+  zone(zones, INBOUND_AREA, 0xb07cff, .12);
   zone(zones, SHUTTLE_BAY, 0x7d8b97, .12);
   zone(zones, WASTE.bund, 0xff9f43, .12);
   const cell = new THREE.Shape(FENCE.map(([x, z]) => new THREE.Vector2(x, -z)));
   const cellFloor = new THREE.Mesh(new THREE.ShapeGeometry(cell), new THREE.MeshBasicMaterial({ color: 0x4fd1e8, transparent: true, opacity: .07, depthWrite: false }));
   cellFloor.rotation.x = -Math.PI / 2; cellFloor.position.y = 3; zones.add(cellFloor);
-  floorText(zones, ['倉儲區 · 穿梭車密集架', '5 道 × 4 深 × 3 層'], 5000, 5050, 2600, 520);
+  floorText(zones, ['倉儲區 · 穿梭車密集架', '第 1 道 3 深，其餘 4 深 × 3 層'], 6300, 5050, 3000, 520);
   floorText(zones, 'AGV 走道 3.6 m', 6000, 8600, 2200, 300, { fg: '#ffd56a' });
-  floorText(zones, '人員通道', 2335, 6600, 1600, 260, { fg: '#9ff0c6', rot: Math.PI / 2 });
-  floorText(zones, ['裝填區', '下一站・不在本案範圍'], 1000, 13500, 3200, 900, { fg: '#c7d1da' });
+  floorText(zones, '人車共用通道', 2335, 6900, 1800, 260, { fg: '#9ff0c6', rot: Math.PI / 2 });
+  floorText(zones, ['散桶入庫作業區', '台車推入 → 懸臂吊上棧板'], 1050, 4150, 1900, 420, { fg: '#d7bcff' });
+  floorText(zones, ['裝填區', '下一站・不在本案範圍'], 10700, 14900, 1300, 520, { fg: '#c7d1da', rot: Math.PI / 2 });
+  floorText(zones, ['預留區', '控制櫃・廢液槽西側'], 1000, 13300, 3000, 800, { fg: '#8796a3' });
   floorText(zones, ['穿梭車', '充電／維修'], 7900, 2400, 1400, 600, { fg: '#c7d1da' });
   floorText(zones, '更衣室 106', -150, 6600, 2000, 300, { fg: '#c7d1da' });
   floorText(zones, '清洗區（DCS＋圍籬）', 7900, 13300, 2300, 260, { fg: '#8fe5f2' });
@@ -109,6 +114,9 @@ export function createBuilding(scene) {
   dim([COLUMN.x - 400, 30, COLUMN.z + 900], [COLUMN.x + 400, 30, COLUMN.z + 900], '柱 800（圖面量測）', 0xff9f9f);
   // AGV 地面充電板（齊平）
   zone(group, [AGV.charger.x - 500, AGV.charger.z - 550, AGV.charger.x + 1300, AGV.charger.z + 550], 0x3dd68c, .25, 4);
+  // AGV 入庫弧線（中心線）
+  for (const p of inboundArcPoses(40)) { const m = new THREE.Mesh(new THREE.CircleGeometry(28, 10), new THREE.MeshBasicMaterial({ color: 0xd7bcff })); m.rotation.x = -Math.PI / 2; m.position.set(p.x, 9, p.z); dims.add(m); }
+  dimLabels.push({ text: `AGV 入庫弧線 R${INBOUND.arc}`, pos: new THREE.Vector3(INBOUND.arcStart[0] - 900, 40, INBOUND.arcEnd[1] + 1500) });
   const agvRings = new THREE.Group(); dims.add(agvRings);
   for (const t of AGV_TURNS) { ring(agvRings, t.x, t.z, agvSweep(t.loaded), 0xffc233, .8); }
   dimLabels.push({ text: `AGV 迴轉 R${agvSweep(true).toFixed(0)}`, pos: new THREE.Vector3(AGV_TURNS[1].x, 40, AGV_TURNS[1].z - agvSweep(true)) });

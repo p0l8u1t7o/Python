@@ -8,7 +8,7 @@ export function createAgv(scene) {
   box(root, AGV.rear + 150, 1000, AGV.halfW * 2, MAT.agv, (-AGV.rear + 150) / 2, 650, 0);
   box(root, 320, 940, AGV.halfW * 2 + 10, MAT.agvDark, -AGV.rear + 160, 620, 0);           // 配重
   box(root, 900, 30, 700, MAT.agvDark, -650, 1165, 0);
-  const beacon = cyl(root, 55, 110, MAT.amber, -650, 1235, 0);
+  const beaconMat = MAT.amber.clone(); const beacon = cyl(root, 55, 110, beaconMat, -650, 1235, 0);
   for (const s of [-1, 1]) cyl(root, 200, 160, MAT.black, 0, 200, s * 400, 'z');
   cyl(root, 160, 140, MAT.black, -1250, 160, 0, 'z');
   for (const [x, z] of [[160, -460], [160, 460], [-AGV.rear + 30, -460], [-AGV.rear + 30, 460]]) cyl(root, 45, 70, MAT.yellow, x, 300, z);
@@ -36,7 +36,8 @@ export function createAgv(scene) {
     set({ x, z, yaw, fork, moving = false }) {
       root.position.set(x, 0, z); root.rotation.y = yaw * D2R;
       carriage.position.y = fork; inner.position.y = Math.max(0, fork - 1400);
-      blink = moving ? blink + 1 : 0; beacon.material = moving && (blink >> 3) % 2 ? MAT.amber : MAT.agvDark;
+      // 警示燈以亮度脈動表示行駛中（不切換材質，避免畫面閃爍）
+      blink = moving ? blink + .12 : 0; beacon.material = beaconMat; beaconMat.emissiveIntensity = moving ? .5 + .5 * Math.sin(blink) : .05;
     },
     // 車身與棧板的俯視多邊形（驗證用）
     footprint(loaded) {

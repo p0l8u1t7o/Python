@@ -45,7 +45,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:
 .drums .tag{font-size:10px;padding:1px 6px;border-radius:4px;background:#22303d;color:#8ea0ae}
 .drums .tag.ok{background:#173d2d;color:#7fe2b2}
 .tanks{display:flex;flex-direction:column;gap:7px}
-.tank{display:grid;grid-template-columns:118px 1fr 58px;gap:8px;align-items:center;font-size:11px;color:#c7d4de}
+.tank{display:grid;grid-template-columns:118px 1fr 70px;gap:8px;align-items:center;font-size:11px;color:#c7d4de}
 .tank .bar{height:8px;border-radius:5px;background:#22303d;overflow:hidden}.tank .bar i{display:block;height:100%}
 .tank .v{text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
 .note{font-size:10.5px;color:#8ea0ae;line-height:1.6;margin-top:8px}

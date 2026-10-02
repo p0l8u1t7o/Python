@@ -1,6 +1,6 @@
-// 產線設備：棧板站、三軸龍門＋翻轉夾爪、橫躺輸送、貼標讀碼站、翻桶機、立放輸送、自動開蓋站、出料輸送、圍籬與控制櫃。
+// 產線設備：棧板站、三軸龍門＋翻轉夾爪、橫躺輸送、貼標讀碼站、翻桶機、立放直線輸送（開蓋→清洗→裝填區）、圍籬與控制櫃。
 import * as THREE from 'three';
-import { PALLET_STATION, PALLET, GANTRY, LYING, LABEL, UPENDER, UPRIGHT, DECAP, DRUM, OUT, FENCE, GANTRY_FENCE, FOOTPRINTS, ROOM } from './layout.js';
+import { PALLET_STATION, PALLET, GANTRY, LYING, LABEL, UPENDER, UPRIGHT, DECAP, DRUM, FENCE, GANTRY_FENCE, FOOTPRINTS, ROOM } from './layout.js';
 import { MAT, box, boxAt, cyl, rod, plate, D2R } from './parts.js';
 import { drumJaws } from './drum.js';
 
@@ -38,15 +38,19 @@ export function createLine(scene) {
   // 拖鏈
   box(group, p1[0] - p0[0], 80, 160, MAT.black, (p0[0] + p1[0]) / 2, g.beamY + 420, p0[1] - 220);
 
-  // ---------------------------------------------------------------- 橫躺輸送（V 形雙斜輥）
-  const ly = LYING, rollY = ly.y - DRUM.R * Math.cos(35 * D2R) - 45;
-  for (let x = ly.x0; x <= ly.x1; x += 1150) for (const s of [-1, 1]) box(group, 80, rollY - 60, 80, MAT.steelDark, x, (rollY - 60) / 2, ly.z + s * 330);
-  for (const s of [-1, 1]) box(group, ly.x1 - ly.x0, 120, 60, MAT.steel, (ly.x0 + ly.x1) / 2, rollY - 50, ly.z + s * 330);
-  for (let x = ly.x0 + 60; x < ly.x1; x += 150) for (const s of [-1, 1]) {
-    const r = cyl(group, 32, 300, MAT.roller, x, rollY + 40, ly.z + s * 170, 'z', 14);
-    r.rotation.set(s * 35 * D2R + Math.PI / 2, 0, 0);
+  // ---------------------------------------------------------------- 橫躺輸送：水平沙漏形（V 槽）滾輪，滾輪軸橫跨輸送方向
+  // 桶身落在 V 槽兩側斜面（半角 LYING.vee）；切點 z = R·sinα，由此反推滾輪軸高
+  const ly = LYING, va = ly.vee * D2R, r0 = 40, halfL = 260;
+  const axisY = ly.y - DRUM.R * Math.cos(va) - (DRUM.R * Math.sin(va)) * Math.tan(va) - r0;
+  const hourglass = new THREE.LatheGeometry([[0, -halfL], [r0 + halfL * Math.tan(va), -halfL], [r0, 0], [r0 + halfL * Math.tan(va), halfL], [0, halfL]].map(([r, y]) => new THREE.Vector2(r, y)), 28);
+  for (let x = ly.x0 + 165; x < ly.x1; x += 330) {
+    if (Math.abs(x - LABEL.x) < 620) continue;              // 標籤站改用旋轉輥
+    const r = new THREE.Mesh(hourglass, MAT.roller); r.rotation.x = Math.PI / 2; r.position.set(x, axisY, ly.z); r.castShadow = r.receiveShadow = true; group.add(r);
+    for (const s of [-1, 1]) cyl(group, 12, 60, MAT.steelDark, x, axisY, ly.z + s * (halfL + 30), 'z', 8);
   }
-  box(group, ly.x1 - ly.x0, 18, 120, MAT.yellow, (ly.x0 + ly.x1) / 2, rollY - 115, ly.z + 400);
+  for (const s of [-1, 1]) box(group, ly.x1 - ly.x0, 140, 50, MAT.steel, (ly.x0 + ly.x1) / 2, axisY, ly.z + s * (halfL + 60));
+  for (let x = ly.x0 + 100; x <= ly.x1; x += 1150) for (const s of [-1, 1]) box(group, 70, axisY - 70, 70, MAT.steelDark, x, (axisY - 70) / 2, ly.z + s * (halfL + 60));
+  box(group, ly.x1 - ly.x0, 18, 120, MAT.yellow, (ly.x0 + ly.x1) / 2, axisY - 100, ly.z + halfL + 160);
   // 標籤站旋轉輥（取代該段 V 輥，兩支主動輥平行於桶軸）
   const lab = LABEL;
   const rotRollers = [];
@@ -86,14 +90,18 @@ export function createLine(scene) {
   for (const s of [-1, 1]) { const c = box(cradle, 700, 160, 30, MAT.yellow, -500, DRUM.R, s * (DRUM.R + 60)); upClamp.push({ c, s }); }
   const cyl1 = rod(group, [ux - 900, 220, uz], [ux - 600, 600, uz], 50, MAT.steel);
 
-  // ---------------------------------------------------------------- 立放輸送（往南）
+  // ---------------------------------------------------------------- 立放輸送：一路往南，取桶位與放回位不設側導引
   const up = UPRIGHT;
   for (let z = up.z0 + 450; z < up.z1; z += 120) cyl(group, 30, 700, MAT.roller, up.x, up.top - 32, z, 'x', 12);
   for (const s of [-1, 1]) box(group, 50, 150, up.z1 - up.z0 - 450, MAT.steel, up.x + s * 380, up.top - 70, (up.z0 + 450 + up.z1) / 2);
   for (let z = up.z0 + 600; z < up.z1; z += 900) for (const s of [-1, 1]) box(group, 60, up.top - 140, 60, MAT.steelDark, up.x + s * 380, (up.top - 140) / 2, z);
-  // 側導引只到取桶位前，讓手臂夾爪由西側水平進入
-  for (const s of [-1, 1]) box(group, 30, 120, up.pick - 350 - up.z0 - 450, MAT.yellow, up.x + s * 340, up.top + 160, (up.z0 + 450 + up.pick - 350) / 2);
+  for (const [z0, z1] of [[up.z0 + 450, up.pick - 350], [up.pick + 350, up.place - 350], [up.place + 350, up.z1]])
+    for (const s of [-1, 1]) box(group, 30, 120, z1 - z0, MAT.yellow, up.x + s * 340, up.top + 160, (z0 + z1) / 2);
+  for (const z of [up.pick + DRUM.R + 20, up.place + DRUM.R + 20]) box(group, 120, 60, 40, MAT.steelOrange, up.x + 300, up.top + 40, z);   // 定位擋塊
   box(group, 700, 40, 40, MAT.steelOrange, up.x, up.top + 40, up.z1 - 20);
+  plate(group, ['取桶位'], 420, 110, [up.x - 420, up.top + 420, up.pick], -Math.PI / 2, { w: 512, h: 130 });
+  plate(group, ['放回位'], 420, 110, [up.x - 420, up.top + 420, up.place], -Math.PI / 2, { w: 512, h: 130 });
+  plate(group, ['→ 裝填區（下一站）'], 900, 160, [up.x - 420, 1150, up.handoff - 200], -Math.PI / 2, { w: 640, h: 110 });
 
   // ---------------------------------------------------------------- 自動開蓋站（相機定位 → 旋轉台對位 → 伺服鎖付軸反轉拆蓋）
   const dc = DECAP;
@@ -129,15 +137,6 @@ export function createLine(scene) {
   const capPile = []; for (let i = 0; i < 8; i++) { const c = cyl(bin, i % 2 ? 18 : 36, 16, MAT.cap, (i % 3 - 1) * 70, 640 + Math.floor(i / 3) * 18, ((i * 7) % 5 - 2) * 40); c.visible = false; capPile.push(c); }
   plate(group, ['桶蓋收集'], 380, 110, [dc.bin.x, 820, dc.bin.z + 232], 0, { w: 512, h: 150 });
 
-  // ---------------------------------------------------------------- 出料輸送（往西接裝填區）
-  const o = OUT;
-  for (let x = o.x0 + 60; x < o.x1; x += 120) cyl(group, 30, 700, MAT.roller, x, o.top - 32, o.z, 'z', 12);
-  for (const s of [-1, 1]) box(group, o.x1 - o.x0, 150, 50, MAT.steel, (o.x0 + o.x1) / 2, o.top - 70, o.z + s * 380);
-  for (let x = o.x0 + 200; x < o.x1; x += 1000) for (const s of [-1, 1]) box(group, 60, o.top - 140, 60, MAT.steelDark, x, (o.top - 140) / 2, o.z + s * 380);
-  for (const s of [-1, 1]) box(group, o.x1 - o.x0, 120, 30, MAT.yellow, (o.x0 + o.x1) / 2, o.top + 160, o.z + s * 340);
-  box(group, 40, 200, 700, MAT.steelOrange, o.x0 + 20, o.top + 100, o.z);
-  plate(group, ['→ 裝填區（下一站）'], 900, 160, [o.x0 + 400, 1150, o.z + 420], 0, { w: 640, h: 110 });
-
   // ---------------------------------------------------------------- 圍籬
   const fencePath = (pts, closed, gaps = []) => {
     const list = closed ? [...pts, pts[0]] : pts;
@@ -155,10 +154,10 @@ export function createLine(scene) {
       box(fences, 60, 2000, 60, MAT.fence, bx, 1000, bz);
     }
   };
-  fencePath(FENCE, false, [[UPRIGHT.x, FENCE[1][1], 600], [FENCE[1][0], OUT.z, 600]]);
+  fencePath(FENCE, false, [[UPRIGHT.x, FENCE[1][1], 600], [UPRIGHT.x, FENCE[3][1], 600]]);
   fencePath(GANTRY_FENCE, true, [[PALLET_STATION.x, 8950, 800], [6700, LYING.z, 600]]);
   // 光柵（入口）
-  for (const [x, z, w, ax] of [[PALLET_STATION.x, 8950, 1400, 'x'], [UPRIGHT.x, FENCE[1][1], 900, 'x'], [FENCE[1][0], OUT.z, 900, 'z'], [6700, LYING.z, 900, 'z']])
+  for (const [x, z, w, ax] of [[PALLET_STATION.x, 8950, 1400, 'x'], [UPRIGHT.x, FENCE[1][1], 900, 'x'], [UPRIGHT.x, FENCE[3][1], 900, 'x'], [6700, LYING.z, 900, 'z']])
     for (const s of [-1, 1]) box(fences, 50, 1700, 50, MAT.amber, ax === 'x' ? x + s * w / 2 : x, 850, ax === 'x' ? z : z + s * w / 2);
 
   // ---------------------------------------------------------------- 控制櫃與人機

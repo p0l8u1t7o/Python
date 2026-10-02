@@ -35,15 +35,26 @@ export function createWashing(scene) {
   const sumpLevel = box(group, 560, 1, 560, MAT.waste, fx, 10, fz);
   const pool = new THREE.Mesh(new THREE.PlaneGeometry(fw * .55, fd * .55), MAT.water); pool.rotation.x = -Math.PI / 2; pool.position.set(fx, f.y - 230, fz); pool.visible = false; group.add(pool);
 
-  // ---- 沖洗噴槍：屋頂氣缸推出，旋轉噴頭伸入 2" 桶口 ----
-  const [lx, lz] = b.lance;
-  cyl(group, 55, 340, MAT.steel, lx, H + 150, lz);
-  const lance = new THREE.Group(); group.add(lance);
-  cyl(lance, 14, 900, MAT.steel, 0, 450, 0, 'y', 12);
-  const nozzle = cyl(lance, 22, 60, MAT.steelDark, 0, 20, 0, 'y', 12);
-  const spray = new THREE.Mesh(new THREE.ConeGeometry(240, 420, 24, 1, true), MAT.water.clone());
-  spray.material.opacity = .35; spray.material.side = THREE.DoubleSide; spray.position.y = 210; spray.visible = false; lance.add(spray);
+  // ---- 沖洗噴槍：2" 旋轉噴頭（長行程，末道兼負壓抽液管）＋3/4" 直噴頭，皆由屋頂氣缸推出 ----
+  const [lx, lz] = b.lance, [lx2, lz2] = b.lance2;
   const lanceY = ext => b.lanceUp + (b.lanceDown - b.lanceUp) * ext;   // 噴頭高度
+  const LONG = 1750;                                                     // 2" 噴槍管長：伸到桶底時頂端仍在隔間內
+  box(group, 90, 1500, 90, MAT.alu, lx + 110, H + 750, lz);              // 長行程無桿氣缸導軌
+  cyl(group, 40, 1300, MAT.ppSolid, lx, H + 650, lz, 'y', 12);           // 屋頂導管
+  cyl(group, 50, 300, MAT.steel, lx2, H + 150, lz2);
+  const lance = new THREE.Group(); group.add(lance);
+  cyl(lance, 16, LONG, MAT.steel, 0, LONG / 2, 0, 'y', 12);
+  box(lance, 140, 60, 80, MAT.steelDark, 60, LONG, 0);                    // 氣缸滑塊
+  cyl(lance, 24, 60, MAT.steelDark, 0, 20, 0, 'y', 12);
+  const lance2 = new THREE.Group(); group.add(lance2);
+  cyl(lance2, 9, 900, MAT.steel, 0, 450, 0, 'y', 10);
+  cyl(lance2, 13, 40, MAT.steelDark, 0, 15, 0, 'y', 10);
+  const sprayMat = MAT.water.clone(); sprayMat.opacity = .35; sprayMat.side = THREE.DoubleSide;
+  const spray = new THREE.Mesh(new THREE.ConeGeometry(240, 420, 24, 1, true), sprayMat); spray.position.y = 210; spray.visible = false; lance.add(spray);
+  const jet = new THREE.Mesh(new THREE.CylinderGeometry(14, 22, 700, 10, 1, true), sprayMat); jet.position.y = -350; jet.visible = false; lance2.add(jet);
+  // 真空泵 VP-1（屋頂）：抽液管頂端軟管 → 真空泵 → 集液槽
+  box(group, 520, 380, 420, MAT.steelBlue, 9850, H + 190, 15150);
+  plate(group, ['VP-1 真空泵（負壓抽液）'], 700, 120, [9850, H + 480, 14935], Math.PI, { w: 640, h: 110 });
 
   // ---- 倒液水柱（每幀由桶口位置更新）----
   const streamTex = flowTexture(0x7fcfff); streamTex.repeat.set(1, 6); streamTex.wrapT = THREE.RepeatWrapping;
@@ -72,7 +83,10 @@ export function createWashing(scene) {
   const pipes = {
     fromF: pipe(group, [[tF.x + tF.r, 150, tF.z], [p1x - 180, 150, tF.z], [p1x - 180, 150, p1z - 160], [p1x - 60, 300, p1z - 160]], 30, 0x8fd3ff),
     fromR: pipe(group, [[tR.x + tR.r, 150, tR.z], [p1x - 60, 150, tR.z], [p1x - 60, 300, p1z - 160]], 30, 0x58b6f2),
-    supply: pipe(group, [[p1x, 420, p1z - 160], [p1x, 2800, p1z - 160], [lx, 2800, p1z - 160], [lx, 2800, lz], [lx, H + 320, lz]], 30, 0x4aa8ff),
+    supply: pipe(group, [[p1x, 420, p1z - 160], [p1x, 2800, p1z - 160], [lx, 2800, p1z - 160], [lx, 2800, lz - 300], [lx2, 2800, lz2 - 300], [lx2, H + 320, lz2 - 300], [lx2, H + 320, lz2]], 30, 0x4aa8ff),
+    supply2: pipe(group, [[lx, 2800, lz - 300], [lx, 2800, lz - 150], [lx, H + 1350, lz - 150], [lx, H + 1350, lz]], 26, 0x4aa8ff),
+    vac: pipe(group, [[lx, H + 1350, lz + 120], [lx, H + 1350, 15150], [9850, H + 1350, 15150], [9850, H + 380, 15150]], 26, 0xb07cff),
+    vacOut: pipe(group, [[10110, H + 100, 15150], [10150, H + 100, 15150], [10150, 120, 15150], [fx + 300, 120, 15150], [fx + 300, 120, fz + 300]], 30, 0xb07cff),
     sump: pipe(group, [[fx - 300, 120, fz], [b.x0 - 150, 120, fz], [b.x0 - 150, 120, p2z], [p2x + 125, 120, p2z]], 36, 0xd88a3c),
     toW: pipe(group, [[p2x, 420, p2z], [p2x, 2100, p2z], [tW.x, 2100, p2z], [tW.x, 2100, tW.z], [tW.x, 40 + tW.h, tW.z]], 34, 0xd88a3c),
     toR: pipe(group, [[p2x, 2100, p2z], [p2x, 2100, tR.z], [tR.x, 2100, tR.z], [tR.x, 40 + tR.h, tR.z]], 34, 0x3dd68c),
@@ -87,9 +101,9 @@ export function createWashing(scene) {
   const _a = new THREE.Vector3(), _b = new THREE.Vector3();
   return {
     group, walls, lanceTip: () => new THREE.Vector3(lx, lanceY(lance.userData.ext || 0), lz),
-    set({ lance: ext = 0, spray: sp = false, pour = null, pool: pl = 0, sump = 0, tanks: lv = null, flows = {} }) {
-      lance.position.set(lx, lanceY(ext), lz); lance.userData.ext = ext;
-      spray.visible = sp; lamp.intensity = 500;
+    set({ lance: ext = 0, lance2: ext2 = 0, spray: sp = false, pour = null, pool: pl = 0, sump = 0, tanks: lv = null, flows = {} }) {
+      lance.position.set(lx, lanceY(ext), lz); lance.userData.ext = ext; lance2.position.set(lx2, lanceY(ext2), lz2);
+      spray.visible = sp; jet.visible = sp; lamp.intensity = 500;
       if (pour) {
         _a.copy(pour); _b.set(pour.x, f.y - 120, pour.z);
         const L = _a.y - _b.y; stream.visible = L > 10; stream.position.set(_a.x, (_a.y + _b.y) / 2, _a.z); stream.scale.set(22, L, 22);

@@ -12,16 +12,21 @@
     "08-robot-pick",
     "09-booth-spray",
     "10-booth-pour",
-    "11-waste",
-    "12-finish"
+    "11-vacuum",
+    "12-waste",
+    "13-inbound-dolly",
+    "14-inbound-jib",
+    "15-agv-inbound-arc",
+    "16-place-back",
+    "17-finish"
   ],
   "checks": {
     "samples": [],
     "pipShown": true,
-    "layoutChecks": "16 / 16 通過",
-    "equipRows": 9
+    "layoutChecks": "20 / 20 通過",
+    "equipRows": 11
   },
-  "total": 466.94626203956705,
+  "total": 618.5418115549205,
   "errors": [],
   "logs": []
 }

@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { RACK, COLUMN, UPRIGHT, DECAP, BOOTH, WASTE, layoutChecks, ROBOT, OUT, LABEL, LYING, PALLET_STATION } from './layout.js';
+import { RACK, COLUMN, UPRIGHT, DECAP, BOOTH, WASTE, layoutChecks, ROBOT, LABEL, LYING, INBOUND, PAYLOAD, payloadAt } from './layout.js';
 import { MAT, D2R, smooth } from './parts.js';
 import { createBuilding } from './building.js';
 import { createStorage } from './storage.js';
@@ -11,12 +11,14 @@ import { createLine } from './line.js';
 import { createRobot } from './robot.js';
 import { createWashing } from './washing.js';
 import { createDrum, BIG_CAP, SMALL_CAP } from './drum.js';
-import { createSequence, drumWorld, palletWorld, STATIONS, DRUM_IDS } from './sequence.js';
+import { createSequence, drumWorld, palletWorld, STATIONS, DRUM_IDS, IN_IDS, DRUM_KEYS, SPRAY_S, SPRAY_SINGLE_S } from './sequence.js';
+import { createInbound } from './inbound.js';
 
 const qp = new URLSearchParams(location.search);
 // ---------------------------------------------------------------- 場景
 const canvas = document.getElementById('c');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+// 對數深度緩衝：場景 15 m、細節到 mm，一般深度緩衝會讓貼地的分區、標線互搶深度而閃爍
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', logarithmicDepthBuffer: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = qp.get('shadow') !== '0'; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -24,7 +26,7 @@ const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0d1117);
 const pmrem = new THREE.PMREMGenerator(renderer), room = new RoomEnvironment(renderer);
 scene.environment = pmrem.fromScene(room, .04).texture; room.dispose(); pmrem.dispose();
 scene.environmentIntensity = .55;
-const camera = new THREE.PerspectiveCamera(40, 1, 50, 150000);
+const camera = new THREE.PerspectiveCamera(40, 1, 100, 150000);
 const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true; controls.dampingFactor = .08; controls.maxPolarAngle = Math.PI * .495; controls.minDistance = 400; controls.maxDistance = 70000;
 scene.add(new THREE.HemisphereLight(0xcfe0ff, 0x30363d, .9));
@@ -41,7 +43,8 @@ const agv = createAgv(scene);
 const line = createLine(scene);
 const robot = createRobot(); scene.add(robot.root);
 const washing = createWashing(scene);
-const drums = DRUM_IDS.map(id => { const d = createDrum(id); scene.add(d.root); return d; });
+const inbound = createInbound(scene);
+const drums = [...DRUM_IDS, ...IN_IDS].map(id => { const d = createDrum(id); scene.add(d.root); return d; });
 const held = { big: new THREE.Mesh(BIG_CAP, MAT.cap), small: new THREE.Mesh(SMALL_CAP, MAT.cap) };
 for (const k of ['big', 'small']) { held[k].position.y = 8; line.socket(k).add(held[k]); }
 const seq = createSequence({ robot });
@@ -63,38 +66,41 @@ function applyState(sm) {
   line.setGantry(st.gantry); line.setLabeler(st.labeler); line.setUpender(st.upender); line.setDecap(st.decap);
   held.big.visible = st.decap.heldBig; held.small.visible = st.decap.heldSmall;
   robot.setJaw(st.grip.jaw); robot.root.updateMatrixWorld(true);
+  inbound.set({ dollyX: st.dolly.x, a: st.jib.a, r: st.jib.r, y: st.jib.y, clamp: st.jib.clamp });
   drums.forEach((d, k) => {
-    const s = st['drum' + k], w = drumWorld(k, st, robot.tcp.matrixWorld);
+    const key = DRUM_KEYS[k], s = st[key], w = drumWorld(key, st, robot.tcp.matrixWorld);
+    d.root.visible = !w.hidden; if (w.hidden) return;
     d.root.position.copy(w.pos); d.root.quaternion.copy(w.q); d.root.updateMatrixWorld(true);
     d.setCaps(s.capBig, s.capSmall); d.setLabel(s.label, s.labelAng * D2R); d.setWater(s.water);
   });
   const b = st.booth, sp = st.sump;
   washing.set({
-    lance: b.lance, spray: b.spray, pool: b.pool, sump: sp.level, tanks: st.tanks,
+    lance: b.lance, lance2: b.lance2, spray: b.spray, pool: b.pool, sump: sp.level, tanks: st.tanks,
     pour: b.pour !== '' ? drums[+b.pour].bungWorld('big') : null,
-    flows: { supply: b.spray, fromF: b.spray && b.src === 'F', fromR: b.spray && b.src === 'R', sump: sp.pump, toW: sp.pump && sp.dest === 'W', toR: sp.pump && sp.dest === 'R', city: st.makeup.on },
+    flows: { vac: b.vac, vacOut: b.vac, supply: b.spray, supply2: b.spray, fromF: b.spray && b.src === 'F', fromR: b.spray && b.src === 'R', sump: sp.pump, toW: sp.pump && sp.dest === 'W', toR: sp.pump && sp.dest === 'R', city: st.makeup.on },
   });
   line.setTower(playing ? 'run' : 'wait');
 }
 
 // ---------------------------------------------------------------- UI
-const ui = Object.fromEntries(['playBtn', 'restartBtn', 'speed', 'speedVal', 'stepSelect', 'previous', 'next', 'timeline', 'clock', 'cycleTime', 'phase', 'equip', 'drums', 'tanks', 'checks', 'chkCount', 'showDims', 'showFence', 'showLabels', 'showCeiling', 'xray', 'showPip', 'pip', 'pipTitle', 'pipResult', 'stations'].map(id => [id, document.getElementById(id)]));
+const ui = Object.fromEntries(['payload', 'playBtn', 'restartBtn', 'speed', 'speedVal', 'stepSelect', 'previous', 'next', 'timeline', 'clock', 'cycleTime', 'phase', 'equip', 'drums', 'tanks', 'checks', 'chkCount', 'showDims', 'showFence', 'showLabels', 'showCeiling', 'xray', 'showPip', 'pip', 'pipTitle', 'pipResult', 'stations'].map(id => [id, document.getElementById(id)]));
 const SPEEDS = [.25, .5, 1, 2, 4, 8];
 let T = 0, playing = !qp.has('pause'), speed = 1, selectedView = 'iso', camAnim = null;
 const total = seq.total;
 ui.timeline.max = total; ui.cycleTime.textContent = `本棧板 4 桶共 ${Math.round(total)} s（模擬時間）`;
-// 手臂節拍：相鄰兩桶放上出料輸送的間隔
-const placed = seq.events.filter(e => e.label.endsWith('放上出料輸送')).map(e => e.time), cycle = placed.at(-1) - placed.at(-2);
-document.getElementById('cycleNote').textContent = `一個棧板（4 桶）走完全線。手臂一桶約 ${cycle.toFixed(0)} s，是整線瓶頸（約 ${Math.floor(3600 / cycle)} 桶／h；200 桶約 ${(200 * cycle / 3600).toFixed(1)} h）。`;
+// 手臂節拍：相鄰兩桶放回輸送線的間隔
+const placed = seq.events.filter(e => e.label.endsWith('放回輸送線')).map(e => e.time), cycle = placed.at(-1) - placed.at(-2);
+document.getElementById('cycleNote').textContent = `散桶入庫 4 桶＋一個棧板（4 桶）走完全線。手臂一桶約 ${cycle.toFixed(0)} s，是整線瓶頸（約 ${Math.floor(3600 / cycle)} 桶／h；200 桶約 ${(200 * cycle / 3600).toFixed(1)} h）。雙孔進水每道 ${SPRAY_S.toFixed(1)} s（單孔 ${SPRAY_SINGLE_S.toFixed(0)} s）。`;
 seq.events.forEach((e, i) => { const o = document.createElement('option'); o.value = i; const st = STATIONS.find(s => s.id === e.station); o.textContent = `${fmt(e.time)}  ${st.short} ${st.name} · ${e.label}`; ui.stepSelect.appendChild(o); });
-const VIEW_OF = { agv: 'storage', gantry: 'gantry', label: 'label', upender: 'upender', decap: 'decap', robot: 'robot', waste: 'waste' };
+const VIEW_OF = { inbound: 'inbound', agv: 'storage', gantry: 'gantry', label: 'label', upender: 'upender', decap: 'decap', robot: 'robot', waste: 'waste' };
 for (const s of STATIONS) {
   const b = document.createElement('button'); b.className = 'st'; b.dataset.st = s.id; b.innerHTML = `<span class="idx">${s.short}</span>${s.name}`;
   b.onclick = () => { seekTo(seq.stationStart[s.id]); setView(VIEW_OF[s.id]); }; ui.stations.appendChild(b);
 }
-const EQUIP = [['agv', 'AGV'], ['shuttle', '穿梭車'], ['gantry', '龍門'], ['labeler', '貼標讀碼'], ['upender', '翻桶機'], ['decap', '開蓋站'], ['robot', '清洗手臂'], ['booth', '沖洗站'], ['sump', '集液／泵']];
+const EQUIP = [['dolly', '入庫台車'], ['jib', '入庫懸臂吊'], ['agv', 'AGV'], ['shuttle', '穿梭車'], ['gantry', '龍門'], ['labeler', '貼標讀碼'], ['upender', '翻桶機'], ['decap', '開蓋站'], ['robot', '清洗手臂'], ['booth', '沖洗站'], ['sump', '集液／泵']];
 ui.equip.innerHTML = EQUIP.map(([k, n]) => `<div class="row" data-k="${k}"><span class="name"><i></i>${n}</span><span class="act"></span></div>`).join('');
-ui.drums.innerHTML = DRUM_IDS.map((id, k) => `<div class="d" data-k="${k}"><span class="id">${id}</span><span class="state"></span><span class="tags"></span></div>`).join('');
+ui.drums.innerHTML = DRUM_IDS.map((id, k) => `<div class="d" data-k="${k}"><span class="id">${id}</span><span class="state"></span><span class="tags"></span></div>`).join('')
+  + `<div class="d inb"><span class="id">入庫 0101–0104</span><span class="state"></span></div>`;
 const TANKS = [['W', '#c77b34'], ['R', '#58b6f2'], ['F', '#8fd3ff']];
 ui.tanks.innerHTML = TANKS.map(([k, c]) => `<div class="tank" data-k="${k}"><span>${WASTE.tanks[k].name}</span><span class="bar"><i style="background:${c}"></i></span><span class="v"></span></div>`).join('');
 const checks = layoutChecks();
@@ -123,6 +129,7 @@ const VIEWS = {
   label: [[6000, 2900, 7300], [7500, 900, 9800]], upender: [[8400, 3600, 7400], [10900, 1000, 10100]],
   decap: [[9700, 3300, 8900], [11290, 1350, 11000]], robot: [[6200, 5600, 10200], [9900, 1100, 13400]],
   booth: [[7300, 2300, 15000], [9400, 1150, 14550]], waste: [[2600, 3400, 15300], [5900, 900, 14300]],
+  inbound: [[-900, 3900, 7400], [2300, 900, 2900]],
 };
 function setView(name, instant = false) {
   selectedView = name;
@@ -139,7 +146,7 @@ controls.addEventListener('start', () => { camAnim = null; });
 const labels = [];
 function addLabel(html, getPos, cls = '') { const el = document.createElement('div'); el.className = 'label3d ' + cls; el.innerHTML = html; document.getElementById('app').appendChild(el); labels.push({ el, getPos, dim: cls === 'dim' }); }
 const P = (x, y, z) => () => new THREE.Vector3(x, y, z);
-addLabel('<b>倉儲</b> 穿梭車密集架 5 道×4 深×3 層', P(5000, 4000, 2700));
+addLabel('<b>倉儲</b> 穿梭車密集架 212 桶', P(6000, 4000, 2700));
 addLabel('<b>AGV</b> 平衡重式堆高', () => agv.root.position.clone().add(new THREE.Vector3(0, 2500, 0)));
 addLabel('<b>S2</b> 棧板站＋龍門翻轉夾爪', P(4800, 3600, 9050));
 addLabel('<b>S3</b> 貼標＋讀碼', P(LABEL.x, 2350, LYING.z + 500));
@@ -148,7 +155,8 @@ addLabel('<b>S5</b> 自動開蓋站', P(UPRIGHT.x, 2900, DECAP.z));
 addLabel('<b>S6</b> FANUC R-2000iC/165F', P(ROBOT.x, 2700, ROBOT.z - 300));
 addLabel('<b>S6</b> 沖洗站', P(9500, 2950, BOOTH.z0 + 200));
 addLabel('<b>S7</b> 廢液回收', P(5700, 2500, 14300));
-addLabel('出料 → 裝填區', P(5600, 1450, OUT.z));
+addLabel('<b>S0</b> 散桶入庫（捲門＋懸臂吊）', P(1500, 3500, INBOUND.z));
+addLabel('裝填區（下一站）', P(11400, 1500, 14700));
 addLabel('結構柱', P(COLUMN.x, 2600, COLUMN.z));
 for (const d of building.dimLabels) addLabel(d.text, () => d.pos, 'dim');
 
@@ -161,17 +169,25 @@ function drawHud() {
     row.querySelector('.act').innerHTML = s ? `${s.action}${s.sub ? `<small>${s.sub}</small>` : ''}` : '<span style="color:#6f8190">待命</span>';
   }
   for (const row of ui.drums.children) {
+    if (row.classList.contains('inb')) { const n = IN_IDS.filter((_, i) => st['in' + i].mode === 'pallet').length; row.querySelector('.state').textContent = st.in0.state === '已入架' ? '4 桶已入架（第 3 道底層）' : `已上棧板 ${n}/4`; continue; }
     const s = st['drum' + row.dataset.k];
     row.querySelector('.state').textContent = s.state;
     row.querySelector('.tags').innerHTML = [
       [s.label ? (s.read ? '標籤讀碼 OK' : '已貼標') : '未貼標', s.read],
       [s.capBig || s.capSmall ? '桶蓋未開' : '桶口已開', !s.capBig && !s.capSmall],
-      [`沖洗 ${s.rinse}/3`, s.rinse === 3 && s.mode !== 'robot' || s.mode === 'out'],
-      [`桶內水 ${s.water.toFixed(0)} L`, false],
+      [`沖洗 ${s.rinse}/3`, s.rinse === 3 && s.mode !== 'robot'],
+      [s.dry ? '殘水已抽乾' : `桶內水 ${s.water.toFixed(1)} L`, s.dry],
     ].map(([t, ok]) => `<span class="tag ${ok ? 'ok' : ''}">${t}</span>`).join('');
   }
+  // 手臂負載：夾持中的桶＋桶內水量
+  const heldKey = DRUM_IDS.map((_, k) => 'drum' + k).find(k => st[k].mode === 'robot'), pl = payloadAt(heldKey ? st[heldKey].water : 0, !!heldKey);
+  for (const [k, v, lim, unit] of [['kg', pl.kg, PAYLOAD.rated, 'kg'], ['j5', pl.j5, PAYLOAD.moment.j5, 'N·m'], ['j6', pl.j6, PAYLOAD.moment.j6, 'N·m'], ['i5', pl.i5, PAYLOAD.inertia.j5, 'kg·m²']]) {
+    const row = ui.payload.querySelector(`[data-k="${k}"]`), r = v / lim; row.querySelector('i').style.width = Math.min(100, r * 100).toFixed(1) + '%';
+    row.querySelector('i').style.background = r > .9 ? '#ff4d4d' : r > .7 ? '#ffb020' : '#3dd68c'; row.querySelector('.v').textContent = `${v.toFixed(unit === 'kg·m²' ? 1 : 0)} / ${lim}`;
+  }
   for (const row of ui.tanks.children) { const k = row.dataset.k, v = st.tanks[k], cap = WASTE.tanks[k].cap; row.querySelector('i').style.width = (v / cap * 100).toFixed(1) + '%'; row.querySelector('.v').textContent = `${v.toFixed(0)} L`; }
-  document.querySelectorAll('#stations .st').forEach(b => { const a = act[b.dataset.st === 'label' ? 'labeler' : b.dataset.st === 'waste' ? 'sump' : b.dataset.st]; b.classList.toggle('active', !!a); });
+  const ACT_OF = { label: 'labeler', waste: 'sump', inbound: 'jib' };
+  document.querySelectorAll('#stations .st').forEach(b => b.classList.toggle('active', !!act[ACT_OF[b.dataset.st] || b.dataset.st]));
   ui.timeline.value = T; ui.clock.textContent = fmt(T); ui.stepSelect.value = eventIndex();
   ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放';
   const rect = canvas.getBoundingClientRect();
