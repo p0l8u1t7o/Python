@@ -57,9 +57,9 @@ node ../core/tools/serve.mjs MilitaryGradePC --no-open
 | 檔案 | 用途 |
 |---|---|
 | `web/js/notebook.js` | 產品、介面、封印與 SKU |
-| `web/js/detail.js` | 幾何、可讀文字貼圖、配線共用元件 |
+| `core/geom/primitives.js` | 幾何、可讀文字貼圖、配線共用元件（各專案共用） |
 | `web/js/cell.js` | 載具、進出料、輸送與翻轉設備 |
-| `web/js/robot.js`、`kinematics.js` | 概念手臂、末端工具、IK 與限速 |
+| `web/js/robot.js` | 概念手臂、末端工具、限速；IK 用 `core/robot/kinematics.js` |
 | `web/js/sequence.js` | 第一階段逐步流程、時間、狀態快照 |
 | `web/js/main.js` | 場景、控制、到位等待、紀錄匯出、錄影分鏡 |
 | `docs/phase1-scope.md` | 文件依據與範圍映射 |

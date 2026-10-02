@@ -1,8 +1,8 @@
 // 穿梭車密集架、棧板、架上桶槽（靜態以 InstancedMesh 繪製）、示範車道與穿梭車。
 import * as THREE from 'three';
 import { RACK, PALLET, DRUM, lanePositions } from './layout.js';
-import { MAT, box, plate, rod, cyl } from './parts.js';
-import { foot } from './detail.js';
+import { MAT, box, plate, rod, cyl } from '@core/geom/parts.js';
+import { foot } from '@core/geom/hardware.js';
 import { createDrumInstances } from './drum.js';
 
 // 塑膠棧板：上板＋三條沿 Z 的底樑（叉子由 Z 向插入，兩側底樑落在穿梭車軌道上）

@@ -1,6 +1,6 @@
 // 全廠設備建立與狀態套用：網頁主程式與 tools/verify-scene.mjs 共用同一份邏輯，檢查的就是畫面上的幾何。
 import * as THREE from 'three';
-import { MAT, D2R } from './parts.js';
+import { MAT, D2R } from '@core/geom/parts.js';
 import { createBuilding } from './building.js';
 import { createStorage } from './storage.js';
 import { createAgv } from './agv.js';

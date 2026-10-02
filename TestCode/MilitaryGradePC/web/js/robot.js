@@ -1,8 +1,8 @@
 // 六軸手臂（第七軸線性滑軌）＋ 力覺末端（F/T 感測器、12MP 相機＋環形光、微距鏡頭、鉤爪、3D 線雷射）
 import * as THREE from 'three';
-import { cable, armDress, carrier, support, CABLE } from './cable-routing.js';
-import { createIK } from './kinematics.js';
-import { block, cylinder, tube, decal } from './detail.js';
+import { cable, armDress, carrier, support, CABLE } from '@core/electrical/cable-routing.js';
+import { createIK } from '@core/robot/kinematics.js';
+import { block, cylinder, tube, decal } from '@core/geom/primitives.js';
 
 const matArm   = new THREE.MeshStandardMaterial({ color: 0xe8e9eb, roughness: 0.45, metalness: 0.15 });
 const matArmD  = new THREE.MeshStandardMaterial({ color: 0x2f3439, roughness: 0.5, metalness: 0.3 });

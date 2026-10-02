@@ -50,12 +50,6 @@
 
 ## 實作與驗證
 
-共用來源為 `tools/viewer-workspace.js` 與 `tools/viewer-workspace.css`。修改後執行：
-
-```powershell
-node tools/sync-viewer-workspace.mjs
-```
-
-各網站保留獨立的 JS／CSS 副本，可單站部署。相機使用同一 WebGL renderer 的離屏目標，再把影像送至面板／獨立視窗；這避免拖出主畫布時遭裁切，也保留同幀的機構狀態。HDR 影像經 ACES 曝光與 sRGB 轉換後顯示，ROI 使用同一鏡頭投影。
+共用來源為 `core/ui/viewer-workspace.js` 與 `core/ui/viewer-workspace.css`。2026-10-03 起各站直接引用同一份（`@core/ui/…`），修改後不必同步；GitHub Pages 也只發布一份 `/core/`。相機使用同一 WebGL renderer 的離屏目標，再把影像送至面板／獨立視窗；這避免拖出主畫布時遭裁切，也保留同幀的機構狀態。HDR 影像經 ACES 曝光與 sRGB 轉換後顯示，ROI 使用同一鏡頭投影。
 
 已在本機瀏覽器操作五站，驗證拖曳、隱藏還原、面板收合、開窗返回、跳站／倒轉同步與焦點解除。紀錄見 [viewer-workspace-checks.json](../review/viewer-workspace-checks.json)，畫面位於各站 `review/viewer-workspace.png`。本次修改呈現與操作介面，未更動機構運動排程。

@@ -3,7 +3,7 @@ import * as THREE from 'three';
 /** Shared presentation controls. The simulation remains the only time source. */
 export function createViewerWorkspace({camera, controls, canvas, resize, getFocus, focusOffset, focusNear = 1, onFocus, focusOccluders = []}) {
   const $ = id => document.getElementById(id);
-  const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('../css/viewer-workspace.css', import.meta.url); document.head.append(css);
+  const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('./viewer-workspace.css', import.meta.url); document.head.append(css);
   document.body.classList.add('viewer-workspace');
   const compactQuery = matchMedia('(max-width:900px), (max-height:500px) and (pointer:coarse)');
   let compact = compactQuery.matches;

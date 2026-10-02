@@ -1,4 +1,4 @@
-import { objectRegion, planeRegion } from './vision-overlay.js';
+import { objectRegion, planeRegion } from '@core/ui/vision-overlay.js';
 import { PRODUCT } from './layout.js';
 export function copperResults(src,T,plan,M,boards) {
   const H=src.endsWith('B')?'B':'A';let marks=[],state='預覽';

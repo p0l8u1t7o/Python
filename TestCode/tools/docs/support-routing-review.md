@@ -28,9 +28,8 @@
 ## 重跑
 
 ```powershell
-node tools/sync-cable-routing.mjs
 node tools/verify-cable-routing.mjs
 node tools/verify-interference.mjs
 ```
 
-快門站另在專案目錄使用 `tools/three-loader.mjs` 執行 `verify.mjs`、`verify-physics.mjs`、`verify-product-detail.mjs`。
+快門站的 `verify.mjs`、`verify-physics.mjs`、`verify-product-detail.mjs` 可用 `node core/tools/check.mjs shutter` 一併執行。

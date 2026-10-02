@@ -1,7 +1,7 @@
 // Run from RobotArmPressSSD with the existing Three.js loader.
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { projectPoint, projectRegion } from '../web/js/vision-overlay.js';
+import { projectPoint, projectRegion } from '@core/ui/vision-overlay.js';
 import { ssdResults } from '../web/js/vision-results.js';
 import { createStation } from '../web/js/station.js';
 import { createSequence } from '../web/js/sequence.js';

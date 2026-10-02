@@ -69,9 +69,8 @@
 ## 維護與發布
 
 ```powershell
-node tools/sync-cable-routing.mjs
 node tools/verify-cable-routing.mjs
 node tools/verify-interference.mjs
 ```
 
-共用繪圖來源是 `tools/cable-routing.js`，同步後各專案保有獨立的 `web/js/cable-routing.js`，因此 GitHub Pages 與離線展示不依賴其他專案目錄。更新網站時需上傳完整 web 內容；原有 `static.yml` 會自動收集新增 JS。研究文件與原始 docs 不會隨網站發布。
+共用繪圖來源是 `core/electrical/cable-routing.js`（2026-10-03 起各專案直接引用，GitHub Pages 也只發布一份）。Pages 建置由 `core/tools/build-site.mjs` 一併發布 `/core/` 與各專案 `web/`。研究文件與原始 docs 不會隨網站發布。

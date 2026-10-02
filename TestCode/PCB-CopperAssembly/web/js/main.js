@@ -1,11 +1,11 @@
-import {createElectricalInspector} from './electrical-inspector.js';
-import {setElectricalCutaway} from './electrical-cabinet.js';
-import { createViewerWorkspace } from './viewer-workspace.js';
-import { routingLegend } from './cable-routing.js';
+import {createElectricalInspector} from '@core/electrical/electrical-inspector.js';
+import {setElectricalCutaway} from '@core/electrical/electrical-cabinet.js';
+import { createViewerWorkspace } from '@core/ui/viewer-workspace.js';
+import { routingLegend } from '@core/electrical/cable-routing.js';
 routingLegend();
 // 主程式：場景、節拍時間軸、UI、相機子畫面
 import * as THREE from 'three';
-import { createVisionOverlay } from './vision-overlay.js';
+import { createVisionOverlay } from '@core/ui/vision-overlay.js';
 import { copperResults } from './vision-results.js';
 const vision = createVisionOverlay();
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';

@@ -1,13 +1,13 @@
-import {createElectricalInspector} from './electrical-inspector.js';
-import {setElectricalCutaway} from './electrical-cabinet.js';
-import { createViewerWorkspace } from './viewer-workspace.js';
-import { routingLegend } from './cable-routing.js';
+import {createElectricalInspector} from '@core/electrical/electrical-inspector.js';
+import {setElectricalCutaway} from '@core/electrical/electrical-cabinet.js';
+import { createViewerWorkspace } from '@core/ui/viewer-workspace.js';
+import { routingLegend } from '@core/electrical/cable-routing.js';
 routingLegend();
 // 主程式：場景、時間軸（動作序列）、UI、相機子畫面（上視遠心相機／手臂下視相機）
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { createVisionOverlay } from './vision-overlay.js';
+import { createVisionOverlay } from '@core/ui/vision-overlay.js';
 import { createStation } from './station.js';
 import { createSequence, smooth, STATIONS, SPEC, OFFSETS } from './sequence.js';
 import { LAYOUT, NEST_SEAT, TRAYS } from './cell.js';

@@ -1,11 +1,11 @@
-import {robotController,controllerLeads,electricalDevice} from './electrical-components.js';
+import {robotController,controllerLeads,electricalDevice} from '@core/electrical/electrical-components.js';
 // 單站組裝設備：機台（台面 900 mm）、雙抽屜吸塑盤（本體／上蓋／小葉片／大葉片）、組裝治具、上視遠心相機、
 // 離子風嘴、NG 盒、外罩、三色燈、HMI。座標：x 向右、y 向上、z 朝作業員（前方）；手臂在後方中央。單位 mm。
 import * as THREE from 'three';
-import {controlPanel,entryGland,panelFeed} from './electrical-cabinet.js';
-import { cable, cableTray, support, CABLE } from './cable-routing.js';
-import { block, cylinder, decal, screw } from './detail.js';
-import { microTexture, batchStatic } from './surfaces.js';
+import {controlPanel,entryGland,panelFeed} from '@core/electrical/electrical-cabinet.js';
+import { cable, cableTray, support, CABLE } from '@core/electrical/cable-routing.js';
+import { block, cylinder, decal, screw } from '@core/geom/primitives.js';
+import { microTexture, batchStatic } from '@core/geom/surfaces.js';
 import { PART, createBase, createBlade, createCover, createAssembly } from './product.js';
 
 export const LAYOUT = {

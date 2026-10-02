@@ -1,9 +1,9 @@
 // DENSO VS-068 六軸手臂＋共用末端工具（快拆壓頭介面＋20MP 斜視相機）
 // 工具本地座標：+Z 為工具前進方向（朝下壓）、X 沿壓墊長邊、Y 橫向（相機所在側為 +Y）。單位 mm。
 import * as THREE from 'three';
-import { cable, armDress, CABLE } from './cable-routing.js';
-import { createIK } from './kinematics.js';
-import { block, cylinder, decal, bevelBox, screw, tube } from './detail.js';
+import { cable, armDress, CABLE } from '@core/electrical/cable-routing.js';
+import { createIK } from '@core/robot/kinematics.js';
+import { block, cylinder, decal, bevelBox, screw, tube } from '@core/geom/primitives.js';
 
 const matArm   = new THREE.MeshStandardMaterial({ color: 0xeceeef, roughness: 0.42, metalness: 0.12 });
 const matArmD  = new THREE.MeshStandardMaterial({ color: 0x30353b, roughness: 0.5, metalness: 0.3 });

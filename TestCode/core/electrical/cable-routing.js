@@ -1,4 +1,4 @@
-// Shared source. Run tools/sync-cable-routing.mjs after editing.
+// 共用線材模型（core/electrical），各專案以 @core/electrical/cable-routing.js 直接引用。
 // Millimetres. Visible routing concepts, not manufacturer cable/harness CAD.
 import * as THREE from 'three';
 

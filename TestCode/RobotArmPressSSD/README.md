@@ -97,9 +97,9 @@ node ../core/tools/serve.mjs RobotArmPressSSD --no-open
 |---|---|
 | `web/js/recipes.js` | 接頭型錄與機種配方（載盤、板子、接頭位置與方向、翹起示意、壓合力） |
 | `web/js/product.js` | 依配方建出產品；壓點、對焦點、翹起角與間隙 |
-| `web/js/surfaces.js` | 離線生成編織／金屬／PCB 材質，以及靜態網格合併 |
+| `core/geom/surfaces.js` | 離線生成編織／金屬／PCB 材質，以及靜態網格合併（與快門站共用） |
 | `web/js/cell.js` | 輸送段（後軌基準、前軌調寬）、止擋、頂升、全局相機、底櫃、外罩 |
-| `web/js/robot.js`、`kinematics.js` | VS-068、共用末端工具（快拆壓頭、斜視相機）、IK 與關節規劃 |
+| `web/js/robot.js` | VS-068、共用末端工具（快拆壓頭、斜視相機）、關節規劃；IK 用 `core/robot/kinematics.js` |
 | `web/js/sequence.js` | 由配方產生流程、拍攝分組、接頭狀態與力值計算 |
 | `web/js/station.js` | 組裝整站並套用狀態（畫面與驗證共用） |
 | `web/js/main.js` | 場景、配方選單、接頭狀態、相機子畫面、紀錄匯出 |

@@ -18,7 +18,7 @@
 四個專案各新增 `tools/verify-clearance.mjs`。在各專案目錄執行：
 
 ```powershell
-node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-clearance.mjs
+node --import ../core/tools/register.mjs tools/verify-clearance.mjs
 ```
 
 - 銅箔：長圓孔 26,969、圓孔 14,734 個時間樣本（每 2 ms），檢查兩個移載頭、橫樑、供料相機、固定結構與移動掃描頭；另檢查通孔、基準點光軸和供料曝光遮擋。滑軌支承接觸為明確允許的接觸。

@@ -2,7 +2,7 @@
 // 本體座標：原點在本體頂面中心，x 沿寬（18 mm）、z 沿深（17 mm，+z 朝作業員）、y 向上。單位 mm。
 // 尺寸依工程圖（2-φ0.80 銷、A 4.05 厚、O 0.20）與照片目測；葉片外形與孔位依照片描繪，非 CAD。
 import * as THREE from 'three';
-import { microTexture } from './surfaces.js';
+import { microTexture } from '@core/geom/surfaces.js';
 
 export const PART = {
   base: { w: 18.0, d: 17.0, h: 4.05, chamfer: 0.8, chamber: [15.2, 14.2, 1.5], depth: 0.6, aperture: [9.4, 8.4, 1.0], holes: [8.1, 7.6, 0.55] },

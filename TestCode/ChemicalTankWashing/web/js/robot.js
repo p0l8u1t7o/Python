@@ -2,11 +2,11 @@
 // 臂長取型錄概略值（J1–J2 偏移 312、J2 高 670、上臂 1075、J3 偏移 225、前臂 1280、J5 至法蘭 215，最大伸展 2655）；
 // 關節零點方向與 J2／J3 連動限位為假設，採用前須以 FANUC 型錄／CAD 核對。
 import * as THREE from 'three';
-import { createIK } from './kinematics.js';
-import { MAT, box, cyl, D2R } from './parts.js';
+import { createIK } from '@core/robot/kinematics.js';
+import { MAT, box, cyl, D2R } from '@core/geom/parts.js';
 import { createWashGripper } from './gripper.js';
 import { ROBOT } from './layout.js';
-import { bolts, housing } from './detail.js';
+import { bolts, housing } from '@core/geom/hardware.js';
 
 export const K = { j2h: 670, j1x: 312, upper: 1075, foreOff: 225, fore: 1280, wrist: 175, flange: 40 };
 // 模型座標的關節範圍：j2 = −J2（FANUC J2 −60～+76）；j3 為相對上臂，連動限位尚未建模
@@ -64,7 +64,8 @@ export function createRobot() {
     root.updateMatrixWorld(true);
   }
   apply();
-  const ik = createIK({ q, j, tool, apply, limits: LIMITS });
+  // 大型手臂：姿態權重與阻尼較大、收斂門檻較嚴
+  const ik = createIK({ q, j, tool, apply, limits: LIMITS, weight: 400, iterations: 30, lambda: [20, 4], step: .2, tol: [.05, .0005] });
 
   // 夾桶位姿：center 為桶中心，up 為桶軸（桶頂方向），approach 為夾爪前進方向；roll 繞工具 Z 再轉
   const _m = new THREE.Matrix4();

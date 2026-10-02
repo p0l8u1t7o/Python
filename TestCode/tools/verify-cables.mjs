@@ -7,7 +7,7 @@ import {checkFeedthroughs} from './check-feedthroughs.mjs';
 globalThis.document={createElement:()=>({getContext:()=>({fillRect(){},fillText(){}})})};
 const project=process.argv[2],interval=Number(process.env.CABLE_INTERVAL||.1);
 const base=new URL('../'+project+'/web/js/',import.meta.url),imp=name=>import(new URL(name+'.js',base));
-const {carrier,routeIntersectsBox,cable}=await imp('cable-routing');
+const {carrier,routeIntersectsBox,cable}=await import('@core/electrical/cable-routing.js');
 // Independent controls: a route's empty bounding-box interior is clear, its
 // material span is blocked, and the carrier endpoints obey an absolute stroke.
 {

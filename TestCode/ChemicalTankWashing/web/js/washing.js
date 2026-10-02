@@ -1,8 +1,8 @@
 // 沖洗站（PP 隔間、伸縮沖洗噴槍、集液漏斗、集液槽）與廢液回收系統（清水槽、回收沖洗水槽、廢液槽、泵、配管）。
 import * as THREE from 'three';
 import { BOOTH, WASTE, ROOM } from './layout.js';
-import { MAT, box, boxAt, cyl, pipe, plate, flowTexture } from './parts.js';
-import { flange, gauge, bolts, motor } from './detail.js';
+import { MAT, box, boxAt, cyl, pipe, plate, flowTexture } from '@core/geom/parts.js';
+import { flange, gauge, bolts, motor } from '@core/geom/hardware.js';
 
 export function createWashing(scene) {
   const group = new THREE.Group(); group.name = 'washing'; scene.add(group);

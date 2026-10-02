@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { objectRegion, planeRegion } from './vision-overlay.js';
+import { objectRegion, planeRegion } from '@core/ui/vision-overlay.js';
 export function ssdResults(product, recipe, {global, detected, exposure, ids, gaps}) {
   if(global)return product.ids.map(id=>({points:objectRegion(product.conns[id].pivot),label:id,status:detected?'ok':'preview'}));
   return ids.map(id=>{

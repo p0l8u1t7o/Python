@@ -8,7 +8,7 @@ import { createDrum, DRUM_GEO } from '../web/js/drum.js';
 import { createRobot } from '../web/js/robot.js';
 import { createSequence, drumWorld, DRUM_KEYS } from '../web/js/sequence.js';
 import { DRUM, LYING, UPRIGHT, BOOTH, WASTE, WEIGH, DECAP, INBOUND } from '../web/js/layout.js';
-import { MAT } from '../web/js/parts.js';
+import { MAT } from '@core/geom/parts.js';
 
 const scene = new THREE.Scene(), line = createLine(scene), wash = createWashing(scene), building = createBuilding(scene);
 const robot = createRobot(), seq = createSequence({robot}), m = line.mechanical;

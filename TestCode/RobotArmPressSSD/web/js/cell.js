@@ -1,12 +1,12 @@
-import {robotController,controllerLeads} from './electrical-components.js';
+import {robotController,controllerLeads} from '@core/electrical/electrical-components.js';
 // 壓合站設備：上游／本站／下游 SMT 雙邊輸送（後軌固定為基準邊、前軌依配方調寬）、止擋、頂升支撐、
 // 固定全局相機、機台底櫃、手臂座、外罩、三色燈、HMI。
 // 座標：x 沿流向（上游 −x → 下游 +x）、y 向上、z 橫向（手臂在 −z 後側，作業員在 +z 前側）。單位 mm。
 import * as THREE from 'three';
-import {cabinetShell,controlPanel,entryGland,panelFeed} from './electrical-cabinet.js';
-import { cable, cableTray, support, CABLE } from './cable-routing.js';
-import { block, cylinder, decal, screw } from './detail.js';
-import { microTexture } from './surfaces.js';
+import {cabinetShell,controlPanel,entryGland,panelFeed} from '@core/electrical/electrical-cabinet.js';
+import { cable, cableTray, support, CABLE } from '@core/electrical/cable-routing.js';
+import { block, cylinder, decal, screw } from '@core/geom/primitives.js';
+import { microTexture } from '@core/geom/surfaces.js';
 
 export const LAYOUT = {
   conveyorTop: 900,                   // SMT 輸送面（載盤底面）

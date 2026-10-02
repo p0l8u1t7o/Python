@@ -1,11 +1,11 @@
-import {robotController} from './electrical-components.js';
+import {robotController} from '@core/electrical/electrical-components.js';
 // 實驗桌、設備與器皿（樣品瓶、瓶蓋、滴定杯、移液模組、吸頭）
 import * as THREE from 'three';
-import {cabinetShell,controlPanel,entryGland,panelFeed} from './electrical-cabinet.js';
-import { cable, cableTray, carrier, support, CABLE } from './cable-routing.js';
-import { finish } from './finish.js';
-import { perforated } from './perforated.js';
-import { block, cylinder, decal, tube } from './detail.js';
+import {cabinetShell,controlPanel,entryGland,panelFeed} from '@core/electrical/electrical-cabinet.js';
+import { cable, cableTray, carrier, support, CABLE } from '@core/electrical/cable-routing.js';
+import { finish } from '@core/geom/finish.js';
+import { perforated } from '@core/geom/perforated.js';
+import { block, cylinder, decal, tube } from '@core/geom/primitives.js';
 import { Y0, BENCH, ST, BEAKER, BOTTLES, CAP, PIPETTE, SAMPLES } from './layout.js';
 import { glass, glassRim, liquidMaterial, glassVessel, glassBottle, graduations, createLiquid, rim, screw, flowLine, tipFillHeight } from './render-details.js';
 

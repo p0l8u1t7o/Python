@@ -1,9 +1,9 @@
 // 產品：依配方建出載盤、板子與接頭。接頭可翹起（以插頭尖端底緣為支點），銀腳端抬高即為未貼合。
 // 座標：產品根節點在載盤底面中心；單位 mm。尺寸為照片目測或假設，實際以圖面校正。
 import * as THREE from 'three';
-import { finish } from './finish.js';
-import { block, decal, cylinder, rounded } from './detail.js';
-import { microTexture, pcbSurface, batchStatic } from './surfaces.js';
+import { finish } from '@core/geom/finish.js';
+import { block, decal, cylinder, rounded } from '@core/geom/primitives.js';
+import { microTexture, pcbSurface, batchStatic } from '@core/geom/surfaces.js';
 import { CONNECTOR_TYPES } from './recipes.js';
 
 const D2R = Math.PI / 180;

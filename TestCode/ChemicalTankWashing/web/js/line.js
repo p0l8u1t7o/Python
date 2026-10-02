@@ -1,9 +1,9 @@
 // 產線設備：棧板站、三軸龍門＋翻轉夾爪、橫躺輸送、貼標讀碼站、翻桶機、立放直線輸送（開蓋→清洗→裝填區）、圍籬與控制櫃。
 import * as THREE from 'three';
 import { PALLET_STATION, PALLET, GANTRY, LYING, LABEL, UPENDER, UPRIGHT, DECAP, DRUM, FENCE, FENCE_GATES, GANTRY_FENCE, FOOTPRINTS, ROOM, WEIGH } from './layout.js';
-import { MAT, box, boxAt, cyl, rod, plate, D2R } from './parts.js';
+import { MAT, box, boxAt, cyl, rod, plate, D2R } from '@core/geom/parts.js';
 import { drumJaws } from './drum.js';
-import { bolts, foot, motor, sensor, cabinetDetails } from './detail.js';
+import { bolts, foot, motor, sensor, cabinetDetails } from '@core/geom/hardware.js';
 
 export function createLine(scene) {
   const group = new THREE.Group(); group.name = 'line'; scene.add(group);

@@ -1,47 +1,47 @@
 {
-  "startedAt": "2026-09-27T01:07:32.349Z",
-  "finishedAt": "2026-09-27T01:08:28.988Z",
+  "startedAt": "2026-10-02T22:39:36.347Z",
+  "finishedAt": "2026-10-02T22:40:28.741Z",
   "scope": "sampled visible cable routes and carrier kinematics; not dynamic flexible-body or machine certification",
   "passed": true,
   "results": [
     {
       "project": "AutomaticAcid-BaseTitration",
       "passed": true,
-      "sourceHash": "c3ff64e8feafa9eef2e811b21718dfae6877ed973542eac003d58b3872b7aece",
+      "sourceHash": "c09e1b8dee0cf62e3c22ed8cb386459395c5b24c2d2e4b20b6d5a6b17828032c",
       "sourceChangedDuringRun": false,
-      "seconds": 56.63,
+      "seconds": 52.38,
       "report": "AutomaticAcid-BaseTitration/review/cables.json"
     },
     {
       "project": "MilitaryGradePC",
       "passed": true,
-      "sourceHash": "2c1113dd64ab800fceb42f43d4576567bd70c67a1231ca8c965aa850e12a7174",
+      "sourceHash": "461b29e8c779e3c23c2f4fdd1d06446fff0c0ffd4967cd71a2c9f52f6799dbda",
       "sourceChangedDuringRun": false,
-      "seconds": 53.9,
+      "seconds": 51.14,
       "report": "MilitaryGradePC/review/cables.json"
     },
     {
       "project": "PCB-CopperAssembly",
       "passed": true,
-      "sourceHash": "adf3b2a64e091e77276cf6b33685390cf15d47cb682e876a7bb2e37a1f2bcb6c",
+      "sourceHash": "49af509ca80f00db77b5aaa1b853f6448ce9dc8b3ca5f7e004eaeb5a06ce8bc2",
       "sourceChangedDuringRun": false,
-      "seconds": 27.25,
+      "seconds": 21.3,
       "report": "PCB-CopperAssembly/review/cables.json"
     },
     {
       "project": "RobotArmPressSSD",
       "passed": true,
-      "sourceHash": "c25ec2b19712f1161fe4cd3bedda2fed0e1fc134f161c6e51cc89a93f03da8c3",
+      "sourceHash": "767cd5e102f59dd707509e9a544aa86e79d848a2c574cade860c803c6f69b11b",
       "sourceChangedDuringRun": false,
-      "seconds": 14.09,
+      "seconds": 11.71,
       "report": "RobotArmPressSSD/review/cables.json"
     },
     {
       "project": "shutter assembly",
       "passed": true,
-      "sourceHash": "1a57be24fa96e20a85f20deb62882ede0e1245e620765192d1e4a7f95b4c742c",
+      "sourceHash": "1cb814d8c59490710ea22a675679c7ad497e53790788c5f8473508b9d7a055d8",
       "sourceChangedDuringRun": false,
-      "seconds": 4.39,
+      "seconds": 3.46,
       "report": "shutter assembly/review/cables.json"
     }
   ]

@@ -3,11 +3,11 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RACK, COLUMN, UPRIGHT, DECAP, BOOTH, WASTE, layoutChecks, ROBOT, LABEL, LYING, INBOUND, PAYLOAD, payloadAt } from './layout.js';
-import { MAT, D2R, smooth } from './parts.js';
+import { MAT, D2R, smooth } from '@core/geom/parts.js';
 import { buildPlant, applyPlant } from './plant.js';
 import { createSequence, STATIONS, DRUM_IDS, IN_IDS, DRUM_KEYS, SPRAY_S, SPRAY_SINGLE_S } from './sequence.js';
-import { finishMaterials } from './detail.js';
-import { createFocusTracking, createCameraWindow } from './view-controls.js';
+import { finishMaterials } from '@core/geom/hardware.js';
+import { createFocusTracking, createCameraWindow } from '@core/ui/view-controls.js';
 
 const qp = new URLSearchParams(location.search);
 // ---------------------------------------------------------------- 場景

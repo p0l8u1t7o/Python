@@ -1,11 +1,11 @@
 // 機台：底座、邊軌輸送線（S1–S3 頂升真空台）、S0／S4 料倉與上下料、S1／S3 相機龍門、
 // S2 雙龍門（4 吸嘴頭，Z＋θ）、柔性供料盤、仰視相機、外罩與三色燈。座標同 layout.js。
 import * as THREE from 'three';
-import {cabinetShell,controlPanel,entryGland,panelFeed} from './electrical-cabinet.js';
-import { cable, cableTray, carrier, support, CABLE } from './cable-routing.js';
-import { finish } from './finish.js';
-import { perforated } from './perforated.js';
-import { block, cylinder, decal } from './detail.js';
+import {cabinetShell,controlPanel,entryGland,panelFeed} from '@core/electrical/electrical-cabinet.js';
+import { cable, cableTray, carrier, support, CABLE } from '@core/electrical/cable-routing.js';
+import { finish } from '@core/geom/finish.js';
+import { perforated } from '@core/geom/perforated.js';
+import { block, cylinder, decal } from '@core/geom/primitives.js';
 import { LAYOUT, PRODUCT, HOLES, BOARD_TOP } from './layout.js';
 import { createCoin } from './board.js';
 

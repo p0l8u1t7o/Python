@@ -32,7 +32,7 @@
 在 `RobotArmPressSSD` 執行：
 
 ```powershell
-node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-vision.mjs
+node --import ../core/tools/register.mjs tools/verify-vision.mjs
 ```
 
 118 項跨專案檢查通過：投影／縮放／裁切、SSD 配方 NG 門檻、所有銅片相機來源、取像狀態與倒回清除、軍規檢查目標、12 杯液面位置。既有 28 次 SSD 取像、50 次軍規取像／20 個接口、兩個銅片配方流程及 286 項滴定渲染狀態檢查亦通過。瀏覽器已檢視四案畫面及標記開關、縮放。

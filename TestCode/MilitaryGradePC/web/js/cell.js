@@ -1,10 +1,10 @@
-import {robotController,controllerLeads} from './electrical-components.js';
+import {robotController,controllerLeads} from '@core/electrical/electrical-components.js';
 // 線體：地面、載具式輸送線（5 站）、載具（定位銷＋側夾＋堆疊柱）、進／出料升降堆料架、S1 頂視相機、S3 翻轉夾持治具、圍籬、三色燈
 import * as THREE from 'three';
-import {cabinetShell,controlPanel,entryGland,panelFeed} from './electrical-cabinet.js';
-import { cable, cableTray, carrier, support, CABLE } from './cable-routing.js';
+import {cabinetShell,controlPanel,entryGland,panelFeed} from '@core/electrical/electrical-cabinet.js';
+import { cable, cableTray, carrier, support, CABLE } from '@core/electrical/cable-routing.js';
 import { NB } from './notebook.js';
-import { block, cylinder, decal, tube } from './detail.js';
+import { block, cylinder, decal, tube } from '@core/geom/primitives.js';
 
 export const LAYOUT = {
   stationX: [-2000, -1000, 0, 1000, 2000],   // S0 進料（堆料架）、S1 閉合外觀、S2 側邊護蓋、S3 翻面檢測、S4 出料（堆料架）

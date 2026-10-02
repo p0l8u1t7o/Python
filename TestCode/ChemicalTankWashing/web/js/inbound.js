@@ -2,8 +2,8 @@
 // 懸臂吊方位 a（度）：手臂方向 (cos a, −sin a)，與 AGV 方位同一定義；r 為吊點半徑，y 為桶中心高度。
 import * as THREE from 'three';
 import { INBOUND, DRUM, ROOM } from './layout.js';
-import { MAT, box, cyl, plate, D2R, rod } from './parts.js';
-import { bolts, motor } from './detail.js';
+import { MAT, box, cyl, plate, D2R, rod } from '@core/geom/parts.js';
+import { bolts, motor } from '@core/geom/hardware.js';
 
 export const DOLLY_H = 120;
 // 懸臂吊吊點對應的桶中心

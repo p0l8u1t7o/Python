@@ -1,6 +1,6 @@
 // 相機畫面上的模擬檢測標記（投影 3D 位置；數值為示意，非影像辨識結果）
 import * as THREE from 'three';
-import { planeRegion } from './vision-overlay.js';
+import { planeRegion } from '@core/ui/vision-overlay.js';
 import { PART, BLADES, bladeHoles, bladeOutline, drivePin } from './product.js';
 import { OFFSETS } from './sequence.js';
 

@@ -24,26 +24,24 @@ node tools/verify-interference.mjs MilitaryGradePC RobotArmPressSSD
 
 ## 五站配線檢查
 
-共用線材模型修改後，先同步至各站，再執行配線檢查：
+共用線材模型只有 `core/electrical/` 一份，各站直接引用（`@core/electrical/…`），修改後不必同步，直接執行配線檢查：
 
 ```powershell
-node tools/sync-cable-routing.mjs
-node tools/sync-electrical-cabinet.mjs
 node tools/verify-cable-routing.mjs
 ```
 
-涵蓋上述四站與 `shutter assembly`，檢查主要外露線路的取樣碰撞、拖鏈定長、折返半徑及行程。總表為 [cable-checks.json](review/cable-checks.json)，各站 `review/cables.json` 記錄配方、取樣數與失敗項目。程序同時確認五站共用來源一致，以及執行期間來源沒有變更。
+涵蓋上述四站與 `shutter assembly`，檢查主要外露線路的取樣碰撞、拖鏈定長、折返半徑及行程。總表為 [cable-checks.json](review/cable-checks.json)，各站 `review/cables.json` 記錄配方、取樣數與失敗項目。程序同時確認執行期間來源沒有變更。
 
 配線檢查補充原有機構檢查，不能取代它。現在也檢查帶有 `userData.support` 的支架、線夾腳與拖鏈承托板；未模擬軟線下垂、疲勞、全線材互撞及支架強度。配置與選型依據見[五站線材研究](docs/cable-routing-review.md)，本次修正見[支架檢查紀錄](docs/support-routing-review.md)。網頁的「線材配置」按鈕提供觀察視角，右下角可展開配色說明。
 
 
 ## 穿板孔與電盤
 
-`electrical-cabinet.js` 提供真實開孔、穿板接頭、中空機櫃、固定背板及端子配線；五站「電盤配線」可查看櫃內。配線檢查另驗證孔洞暢通、接頭上下連續穿線及背板固定柱接觸櫃壁。詳見[穿板與電盤紀錄](docs/electrical-routing-review.md)。
+`core/electrical/electrical-cabinet.js` 提供真實開孔、穿板接頭、中空機櫃、固定背板及端子配線；五站「電盤配線」可查看櫃內。配線檢查另驗證孔洞暢通、接頭上下連續穿線及背板固定柱接觸櫃壁。詳見[穿板與電盤紀錄](docs/electrical-routing-review.md)。
 
 ## 電控元件配置
 
-`electrical-components.js` 定義各站的元件、功能連接與安裝包絡；`electrical-inspector.js/css` 提供選取、特寫、剖視／透視及同步狀態。修改後執行 `node tools/sync-electrical-cabinet.mjs` 同步五站。
+`core/electrical/electrical-components.js` 定義各站的元件、功能連接與安裝包絡；`core/electrical/electrical-inspector.js/css` 提供選取、特寫、剖視／透視及同步狀態。
 
 ```powershell
 node --import ./core/tools/register.mjs tools/verify-electrical-plan.mjs
@@ -53,7 +51,7 @@ node --import ./core/tools/register.mjs tools/verify-electrical-plan.mjs
 
 ## 五站共用視窗控制
 
-`viewer-workspace.js`、`viewer-workspace.css` 管理相機拖曳、獨立視窗與產品焦點；修改後執行 `node tools/sync-viewer-workspace.mjs` 同步五站。詳見[操作說明](docs/viewer-controls.md)與[瀏覽器驗證紀錄](review/viewer-workspace-checks.json)。
+`core/ui/viewer-workspace.js`、`viewer-workspace.css` 管理相機拖曳、獨立視窗與產品焦點，五站直接引用同一份。詳見[操作說明](docs/viewer-controls.md)與[瀏覽器驗證紀錄](review/viewer-workspace-checks.json)。
 
 ## MP4 展示影片
 

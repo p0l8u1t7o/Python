@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import assert from 'node:assert/strict';
 import {createSim} from '../web/js/sim.js';
 import {RECIPES,setRecipe} from '../web/js/layout.js';
-import {routeIntersectsBox} from '../web/js/cable-routing.js';
+import {routeIntersectsBox} from '@core/electrical/cable-routing.js';
 globalThis.document={createElement:()=>({getContext:()=>({fillRect(){},fillText(){}})})};
 for(const recipe of Object.keys(RECIPES)){
  setRecipe(recipe);const scene=new THREE.Scene(),sim=createSim(scene),heads=sim.machine.heads;

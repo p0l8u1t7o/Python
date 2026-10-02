@@ -1,8 +1,8 @@
 // 清洗用側進式平行夾具。工具 +Z 朝桶心，+Y 為桶軸；所有承力件連回法蘭。
 import * as THREE from 'three';
 import { DRUM, ROBOT } from './layout.js';
-import { MAT, box, cyl } from './parts.js';
-import { bolts, housing } from './detail.js';
+import { MAT, box, cyl } from '@core/geom/parts.js';
+import { bolts, housing } from '@core/geom/hardware.js';
 
 export const GRIPPER = { stroke: 30, padRadius: DRUM.R, padThickness: 12, padHalfAngle: .38, jawX: 340, railZ: 125, railHalf: 420, driveZ: 205.5 };
 function arcBand(parent, ri, ro, height, y, theta, mat) {

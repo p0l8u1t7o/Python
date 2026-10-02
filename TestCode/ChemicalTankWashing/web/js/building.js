@@ -1,7 +1,7 @@
 // 洗桶區建築：地坪、牆、門窗、柱、分區標線、樓高與尺寸標註。
 import * as THREE from 'three';
 import { ROOM, OUTLINE, DOORS, COLUMN, AISLE, AGV, FOOTPRINTS, WALKWAYS, FILLING, SHUTTLE_BAY, WASTE, RACK, AGV_TURNS, agvSweep, pointInPolygon, doorSwing, ROBOT, rackBlocks, FENCE, INBOUND, INBOUND_AREA, inboundArcPoses } from './layout.js';
-import { MAT, box, rod, floorText } from './parts.js';
+import { MAT, box, rod, floorText } from '@core/geom/parts.js';
 
 const line = (pts, color, opacity = 1) => {
   const g = new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(...p)));

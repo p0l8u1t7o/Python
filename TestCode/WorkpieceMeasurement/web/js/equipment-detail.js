@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {managedWiring} from './wiring-render.js';
-import {electricalDevice, CIRCUITS} from './electrical-components.js';
+import {electricalDevice, CIRCUITS} from '@core/electrical/electrical-components.js';
 import {DEVICES,PANEL} from './control-plan.js';
 import {Y0,X1,X2,YM,YS} from './spec.js';
 const V = a => new THREE.Vector3(...a);

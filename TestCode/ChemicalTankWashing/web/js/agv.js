@@ -1,8 +1,8 @@
 // 平衡重式堆高 AGV（雷射導引）。局部 +X 為前進方向，原點為前輪軸中心（原地迴轉中心）。
 import * as THREE from 'three';
 import { AGV, FORK } from './layout.js';
-import { MAT, box, cyl, D2R } from './parts.js';
-import { bolts, housing } from './detail.js';
+import { MAT, box, cyl, D2R } from '@core/geom/parts.js';
+import { bolts, housing } from '@core/geom/hardware.js';
 
 export function createAgv(scene) {
   const root = new THREE.Group(); root.name = 'agv'; scene.add(root);

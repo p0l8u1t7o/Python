@@ -6,15 +6,10 @@ import {fileURLToPath} from 'node:url';
 import {join} from 'node:path';
 const root=fileURLToPath(new URL('../',import.meta.url));
 const projects=['AutomaticAcid-BaseTitration','MilitaryGradePC','PCB-CopperAssembly','RobotArmPressSSD','shutter assembly'];
-const source=await readFile(join(root,'tools/cable-routing.js'));
-for(const p of projects)if(!source.equals(await readFile(join(root,p,'web/js/cable-routing.js'))))throw new Error(p+': run node tools/sync-cable-routing.mjs');
-for(const file of ['electrical-cabinet.js','electrical-components.js','electrical-inspector.js']){
-const electricalSource=await readFile(join(root,'tools',file));
-for(const p of projects)if(!electricalSource.equals(await readFile(join(root,p,'web/js',file))))throw new Error(p+': run node tools/sync-electrical-cabinet.mjs');
-}
+// 共用線材模組只有 core/electrical 一份，不再需要同步比對
 async function hash(project) {
-  const h=createHash('sha256'),dir=join(root,project,'web/js');
-  for(const name of (await readdir(dir)).filter(n=>n.endsWith('.js')).sort())h.update(name).update(await readFile(join(dir,name)));
+  const h=createHash('sha256');
+  for(const dir of [join(root,project,'web/js'),join(root,'core/electrical')])for(const name of (await readdir(dir)).filter(n=>n.endsWith('.js')).sort())h.update(name).update(await readFile(join(dir,name)));
   h.update(await readFile(join(root,'tools/verify-cables.mjs')));h.update(await readFile(join(root,'tools/check-feedthroughs.mjs')));return h.digest('hex');
 }
 const startedAt=new Date().toISOString();

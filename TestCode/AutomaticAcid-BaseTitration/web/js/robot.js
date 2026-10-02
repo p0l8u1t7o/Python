@@ -1,9 +1,9 @@
 // DENSO COBOTTA PRO 900 協作型六軸手臂＋長行程電動平行夾爪
 // 工具本地座標：+Z 為工具前進方向（朝下）、X 為夾爪開合方向、Y 為手指厚度方向。單位 mm。
 import * as THREE from 'three';
-import { cable, armDress, CABLE } from './cable-routing.js';
-import { createIK } from './kinematics.js';
-import { block, cylinder, decal } from './detail.js';
+import { cable, armDress, CABLE } from '@core/electrical/cable-routing.js';
+import { createIK } from '@core/robot/kinematics.js';
+import { block, cylinder, decal } from '@core/geom/primitives.js';
 
 const matArm   = new THREE.MeshStandardMaterial({ color: 0xf2f3f1, roughness: 0.38, metalness: 0.05 });
 const matJoint = new THREE.MeshStandardMaterial({ color: 0x2a2e33, roughness: 0.45, metalness: 0.35 });

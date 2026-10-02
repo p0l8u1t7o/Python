@@ -2,7 +2,7 @@
 // 局部座標：原點在桶中心，+Y 為桶頂；2" 螺塞在 +X、3/4" 在 −X。
 import * as THREE from 'three';
 import { DRUM } from './layout.js';
-import { MAT, HAS_DOM, box } from './parts.js';
+import { MAT, HAS_DOM, box } from '@core/geom/parts.js';
 
 const HEAD = DRUM.H / 2 - 12.5;          // 桶頂板（凹在 L 環內）
 const NECK = 8;

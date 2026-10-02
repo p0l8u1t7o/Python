@@ -1,8 +1,8 @@
 // DENSO HSR065 SCARA（J1、J2 水平旋轉、J3 花鍵軸 Z 行程、J4 花鍵軸旋轉）＋三工具頭與下視相機。
 // 世界座標：x 向右、y 向上、z 朝作業員。工具本地：原點在花鍵軸法蘭，y 向上（工具在 −y），隨 J4 轉動。單位 mm。
 import * as THREE from 'three';
-import { cable, carrier, support, CABLE } from './cable-routing.js';
-import { block, cylinder, decal, bevelBox, screw, tube } from './detail.js';
+import { cable, carrier, support, CABLE } from '@core/electrical/cable-routing.js';
+import { block, cylinder, decal, bevelBox, screw, tube } from '@core/geom/primitives.js';
 import { PART } from './product.js';
 
 const D2R = Math.PI / 180;

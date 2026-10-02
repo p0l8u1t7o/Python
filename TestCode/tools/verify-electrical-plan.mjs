@@ -19,7 +19,7 @@ for(const project of projects){
  for(const wire of wires){const points=wire.userData.electricalWire.points.map(p=>new THREE.Vector3(...p).applyMatrix4(wire.matrixWorld));for(const {d,b} of bodies){if(points.slice(1).some((p,i)=>segmentHits(points[i],p,b.clone().expandByScalar(.75))))failures.push('Wire crosses body '+wire.name+' / '+d.name);}}
  const ports=checkFeedthroughs(scene);failures.push(...ports.failures.map(f=>f.name+' / '+f.detail));
  assert(devices.length>8&&wires.length>5,project+' has no equipment');
- const {electricalActivity}=await imp('electrical-components');
+ const {electricalActivity}=await import('@core/electrical/electrical-components.js');
  for(const role of ['motion','vision','force','io'])assert.equal(electricalActivity(role,{action:'壓合',vision:true,playing:true}),electricalActivity(role,{action:'壓合',vision:true,playing:false}),'Pause must freeze indicated process state');
  assert.equal(electricalActivity('motion',{action:'等待分析',motion:false}),false);
  assert.equal(electricalActivity('vision',{action:'移動',vision:false}),false);

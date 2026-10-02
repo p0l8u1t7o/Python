@@ -1,7 +1,7 @@
 // Reference reconstruction, millimetres. Positions are estimates, not OEM CAD.
 import * as THREE from 'three';
-import { finish } from './finish.js';
-import { block, cylinder, rounded, profile, decal } from './detail.js';
+import { finish } from '@core/geom/finish.js';
+import { block, cylinder, rounded, profile, decal } from '@core/geom/primitives.js';
 export const NB = { W: 300, D: 210, H: 36 };
 const material=(color,roughness=.7,metalness=.2)=>new THREE.MeshStandardMaterial({color,roughness,metalness});
 const body=material(0x242829),lid=material(0x393e3e),rubber=material(0x111416,.94,0),doorMat=material(0x252a2b),steel=material(0x8b9294,.32,.85),dark=material(0x080b0d),gold=material(0xd0aa53,.32,.8),blue=material(0x1476a3);

@@ -1,4 +1,4 @@
-import { objectRegion } from './vision-overlay.js';
+import { objectRegion } from '@core/ui/vision-overlay.js';
 export function notebookResults(nb,S,exposure,T) {
   const marks=[],door=nb.doors.find(d=>S.action.startsWith(d.def.id+' '));
   const add=(object,label)=>marks.push({points:objectRegion(object),label,status:exposure?'ok':'pending'});
