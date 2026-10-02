@@ -107,6 +107,8 @@ export class AssemblyViewer {
     );
     this.ground.rotation.x = -Math.PI / 2;
     this.ground.receiveShadow = true;
+    // 透明物件排序固定：地面永遠最先畫，避免與淡影零件交換順序造成閃爍
+    this.ground.renderOrder = -1;
     this.scene.add(this.ground);
     this.grid = new THREE.GridHelper(20, 40, "#9eafb9", "#c6d0d6");
     this.grid.material.transparent = true;
@@ -410,7 +412,8 @@ export class AssemblyViewer {
         context.size > 0 && !chain.some((l) => context.has(l.id));
       const active = current >= 0 && chain.some((l) => l.step === current);
       const selected = mesh.userData.partId === this.selected;
-      this.setGhost(mesh, (pending && future === "ghost") || (outside && !pending));
+      const hideOutside = outside && this.outsideContext === "hide";
+      this.setGhost(mesh, (pending && future === "ghost") || (outside && !pending && !hideOutside));
       for (const mat of materialList(mesh)) {
         if (!mat.userData.baseEmissive) continue;
         mat.emissive.copy(mat.userData.baseEmissive);
@@ -419,7 +422,8 @@ export class AssemblyViewer {
       }
       mesh.visible =
         (!this.isolate || selected) &&
-        !(pending && (future === "hide" || (outside && future === "show")));
+        !(pending && (future === "hide" || (outside && future === "show"))) &&
+        !hideOutside;
       if (mesh.visible && !mesh.userData.ghost)
         floorY = Math.min(
           floorY,

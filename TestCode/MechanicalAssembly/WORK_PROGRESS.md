@@ -4,7 +4,13 @@
 
 目前程式更新、CAD 建庫、幾何測試、正式建置及**本檔列出的新版視覺與互動驗收均已完成**。2026-10-02 本次環境由 Browser 正式選用 Chrome，在原網址成功操作，未遭權限拒絕，沒有變更權限或改網址繞過。詳細結果、效能量測範圍與截圖索引見 `VALIDATION.md`。
 
-## 最新：模型朝上軸與 Z 朝上座標軸（2026-10-02，Claude Code）
+## 最新：台車展示影片（2026-10-02，Claude Code）
+
+- 新增 `scripts/render-showcase.mjs` 與 `window.studioAutomation`（`src/main.js`）：逐格算圖、NVENC 編碼、亮度稽核。
+- 產出 `TEMPideos\MechanicalAssembly-台車_1080p30.mp4`：86.9 秒、2607 格、約 93 MB；稽核 0 單格閃爍、0 黑畫面，相鄰格最大差 7.4（第一版因預組情境切換有 40.5 的跳變，已以交叉淡化修正）。
+- 檢視器新增 `outsideContext = "hide"`（影片用：預組時隱藏其他零件）；地面 `renderOrder = -1` 固定透明排序。
+
+## 前輪：模型朝上軸與 Z 朝上座標軸（2026-10-02，Claude Code）
 
 - 使用者回報自動線總裝「基礎面沒有朝下」：原因是部分 SolidWorks 組合件以 Z 朝上建模，工作台一律當 Y 朝上。新增 `orientRoot()`（`src/importer.js`）可讓任一軸朝上；工具列可逐站改正並隨專案保存，改正後依新方向重新推論。
 - `scripts/orient-catalog.js`（`npm.cmd run catalog:orient`）以目視確認的總裝為起點，從擺放矩陣推算 441／969 個模型的朝上軸，輸出 `public/data/orientation.json`（含依據）。17 個預設站逐一在瀏覽器確認：LINE、EA00、TRAY、CHIP 為 z，WET 為 −z，JA00、SHARED 為 x，其餘 y。預先推論已依新方向重算，推論器版本升為 3。

@@ -127,6 +127,17 @@ npm.cmd run build
 
 完整資料集目前約 1 GB，正式建置會複製到 `dist`；首次載入整機仍需時間。超過 400 萬三角面的視圖會停用即時陰影以降低 GPU 負擔，零件幾何不因此省略。
 
+## 展示影片
+
+```powershell
+npm.cmd run dev   # 另開視窗
+node scripts/render-showcase.mjs --station=202401-BA00 --out="D:\Working Space\Python\TestCode\TEMPideos\MechanicalAssembly-台車_1080p30.mp4"
+```
+
+以 Playwright 開啟工作台，透過 `window.studioAutomation` 以虛擬時鐘逐格指定狀態並算圖（GPU，1920×1080、30 fps），不受即時效能影響、不會掉格；畫面依序為片頭、組合外觀環繞、爆炸圖展開與環繞、收合、逐步組裝（字卡、箭頭、鏡頭跟隨）、片尾。以 NVENC（`MilitaryGradePC/tools/bin/ffmpeg.exe`，可用 `--ffmpeg=` 指定）編碼 H.264。
+
+防閃爍：地面固定先畫、預組步驟隱藏其他零件、進入組裝與預組情境切換時以上一格交叉淡化、不開 temporal AQ。輸出後解碼逐格比對亮度，`-verification.json` 記錄單格閃爍、黑畫面與變化最大的幾格，另產生 `-contact.jpg` 縮圖總覽。
+
 ## 組裝順序推論
 
 開啟站別時，若流程仍是未編輯的自動草稿，會先讀取建庫時的推論結果；沒有時在背景執行緒即時推論（700 件以下自動執行，更大的模型按「自動推論」）。匯入的 STEP／GLB 也走相同流程。

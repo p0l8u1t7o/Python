@@ -1400,6 +1400,158 @@ function animate(now) {
   requestAnimationFrame(animate);
 }
 requestAnimationFrame(animate);
+// 展示影片用的自動化介面：由 Playwright 逐格指定狀態、算圖並取回合成畫面
+function exposeAutomation() {
+  let composite;
+  window.studioAutomation = {
+    async open(id) {
+      await selectStation(id);
+      return {
+        name: station.name,
+        id: station.id,
+        parts: station.parts.length,
+        steps: station.plan.length,
+        flagged: station.plan.filter((s) => s.auto?.forced).length,
+      };
+    },
+    begin(width, height) {
+      document.body.classList.add("presentation");
+      playing = false;
+      $("#follow").checked = false;
+      viewer.setActive(false);
+      viewer.setOutputScale(1);
+      viewer.resize();
+      composite = document.createElement("canvas");
+      composite.width = width;
+      composite.height = height;
+      const gl = viewer.renderer.domElement;
+      return { canvas: [gl.width, gl.height], fov: viewer.camera.fov, aspect: viewer.camera.aspect };
+    },
+    /** 指定狀態下的範圍：all = 目前可見零件，step = 第 k 步（含起訖位置與同單元零件）。 */
+    bounds(state, kind, k) {
+      apply(state);
+      viewer.group.updateMatrixWorld(true);
+      const box =
+        kind === "step" ? viewer.stepBounds(k) : new THREE.Box3();
+      if (kind !== "step")
+        for (const m of viewer.meshes)
+          if (m.visible && !m.userData.ghost)
+            box.union(m.geometry.boundingBox.clone().applyMatrix4(m.matrixWorld));
+      const center = box.getCenter(new THREE.Vector3());
+      return { center: center.toArray(), radius: box.getSize(new THREE.Vector3()).length() / 2 };
+    },
+    steps() {
+      const parent = new Map(station.nodes.map((n) => [n.id, n.parentId]));
+      return station.plan.map((s) => ({
+        name: s.name,
+        instruction: s.instruction,
+        kind: s.kind,
+        // 預組情境：本步零件所屬的預組件（root 以外）
+        context: [...new Set(s.nodeIds.map((id) => parent.get(id)).filter((p) => p && p !== "root"))]
+          .sort()
+          .join(","),
+      }));
+    },
+    frame(state, overlay = {}) {
+      apply(state);
+      const { target, position } = state.camera;
+      viewer.controls.target.set(...target);
+      viewer.camera.position.set(...position);
+      const distance = viewer.camera.position.distanceTo(viewer.controls.target);
+      viewer.camera.near = Math.max(0.001, distance / 1000);
+      viewer.camera.far = Math.max(100, distance * 10);
+      viewer.camera.updateProjectionMatrix();
+      viewer.tween = null;
+      viewer.renderNow();
+      viewer.drawAxisGizmo();
+      drawOverlay(composite, overlay);
+      return composite.toDataURL("image/jpeg", 0.95);
+    },
+    end() {
+      document.body.classList.remove("presentation");
+      viewer.setOutputScale(null);
+      viewer.setActive(true);
+    },
+  };
+  let snapshot;
+  function apply(state) {
+    viewer.outsideContext = state.outside || "ghost";
+    mode = state.mode;
+    progress = state.progress ?? 0;
+    explode = state.explode ?? 0;
+    $("#future").value = state.future || "ghost";
+    lastFocus = mode === "assemble" ? currentStep() : null;
+    sync();
+  }
+  function drawOverlay(canvas, o) {
+    const ctx = canvas.getContext("2d");
+    const gl = viewer.renderer.domElement;
+    const w = canvas.width,
+      h = canvas.height;
+    ctx.globalAlpha = 1;
+    ctx.drawImage(gl, 0, 0, w, h);
+    const s = h / 1080;
+    // 右下座標軸
+    const g = $(".axis-gizmo");
+    ctx.drawImage(g, w - 150 * s, (o.caption ? h - 340 * s : h - 150 * s), 120 * s, 120 * s);
+    // 左上：站名與段落
+    if (o.label) {
+      ctx.fillStyle = "rgba(20,35,45,0.78)";
+      ctx.font = `600 ${22 * s}px "Microsoft JhengHei", sans-serif`;
+      const text = o.label;
+      const tw = ctx.measureText(text).width;
+      ctx.fillRect(32 * s, 32 * s, tw + 36 * s, 50 * s);
+      ctx.fillStyle = "#fff";
+      ctx.textBaseline = "middle";
+      ctx.fillText(text, 50 * s, 57 * s);
+    }
+    if (o.caption)
+      drawCaption(ctx, {
+        x: 0,
+        y: h - 170 * s,
+        width: w,
+        height: 170 * s,
+        scale: s * 1.25,
+        ...o.caption,
+      });
+    if (o.title) {
+      ctx.globalAlpha = o.title.alpha ?? 1;
+      ctx.fillStyle = "rgba(14,24,32,0.72)";
+      ctx.fillRect(0, h * 0.34, w, h * 0.32);
+      ctx.fillStyle = "#e7b45a";
+      ctx.font = `600 ${26 * s}px Consolas, monospace`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(o.title.eyebrow || "", w / 2, h * 0.41);
+      ctx.fillStyle = "#fff";
+      ctx.font = `700 ${64 * s}px "Microsoft JhengHei", sans-serif`;
+      ctx.fillText(o.title.main, w / 2, h * 0.5);
+      ctx.fillStyle = "#c4d2da";
+      ctx.font = `${26 * s}px "Microsoft JhengHei", sans-serif`;
+      ctx.fillText(o.title.sub || "", w / 2, h * 0.585);
+      ctx.textAlign = "left";
+      ctx.globalAlpha = 1;
+    }
+    // 段落轉場：以上一段最後一格交叉淡化，避免畫面突然切換
+    if (o.blend && snapshot) {
+      ctx.globalAlpha = o.blend;
+      ctx.drawImage(snapshot, 0, 0);
+      ctx.globalAlpha = 1;
+    }
+    if (o.snapshot) {
+      snapshot ||= document.createElement("canvas");
+      snapshot.width = w;
+      snapshot.height = h;
+      snapshot.getContext("2d").drawImage(canvas, 0, 0);
+    }
+    if (o.fade) {
+      ctx.globalAlpha = o.fade;
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, w, h);
+      ctx.globalAlpha = 1;
+    }
+  }
+}
 async function init() {
   try {
     viewer = new AssemblyViewer($("#viewport"), selectPart);
@@ -1485,6 +1637,7 @@ async function init() {
       project.stations.find((s) => s.id === "202401-BA00")?.id ||
         project.stations[0].id,
     );
+    exposeAutomation();
   } catch (e) {
     toast("初始化失敗：" + e.message, true);
     $("#empty-state").hidden = false;

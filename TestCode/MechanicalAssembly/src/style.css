@@ -1449,3 +1449,17 @@ dialog .eyebrow {
 .canvas-wrap .axis-widget {
   display: none;
 }
+
+/* 展示影片逐格算圖：3D 畫面佔滿整個視窗 */
+body.presentation .canvas-wrap {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  min-height: 0;
+}
+body.presentation .canvas-wrap > :not(#viewport):not(.axis-gizmo) {
+  display: none !important;
+}
+body.presentation .axis-gizmo {
+  visibility: hidden;
+}
