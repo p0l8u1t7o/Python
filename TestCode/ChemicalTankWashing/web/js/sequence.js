@@ -1,7 +1,7 @@
 // 動畫排程：每台設備與每個桶各有一條時間軌，依站位占用（流水線阻塞）推算交接時刻。
 // 任一時刻的畫面完全由絕對時間決定，倒退、跳站與連續播放結果一致。
 import * as THREE from 'three';
-import { RACK, PALLET, DRUM, AGV, FORK, AISLE, PALLET_STATION, GANTRY, LYING, LABEL, UPENDER, UPRIGHT, DECAP, BOOTH, WASTE, INBOUND } from './layout.js';
+import { RACK, PALLET, DRUM, AGV, FORK, AISLE, PALLET_STATION, GANTRY, LYING, LABEL, UPENDER, UPRIGHT, DECAP, BOOTH, WASTE, INBOUND, WEIGH } from './layout.js';
 import { jibPoint, jibTarget, DOLLY_H } from './inbound.js';
 import { smooth, D2R } from './parts.js';
 import { JOINTS, SPEED } from './robot.js';
@@ -40,6 +40,10 @@ export const IN_IDS = [101, 102, 103, 104].map(i => `CTW-2610-${String(i).padSta
 // 時間軌名稱：產線 4 桶＋入庫 4 桶
 export const DRUM_KEYS = [...DRUM_IDS.map((_, k) => 'drum' + k), ...IN_IDS.map((_, k) => 'in' + k)];
 const YAW0 = [37, 151, 263, 312], YAW_IN = [12, 205, 98, 300];
+// 桶內原化學品（標籤讀碼後由 MES 帶出）：決定廢液進酸槽或鹼槽
+export const CHEM = ['acid', 'alkali', 'acid', 'alkali'];
+const RESIDUAL_G = [46, 38, 57, 41];   // 模擬的秤重殘水量（g）
+const TANK_NAME = { WA: 'TK-WA 酸性廢液槽', WB: 'TK-WB 鹼性廢液槽', R: 'TK-R 回收槽' };
 // 每次沖洗時間：兩支噴槍同時進水（2" 旋轉噴頭＋3/4" 直噴）
 export const SPRAY_S = WASTE.rinseL / (BOOTH.flow.big + BOOTH.flow.small) * 60;
 export const SPRAY_SINGLE_S = WASTE.rinseL / BOOTH.flow.big * 60;
@@ -57,13 +61,14 @@ export function createSequence({ robot }) {
   const decap = track('decap', { hx: 0, hz: 0, hy: DECAP.safeY, spinBig: 0, spinSmall: 0, flash: false, clamp: 0, table: 0, caps: 0, heldBig: false, heldSmall: false });
   const grip = track('grip', { jaw: 0 });
   // lance：0 收回、1 噴洗深度、BOOTH.suckExt 伸到桶底抽液；lance2 為 3/4" 直噴頭
-  const booth = track('booth', { lance: 0, lance2: 0, spray: false, vac: false, src: 'R', pour: '', pool: 0 });   // pour：倒液中的桶序（字串，不插值）
-  const sump = track('sump', { level: 0, pump: false, dest: 'W' });
+  const booth = track('booth', { lance: 0, lance2: 0, spray: false, vac: false, hot: false, src: 'R', pour: '', pool: 0 });
+  const scale = track('scale', { on: false, g: 0 });   // pour：倒液中的桶序（字串，不插值）
+  const sump = track('sump', { level: 0, pump: false, dest: 'WA' });
   const makeup = track('makeup', { on: false });   // TK-F 液位控制補水（廠務自來水／RO）
-  const tanks = track('tanks', { W: WASTE.tanks.W.init, R: WASTE.tanks.R.init, F: WASTE.tanks.F.init });
+  const tanks = track('tanks', Object.fromEntries(Object.entries(WASTE.tanks).map(([k, t]) => [k, t.init])));
   const jib = track('jib', { a: INBOUND.jib.park, r: 700, y: 2000, clamp: 0 });
   const dolly = track('dolly', { x: INBOUND.dolly.x0 });
-  const drums = DRUM_IDS.map((id, k) => track('drum' + k, { mode: 'pallet', slot: k, yaw: YAW0[k], lx: LYING.place, uz: UPRIGHT.z0, water: 0, capBig: true, capSmall: true, label: false, labelAng: 0, read: false, rinse: 0, dry: false, state: '倉儲' }));
+  const drums = DRUM_IDS.map((id, k) => track('drum' + k, { mode: 'pallet', slot: k, yaw: YAW0[k], lx: LYING.place, uz: UPRIGHT.z0, water: 0, film: 0, weighG: -1, capBig: true, capSmall: true, label: false, labelAng: 0, read: false, rinse: 0, dry: false, state: '倉儲' }));
   const inDrums = IN_IDS.map((id, k) => track('in' + k, { mode: 'hidden', slot: 0, yaw: YAW_IN[k], water: 0, capBig: true, capSmall: true, label: false, labelAng: 0, read: false, rinse: 0, dry: false, state: '廠外待入' }));
   const events = [];
   const ev = (s, station, label) => { events.push({ time: s.start, station, label: label || s.action }); return s; };
@@ -193,7 +198,7 @@ export function createSequence({ robot }) {
     const rs = labeler.add(1.6, { spin: labeler.state.spin + spin / 90 }, { action: '旋轉輥帶動桶身', sub: '標籤轉到正上方' });
     d.add(1.6, { yaw: d.state.yaw + spin }, { at: rs.start });
     ev(labeler.add(.9, { flash: true }, { action: '相機取像讀碼', sub: `QR ${id} 讀取 OK · 位置偏差 0.6 mm（模擬）` }), 'label', `${id} 讀碼`);
-    d.add(0, { read: true }, { at: labeler.t });
+    d.add(0, { read: true, chem: CHEM[k] }, { at: labeler.t });
     labeler.add(.2, { flash: false }, { action: '讀碼完成' });
     r.labelDone = labeler.t;
     // ---- 貼標站 → 緩衝位 → 翻桶機
@@ -258,7 +263,7 @@ export function createSequence({ robot }) {
     const en = rAdd('lin', P.u, 1.8, { action: '送入沖洗站', sub: '2" 與 3/4" 桶口對準兩支噴槍' });
     events.push({ time: en.start, station: 'robot', label: `${id} 進入沖洗站` });
     for (let c = 1; c <= 3; c++) {
-      const src = c === 1 ? 'R' : 'F', dest = c < 3 ? 'W' : 'R';
+      const src = c === 1 ? 'R' : 'F', dest = c < 3 ? (CHEM[k] === 'acid' ? 'WA' : 'WB') : 'R';
       booth.hold(rt);
       booth.add(1, { lance: 1, lance2: 1, src }, { action: `第 ${c} 次沖洗：兩支噴槍伸入桶口`, sub: '2" 旋轉噴頭、3/4" 直噴頭同時伸入約 140 mm' });
       const sp = booth.add(SPRAY_S, { spray: true }, { action: `第 ${c} 次沖洗：雙孔同時進水 ${SPRAY_S.toFixed(1)} s`, sub: `${WASTE.rinseL} L ＝ 2" ${BOOTH.flow.big}＋3/4" ${BOOTH.flow.small} L/min（單孔需 ${SPRAY_SINGLE_S.toFixed(0)} s）；水源 ${src === 'R' ? 'TK-R 回收水' : 'TK-F 清水'}` });
@@ -271,13 +276,13 @@ export function createSequence({ robot }) {
       rAdd('path', null, 5, { motion: shakeAt, action: `第 ${c} 次搖晃`, sub: '繞夾爪軸來回滾轉 ±25°，殘液沖刷桶壁' });
       rAdd('lin', P.pour, 2.2, { action: `第 ${c} 次倒液：翻轉 190°`, sub: '2" 桶口轉到最低點出水，3/4" 在上方當通氣口' });
       booth.hold(rt);
-      const pr = booth.add(BOOTH.pourS, { pour: String(k), pool: 1 }, { action: `倒入集液漏斗 → ${dest === 'W' ? 'TK-W 廢液槽' : 'TK-R 回收槽'}`, sub: `3/4" 通氣不咕嚕，約 ${BOOTH.pourS} s（不通氣約 ${BOOTH.pourNoVentS} s）` });
-      d.add(BOOTH.pourS, { water: c < 3 ? 0 : BOOTH.residualL }, { at: pr.start });
+      const pr = booth.add(BOOTH.pourS, { pour: String(k), pool: 1 }, { action: `倒入集液漏斗 → ${TANK_NAME[dest]}`, sub: `3/4" 通氣不咕嚕，約 ${BOOTH.pourS} s（不通氣約 ${BOOTH.pourNoVentS} s）` });
+      d.add(BOOTH.pourS, { water: c < 3 ? 0 : BOOTH.residualL, film: c < 3 ? 0 : BOOTH.filmG }, { at: pr.start });
       if (k === 0 && c === 1) ev(pr, 'waste', '倒液進集液漏斗');
       sump.add(BOOTH.pourS, { level: 1, dest }, { at: pr.start });
       booth.add(.1, { pour: '', pool: 0 });
-      const pm = sump.add(3, { pump: true, level: 0 }, { action: `P-2 送液 → ${dest === 'W' ? 'TK-W' : 'TK-R'}`, sub: 'V-3 三通閥切換去向' });
-      tanks.add(3, { [dest]: tanks.state[dest] + WASTE.rinseL }, { at: pm.start, action: `集液槽 → ${dest === 'W' ? 'TK-W' : 'TK-R'}` });
+      const pm = sump.add(3, { pump: true, level: 0 }, { action: `P-2 送液 → ${TANK_NAME[dest]}`, sub: dest === 'R' ? 'V-3 切到回收槽' : `依桶號判定${CHEM[k] === 'acid' ? '酸性' : '鹼性'}，V-3／V-4 切換去向` });
+      tanks.add(3, { [dest]: tanks.state[dest] + WASTE.rinseL }, { at: pm.start, action: `集液槽 → ${TANK_NAME[dest]}` });
       if (k === 0 && c === 3) ev(pm, 'waste', '末道沖洗水回收至 TK-R');
       sump.add(0, { pump: false });
       rt = Math.max(rt, pr.start + BOOTH.pourS);
@@ -290,9 +295,14 @@ export function createSequence({ robot }) {
     booth.add(2.2, { lance: BOOTH.suckExt }, { action: '抽液管伸到桶底', sub: '2" 噴槍長行程伸入，吸口距桶底約 15 mm' });
     const vs = booth.add(BOOTH.vacS, { vac: true }, { action: '負壓抽乾殘水', sub: `真空泵 VP-1 抽約 ${BOOTH.residualL} L 殘水 → 集液槽 → TK-R；目標殘水 < 50 mL` });
     if (k === 0) ev(vs, 'waste', '負壓抽乾桶內殘水');
-    d.add(BOOTH.vacS, { water: 0, dry: true }, { at: vs.start });
+    d.add(BOOTH.vacS, { water: 0 }, { at: vs.start });
     sump.add(BOOTH.vacS, { level: .3, dest: 'R' }, { at: vs.start });
-    booth.add(2, { vac: false, lance: 0 }, { action: '抽液管收回' });
+    // 內壁附著水：熱風由 3/4" 進、桶底負壓持續抽，水膜與水氣一起帶走
+    booth.add(1, { lance2: 1 }, { action: '3/4" 噴槍切換熱風並伸入', sub: `HB-1 熱風機 ${BOOTH.hotAirC}°C 乾燥空氣` });
+    const hd = booth.add(BOOTH.dryS, { hot: true }, { action: '熱風吹乾＋負壓抽氣', sub: `熱風由 3/4" 進、2" 桶底負壓抽出，帶走內壁約 ${BOOTH.filmG} g 附著水與水氣` });
+    if (k === 0) ev(hd, 'waste', '熱風吹乾內壁附著水');
+    d.add(BOOTH.dryS, { film: RESIDUAL_G[k], dry: true, state: '熱風吹乾' }, { at: hd.start });
+    booth.add(2, { hot: false, vac: false, lance: 0, lance2: 0 }, { action: '熱風、負壓停止，噴槍收回' });
     sump.add(1.5, { pump: true, level: 0 }, { action: 'P-2 送液 → TK-R' }); sump.add(0, { pump: false });
     rt = booth.t;
     rAdd('lin', P.u, 1.5, { action: '轉正' });
@@ -305,7 +315,12 @@ export function createSequence({ robot }) {
     grip.hold(rt); grip.add(.8, { jaw: 0 }, { action: '夾爪鬆開' }); rt = grip.t;
     d.add(0, { mode: 'upright', uz: UPRIGHT.place, yaw: 90, state: '已洗淨' }, { at: rt });
     ev(rAdd('lin', P.retract, 1, { action: '夾爪退出' }), 'robot', `${id} 放回輸送線`);
-    d.add(travelUp(UPRIGHT.handoff - UPRIGHT.place), { uz: UPRIGHT.handoff, state: '送往裝填區' }, { at: rt });
+    // 秤重段：殘水 = 秤重 − 桶號建檔的空桶重，< 100 g 才放行（NG 時手臂夾回補吹）
+    const wg = scale.add(WEIGH.sec, { on: true, g: RESIDUAL_G[k] }, { at: rt + 1, action: '秤重確認乾燥', sub: `殘水 ${RESIDUAL_G[k]} g < ${WEIGH.limitG} g，放行（模擬）` });
+    if (k === 0) ev(wg, 'robot', '秤重確認殘水 < 100 g');
+    scale.add(0, { on: false });
+    d.add(0, { weighG: RESIDUAL_G[k], state: '秤重 OK' }, { at: scale.t });
+    d.add(travelUp(UPRIGHT.handoff - UPRIGHT.place), { uz: UPRIGHT.handoff, state: '送往裝填區' }, { at: scale.t });
     r.handoff = d.t;
     d.add(2.5, { state: '交裝填區' });
     d.add(0, { mode: 'gone' });

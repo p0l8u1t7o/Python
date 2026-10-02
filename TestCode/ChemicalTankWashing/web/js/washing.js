@@ -52,6 +52,9 @@ export function createWashing(scene) {
   const sprayMat = MAT.water.clone(); sprayMat.opacity = .35; sprayMat.side = THREE.DoubleSide;
   const spray = new THREE.Mesh(new THREE.ConeGeometry(240, 420, 24, 1, true), sprayMat); spray.position.y = 210; spray.visible = false; lance.add(spray);
   const jet = new THREE.Mesh(new THREE.CylinderGeometry(14, 22, 700, 10, 1, true), sprayMat); jet.position.y = -350; jet.visible = false; lance2.add(jet);
+  // 熱風機 HB-1（屋頂）：鼓風機＋電熱器，經 3/4" 噴槍送入熱風
+  box(group, 460, 340, 380, MAT.steelOrange, 9150, H + 170, 15150);
+  plate(group, ['HB-1 熱風機 70°C'], 600, 120, [9150, H + 430, 14955], Math.PI, { w: 640, h: 110 });
   // 真空泵 VP-1（屋頂）：抽液管頂端軟管 → 真空泵 → 集液槽
   box(group, 520, 380, 420, MAT.steelBlue, 9850, H + 190, 15150);
   plate(group, ['VP-1 真空泵（負壓抽液）'], 700, 120, [9850, H + 480, 14935], Math.PI, { w: 640, h: 110 });
@@ -69,7 +72,7 @@ export function createWashing(scene) {
   for (const [k, t] of Object.entries(WASTE.tanks)) {
     const shell = cyl(group, t.r, t.h, MAT.tankW, t.x, 40 + t.h / 2, t.z, 'y', 36); shell.castShadow = false;
     cyl(group, t.r + 5, 30, MAT.ppSolid, t.x, 40 + t.h + 15, t.z, 'y', 36);
-    const liquid = cyl(group, t.r - 25, 1, k === 'W' ? MAT.tankWaste : k === 'R' ? MAT.tankClean : MAT.tankFresh, t.x, 50, t.z, 'y', 32);
+    const liquid = cyl(group, t.r - 25, 1, k === 'WA' ? MAT.tankWaste : k === 'WB' ? MAT.tankAlkali : k === 'R' ? MAT.tankClean : MAT.tankFresh, t.x, 50, t.z, 'y', 32);
     plate(group, [t.name, `${t.cap} L`], Math.max(700, t.r * 1.8), 230, [t.x, t.h + 330, t.z - t.r - 10], Math.PI, { w: 640, h: 210 });
     tanks[k] = { t, liquid };
   }
@@ -79,22 +82,28 @@ export function createWashing(scene) {
   box(group, 250, 420, 360, MAT.ppDark, p2x, 210, p2z); cyl(group, 140, 50, MAT.ppSolid, p2x, 260, p2z - 200, 'z', 20); cyl(group, 140, 50, MAT.ppSolid, p2x, 260, p2z + 200, 'z', 20);
   plate(group, ['P-1 沖洗泵'], 420, 110, [p1x + 130, 560, p1z], Math.PI / 2, { w: 512, h: 130 });
   plate(group, ['P-2 隔膜泵'], 420, 110, [p2x + 130, 560, p2z], Math.PI / 2, { w: 512, h: 130 });
-  const tW = WASTE.tanks.W, tR = WASTE.tanks.R, tF = WASTE.tanks.F;
+  const tA = WASTE.tanks.WA, tB = WASTE.tanks.WB, tR = WASTE.tanks.R, tF = WASTE.tanks.F;
   const pipes = {
     fromF: pipe(group, [[tF.x + tF.r, 150, tF.z], [p1x - 180, 150, tF.z], [p1x - 180, 150, p1z - 160], [p1x - 60, 300, p1z - 160]], 30, 0x8fd3ff),
     fromR: pipe(group, [[tR.x + tR.r, 150, tR.z], [p1x - 60, 150, tR.z], [p1x - 60, 300, p1z - 160]], 30, 0x58b6f2),
     supply: pipe(group, [[p1x, 420, p1z - 160], [p1x, 2800, p1z - 160], [lx, 2800, p1z - 160], [lx, 2800, lz - 300], [lx2, 2800, lz2 - 300], [lx2, H + 320, lz2 - 300], [lx2, H + 320, lz2]], 30, 0x4aa8ff),
     supply2: pipe(group, [[lx, 2800, lz - 300], [lx, 2800, lz - 150], [lx, H + 1350, lz - 150], [lx, H + 1350, lz]], 26, 0x4aa8ff),
+    hot: pipe(group, [[9150, H + 340, 15150], [9150, H + 700, 15150], [lx2, H + 700, 15150], [lx2, H + 700, lz2 + 150], [lx2, H + 320, lz2 + 150], [lx2, H + 320, lz2 + 40]], 26, 0xff5a3c),
     vac: pipe(group, [[lx, H + 1350, lz + 120], [lx, H + 1350, 15150], [9850, H + 1350, 15150], [9850, H + 380, 15150]], 26, 0xb07cff),
     vacOut: pipe(group, [[10110, H + 100, 15150], [10150, H + 100, 15150], [10150, 120, 15150], [fx + 300, 120, 15150], [fx + 300, 120, fz + 300]], 30, 0xb07cff),
     sump: pipe(group, [[fx - 300, 120, fz], [b.x0 - 150, 120, fz], [b.x0 - 150, 120, p2z], [p2x + 125, 120, p2z]], 36, 0xd88a3c),
-    toW: pipe(group, [[p2x, 420, p2z], [p2x, 2100, p2z], [tW.x, 2100, p2z], [tW.x, 2100, tW.z], [tW.x, 40 + tW.h, tW.z]], 34, 0xd88a3c),
+    riser: pipe(group, [[p2x, 420, p2z], [p2x, 2100, p2z]], 34, 0xd88a3c),
+    toWB: pipe(group, [[p2x, 2100, p2z], [tB.x, 2100, p2z], [tB.x, 2100, tB.z], [tB.x, 40 + tB.h, tB.z]], 34, 0xb07cff),
+    toWA: pipe(group, [[p2x, 2100, p2z], [p2x, 2100, p2z + 200], [tA.x, 2100, p2z + 200], [tA.x, 2100, tA.z], [tA.x, 40 + tA.h, tA.z]], 34, 0xff7a45),
     toR: pipe(group, [[p2x, 2100, p2z], [p2x, 2100, tR.z], [tR.x, 2100, tR.z], [tR.x, 40 + tR.h, tR.z]], 34, 0x3dd68c),
     city: pipe(group, [[tF.x, 2400, ROOM.D], [tF.x, 2400, tF.z], [tF.x, 40 + tF.h, tF.z]], 26, 0x8fd3ff),
-    out: pipe(group, [[tW.x, 150, tW.z + tW.r], [tW.x, 150, ROOM.D - 60], [tW.x, 900, ROOM.D - 60]], 34, 0xd88a3c),
+    outA: pipe(group, [[tA.x, 150, tA.z + tA.r], [tA.x, 150, ROOM.D - 60], [tA.x, 900, ROOM.D - 60]], 34, 0xff7a45),
+    outB: pipe(group, [[tB.x, 150, tB.z + tB.r], [tB.x, 150, ROOM.D - 60], [tB.x, 900, ROOM.D - 60]], 34, 0xb07cff),
   };
   box(group, 180, 180, 180, MAT.steelOrange, p2x, 2100, p2z);                         // V-3 三通切換閥
-  box(group, 260, 160, 120, MAT.steelOrange, tW.x, 900, ROOM.D - 70);                   // 委外清運接頭  // 排氣
+  for (const t of [tA, tB]) box(group, 260, 160, 120, MAT.steelOrange, t.x, 900, ROOM.D - 70);   // 委外清運接頭（酸、鹼分開）
+  box(group, 160, 160, 160, MAT.steelOrange, p2x, 2100, p2z + 200);                     // V-4 酸／鹼切換閥
+   // 排氣
   cyl(group, 140, ROOM.H - H - 100, MAT.ppSolid, 9000, H + (ROOM.H - H - 100) / 2, 15150, 'y', 20);
   plate(group, ['排氣 → 廠務洗滌塔'], 900, 140, [9000, 3700, 14990], Math.PI, { w: 640, h: 100 });
 
@@ -110,7 +119,7 @@ export function createWashing(scene) {
       } else stream.visible = false;
       pool.visible = pl > 0; pool.scale.setScalar(Math.max(.2, pl));
       sumpLevel.scale.y = Math.max(1, sump * 200); sumpLevel.position.y = 10 + sumpLevel.scale.y / 2;
-      if (lv) for (const k of ['W', 'R', 'F']) { const { t, liquid } = tanks[k], h = Math.max(1, (lv[k] / t.cap) * (t.h - 40)); liquid.scale.y = h; liquid.position.y = 50 + h / 2; }
+      if (lv) for (const k of ['WA', 'WB', 'R', 'F']) { const { t, liquid } = tanks[k], h = Math.max(1, (lv[k] / t.cap) * (t.h - 40)); liquid.scale.y = h; liquid.position.y = 50 + h / 2; }
       for (const [k, p] of Object.entries(pipes)) p.setFlow(!!flows[k]);
     },
     tick(dt) { for (const p of Object.values(pipes)) p.tick(dt); streamTex.offset.y -= dt * 3; },

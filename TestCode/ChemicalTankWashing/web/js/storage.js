@@ -74,6 +74,8 @@ export function createStorage(scene, makeDrum) {
   box(shuttle, 1000, 150, 1080, MAT.yellow, 0, -95, 0);
   box(shuttle, 900, 16, 980, MAT.steelDark, 0, -12, 0);
   for (const s of [-1, 1]) box(shuttle, 30, 60, 200, MAT.red, s * 505, -95, 520);
+  // 其他兩層的穿梭車停在各自車道後端（示意；換道由 AGV 搬運）
+  for (const [l, v, p] of RACK.shuttles) if (v !== RACK.demo.level) { const s = shuttle.clone(); s.position.set(RACK.lanes[l], RACK.levels[v], RACK.pos[p]); group.add(s); }
   const laneX = RACK.lanes[RACK.demo.lane], laneY = RACK.levels[RACK.demo.level];
   const zAt = pos => { const i = Math.max(0, Math.min(2.999, Math.floor(pos))); return RACK.pos[i] + (RACK.pos[i + 1] - RACK.pos[i]) * (pos - i); };
 

@@ -23,7 +23,7 @@ export const MAT = {
   water: std(0x6fc4ff, .1, 0, { transparent: true, opacity: .6, depthWrite: false, emissive: 0x0a3a66, emissiveIntensity: .4 }),
   waste: std(0xd88a3c, .3, 0, { transparent: true, opacity: .75 }),
   tankW: std(0xe7e3d6, .6, 0, { transparent: true, opacity: .55, depthWrite: false }),
-  tankWaste: std(0xc77b34, .4, 0), tankClean: std(0x58b6f2, .4, 0), tankFresh: std(0x8fd3ff, .4, 0),
+  tankWaste: std(0xc77b34, .4, 0), tankAlkali: std(0x8c6bd6, .4, 0), tankClean: std(0x58b6f2, .4, 0), tankFresh: std(0x8fd3ff, .4, 0),
   agv: std(0xee8a26, .45, .2), agvDark: std(0x2b3036, .5, .4),
   cabinet: std(0xd9dde0, .5, .2), screen: std(0x10283a, .3, 0, { emissive: 0x1e6fa8, emissiveIntensity: .6 }),
   green: std(0x3dd68c, .4, 0, { emissive: 0x3dd68c, emissiveIntensity: .8 }),

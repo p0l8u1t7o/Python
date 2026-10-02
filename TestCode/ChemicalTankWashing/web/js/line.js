@@ -98,9 +98,13 @@ export function createLine(scene) {
   for (const [z0, z1] of [[up.z0 + 450, up.pick - 350], [up.pick + 350, up.place - 350], [up.place + 350, up.z1]])
     for (const s of [-1, 1]) box(group, 30, 120, z1 - z0, MAT.yellow, up.x + s * 340, up.top + 160, (z0 + z1) / 2);
   for (const z of [up.pick + DRUM.R + 20, up.place + DRUM.R + 20]) box(group, 120, 60, 40, MAT.steelOrange, up.x + 300, up.top + 40, z);   // 定位擋塊
+  // 放回位秤重段：輸送段架在四顆荷重元上，旁邊有秤重顯示器
+  box(group, 780, 30, 760, MAT.steelDark, up.x, 40, up.place);
+  for (const [dx, dz] of [[-330, -330], [330, -330], [-330, 330], [330, 330]]) cyl(group, 40, 60, MAT.steelBlue, up.x + dx, 85, up.place + dz);
+  const scaleScreen = box(group, 40, 200, 320, MAT.screen, up.x + 520, 1150, up.place); box(group, 60, 1050, 60, MAT.steelDark, up.x + 520, 525, up.place);
   box(group, 700, 40, 40, MAT.steelOrange, up.x, up.top + 40, up.z1 - 20);
   plate(group, ['取桶位'], 420, 110, [up.x - 420, up.top + 420, up.pick], -Math.PI / 2, { w: 512, h: 130 });
-  plate(group, ['放回位'], 420, 110, [up.x - 420, up.top + 420, up.place], -Math.PI / 2, { w: 512, h: 130 });
+  plate(group, ['放回位＋秤重'], 520, 110, [up.x - 420, up.top + 420, up.place], -Math.PI / 2, { w: 512, h: 110 });
   plate(group, ['→ 裝填區（下一站）'], 900, 160, [up.x - 420, 1150, up.handoff - 200], -Math.PI / 2, { w: 640, h: 110 });
 
   // ---------------------------------------------------------------- 自動開蓋站（相機定位 → 旋轉台對位 → 伺服鎖付軸反轉拆蓋）
@@ -197,6 +201,7 @@ export function createLine(scene) {
       turntable.rotation.y = table * D2R;
       capPile.forEach((c, i) => { c.visible = i < caps; });
     },
+    setScale(on) { scaleScreen.material = on ? MAT.green : MAT.screen; },
     setTower(state) { lamps.forEach((l, i) => { l.material.emissiveIntensity = (state === ['fault', 'wait', 'run'][i]) ? 1.2 : .05; }); },
     socket: k => spindles[k],
   };

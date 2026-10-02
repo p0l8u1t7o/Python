@@ -77,8 +77,9 @@ function applyState(sm) {
   washing.set({
     lance: b.lance, lance2: b.lance2, spray: b.spray, pool: b.pool, sump: sp.level, tanks: st.tanks,
     pour: b.pour !== '' ? drums[+b.pour].bungWorld('big') : null,
-    flows: { vac: b.vac, vacOut: b.vac, supply: b.spray, supply2: b.spray, fromF: b.spray && b.src === 'F', fromR: b.spray && b.src === 'R', sump: sp.pump, toW: sp.pump && sp.dest === 'W', toR: sp.pump && sp.dest === 'R', city: st.makeup.on },
+    flows: { hot: b.hot, vac: b.vac, vacOut: b.vac, supply: b.spray, supply2: b.spray, fromF: b.spray && b.src === 'F', fromR: b.spray && b.src === 'R', sump: sp.pump, riser: sp.pump, toWA: sp.pump && sp.dest === 'WA', toWB: sp.pump && sp.dest === 'WB', toR: sp.pump && sp.dest === 'R', city: st.makeup.on },
   });
+  line.setScale(st.scale.on);
   line.setTower(playing ? 'run' : 'wait');
 }
 
@@ -97,11 +98,11 @@ for (const s of STATIONS) {
   const b = document.createElement('button'); b.className = 'st'; b.dataset.st = s.id; b.innerHTML = `<span class="idx">${s.short}</span>${s.name}`;
   b.onclick = () => { seekTo(seq.stationStart[s.id]); setView(VIEW_OF[s.id]); }; ui.stations.appendChild(b);
 }
-const EQUIP = [['dolly', '入庫台車'], ['jib', '入庫懸臂吊'], ['agv', 'AGV'], ['shuttle', '穿梭車'], ['gantry', '龍門'], ['labeler', '貼標讀碼'], ['upender', '翻桶機'], ['decap', '開蓋站'], ['robot', '清洗手臂'], ['booth', '沖洗站'], ['sump', '集液／泵']];
+const EQUIP = [['dolly', '入庫台車'], ['jib', '入庫懸臂吊'], ['agv', 'AGV'], ['shuttle', '穿梭車'], ['gantry', '龍門'], ['labeler', '貼標讀碼'], ['upender', '翻桶機'], ['decap', '開蓋站'], ['robot', '清洗手臂'], ['booth', '沖洗站'], ['sump', '集液／泵'], ['scale', '秤重段']];
 ui.equip.innerHTML = EQUIP.map(([k, n]) => `<div class="row" data-k="${k}"><span class="name"><i></i>${n}</span><span class="act"></span></div>`).join('');
 ui.drums.innerHTML = DRUM_IDS.map((id, k) => `<div class="d" data-k="${k}"><span class="id">${id}</span><span class="state"></span><span class="tags"></span></div>`).join('')
   + `<div class="d inb"><span class="id">入庫 0101–0104</span><span class="state"></span></div>`;
-const TANKS = [['W', '#c77b34'], ['R', '#58b6f2'], ['F', '#8fd3ff']];
+const TANKS = [['WA', '#c77b34'], ['WB', '#8c6bd6'], ['R', '#58b6f2'], ['F', '#8fd3ff']];
 ui.tanks.innerHTML = TANKS.map(([k, c]) => `<div class="tank" data-k="${k}"><span>${WASTE.tanks[k].name}</span><span class="bar"><i style="background:${c}"></i></span><span class="v"></span></div>`).join('');
 const checks = layoutChecks();
 ui.checks.innerHTML = checks.map(c => `<li class="${c.ok ? '' : 'ng'}"><span class="mk">${c.ok ? '✓' : '!'}</span><span><b>${c.group}｜${c.name}</b><small>${c.value}</small></span></li>`).join('');
@@ -128,7 +129,7 @@ const VIEWS = {
   storage: [[2300, 4300, 8600], [6300, 1500, 3800]], gantry: [[1200, 4300, 13800], [4700, 1100, 9700]],
   label: [[6000, 2900, 7300], [7500, 900, 9800]], upender: [[8400, 3600, 7400], [10900, 1000, 10100]],
   decap: [[9700, 3300, 8900], [11290, 1350, 11000]], robot: [[6200, 5600, 10200], [9900, 1100, 13400]],
-  booth: [[7300, 2300, 15000], [9400, 1150, 14550]], waste: [[2600, 3400, 15300], [5900, 900, 14300]],
+  booth: [[7300, 2300, 15000], [9400, 1150, 14550]], waste: [[1500, 4300, 11600], [5000, 800, 14600]],
   inbound: [[-900, 3900, 7400], [2300, 900, 2900]],
 };
 function setView(name, instant = false) {
@@ -173,10 +174,10 @@ function drawHud() {
     const s = st['drum' + row.dataset.k];
     row.querySelector('.state').textContent = s.state;
     row.querySelector('.tags').innerHTML = [
-      [s.label ? (s.read ? '標籤讀碼 OK' : '已貼標') : '未貼標', s.read],
+      [s.label ? (s.read ? `讀碼 OK · ${s.chem === 'acid' ? '酸性' : '鹼性'}` : '已貼標') : '未貼標', s.read],
       [s.capBig || s.capSmall ? '桶蓋未開' : '桶口已開', !s.capBig && !s.capSmall],
       [`沖洗 ${s.rinse}/3`, s.rinse === 3 && s.mode !== 'robot'],
-      [s.dry ? '殘水已抽乾' : `桶內水 ${s.water.toFixed(1)} L`, s.dry],
+      [s.weighG >= 0 ? `殘水 ${s.weighG} g OK` : s.dry ? `熱風吹乾（附著 ${s.film.toFixed(0)} g）` : s.film > 0 ? `附著水 ${s.film.toFixed(0)} g` : `桶內水 ${s.water.toFixed(1)} L`, s.weighG >= 0],
     ].map(([t, ok]) => `<span class="tag ${ok ? 'ok' : ''}">${t}</span>`).join('');
   }
   // 手臂負載：夾持中的桶＋桶內水量

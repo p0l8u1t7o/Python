@@ -43,10 +43,10 @@ if (ready) {
     ['04-gantry-tilt', await at('CTW-2610-0001 翻轉放倒', 1.5), 'gantry'], ['05-label-read', await at('CTW-2610-0001 讀碼', .4), 'label'],
     ['06-upender', await at('CTW-2610-0001 翻正', 2), 'upender'], ['07-decap', await at('拆 2" 桶蓋', 1.2), 'decap'],
     ['08-robot-pick', await at('手臂開始取桶', 3), 'robot'], ['09-booth-spray', await at('沖洗水由 TK-R 供應', 5), 'booth'],
-    ['10-booth-pour', await at('倒液進集液漏斗', 2), 'booth'], ['11-vacuum', await at('負壓抽乾桶內殘水', 3), 'booth'],
+    ['10-booth-pour', await at('倒液進集液漏斗', 2), 'booth'], ['11-hot-air-dry', await at('熱風吹乾內壁附著水', 8), 'booth'],
     ['12-waste', await at('末道沖洗水回收至 TK-R', 1), 'waste'], ['13-inbound-dolly', await at('散桶入庫：台車推入', 3), 'inbound'],
     ['14-inbound-jib', await at('懸臂吊上棧板', 2), 'inbound'], ['15-agv-inbound-arc', await at('AGV 取滿棧板入架', 6), 'inbound'],
-    ['16-place-back', await at('CTW-2610-0001 放回輸送線', 3), 'robot'], ['17-finish', report.total - 1, 'iso'],
+    ['16-weigh', await at('秤重確認殘水 < 100 g', 1), 'robot'], ['17-finish', report.total - 1, 'iso'],
   ];
   for (const [name, t, view, flag] of scenes) {
     if (flag === 'dims') await evaluate(`document.getElementById('showDims').click()`);
