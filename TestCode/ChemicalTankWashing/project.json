@@ -8,8 +8,7 @@
     ],
     "full": [
       "tools/verify-detail.mjs",
-      "tools/verify-gripper.mjs",
-      "tools/verify-scene.mjs"
+      "tools/verify-gripper.mjs"
     ]
   }
 }

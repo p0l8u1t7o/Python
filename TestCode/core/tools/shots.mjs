@@ -43,7 +43,7 @@ for (const p of projects) {
   const r = report[p.id] = { ready: ok, views, shots: [], errors: [] };
   if (!ok) { r.errors.push('window.sim 未就緒'); continue; }
   await sleep(1500);
-  const total = await browser.evaluate(`+(document.getElementById('timeline')?.max || window.sim.total || 0)`);
+  const total = await browser.evaluate(`+(window.sim.total || document.getElementById('timeline')?.max || 0)`);
   r.total = total;
   const list = [['iso', 0], ...views.map((v, k) => [v, +(total * FRACS[k % FRACS.length]).toFixed(2)]), ['iso', +(total * .97).toFixed(2)]];
   for (const [v, t] of list) {

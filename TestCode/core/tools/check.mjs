@@ -7,25 +7,41 @@
 //     "quick": ["tools/verify.mjs"],                      // 快速＋完整都跑
 //     "full":  ["tools/verify-scene.mjs --dt=0.5", …]     // 只在完整檢查跑
 //   }
-// core 內建檢查（每個專案都跑）：imports（靜態 import 路徑）。
-import { writeFileSync, mkdirSync } from 'node:fs';
+// core 內建檢查（每個專案都跑；後三項需要 web/js/project.js）：
+//   imports      靜態 import 路徑（快速）
+//   determinism  倒序／跳播一致（快速）
+//   layout       project.layoutChecks() 空間檢核（快速）
+//   scene        全場動態／靜態干涉＋重合面閃爍（完整）
+// project.json 的 "core" 可覆寫：{ "skip": ["scene"], "quick": ["scene"] }
+import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { pickProjects, ROOT } from './projects.mjs';
+import { pickProjects, ROOT, CORE } from './projects.mjs';
 import { runScript } from './run.mjs';
 import { checkProject as checkImports } from './check-imports.mjs';
 
 const argv = process.argv.slice(2), quick = argv.includes('--quick');
 const only = (() => { const i = argv.indexOf('--only'); return i >= 0 ? argv.splice(i, 2)[1].split(',') : null; })();
 const projects = pickProjects(argv.filter(a => !a.startsWith('--')));
+const RUN = join(CORE, 'verify', 'run.mjs');
+const viaRunner = (check, args = []) => async p => {
+  const r = await runScript(p, RUN, [check, ...args], { echo: false });
+  const lines = r.out.trim().split('\n');
+  return { ok: r.code === 0, note: lines.find(l => /^\{|一致|通過|略過/.test(l))?.slice(0, 160) || `exit ${r.code}`, detail: r.code ? lines.slice(-25) : [] };
+};
 const BUILTIN = {
-  imports: async p => { const r = checkImports(p); return { ok: !r.missing.length, note: `${r.modules} 個模組`, detail: r.missing }; },
+  imports: { quick: true, run: async p => { const r = checkImports(p); return { ok: !r.missing.length, note: `${r.modules} 個模組`, detail: r.missing }; } },
+  determinism: { quick: true, needsProject: true, run: viaRunner('determinism') },
+  layout: { quick: true, needsProject: true, run: viaRunner('layout') },
+  scene: { quick: false, needsProject: true, run: viaRunner('scene') },
 };
 
 const split = cmd => cmd.match(/"[^"]*"|\S+/g).map(s => s.replace(/^"|"$/g, ''));
 const results = [];
 for (const p of projects) {
   const scripts = [...(p.checks?.quick || []), ...(quick ? [] : p.checks?.full || [])];
-  const jobs = [...Object.keys(BUILTIN).map(k => ({ name: k, run: () => BUILTIN[k](p) })),
+  const hasProject = existsSync(join(p.web, 'js', 'project.js')), cc = p.core || {};
+  const builtins = Object.entries(BUILTIN).filter(([k, b]) => (!b.needsProject || hasProject) && !(cc.skip || []).includes(k) && (!quick || b.quick || (cc.quick || []).includes(k)));
+  const jobs = [...builtins.map(([k, b]) => ({ name: k, run: () => b.run(p) })),
     ...scripts.map(cmd => ({ name: cmd, run: async () => { const [script, ...args] = split(cmd); const r = await runScript(p, script, args, { echo: false }); return { ok: r.code === 0, note: `exit ${r.code}`, detail: r.code ? r.out.trim().split('\n').slice(-12) : [] }; } }))];
   for (const job of jobs) {
     if (only && !only.some(o => job.name.includes(o))) continue;

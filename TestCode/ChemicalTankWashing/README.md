@@ -78,7 +78,7 @@ node ../core/tools/serve.mjs ChemicalTankWashing            # http://127.0.0.1:8
   - 改用對數深度緩衝，近裁切面 100 mm；
   - 地面分區固定繪製順序；
   - AGV 警示燈改成亮度脈動，不再切換材質；
-  - 以 `tools/verify-scene.mjs` 找出所有重合面（兩個面距離 < 0.6 mm、外觀不同），逐一錯開：AGV 門架頂橫樑與內柱、托架板與棧板後緣、叉面與棧板面板、配重與車身；貨架與龍門立柱腳座加大；清洗房 PP 板頂緣埋入屋頂、屋頂下移 2 mm；圍籬轉角重複立柱；防溢堤底板與堤牆；秤台梳齒；感測器與輸送側板等。現存 0 組。
+  - 以全場檢查（`core/verify/scene.mjs`）找出所有重合面（兩個面距離 < 0.6 mm、外觀不同），逐一錯開：AGV 門架頂橫樑與內柱、托架板與棧板後緣、叉面與棧板面板、配重與車身；貨架與龍門立柱腳座加大；清洗房 PP 板頂緣埋入屋頂、屋頂下移 2 mm；圍籬轉角重複立柱；防溢堤底板與堤牆；秤台梳齒；感測器與輸送側板等。現存 0 組。
 
 ## 選型（規劃階段，型號與價格待詢價）
 
@@ -127,18 +127,20 @@ node --import ../core/tools/register.mjs tools/verify.mjs
 
 這是有限取樣檢查，不是連續碰撞證明。
 
-全場網格干涉與閃爍另執行（直接建立網頁上的同一份場景，`web/js/plant.js`）：
+全場網格干涉與閃爍由 core 統一檢查執行（直接建立網頁上的同一份場景，`web/js/project.js`；本專案的允許規則也寫在那裡）：
 
 ```powershell
-node --import ../core/tools/register.mjs tools/verify-scene.mjs --dt=0.5
+node ../core/tools/check.mjs ChemicalTankWashing --only scene
 ```
 
 - **動態干涉**：自動找出 121 個會動的關節，整段動畫每 0.5 s 取樣，用定向包圍盒分離軸檢查移動件對所有網格；圓柱等曲面件再用頂點射線確認是否真的穿入。
 - **靜態干涉**：不同設備、不同站之間的架設位置互相穿插。
 - **重合面（閃爍）**：盒、倒角外殼、圓柱端面、平面，距離 < 0.6 mm 且重疊 > 25 mm²、外觀不同者。
-- 允許項目（7 類）：桶與夾持它的機構、AGV 叉進棧板、同一機構相鄰零件、伸縮件、導軌與滑座等，規則寫在程式開頭。
+- 允許項目（7 類）：桶與夾持它的機構、AGV 叉進棧板、同一機構相鄰零件、伸縮件、導軌與滑座等；通用規則在 `core/verify/scene.mjs`，本專案規則在 `web/js/project.js`。
 
-結果在 [review/scene-verification.txt](review/scene-verification.txt)：1,646 個網格、1,507 個取樣時刻，動態 0、靜態 0、重合面 0。這次修正的干涉：
+結果在 [review/scene-verification.txt](review/scene-verification.txt)：1,671 個網格（含瀏覽器才有的文字牌）、1,507 個取樣時刻，動態 0、靜態 0、重合面 0。這次修正的干涉：
+
+- **站名牌**：「取桶位」「放回位」牌原本浮在輸送線西側桶身高度，夾爪兩側導軌會掃過；改貼在輸送架下方。
 
 - **開蓋站**：頂視相機原本吊在 XY 模組行程內，改到框架北側橫樑外斜拍桶頂；橫樑偏到台車北側並加 Z 向導軌，Z 軸立柱不再穿過橫樑；桶蓋收集箱內移，台車到收集位時不撞導軌。
 - **龍門**：橫樑改雙樑，Z 軸伸縮管從兩樑間穿下；外管下緣保持在翻轉板擺動範圍之上；夾爪張開行程改 90 mm，加上棧板站南移 50 mm、龍門圍籬北線外移 100 mm，夾爪不再越過圍籬；入口光電改低位，避開張開的夾爪。
@@ -202,6 +204,6 @@ node --import ../core/tools/register.mjs tools/verify-gripper.mjs
 | `web/js/sequence.js` | 各設備與各桶的時間軌、交接推算、狀態取樣 |
 | `web/js/main.js` | 場景、面板、視角、相機子畫面 |
 | `core/ui/view-controls.js` | 焦點追蹤、相機視窗拖曳／縮放／隱藏 |
-| `web/js/plant.js` | 建立全場設備並套用取樣狀態（網頁與 `verify-scene.mjs` 共用） |
-| `tools/verify.mjs`、`verify-scene.mjs`、`browser-check.mjs` | 幾何驗證、全場網格干涉與重合面檢查、瀏覽器檢查 |
+| `web/js/plant.js`、`project.js` | 建立全場設備並套用取樣狀態；`project.js` 是網頁與 core 統一檢查共用的專案介面 |
+| `tools/verify.mjs`、`browser-check.mjs` | 幾何驗證、瀏覽器檢查（全場干涉與重合面改由 `core/tools/check.mjs` 執行） |
 | `docs/planning.md` | 規劃說明（只留本機） |

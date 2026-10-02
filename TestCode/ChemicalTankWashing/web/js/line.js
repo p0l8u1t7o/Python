@@ -135,8 +135,9 @@ export function createLine(scene) {
   cyl(group, 55, up.top - 280, MAT.alu, up.x, (up.top - 280) / 2, up.place);           // 頂升氣缸
   const scaleScreen = box(group, 40, 200, 320, MAT.screen, up.x + 520, 1150, up.place); box(group, 60, 1050, 60, MAT.steelDark, up.x + 520, 525, up.place);
   box(group, 700, 40, 40, MAT.steelOrange, up.x, up.top + 40, up.z1 - 20);
-  plate(group, ['取桶位'], 420, 110, [up.x - 420, up.top + 420, up.pick], -Math.PI / 2, { w: 512, h: 130 });
-  plate(group, ['放回位＋頂升秤台'], 560, 110, [up.x - 420, up.top + 420, up.place], -Math.PI / 2, { w: 512, h: 110 });
+  // 站名牌貼在輸送架西側下方：夾爪兩側導軌在桶身高度會掃過 up.x ± 420，牌子不能放在那裡
+  plate(group, ['取桶位'], 420, 110, [up.x - 420, up.top - 230, up.pick], -Math.PI / 2, { w: 512, h: 130 });
+  plate(group, ['放回位＋頂升秤台'], 560, 110, [up.x - 420, up.top - 230, up.place], -Math.PI / 2, { w: 512, h: 110 });
   plate(group, ['→ 裝填區（下一站）'], 900, 160, [up.x - 420, 1150, up.handoff - 200], -Math.PI / 2, { w: 640, h: 110 });
 
   // ---------------------------------------------------------------- 自動開蓋站（相機定位 → 旋轉台對位 → 伺服鎖付軸反轉拆蓋）

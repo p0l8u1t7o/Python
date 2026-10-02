@@ -4,8 +4,9 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RACK, COLUMN, UPRIGHT, DECAP, BOOTH, WASTE, layoutChecks, ROBOT, LABEL, LYING, INBOUND, PAYLOAD, payloadAt } from './layout.js';
 import { MAT, D2R, smooth } from '@core/geom/parts.js';
-import { buildPlant, applyPlant } from './plant.js';
-import { createSequence, STATIONS, DRUM_IDS, IN_IDS, DRUM_KEYS, SPRAY_S, SPRAY_SINGLE_S } from './sequence.js';
+import { applyPlant } from './plant.js';
+import { createProject } from './project.js';
+import { STATIONS, DRUM_IDS, IN_IDS, DRUM_KEYS, SPRAY_S, SPRAY_SINGLE_S } from './sequence.js';
 import { finishMaterials } from '@core/geom/hardware.js';
 import { createFocusTracking, createCameraWindow } from '@core/ui/view-controls.js';
 
@@ -34,10 +35,10 @@ Object.assign(sun.shadow.camera, { left: -11000, right: 11000, top: 11000, botto
 sun.shadow.bias = -.0003; sun.shadow.normalBias = 3; scene.add(sun, sun.target);
 const fill = new THREE.DirectionalLight(0x9fb8ff, .45); fill.position.set(16000, 9000, 22000); scene.add(fill);
 
-// ---------------------------------------------------------------- 物件（與 tools/verify-scene.mjs 共用 plant.js）
-const plant = buildPlant(scene);
+// ---------------------------------------------------------------- 物件（與 core 統一檢查共用 project.js）
+const project = createProject({ scene });
+const { plant, seq } = project;
 const { building, storage, agv, line, robot, washing, inbound, drums } = plant;
-const seq = createSequence({ robot });
 
 // 相機取像事件（子畫面用）
 const shots = [];
@@ -250,4 +251,4 @@ if (qp.has('dims')) { ui.showDims.checked = true; building.dims.visible = true; 
 if (qp.has('cam')) { const a = qp.get('cam').split(',').map(Number); if (a.length === 6) { camera.position.set(...a.slice(0, 3)); controls.target.set(...a.slice(3)); controls.update(); } }
 document.getElementById('loading').classList.add('hide');
 frame();
-window.sim = { seekTo, setView, play() { playing = true; }, pause() { playing = false; }, get T() { return T; }, seq, get state() { return S; }, robot, total, focus, cameraWindow, camera, controls, focusPosition };
+window.sim = { seekTo, setView, views: Object.keys(VIEWS), play() { playing = true; }, pause() { playing = false; }, get T() { return T; }, seq, get state() { return S; }, robot, total, focus, cameraWindow, camera, controls, focusPosition };

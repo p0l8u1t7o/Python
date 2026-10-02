@@ -1,0 +1,148 @@
+{
+  "ok": true,
+  "count": 20,
+  "failures": [],
+  "rows": [
+    {
+      "group": "倉儲",
+      "name": "棧板位（第 1 道 3 深、扣空棧板道）",
+      "ok": true,
+      "value": "53 位 × 4 桶 = 212 桶 ≥ 200",
+      "note": ""
+    },
+    {
+      "group": "倉儲",
+      "name": "第 3 層貨頂與樓高",
+      "ok": true,
+      "value": "3935 mm，距樓板 565 mm（灑水頭 ≥ 450）",
+      "note": ""
+    },
+    {
+      "group": "倉儲",
+      "name": "層間淨空（含軌道 105）",
+      "ok": true,
+      "value": "100 mm ≥ 100",
+      "note": ""
+    },
+    {
+      "group": "AGV",
+      "name": "走道寬 vs 迴轉直徑",
+      "ok": true,
+      "value": "3600 ≥ 2×1662＋200",
+      "note": ""
+    },
+    {
+      "group": "AGV",
+      "name": "迴轉點 X 5590（第 2 道取料）",
+      "ok": true,
+      "value": "最近：龍門 88 mm",
+      "note": ""
+    },
+    {
+      "group": "AGV",
+      "name": "迴轉點 X 6950（第 3 道入庫）",
+      "ok": true,
+      "value": "最近：充電座 71 mm",
+      "note": ""
+    },
+    {
+      "group": "AGV",
+      "name": "迴轉點 X 3900（棧板站）",
+      "ok": true,
+      "value": "最近：龍門 88 mm",
+      "note": ""
+    },
+    {
+      "group": "AGV",
+      "name": "迴轉點 X 10810（空棧板道）",
+      "ok": true,
+      "value": "最近：牆 88 mm",
+      "note": ""
+    },
+    {
+      "group": "AGV",
+      "name": "迴轉點 X 9450（柱旁東道）",
+      "ok": true,
+      "value": "最近：柱 105 mm",
+      "note": ""
+    },
+    {
+      "group": "AGV",
+      "name": "入庫弧線 R2600（載棧板／空叉）",
+      "ok": true,
+      "value": "車身與棧板淨距 ≥ 50 mm",
+      "note": ""
+    },
+    {
+      "group": "AGV",
+      "name": "第 3 層取放門架高度",
+      "ok": true,
+      "value": "4090 mm",
+      "note": ""
+    },
+    {
+      "group": "動線",
+      "name": "D3 門開啟範圍",
+      "ok": true,
+      "value": "淨空 ≥ 100 mm",
+      "note": ""
+    },
+    {
+      "group": "動線",
+      "name": "D2 門開啟範圍",
+      "ok": true,
+      "value": "淨空 ≥ 100 mm",
+      "note": ""
+    },
+    {
+      "group": "動線",
+      "name": "人員通道（更衣室→產線）",
+      "ok": true,
+      "value": "寬 1130 mm；與 AGV 共用段設警示",
+      "note": ""
+    },
+    {
+      "group": "動線",
+      "name": "散桶入庫門（西牆）",
+      "ok": true,
+      "value": "寬 1700 mm（推車＋桶 ≥ 1500）",
+      "note": ""
+    },
+    {
+      "group": "配置",
+      "name": "設備都在牆內",
+      "ok": true,
+      "value": "18 項",
+      "note": ""
+    },
+    {
+      "group": "配置",
+      "name": "設備外框互不重疊",
+      "ok": true,
+      "value": "通過",
+      "note": ""
+    },
+    {
+      "group": "配置",
+      "name": "龍門伸縮 Z 軸頂端",
+      "ok": true,
+      "value": "3750 mm（兩段伸縮）",
+      "note": ""
+    },
+    {
+      "group": "清洗",
+      "name": "手臂取放點水平距離",
+      "ok": true,
+      "value": "最遠 2158 mm（型錄伸展 2655）",
+      "note": ""
+    },
+    {
+      "group": "清洗",
+      "name": "手臂負載（桶＋20 L 水）",
+      "ok": true,
+      "value": "91/165 kg、J5 471/921 N·m、J6 84/461 N·m；最多可裝約 80 L",
+      "note": ""
+    }
+  ],
+  "seconds": 0
+}
