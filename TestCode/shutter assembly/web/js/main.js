@@ -8,8 +8,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { createVisionOverlay } from '@core/ui/vision-overlay.js';
-import { createStation } from './station.js';
-import { createSequence, smooth, STATIONS, SPEC, OFFSETS } from './sequence.js';
+import { createProject } from './project.js';
+import { smooth, STATIONS, SPEC, OFFSETS } from './sequence.js';
 import { LAYOUT, NEST_SEAT, TRAYS } from './cell.js';
 import { BLADES, PART } from './product.js';
 import { TOOL, SCARA } from './robot.js';
@@ -55,14 +55,13 @@ Object.assign(taskLight.shadow.camera, { left: -28, right: 28, top: 28, bottom: 
 taskLight.shadow.bias = -.00001; taskLight.shadow.normalBias = .004;
 scene.add(taskLight, taskLight.target);
 
-// ---------------------------------------------------------------- 物件
-const st = createStation(scene, { ng: NG });
-const { cell, robot } = st;
+// ---------------------------------------------------------------- 物件（與 core 統一檢查共用 project.js）
+const project = createProject({ scene, ng: NG });
+const { st, cell, robot, sequence } = project;
 const ui = Object.fromEntries(['action', 'substep', 'forceBar', 'forceVal', 'forceLim', 'zoneDot', 'zoneTxt', 'checklist', 'chkCount', 'playBtn', 'restartBtn', 'speed', 'speedVal', 'showPath', 'progBar', 'clock', 'timeline', 'stepSelect', 'previous', 'next', 'signals', 'poseError', 'phase', 'result', 'exportBtn', 'showGuards', 'showLabels', 'showPip', 'cycleTime', 'units', 'okCount', 'pipFrame', 'pipResult', 'pipTitle', 'stations', 'drawerNote'].map(id => [id, document.getElementById(id)]));
 ui.result.value = NG ? 'NG' : 'OK';
 ui.result.onchange = () => { const q = new URLSearchParams(location.search); q.set('result', ui.result.value); q.delete('step'); q.delete('st'); location.search = q.toString(); };
 ui.forceLim.textContent = `設定 ${SPEC.pressForce} N・上限 ${SPEC.forceLimit} N`;
-cell.setDrawers(0x3dd68c, 0x4aa8ff);
 ui.drawerNote.textContent = '抽屜 A 供料中｜B 滿料待命（可拉出換盤）';
 
 // 手臂 TCP 軌跡
@@ -93,8 +92,7 @@ STATIONS.forEach((name, i) => { const b = document.createElement('button'); b.cl
 
 // ---------------------------------------------------------------- 時間軸
 let S, playing = !qp.has('pause'), T = 0, speed = 1, current, waiting = 0, fault = '', curStation = -1;
-const sequence = createSequence({ robot, apply: s => { S = s; st.apply(s); }, ng: NG });
-const total = sequence.total, stationStart = sequence.stationStart;
+const total = project.total, stationStart = sequence.stationStart;
 ui.timeline.max = total;
 const shots = sequence.steps.filter(s => s.exposure).length;
 ui.cycleTime.textContent = `規劃 ${total.toFixed(1)} s／顆＋到位等待 · 取像 ${shots} 次${NG ? ' · 含一次疊片剔除重取' : ''}`;
@@ -137,8 +135,10 @@ function setView(name, instant = false) {
 }
 document.querySelectorAll('.views button').forEach(b => b.onclick = () => setView(b.dataset.view));
 function seekTo(sec, snap = true) {
-  T = Number.isFinite(sec) ? THREE.MathUtils.clamp(sec, 0, total) : 0; current = sequence.sample(T);
-  if (snap) robot.snap(); st.sync(); waiting = 0; fault = ''; trailCount = 0; trailGeo.setDrawRange(0, 0);
+  T = Number.isFinite(sec) ? THREE.MathUtils.clamp(sec, 0, total) : 0;
+  // 跳播：整個場景由 project.apply(T) 決定（與檢查相同）；snap=false 只換流程狀態、手臂保持原姿態
+  if (snap) current = project.apply(T); else { current = sequence.sample(T); st.sync(); }
+  S = current.state; waiting = 0; fault = ''; trailCount = 0; trailGeo.setDrawRange(0, 0);
   ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放'; render();
 }
 ui.playBtn.onclick = () => { if (T >= total || fault) seekTo(fault ? T : 0); playing = !playing; fault = ''; waiting = 0; ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放'; };
@@ -251,7 +251,7 @@ function tick(dt) {
   else {
     waiting = 0;
     if (T >= total - 1e-7) { playing = false; ui.playBtn.textContent = '▶ 播放'; }
-    else { T = T >= end - 1e-7 ? Math.min(total, end + 1e-6) : Math.min(end, T + dt); current = sequence.sample(T >= end - 1e-7 && T <= end ? Math.max(s.start, end - 1e-8) : T); }
+    else { T = T >= end - 1e-7 ? Math.min(total, end + 1e-6) : Math.min(end, T + dt); current = sequence.sample(T >= end - 1e-7 && T <= end ? Math.max(s.start, end - 1e-8) : T); S = current.state; }
   }
   robot.update(dt); st.sync();
 }
@@ -268,8 +268,8 @@ function frame() {
   if (camAnim) { camAnim.u = Math.min(1, camAnim.u + dt * 1.4); camera.position.lerpVectors(camAnim.p0, camAnim.p, smooth(camAnim.u)); controls.target.lerpVectors(camAnim.t0, camAnim.t, smooth(camAnim.u)); if (camAnim.u === 1) camAnim = null; }
   controls.update(); render();
 }
-current = sequence.sample(0); robot.snap(); st.sync(); lastBase.copy(st.pose('base').p); setView('iso', true); resize(); ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放';
-window.sim = { seekTo, pause() { playing = false; ui.playBtn.textContent = '▶ 播放'; }, play() { playing = true; ui.playBtn.textContent = '⏸ 暫停'; }, get state() { return S; }, robot, total, stationStart, steps: sequence.steps, setView, ng: NG, trays: TRAYS, scara: SCARA, part: PART };
+current = project.apply(0); S = current.state; lastBase.copy(st.pose('base').p); setView('iso', true); resize(); ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放';
+window.sim = { seekTo, views: Object.keys(views), pause() { playing = false; ui.playBtn.textContent = '▶ 播放'; }, play() { playing = true; ui.playBtn.textContent = '⏸ 暫停'; }, get state() { return S; }, robot, total, stationStart, steps: sequence.steps, setView, ng: NG, trays: TRAYS, scara: SCARA, part: PART };
 if (qp.has('st')) { playing = false; const station = THREE.MathUtils.clamp(+qp.get('st') || 0, 0, STATIONS.length - 1); seekTo(qp.has('t') ? stationStart[station] + (+qp.get('t') || 0) : stationPreviewTime(sequence, station)); }
 if (qp.has('step')) { playing = false; seekTo(sequence.steps[THREE.MathUtils.clamp(+qp.get('step') || 0, 0, sequence.steps.length - 1)].start + (+qp.get('t') || 0)); }
 if (qp.has('time')) { playing = false; seekTo(+qp.get('time')); }

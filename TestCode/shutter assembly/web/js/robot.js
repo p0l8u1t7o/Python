@@ -46,12 +46,13 @@ export function createRobot() {
   const root = new THREE.Group(); root.name = 'robot';
   const { L1, L2, colH, arm1H, arm2H } = SCARA;
   // ---- 基座柱 ----
-  const column = bevelBox(200, colH, 240, matArm, 8); column.position.set(0, colH / 2, -30); root.add(column);
+  // 柱底埋在底板內 1 mm 起算，柱底面不與底板底面重合（閃爍）
+  const column = bevelBox(200, colH - 1, 240, matArm, 8); column.position.set(0, (colH + 1) / 2, -30); root.add(column);
   block(root, [230, 12, 270], [0, 6, -30], matArmD);
-  for (const x of [-100, 100]) for (const z of [-150, 90]) screw(root, [x, 12.3, z], 4);
-  decal(root, 120, 34, [0, colH - 70, 90.2], [0, 0, 0], 'DENSO', { color: '#c8102e', center: true, bold: true });
-  decal(root, 110, 26, [0, colH - 120, 90.2], [0, 0, 0], 'HSR065', { color: '#59616b', center: true });
-  tube(root, [[0, 60, -150], [0, 40, -210], [0, 30, -280]], 14, matArmD);
+  for (const x of [-100, 100]) for (const z of [-150, 90]) screw(root, [x, 12.4, z], 4);
+  decal(root, 120, 34, [0, colH - 70, 90.8], [0, 0, 0], 'DENSO', { color: '#c8102e', center: true, bold: true });
+  decal(root, 110, 26, [0, colH - 120, 90.8], [0, 0, 0], 'HSR065', { color: '#59616b', center: true });
+  tube(root, [[0, 60, -150], [0, 40, -210], [0, 30, -280]], 14, matArmD).name = 'robot rear cable outlet';
   const armParts = [column];
   // ---- J1、第一臂 ----
   const j1 = new THREE.Group(); j1.position.y = colH; root.add(j1);
@@ -70,7 +71,7 @@ export function createRobot() {
   // ---- 花鍵軸（J3 上下、J4 旋轉）----
   const shaft = new THREE.Group(); shaft.position.set(0, 0, L2); j2.add(shaft);
   const spline = new THREE.Mesh(new THREE.CylinderGeometry(10, 10, 400, 24), matShaft); spline.position.y = 200; shaft.add(spline);
-  const stopper = cylinder(shaft, 14, 10, [0, 395, 0], matJoint, 'y', 24);
+  const stopper = cylinder(shaft, 14, 10, [0, 395.8, 0], matJoint, 'y', 24);   // 頂面高出花鍵軸端 0.8 mm，不重合
   const bellow = new THREE.Mesh(new THREE.CylinderGeometry(15, 15, 60, 20), matJoint); bellow.position.set(0, 0, 0); j2.add(bellow); bellow.position.set(0, -30, L2);
   armParts.push(spline, stopper);
   // ---- 工具頭（隨 J4 旋轉）----
@@ -78,7 +79,7 @@ export function createRobot() {
   cylinder(tool, 22, 10, [0, -5, 0], matJoint, 'y', 28);
   const plate = block(tool, [108, 8, 100], [0, -14, -18], matTool); plate.name = 'tool-plate';
   for (const x of [-46, 46]) for (const z of [-60, 24]) screw(tool, [x, -9.7, z], 2.2);
-  decal(tool, 40, 10, [0, -9.8, 20], [-Math.PI / 2, 0, 0], 'EOAT', { color: '#2b3540', center: true });
+  decal(tool, 40, 10, [0, -9.3, 20], [-Math.PI / 2, 0, 0], 'EOAT', { color: '#2b3540', center: true });
   const slides = {}, contact = [];
   function slide(key, bodyColor = matBlueAnod) {
     const { x, z } = TOOL[key], g = new THREE.Group(); g.position.set(x, 0, z); tool.add(g);
@@ -127,7 +128,7 @@ export function createRobot() {
   // T3 本體夾爪：平行夾爪，ESD 夾指夾本體 ±z 側面
   const t3 = slide('T3', matAnod);
   block(t3, [26, 14, 18], [0, -65, 0], matBlueAnod);
-  decal(t3, 16, 5, [0, -65, 9.05], [0, 0, 0], 'GRIP', { color: '#d6e1ea', center: true });
+  decal(t3, 16, 5, [0, -65, 9.7], [0, 0, 0], 'GRIP', { color: '#d6e1ea', center: true });
   const fingers = [];
   for (const s of [-1, 1]) {
     const f = new THREE.Group(); t3.add(f);
@@ -138,11 +139,11 @@ export function createRobot() {
   // 下視相機：5MP 相機＋20 mm 鏡頭＋環形光（固定，不伸縮）
   const cam = new THREE.Group(); cam.position.set(TOOL.cam.x, 0, TOOL.cam.z); tool.add(cam);
   const camBody = block(cam, [29, 29, 29], [0, -32, 0], matArmD);
-  decal(cam, 22, 8, [0, -32, 14.55], [0, 0, 0], '5 MP', { color: '#c5d0d8', center: true });
+  decal(cam, 22, 8, [0, -32, 15.2], [0, 0, 0], '5 MP', { color: '#c5d0d8', center: true });
   cylinder(cam, 9, 12, [0, -52, 0], matJoint, 'y', 20);
   const ringMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.05 });
   const ring = new THREE.Mesh(new THREE.TorusGeometry(12, 2.2, 10, 36), ringMat); ring.rotation.x = Math.PI / 2; ring.position.y = -58; cam.add(ring);
-  const glass = cylinder(cam, 7, .6, [0, -58.2, 0], matGlass, 'y', 20);
+  const glass = cylinder(cam, 7, .6, [0, -58.8, 0], matGlass, 'y', 20);   // 保護玻璃凸出鏡頭端面 1.1 mm
   tube(cam, [[0, -20, -12], [0, -14, -24], [10, -8, -40]], 2, matJoint, 12);
   const flash = new THREE.SpotLight(0xffffff, 0, 300, 0.6, 0.6, 1); flash.position.set(0, -60, 0); flash.target.position.set(0, -200, 0); cam.add(flash, flash.target);
   // 子畫面用相機：IMX264 2/3"（8.45 × 7.07 mm）＋20 mm
@@ -159,7 +160,8 @@ export function createRobot() {
   cable(j2,'SCARA / forearm fixed sleeve',[[0,70,60],[0,94,95],[0,94,140],[0,70,165]],{radius:4,color:CABLE.sleeve,clips:1});
   const zHarness=carrier(j2,'SCARA / Z service carrier',{origin:[90,40,L2],axis:[0,1,0],rise:[1,0,0],min:-440,max:0,radius:25,width:20,pitch:12});
   support(j2,'SCARA / fixed guide mount',[60,100,L2],[79,100,L2],5);
-  cable(shaft,'SCARA / Z return to rotary inlet',[[140,0,0],[95,16,0],[40,20,0],[15,20,0]],{radius:3,color:CABLE.sleeve,backing:{offset:[0,0,14],feet:[[0,[15,30,0]],[3,[10,20,0]]],radius:4}});
+  // 線材起點在拖鏈活動端固定座（寬 26 mm）內；背撐軌偏 18 mm，軌與腳座不穿過固定座
+  cable(shaft,'SCARA / Z return to rotary inlet',[[140,0,0],[95,16,0],[40,20,0],[15,20,0]],{radius:3,color:CABLE.sleeve,backing:{offset:[0,0,18],feet:[[0,[15,30,0]],[3,[10,20,0]]],radius:4}});
   cable(tool,'CAM / rear connector',[[40,-10,-64],[40,-23,-75],[20,-32,-72],[0,-32,-60.5]],{radius:1.8,color:CABLE.signal});
   for(const x of [-36,0,36])cable(tool,'AIR / slide '+x,[[x,-18,18],[x,-29,27],[x,-44,26],[x,-48,11]],{radius:1.4,color:CABLE.air,clips:1});
 

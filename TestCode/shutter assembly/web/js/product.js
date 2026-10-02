@@ -122,14 +122,15 @@ export function createBase() {
   // 黑色底板（葉片滑動面）：葉片腔形狀，含光圈
   const floorShape = roundRectPath(...B.chamber, THREE.Shape); floorShape.holes.push(roundRectPath(...B.aperture));
   coils.forEach(({x,z}) => floorShape.holes.push(windowPath(x,z,8.7,1.7,.25)));
-  g.add(extrude(floorShape, -B.depth - 0.04, -B.depth, matFloor, 12));
+  // 底面比上層框底面高 0.01 mm：兩個底面重合會深度互搶（隱藏面，但仍是重合面）
+  g.add(extrude(floorShape, -B.depth - 0.03, -B.depth, matFloor, 12));
   // 上層框：外框減葉片腔
   const rim = toShape(clipRelief(8.85)); rim.holes.push(roundRectPath(...B.chamber)); corners.forEach(([x, z]) => rim.holes.push(circlePath(x, z, hr)));
   g.add(extrude(rim, -B.depth - 0.04, 0, matBase, 12));
   // 轉子座、樞軸銷、撥桿銷
   for (const key of ['P1', 'P2']) {
     const P = PART.pivots[key], D = drivePin(key);
-    cyl(g, 1.55, -B.depth - 0.005, -B.depth + 0.005, P.x, P.z, matRotor, 24);
+    cyl(g, 1.55, -B.depth - 0.01, -B.depth + 0.01, P.x, P.z, matRotor, 24);   // 頂面高出底板 0.01 mm，仍在最低葉片底面（−0.58）之下
     cyl(g, PART.pin.pivotR, -B.depth, PART.pin.pivotTop, P.x, P.z, matPin, 16).name = 'pivot-' + key;
     cyl(g, PART.pin.driveR, -B.depth, PART.pin.driveTop, D.x, D.z, matPin, 14).name = 'drive-' + key;
     const bearing = new THREE.Mesh(new THREE.TorusGeometry(1.13,.10,6,28),matCut);
@@ -152,7 +153,8 @@ export function createBase() {
     const h = new THREE.Mesh(new THREE.CircleGeometry(0.42, 16), matFloor); h.position.set(x, y, 0); h.rotation.y = x > 0 ? Math.PI / 2 : -Math.PI / 2; g.add(h);
   }
   // 線圈座（−x 側）與紅黑導線、白色端子
-  const terminal = new THREE.Mesh(new THREE.BoxGeometry(1.6, 2.2, 5.0), matRotor); terminal.position.set(-B.w / 2 - 0.5, -2.2, 2.8); g.add(terminal);
+  // 線圈座頂面在 −1.48：上蓋 −x 側卡勾（底端 −1.45）壓合到底時從上方經過，不壓入線圈座
+  const terminal = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.82, 5.0), matRotor); terminal.position.set(-B.w / 2 - 0.5, -2.39, 2.8); g.add(terminal);
   for(const z of [2.2,3.4]) {
     const pad = new THREE.Mesh(new THREE.SphereGeometry(.37,12,8),matPin);
     pad.scale.set(.55,.8,1); pad.position.set(-B.w/2-1.28,-2.2,z); g.add(pad);
@@ -172,7 +174,7 @@ export function createBase() {
   const conn = new THREE.Mesh(new THREE.BoxGeometry(3.2, 2.4, 4.2), matConn); conn.position.set(-15.8,-2.7,6.8); conn.name='harness-connector';g.add(conn);
   for(const x of [-16.55,-15.05]) {
     const socket = new THREE.Mesh(new THREE.PlaneGeometry(.95,1.2),matBlack);
-    socket.position.set(x,-2.7,8.905); g.add(socket);
+    socket.position.set(x,-2.7,8.915); g.add(socket);   // 離接頭端面 0.015 mm，不重合
   }
   return g;
 }

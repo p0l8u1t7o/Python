@@ -1,0 +1,24 @@
+{
+  "ok": true,
+  "variants": [
+    {
+      "variant": "預設",
+      "params": {},
+      "ok": true,
+      "count": 0,
+      "failures": [],
+      "rows": []
+    },
+    {
+      "variant": "NG",
+      "params": {
+        "ng": true
+      },
+      "ok": true,
+      "count": 0,
+      "failures": [],
+      "rows": []
+    }
+  ],
+  "seconds": 1.4
+}

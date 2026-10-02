@@ -60,7 +60,7 @@ node ../core/tools/serve.mjs "shutter assembly" --no-open
 - `?pause&time=20.1&view=nest`：壓合瞬間；`time` 為流程秒數。
 - `?cameraSize=large`、`?shadow=0`、`cam=x,y,z,tx,ty,tz`。
 
-主控台：`window.sim.seekTo(sec)`、`pause()`、`play()`、`setView(name)`、`steps`。
+主控台：`window.sim.seekTo(sec)`、`pause()`、`play()`、`setView(name)`、`views`（視角名稱）、`total`、`steps`。
 
 ## 建模
 
@@ -111,18 +111,22 @@ GitHub 首頁與五專案發布設定：[static.yml](../tools/github-pages/stati
 | `web/js/robot.js` | HSR065、三工具頭、下視相機、解析逆解與關節規劃 |
 | `web/js/sequence.js` | 單顆組裝流程、料件偏移與補正、時間重排、狀態取樣 |
 | `web/js/station.js` | 組裝整站、依歸屬擺放零件（畫面與驗證共用） |
-| `web/js/main.js` | 場景、UI、相機子畫面、紀錄匯出 |
+| `web/js/project.js` | 專案介面 `createProject({ scene })`：建立整站與流程，`apply(t)` 把整個場景放到時間 t；網頁與 core 統一檢查共用（`?result=NG` 對應 `ng: true`） |
+| `web/js/main.js` | 場景燈光、UI、相機子畫面、紀錄匯出；設備與時間軸取自 `project.js` |
 | `web/js/vision-results.js` | 相機標記（孔位、疊片、銷位、成品） |
-| `tools/verify.mjs` | 驗證 |
+| `tools/verify.mjs`、`verify-physics.mjs`、`verify-product-detail.mjs` | 專案自有驗證（流程、物理、產品細節） |
 | `tools/build_cost_estimate.py` | 產生成本試算表 |
 
 ## 驗證
 
-需要 Node.js 22 以上，不需 npm 套件：
+需要 Node.js 22 以上，不需 npm 套件。全部檢查（import 路徑、倒序一致、全場干涉與重合面，加上 `project.json` 列的專案驗證）：
 
 ```powershell
-node --import ../core/tools/register.mjs tools/verify.mjs
+node ../core/tools/check.mjs shutter          # 在本資料夾；在 TestCode 則為 node core/tools/check.mjs shutter
+node --import ../core/tools/register.mjs tools/verify.mjs   # 只跑流程驗證
 ```
+
+全場檢查結果在 `review/scene-verification.txt`。目前只剩產品內部（本體各層、0.06 mm 葉片疊片、0.2 mm 上蓋）的重合面：core 的 0.6 mm 重合面與 2 mm 穿插門檻是設備尺度，不適用這些零件的實際間隙（0.02～0.3 mm）；產品配合由下列專案驗證以 0.005 mm 檢查。
 
 正常與疊片 NG 兩種情境都檢查：
 - 全部步驟代表時刻的 TCP 可達性（PTP 步驟檢查終點）與關節限位；兩個抽屜 576 個取料位置（每格取料高度＋移動高度）全部搆得到，最小關節餘裕 7.6（° 或 mm）。

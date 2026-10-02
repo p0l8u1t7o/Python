@@ -10,5 +10,13 @@
       "tools/verify-physics.mjs",
       "tools/verify-product-detail.mjs"
     ]
-  }
+  },
+  "variants": [
+    {
+      "name": "NG",
+      "params": {
+        "ng": true
+      }
+    }
+  ]
 }

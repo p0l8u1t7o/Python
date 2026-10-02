@@ -1,0 +1,78 @@
+{
+  "ok": true,
+  "variants": [
+    {
+      "variant": "預設",
+      "params": {},
+      "ok": true,
+      "meshes": 1109,
+      "moving": 178,
+      "joints": 23,
+      "samples": 403,
+      "dt": 0.059,
+      "total": 23.760000000000012,
+      "dynamic": [],
+      "static": [],
+      "zfight": [],
+      "envelope": {},
+      "allowances": [
+        "同一剛體或直接相連的關節（導軌、滑座、轉軸裝在上游零件上）",
+        "伸縮連桿（鏈條、活塞桿等長度會變的零件）與同一載體上的零件相接",
+        "線材（core/electrical cable）端點接入接頭、端子或格蘭頭；線材沿線間隙由各專案的配線檢查負責",
+        "線夾、格蘭頭、護套、支撐柱等小型配線五金（userData.routingHardware）夾在安裝面上",
+        "套筒式伸縮軸：外管與內管標記為 nested",
+        "移動件在指定導軌上滑行（導軌 userData.guide，移動件 userData.on）",
+        "工具尖端（夾指、吸盤，userData.contact）伸入吸塑盤格孔取放料；片材的外框 OBB 把格孔開口也算成實體，實際杯壁與工具的間隙由 tools/verify-physics.mjs 逐格檢查",
+        "葉片放進本體葉片腔、套在樞軸銷上（已放下，或放料步驟中仍由吸嘴吸著）：只放行葉片對本體擠出層；葉片對本體實際輪廓由 tools/verify-product-detail.mjs 逐頂點檢查，孔位對銷由 tools/verify.mjs 以 0.005 mm 檢查",
+        "上蓋放上本體（已放下，或放上步驟中仍由吸盤吸著），卡勾與折彎橋落在本體側邊避讓槽內：只放行上蓋對本體擠出層；卡勾接近到扣合的 201 個位置由 tools/verify-product-detail.mjs 逐頂點檢查",
+        "接近、接觸步驟中工具尖端（T1 吸嘴墊等，userData.contact）伸進本體葉片腔開口放料；吸嘴墊離腔壁約 0.5 mm"
+      ],
+      "thresholds": {
+        "product": {
+          "tol": 0.01,
+          "dist": 0.008,
+          "area": 1
+        }
+      },
+      "scope": "OBB 分離軸（穿插門檻 2 mm，可依模組調整，圓柱為保守外框、曲面以頂點複核）；動態每 0.059 s 取樣；重合面檢查盒、倒角外殼、圓柱端面與平面，距離 < 0.6 mm、重疊 > 25 mm²、外觀不同者，取 11 個時刻。不是連續碰撞證明。"
+    },
+    {
+      "variant": "NG",
+      "params": {
+        "ng": true
+      },
+      "ok": true,
+      "meshes": 1111,
+      "moving": 180,
+      "joints": 24,
+      "samples": 398,
+      "dt": 0.067,
+      "total": 26.608628743312256,
+      "dynamic": [],
+      "static": [],
+      "zfight": [],
+      "envelope": {},
+      "allowances": [
+        "同一剛體或直接相連的關節（導軌、滑座、轉軸裝在上游零件上）",
+        "伸縮連桿（鏈條、活塞桿等長度會變的零件）與同一載體上的零件相接",
+        "線材（core/electrical cable）端點接入接頭、端子或格蘭頭；線材沿線間隙由各專案的配線檢查負責",
+        "線夾、格蘭頭、護套、支撐柱等小型配線五金（userData.routingHardware）夾在安裝面上",
+        "套筒式伸縮軸：外管與內管標記為 nested",
+        "移動件在指定導軌上滑行（導軌 userData.guide，移動件 userData.on）",
+        "工具尖端（夾指、吸盤，userData.contact）伸入吸塑盤格孔取放料；片材的外框 OBB 把格孔開口也算成實體，實際杯壁與工具的間隙由 tools/verify-physics.mjs 逐格檢查",
+        "葉片放進本體葉片腔、套在樞軸銷上（已放下，或放料步驟中仍由吸嘴吸著）：只放行葉片對本體擠出層；葉片對本體實際輪廓由 tools/verify-product-detail.mjs 逐頂點檢查，孔位對銷由 tools/verify.mjs 以 0.005 mm 檢查",
+        "上蓋放上本體（已放下，或放上步驟中仍由吸盤吸著），卡勾與折彎橋落在本體側邊避讓槽內：只放行上蓋對本體擠出層；卡勾接近到扣合的 201 個位置由 tools/verify-product-detail.mjs 逐頂點檢查",
+        "接近、接觸步驟中工具尖端（T1 吸嘴墊等，userData.contact）伸進本體葉片腔開口放料；吸嘴墊離腔壁約 0.5 mm"
+      ],
+      "thresholds": {
+        "product": {
+          "tol": 0.01,
+          "dist": 0.008,
+          "area": 1
+        }
+      },
+      "scope": "OBB 分離軸（穿插門檻 2 mm，可依模組調整，圓柱為保守外框、曲面以頂點複核）；動態每 0.067 s 取樣；重合面檢查盒、倒角外殼、圓柱端面與平面，距離 < 0.6 mm、重疊 > 25 mm²、外觀不同者，取 11 個時刻。不是連續碰撞證明。"
+    }
+  ],
+  "seconds": 23.9
+}

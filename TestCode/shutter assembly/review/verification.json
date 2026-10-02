@@ -1,5 +1,5 @@
 {
-  "date": "2026-09-27",
+  "date": "2026-10-02",
   "report": [
     {
       "mode": "OK",
@@ -68,7 +68,7 @@
       "framing": [
         {
           "shot": "down:pins",
-          "maxNdc": 0.903
+          "maxNdc": 0.904
         },
         {
           "shot": "up:S1",
@@ -80,7 +80,7 @@
         },
         {
           "shot": "down:checkS",
-          "maxNdc": 0.903
+          "maxNdc": 0.904
         },
         {
           "shot": "up:L1",
@@ -92,7 +92,7 @@
         },
         {
           "shot": "down:checkL",
-          "maxNdc": 0.903
+          "maxNdc": 0.904
         },
         {
           "shot": "up:cover",
@@ -100,7 +100,7 @@
         },
         {
           "shot": "down:final",
-          "maxNdc": 0.903
+          "maxNdc": 0.904
         }
       ]
     },
@@ -178,7 +178,7 @@
       "framing": [
         {
           "shot": "down:pins",
-          "maxNdc": 0.903
+          "maxNdc": 0.904
         },
         {
           "shot": "up:S1",
@@ -190,7 +190,7 @@
         },
         {
           "shot": "down:checkS",
-          "maxNdc": 0.903
+          "maxNdc": 0.904
         },
         {
           "shot": "up:L1",
@@ -206,7 +206,7 @@
         },
         {
           "shot": "down:checkL",
-          "maxNdc": 0.903
+          "maxNdc": 0.904
         },
         {
           "shot": "up:cover",
@@ -214,7 +214,7 @@
         },
         {
           "shot": "down:final",
-          "maxNdc": 0.903
+          "maxNdc": 0.904
         }
       ]
     },
