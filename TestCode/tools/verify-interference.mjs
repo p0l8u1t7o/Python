@@ -1,4 +1,5 @@
 // Run from any directory with Node.js 22+. No npm packages required.
+import { REGISTER } from '../core/tools/run.mjs';
 import { spawn } from 'node:child_process';
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
@@ -29,14 +30,14 @@ async function sourceHash(project) {
     }
   }
   await walk(join(root, project, 'web', 'js')); await walk(join(root, project, 'tools'));
-  files.push(join(root, 'tools', 'geometry-clearance.mjs'),join(root,project,'web','vendor','three.module.js'));
+  files.push(join(root, 'tools', 'geometry-clearance.mjs'),join(root,'core','vendor','three.module.js'));
   for (const path of files.sort()) hash.update(relative(root, path)).update(await readFile(path));
   return hash.digest('hex');
 }
 async function run(project, script) {
   const start = Date.now();
   const result = await new Promise(resolve => {
-    const child = spawn(process.execPath, ['--no-warnings', '--experimental-loader', './tools/three-loader.mjs', './tools/' + script],
+    const child = spawn(process.execPath, ['--no-warnings', '--import', REGISTER, './tools/' + script],
       { cwd: join(root, project), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '', stderr = '', settled = false;
     child.stdout.on('data', chunk => { stdout += chunk; }); child.stderr.on('data', chunk => { stderr += chunk; });

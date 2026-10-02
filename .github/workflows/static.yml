@@ -1,5 +1,8 @@
 name: Publish 3D demos to GitHub Pages
 
+# TestCode 底下每個有 web/index.html 的資料夾都是一個展示專案（說明在 project.json）。
+# 先跑快速檢查，沒過就不發佈；網址配置與本機 node TestCode/core/tools/serve.mjs 相同。
+
 on:
   push:
     branches: [main]
@@ -24,60 +27,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Collect the demos and create a homepage
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          import os
-          import shutil
-          from pathlib import Path
-          from urllib.parse import quote
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
 
-          projects = {
-              "AutomaticAcid-BaseTitration": "自動酸鹼滴定系統",
-              "ChemicalTankWashing": "200L 化學桶自動清洗線",
-              "MilitaryGradePC": "軍規電腦檢測系統",
-              "PCB-CopperAssembly": "PCB 銅箔基板散熱板組裝",
-              "RobotArmPressSSD": "SSD USB 接頭壓合站",
-              "shutter assembly": "快門葉片與上蓋組裝站",
-              "WorkpieceMeasurement": "杯體加工件 AOI 與共焦量測",
-          }
-          sources = {}
-          for name in projects:
-              candidates = [Path("TestCode") / name / "web", Path(name) / "web", Path(name)]
-              source = next((p for p in candidates if (p / "index.html").is_file()), None)
-              if source is None:
-                  raise SystemExit(f"Missing {name}/web/index.html; upload all required web folders first.")
-              sources[name] = source
+      - name: Quick checks
+        run: node TestCode/core/tools/check.mjs --quick
 
-          output = Path(os.environ.get("PAGES_OUTPUT", "_site"))
-          output.mkdir(parents=True, exist_ok=False)
-          for name, source in sources.items():
-              target = output / name
-              target.mkdir()
-              for item in source.iterdir():
-                  if item.is_file() and item.suffix in {".html", ".ico"}:
-                      shutil.copy2(item, target / item.name)
-                  elif item.is_dir() and item.name in {"css", "js", "vendor", "assets"}:
-                      shutil.copytree(item, target / item.name)
-          links = "".join(f'<a href="./{quote(name)}/"><strong>{title}</strong><span>{name}</span></a>' for name, title in projects.items())
-          html = '''<!doctype html>
-          <html lang="zh-Hant"><head><meta charset="utf-8">
-          <meta name="viewport" content="width=device-width,initial-scale=1">
-          <title>自動化設備 3D 展示</title>
-          <style>
-          *{box-sizing:border-box}body{margin:0;background:#101923;color:#eaf3fa;font-family:system-ui,sans-serif}
-          main{max-width:960px;margin:auto;padding:64px 24px}h1{font-size:clamp(28px,5vw,42px)}p{color:#b1c5d6;line-height:1.8}
-          nav{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px;margin-top:32px}
-          a{display:flex;flex-direction:column;gap:16px;padding:28px;border:1px solid #3b5268;border-radius:14px;color:inherit;text-decoration:none;background:#1a2a3a}
-          a:hover,a:focus-visible{border-color:#6edbd4;background:#213a4c}strong{font-size:21px}span{color:#9db8cd;font-size:13px;overflow-wrap:anywhere}
-          </style></head><body><main><h1>自動化設備 3D 展示</h1>
-          <p>選擇專案，探索設備動作、製程流程與模擬相機畫面。<br>本展示為工程模擬，檢測標記不代表實際量測結果。</p>
-          <nav>''' + links + '</nav></main></body></html>'
-          (output / "index.html").write_text(html, encoding="utf-8")
-          (output / ".nojekyll").touch()
-          print(f"Prepared {len(projects)} demos in {output}")
-          PY
+      - name: Build site
+        run: node TestCode/core/tools/build-site.mjs _site
 
       - name: Configure Pages
         uses: actions/configure-pages@v5

@@ -1,0 +1,14 @@
+{
+  "title": "PCB 銅箔基板散熱板組裝",
+  "summary": "雙龍門 4 吸嘴植入散熱銅片，飛越取像對位，±6 mil。",
+  "order": 4,
+  "checks": {
+    "quick": [
+      "tools/verify.mjs"
+    ],
+    "full": [
+      "tools/verify-clearance.mjs",
+      "tools/verify-geometry.mjs"
+    ]
+  }
+}

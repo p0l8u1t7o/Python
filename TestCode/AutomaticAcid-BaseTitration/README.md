@@ -26,12 +26,12 @@
 ## 啟動
 
 ```powershell
-python serve.py
+node ../core/tools/serve.mjs AutomaticAcid-BaseTitration
 # 或不自動開外部瀏覽器
-python serve.py --no-open
+node ../core/tools/serve.mjs AutomaticAcid-BaseTitration --no-open
 ```
 
-開啟 [本地模擬](http://127.0.0.1:8769/)，也可雙擊 `run.bat`。ES module 需 HTTP，請勿直接用 `file://` 開啟 HTML。
+開啟 [本地模擬](http://127.0.0.1:8770/AutomaticAcid-BaseTitration/)，也可雙擊 `run.bat`（所有專案共用 `core/tools/serve.mjs`，首頁 http://127.0.0.1:8770/ 列出全部專案）。ES module 需 HTTP，請勿直接用 `file://` 開啟 HTML。
 
 ## 操作
 
@@ -68,7 +68,7 @@ python serve.py --no-open
 需要 Node.js 22 以上，不需 npm 套件：
 
 ```powershell
-node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify.mjs
+node --import ../core/tools/register.mjs tools/verify.mjs
 ```
 
 檢查項目：
@@ -103,12 +103,12 @@ node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify.m
 
 上方新增「滴定特寫」「液面近看」與「細節示範」選單，直接定位樣品瓶、移液注入、加水、滴液攪拌的時點。設備標籤預設收起，可在右側重新開啟。
 
-預覽：`http://127.0.0.1:8769/?pause&t=300&view=titration`。
+預覽：`http://127.0.0.1:8770/AutomaticAcid-BaseTitration/?pause&t=300&view=titration`。
 
 新增渲染狀態驗證：
 
 ```powershell
-node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-render.mjs
+node --import ../core/tools/register.mjs tools/verify-render.mjs
 ```
 
 涵蓋 12 次滴定的抬頭高度、液面與體積、流束出現／停止、吸頭容量及倒帶後畫面狀態一致性。流束、液滴和波紋是流程示意，並非流體力學或計量模擬。
@@ -118,12 +118,12 @@ node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-r
 - 新增「液面俯拍」，隨當前滴定杯及液位移動；仍可用滑鼠調整觀察角度。
 - 玻璃杯壁與杯口同步形成倒液嘴，杯號貼合圓柱杯壁；避免重複杯口及平面標籤懸浮。
 - 增加進樣器局部陰影、塑膠及不鏽鋼細紋。液位、管路、攪拌與滴液沿用絕對時間狀態，可倒退、暫停、跳站。
-- [液面俯拍](http://127.0.0.1:8769/?pause&t=300&view=meniscus)；此為觀察視角，並非文件已指定的新增工業相機。
+- [液面俯拍](http://127.0.0.1:8770/AutomaticAcid-BaseTitration/?pause&t=300&view=meniscus)；此為觀察視角，並非文件已指定的新增工業相機。
 ## 干涉修正與驗證
 
 本輪干涉位置、幾何／路徑修正及驗證範圍見[四站干涉修正紀錄](../tools/docs/interference-review.md)。
 
-新增驗證：`node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-clearance.mjs`。
+新增驗證：`node --import ../core/tools/register.mjs tools/verify-clearance.mjs`。
 
 
 ## 相機視覺標記

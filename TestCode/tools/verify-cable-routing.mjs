@@ -1,3 +1,4 @@
+import { REGISTER } from '../core/tools/run.mjs';
 import {spawn} from 'node:child_process';
 import {readFile,readdir,mkdir,writeFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
@@ -20,7 +21,7 @@ const startedAt=new Date().toISOString();
 const results=await Promise.all(projects.map(async project=>{
   const before=await hash(project),start=Date.now();
   const code=await new Promise(resolve=>{
-    const child=spawn(process.execPath,['--no-warnings','--experimental-loader','./tools/three-loader.mjs','../tools/verify-cables.mjs',project],{cwd:join(root,project),windowsHide:true,env:{...process.env,CABLE_INTERVAL:'.05'},stdio:['ignore','pipe','pipe']});
+    const child=spawn(process.execPath,['--no-warnings','--import',REGISTER,'../tools/verify-cables.mjs',project],{cwd:join(root,project),windowsHide:true,env:{...process.env,CABLE_INTERVAL:'.05'},stdio:['ignore','pipe','pipe']});
     let output='';child.stdout.on('data',b=>output+=b);child.stderr.on('data',b=>output+=b);
     child.on('error',e=>{output+=e.message;});
     child.on('close',async code=>{await mkdir(join(root,project,'review/checks'),{recursive:true});await writeFile(join(root,project,'review/checks/cables.log'),output);resolve(code);});

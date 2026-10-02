@@ -47,12 +47,12 @@ NG 件仍走完全部量測，資料才完整。ERR 不當成 NG。
 ## 啟動
 
 ```powershell
-python serve.py
+node ../core/tools/serve.mjs WorkpieceMeasurement
 # 或不自動開外部瀏覽器
-python serve.py --no-open
+node ../core/tools/serve.mjs WorkpieceMeasurement --no-open
 ```
 
-開啟 [本地模擬](http://127.0.0.1:8774/)，也可雙擊 `run.bat`。ES module 需要 HTTP，不能直接用 `file://` 開 HTML。
+開啟 [本地模擬](http://127.0.0.1:8770/WorkpieceMeasurement/)，也可雙擊 `run.bat`（所有專案共用 `core/tools/serve.mjs`，首頁 http://127.0.0.1:8770/ 列出全部專案）。ES module 需要 HTTP，不能直接用 `file://` 開 HTML。
 
 ## 操作
 
@@ -169,10 +169,10 @@ CL-3000、CL-S015 ×2、CL-S015N ×2、CL-CV5 ×2、OP-88864 ×1 按同一報價
 
 重建圖面：先 `node WorkpieceMeasurement/tools/export_control_plan.mjs`，再 `python tools/circuit-drawings/render.py WorkpieceMeasurement`（需 reportlab 與中文字型）。成本更新需 Node 的 `@oai/artifact-tool` 及既有 XLSX，可執行 `node WorkpieceMeasurement/tools/update_cost_estimate.mjs`。
 
-細節檢查：`node --experimental-loader ./WorkpieceMeasurement/tools/three-loader.mjs WorkpieceMeasurement/tools/verify-details.mjs`。檢查盤內元件包絡、穿線孔射線、線材有限座標／櫃內轉彎、升降導軌及共焦光纖對C型架間隙；627個狀態通過。其餘線材與全機物件配對、彎曲半徑與原廠端子尚不在認證範圍。
+細節檢查：`node core/tools/run.mjs WorkpieceMeasurement tools/verify-details.mjs`。檢查盤內元件包絡、穿線孔射線、線材有限座標／櫃內轉彎、升降導軌及共焦光纖對C型架間隙；627個狀態通過。其餘線材與全機物件配對、彎曲半徑與原廠端子尚不在認證範圍。
 
 ## 配線物理與干涉更新（2026-09-29）
 
 新增「拖鏈特寫」「光纖整線」視角。X／Z分開採固定長度折返拖鏈，氣管與共焦光纖另設補償環；相機線沿支柱與承架收納，增加端部固定。原X線圈會在動作中伸縮約399 mm，已修正。
 
-[整線設計與選型限制](docs/wiring-plan.md)。`web/js/wiring-plan.js` 是路徑／支架資料，`wiring-render.js` 依同一資料繪製。執行 `node --experimental-loader ./WorkpieceMeasurement/tools/three-loader.mjs WorkpieceMeasurement/tools/verify-wiring.mjs` 可檢查所有15組流程的線長、主要機構、活動線束相互距離與支架干涉；結果在 `review/wiring-verification.json`。原廠光纖彎曲半徑和拖鏈壽命尚待核定。
+[整線設計與選型限制](docs/wiring-plan.md)。`web/js/wiring-plan.js` 是路徑／支架資料，`wiring-render.js` 依同一資料繪製。執行 `node core/tools/run.mjs WorkpieceMeasurement tools/verify-wiring.mjs` 可檢查所有15組流程的線長、主要機構、活動線束相互距離與支架干涉；結果在 `review/wiring-verification.json`。原廠光纖彎曲半徑和拖鏈壽命尚待核定。

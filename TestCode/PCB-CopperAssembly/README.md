@@ -28,12 +28,12 @@
 ## 啟動
 
 ```powershell
-python serve.py
+node ../core/tools/serve.mjs PCB-CopperAssembly
 # 或不自動開外部瀏覽器
-python serve.py --no-open
+node ../core/tools/serve.mjs PCB-CopperAssembly --no-open
 ```
 
-開啟 [本地模擬](http://127.0.0.1:8768/)，也可雙擊 `run.bat`。ES module 需 HTTP，請勿直接用 `file://` 開啟 HTML。
+開啟 [本地模擬](http://127.0.0.1:8770/PCB-CopperAssembly/)，也可雙擊 `run.bat`（所有專案共用 `core/tools/serve.mjs`，首頁 http://127.0.0.1:8770/ 列出全部專案）。ES module 需 HTTP，請勿直接用 `file://` 開啟 HTML。
 
 ## 操作
 
@@ -68,7 +68,7 @@ python serve.py --no-open
 需要 Node.js 22 以上，不需 npm 套件：
 
 ```powershell
-node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify.mjs
+node --import ../core/tools/register.mjs tools/verify.mjs
 ```
 
 兩個機種各檢查一次：
@@ -94,14 +94,14 @@ node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify.m
 - 「基板近看」「孔位細節」及右側孔位選單可觀察每一孔。「空孔／放入中／放入後」直接定位該孔的動畫時點。近看視角會跟隨基板輸送。
 - 相機影像維持 3:2 比例，標題與結果列放在影像外。
 
-預覽：`http://127.0.0.1:8768/?pause&t=20&view=hole`；圓片加上 `&recipe=round-72`。`hole=23` 可指定第 23 孔。
+預覽：`http://127.0.0.1:8770/PCB-CopperAssembly/?pause&t=20&view=hole`；圓片加上 `&recipe=round-72`。`hole=23` 可指定第 23 孔。
 
 350×350 mm 是用戶給定的板面尺寸；其餘現有配方尺寸仍為示意。銅箔單層 0.035 mm、長條孔圓角 R0.85、長條散熱片圓角 R0.65、散熱片倒角 0.045 mm 是本次外觀假設，沒有從照片推定為實測值。刮痕、色澤分布也是程序化外觀，不代表實際缺陷；紅藍手寫檢查記號不作為自動檢查結果。
 
 幾何回歸驗證（兩種配方）：
 
 ```powershell
-node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-geometry.mjs
+node --import ../core/tools/register.mjs tools/verify-geometry.mjs
 ```
 
 檢查倒角後尺寸、空孔可看到黏紙、板面與散熱片高度、逐顆顯示／倒帶及近拍時的模型裁切範圍。視覺比對截圖保存在 `review/`。
@@ -112,12 +112,12 @@ node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-g
 - 孔位圓圈改為預設關閉的「孔位輔助標記」，且永遠不進入相機影像。
 - 仰視相機只在當前取像時間顯示該幀偏移；其他時間顯示等待訊息，不再把舊量測配上即時影像。自動切換加入 B 頭飛越及 S3 曝光。
 - 鋁件及烤漆外殼補上離線生成的細紋與粗糙度。
-- [飛越取像](http://127.0.0.1:8768/?pause&t=1.098526&pip=upA&cameraSize=large)。
+- [飛越取像](http://127.0.0.1:8770/PCB-CopperAssembly/?pause&t=1.098526&pip=upA&cameraSize=large)。
 ## 干涉修正與驗證
 
 本輪干涉位置、幾何／路徑修正及驗證範圍見[四站干涉修正紀錄](../tools/docs/interference-review.md)。
 
-新增驗證：`node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-clearance.mjs`。
+新增驗證：`node --import ../core/tools/register.mjs tools/verify-clearance.mjs`。
 
 
 ## 相機視覺標記

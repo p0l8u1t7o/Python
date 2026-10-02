@@ -1,4 +1,4 @@
-// node --experimental-loader ./WorkpieceMeasurement/tools/three-loader.mjs WorkpieceMeasurement/tools/verify-details.mjs
+// node core/tools/run.mjs WorkpieceMeasurement tools/verify-details.mjs
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import * as THREE from 'three';

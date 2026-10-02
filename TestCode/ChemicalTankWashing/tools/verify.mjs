@@ -1,5 +1,5 @@
 // 動畫幾何驗證（不需瀏覽器）：
-//   node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify.mjs
+//   node --import ../core/tools/register.mjs tools/verify.mjs
 // 涵蓋：空間檢核、手臂可達性／關節限位／關節速度、手臂連桿與夾持桶對沖洗站／輸送／圍籬的干涉、
 // 桶與桶互不重疊、AGV 車身與棧板對牆／柱／貨架／龍門柱的干涉、交接瞬間的跳動、倒退跳轉一致性。
 // 以 0.05 s 取樣，屬於有限取樣檢查，不是連續碰撞證明。

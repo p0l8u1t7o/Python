@@ -1,3 +1,3 @@
 @echo off
 cd /d "%~dp0"
-python serve.py
+node "..\core\tools\serve.mjs" "AutomaticAcid-BaseTitration"

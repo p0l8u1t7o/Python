@@ -1,12 +1,12 @@
 // npm install playwright && npx playwright install chromium
-// python serve.py --no-open ; node tools/capture_video.js (in a second terminal)
+// node ../core/tools/serve.mjs MilitaryGradePC --no-open ; node tools/capture_video.js (in a second terminal)
 // FPS, URL, OUT, CHROME_PATH may be supplied through environment variables.
 const {chromium}=require('playwright');
 const fs=require('node:fs');
 const path=require('node:path');
 const FPS=Number(process.env.FPS||30);
 const OUT=process.env.OUT||path.join(__dirname,'..','frames-'+new Date().toISOString().replace(/[:.]/g,'-'));
-const URL=process.env.URL||'http://127.0.0.1:8765/?capture=1';
+const URL=process.env.URL||'http://127.0.0.1:8770/MilitaryGradePC/?capture=1';
 (async()=>{
   if(!Number.isFinite(FPS)||FPS<=0||FPS>120)throw Error('FPS must be in (0, 120]');
   if(fs.existsSync(OUT)&&fs.readdirSync(OUT).length)throw Error('OUT must be empty: '+OUT);

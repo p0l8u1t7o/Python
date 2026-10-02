@@ -1,23 +1,21 @@
-# GitHub Pages：七個自動化展示
+# GitHub Pages：自動化設備 3D 展示
 
-將本資料夾的 `static.yml` 完整內容放到 GitHub 儲存庫最外層的 `.github/workflows/static.yml`，覆蓋先前版本。Pages 的 Source 選 GitHub Actions，推送到 `main` 後發布；也可在 Actions 手動執行。
+`static.yml` 與儲存庫最外層的 `.github/workflows/static.yml` 相同。Pages 的 Source 選 GitHub Actions，推送到 `main` 後發布，也可在 Actions 手動執行。
 
-工作流程自動建立首頁，包含：
+流程：
 
-- AutomaticAcid-BaseTitration
-- ChemicalTankWashing（200L 化學桶自動清洗線）
-- MilitaryGradePC
-- PCB-CopperAssembly
-- RobotArmPressSSD
-- shutter assembly（網址中的空白使用 `%20`）
-- WorkpieceMeasurement（杯體加工件 AOI 與共焦量測）
+1. `node TestCode/core/tools/check.mjs --quick`：每個專案的靜態 import 路徑檢查，以及 `project.json` 的 `checks.quick`（目前為各專案的 `tools/verify.mjs`）。任一項失敗就不發布。
+2. `node TestCode/core/tools/build-site.mjs _site`：
+   - 首頁 `/` 由 `core/tools/site.mjs` 產生，標題與說明取自各專案 `project.json`；
+   - `/core/` 只發布一份共用模組與 three.js（不含 `core/tools`、`core/template` 與文件）；
+   - `/<專案>/` 發布該專案 `web/` 的全部內容。
 
-來源可為 `TestCode/<專案>/web/`、`<專案>/web/`，或展示專用儲存庫中的 `<專案>/index.html` 結構。七個專案都必須已上傳；缺檔會停止發布，避免覆蓋成缺少入口的網站。
+新增專案時，在 `TestCode/<專案>/` 放 `web/index.html` 與 `project.json`，就會自動出現在首頁，不必改工作流程。
 
-線上展示：[展示首頁](https://p0l8u1t7o.github.io/Python/) · [化學桶清洗線](https://p0l8u1t7o.github.io/Python/ChemicalTankWashing/)。
+網址配置與本機 `node TestCode/core/tools/serve.mjs` 相同，本機看到的就是發布後的結果。
 
-僅收集各網頁的 HTML、圖示、css、js、vendor、assets；不發布 docs、成本表、原始照片、影片、驗證報告。這個篩選控制 Pages 網站內容，不會改變 GitHub 儲存庫本身的公開／私有設定。
+線上展示：[展示首頁](https://p0l8u1t7o.github.io/Python/) · [化學桶清洗線](https://p0l8u1t7o.github.io/Python/ChemicalTankWashing/)。`shutter assembly` 網址中的空白為 `%20`。
 
-`site/` 為本機產生的預覽，`automation-demos.zip` 為同一批靜態網站檔案；兩者不納入 Git。若使用展示專用儲存庫，解壓縮後上傳檔案與子資料夾，不要只上傳 ZIP。GitHub Pages 不會自動解壓縮它。
+不發布 docs、成本表、原始照片、影片與驗證報告。這只控制 Pages 網站內容，不會改變儲存庫本身的公開／私有設定。
 
 動畫與相機模擬在瀏覽器運行。MilitaryGradePC 的 MP4 伺服器輸出仍需獨立後端。

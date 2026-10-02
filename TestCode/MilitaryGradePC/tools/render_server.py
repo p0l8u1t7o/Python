@@ -13,9 +13,36 @@ import sys
 import threading
 from pathlib import Path
 
+from urllib.parse import unquote, urlsplit
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from serve import QuietHandler, ReusableTCPServer
+CORE = ROOT.parent / 'core'          # 共用模組與 three.js：頁面的 importmap 指向 ../core/
+
+
+class QuietHandler(http.server.SimpleHTTPRequestHandler):
+    """正確 MIME、停用快取；/core/ 對應到 TestCode/core。"""
+    extensions_map = {**http.server.SimpleHTTPRequestHandler.extensions_map,
+                      '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
+                      '.css': 'text/css; charset=utf-8', '.html': 'text/html; charset=utf-8', '.json': 'application/json; charset=utf-8'}
+
+    def translate_path(self, path):
+        p = urlsplit(path).path
+        if p.startswith('/core/'):
+            target = (CORE / unquote(p[len('/core/'):])).resolve()
+            return str(target) if str(target).startswith(str(CORE.resolve())) else str(CORE / '__denied__')
+        return super().translate_path(path)
+
+    def end_headers(self):
+        self.send_header('Cache-Control', 'no-store, must-revalidate')
+        super().end_headers()
+
+    def log_message(self, fmt, *args):
+        pass
+
+
+class ReusableTCPServer(http.server.ThreadingHTTPServer):
+    allow_reuse_address = True
+    daemon_threads = True
 
 PORT = 8766
 OUTPUT = ROOT / 'videos'

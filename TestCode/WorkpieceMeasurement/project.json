@@ -1,0 +1,14 @@
+{
+  "title": "杯體加工件 AOI 與共焦量測",
+  "summary": "鋁質殼體 AOI 取像與上下共焦量測的半自動量測機。",
+  "order": 7,
+  "checks": {
+    "quick": [
+      "tools/verify.mjs"
+    ],
+    "full": [
+      "tools/verify-details.mjs",
+      "tools/verify-wiring.mjs"
+    ]
+  }
+}

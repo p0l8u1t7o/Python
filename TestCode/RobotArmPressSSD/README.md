@@ -38,12 +38,12 @@
 ## 啟動
 
 ```powershell
-python serve.py
+node ../core/tools/serve.mjs RobotArmPressSSD
 # 或不自動開外部瀏覽器
-python serve.py --no-open
+node ../core/tools/serve.mjs RobotArmPressSSD --no-open
 ```
 
-開啟 [本地模擬](http://127.0.0.1:8767/)，也可雙擊 `run.bat`。ES module 需 HTTP，請勿直接用 `file://` 開啟 HTML。
+開啟 [本地模擬](http://127.0.0.1:8770/RobotArmPressSSD/)，也可雙擊 `run.bat`（所有專案共用 `core/tools/serve.mjs`，首頁 http://127.0.0.1:8770/ 列出全部專案）。ES module 需 HTTP，請勿直接用 `file://` 開啟 HTML。
 
 ## 操作
 
@@ -110,9 +110,9 @@ python serve.py --no-open
 需要 Node.js 22 以上，不需 npm 套件：
 
 ```powershell
-node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify.mjs
-node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-camera.mjs
-node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-self-clearance.mjs
+node --import ../core/tools/register.mjs tools/verify.mjs
+node --import ../core/tools/register.mjs tools/verify-camera.mjs
+node --import ../core/tools/register.mjs tools/verify-self-clearance.mjs
 ```
 
 三個配方 × 可用的壓墊 × OK／NG 示意，共 8 種組合，每種都檢查：
@@ -131,12 +131,12 @@ node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-s
 - 相機子畫面新增「放大／縮小」，保持 3:2 完整視野；可用 `cameraSize=large` 直接開啟。
 - 子畫面移除 3D ROI 輔助框，結果仍列在影像下方；採較低曝光，保留銀腳／外殼高光細節。
 - 銀腳增加細微金屬粗糙度，錫膏使用不規則細紋，仍維持未迴焊外觀及原有接觸位置。
-- [放大相機預覽](http://127.0.0.1:8767/?pause&st=3&view=inspect&cameraSize=large)。
+- [放大相機預覽](http://127.0.0.1:8770/RobotArmPressSSD/?pause&st=3&view=inspect&cameraSize=large)。
 ## 干涉修正與驗證
 
 本輪干涉位置、幾何／路徑修正及驗證範圍見[四站干涉修正紀錄](../tools/docs/interference-review.md)。
 
-新增驗證：`node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-clearance.mjs`。
+新增驗證：`node --import ../core/tools/register.mjs tools/verify-clearance.mjs`。
 
 ### 起始相機與手臂干涉修正
 

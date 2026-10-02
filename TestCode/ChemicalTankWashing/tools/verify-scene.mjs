@@ -1,5 +1,5 @@
 // 全場干涉與閃爍檢查（用畫面同一份幾何，見 web/js/plant.js）：
-//   node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-scene.mjs
+//   node --import ../core/tools/register.mjs tools/verify-scene.mjs
 // 1. 動態：沿整段動畫取樣，凡世界位置會變的零件，都與固定零件及其他會動零件做有向包圍盒（OBB）分離軸檢查。
 //    同一剛體、直接相連的上下游關節視為安裝關係不檢查；桶與 AGV 另有專門驗證（verify.mjs），此處排除。
 // 2. 靜態：不同設備模組（或產線內不同工位）的固定零件互相穿插 → 架設位置相撞。

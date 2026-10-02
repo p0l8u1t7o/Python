@@ -1,13 +1,13 @@
 // 以 Chrome DevTools Protocol 實際開啟網頁：收集主控台錯誤、跳到各站截圖、檢查相機子畫面與面板。
-// 不需 npm 套件（Node 22+ 內建 WebSocket）。先執行 python serve.py --no-open。
-//   node tools/browser-check.mjs [--url http://127.0.0.1:8775/] [--out review/screens]
+// 不需 npm 套件（Node 22+ 內建 WebSocket）。先執行 node ../core/tools/serve.mjs --no-open。
+//   node tools/browser-check.mjs [--url http://127.0.0.1:8770/ChemicalTankWashing/] [--out review/screens]
 import { spawn } from 'node:child_process';
 import { mkdirSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
-const URL0 = arg('--url', 'http://127.0.0.1:8775/'), OUT = resolve(arg('--out', 'review/screens'));
+const URL0 = arg('--url', 'http://127.0.0.1:8770/ChemicalTankWashing/'), OUT = resolve(arg('--out', 'review/screens'));
 const CHROME = ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'].find(existsSync);
 mkdirSync(OUT, { recursive: true });
 const profile = join(tmpdir(), 'ctw-cdp-' + process.pid), port = 9300 + (process.pid % 500);

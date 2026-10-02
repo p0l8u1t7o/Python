@@ -1,0 +1,16 @@
+{
+  "title": "SSD USB 接頭壓合站",
+  "summary": "DENSO VS-068 取放、多機種配方、8 頭整排壓合與全局相機檢查。",
+  "order": 5,
+  "checks": {
+    "quick": [
+      "tools/verify.mjs"
+    ],
+    "full": [
+      "tools/verify-camera.mjs",
+      "tools/verify-clearance.mjs",
+      "tools/verify-self-clearance.mjs",
+      "tools/verify-vision.mjs"
+    ]
+  }
+}

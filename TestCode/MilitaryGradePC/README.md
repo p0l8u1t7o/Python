@@ -23,12 +23,12 @@
 ## 啟動
 
 ```powershell
-python serve.py
+node ../core/tools/serve.mjs MilitaryGradePC
 # 或不自動開外部瀏覽器
-python serve.py --no-open
+node ../core/tools/serve.mjs MilitaryGradePC --no-open
 ```
 
-開啟 [本地模擬](http://127.0.0.1:8765/)，也可雙擊 `run.bat`。ES module 需 HTTP，請勿直接用 `file://` 開啟 HTML。
+開啟 [本地模擬](http://127.0.0.1:8770/MilitaryGradePC/)，也可雙擊 `run.bat`（所有專案共用 `core/tools/serve.mjs`，首頁 http://127.0.0.1:8770/ 列出全部專案）。ES module 需 HTTP，請勿直接用 `file://` 開啟 HTML。
 
 ## 操作
 
@@ -71,7 +71,7 @@ python serve.py --no-open
 需要 Node.js 22 以上，幾何測試不需 npm 套件：
 
 ```powershell
-node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify.mjs
+node --import ../core/tools/register.mjs tools/verify.mjs
 ```
 
 涵蓋兩個 SKU、全部步驟的代表時刻、任意倒退／跳站一致性、封印保持、翻面升降與夾持條件、TCP 可達性（PTP 步驟檢查終點）、手臂對 S1／S3 固定結構的碰撞（代表時刻＋連續播放每 0.25 秒），以及連續播放。最近一次結果在 `review/verification.json`；模型計算誤差並非設備精度。瀏覽器畫面驗證（全景、產品、護蓋、翻面、控制及 NG 停留）是改用 VM-60B1 與 S1 懸臂之前做的，本版尚未重做。
@@ -106,14 +106,14 @@ python tools/render_server.py
 - 補上塑膠／橡膠細紋、金屬粗糙度與跟隨產品的局部陰影；校正環境反射，保留深色外殼層次。
 - HDMI／COM 使用梯形金屬殼，USB-C 使用圓角開口；接口有中空金屬壁、內部舌片及端子。
 - 「手臂取景」從工具鏡頭前端取像，維持 3:2 全視野，隱藏 ROI／軌跡等輔助線。點按時會暫停到下一個手臂取像步驟；時間軸仍可查看移動中的真實朝向。
-- [接口取像](http://127.0.0.1:8765/?pause&step=48&view=sensor)、[底面 Docking](http://127.0.0.1:8765/?pause&step=186&view=sensor)。
+- [接口取像](http://127.0.0.1:8770/MilitaryGradePC/?pause&step=48&view=sensor)、[底面 Docking](http://127.0.0.1:8770/MilitaryGradePC/?pause&step=186&view=sensor)。
 - 鏡頭以 12 mm、13.2 × 8.8 mm 感光面建模，屬示意光學參數，須按實機鏡頭校正；不代表已產生實測檢查結果。
-- 新增相機驗證：`node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-camera.mjs`，涵蓋兩種 SKU 共 50 個光軸位置與 20 個接口遮擋檢查。
+- 新增相機驗證：`node --import ../core/tools/register.mjs tools/verify-camera.mjs`，涵蓋兩種 SKU 共 50 個光軸位置與 20 個接口遮擋檢查。
 ## 干涉修正與驗證
 
 本輪干涉位置、幾何／路徑修正及驗證範圍見[四站干涉修正紀錄](../tools/docs/interference-review.md)。
 
-新增驗證：`node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-clearance.mjs`。
+新增驗證：`node --import ../core/tools/register.mjs tools/verify-clearance.mjs`。
 
 
 ## 相機視覺標記

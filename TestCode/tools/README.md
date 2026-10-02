@@ -46,7 +46,7 @@ node tools/verify-cable-routing.mjs
 `electrical-components.js` 定義各站的元件、功能連接與安裝包絡；`electrical-inspector.js/css` 提供選取、特寫、剖視／透視及同步狀態。修改後執行 `node tools/sync-electrical-cabinet.mjs` 同步五站。
 
 ```powershell
-node --no-warnings --experimental-loader ./MilitaryGradePC/tools/three-loader.mjs tools/verify-electrical-plan.mjs
+node --import ./core/tools/register.mjs tools/verify-electrical-plan.mjs
 ```
 
 這項檢查不需 npm 套件，總表為 `tools/review/electrical-plan-checks.json`；另重跑原有配線與機構檢查。操作與來源見[五站電控規劃](docs/electrical-control-plan.md)。

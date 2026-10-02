@@ -62,7 +62,7 @@
 ## 啟動
 
 ```powershell
-python serve.py            # http://127.0.0.1:8775/
+node ../core/tools/serve.mjs ChemicalTankWashing            # http://127.0.0.1:8770/ChemicalTankWashing/
 ```
 
 或雙擊 `run.bat`。
@@ -110,7 +110,7 @@ R-2000iC 的臂長取型錄概略值。關節零點、J2／J3 連動限位與速
 ## 驗證
 
 ```powershell
-node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify.mjs
+node --import ../core/tools/register.mjs tools/verify.mjs
 ```
 
 以 0.05 s 取樣整段動畫，檢查：
@@ -130,7 +130,7 @@ node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify.m
 全場網格干涉與閃爍另執行（直接建立網頁上的同一份場景，`web/js/plant.js`）：
 
 ```powershell
-node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-scene.mjs --dt=0.5
+node --import ../core/tools/register.mjs tools/verify-scene.mjs --dt=0.5
 ```
 
 - **動態干涉**：自動找出 121 個會動的關節，整段動畫每 0.5 s 取樣，用定向包圍盒分離軸檢查移動件對所有網格；圓柱等曲面件再用頂點射線確認是否真的穿入。
@@ -148,7 +148,7 @@ node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-s
 局部機構另執行：
 
 ```powershell
-node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-detail.mjs
+node --import ../core/tools/register.mjs tools/verify-detail.mjs
 ```
 
 結果見 [review/detail-verification.json](review/detail-verification.json)。19 項檢查涵蓋貼標輥相切、翻桶托架、轉盤／固定滾輪、秤台全行程、槽體／防溢堤、PP 板穿管孔、跨圍籬配管、雙槍孔徑與桶內間隙、噴洗聯鎖、液位及入庫門開口。時間取樣包含動作邊界前後，共 16,051 點。
@@ -161,7 +161,7 @@ node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-d
 
 修正項目與檢核範圍見 [docs/planning.md 第 13 節](docs/planning.md)。此次瀏覽器檢查與 13 個站位截圖在 [review/detail-screens/browser-review.json](review/detail-screens/browser-review.json)，包含倒退取樣與相機子畫面檢查。`tools/review-scenes.mjs` 可由 Browser 技能工作階段以 `runReview(cdp, tab, outputDirectory)` 重跑。
 
-瀏覽器檢查（先執行 `python serve.py --no-open`）：`node tools/browser-check.mjs`。用本機 Chrome 無頭模式收集主控台錯誤，並截下 17 張站別畫面到 `review/screens/`。
+瀏覽器檢查（先執行 `node ../core/tools/serve.mjs ChemicalTankWashing --no-open`）：`node tools/browser-check.mjs`。用本機 Chrome 無頭模式收集主控台錯誤，並截下 17 張站別畫面到 `review/screens/`。
 
 ## 清洗夾具與視角操作
 
@@ -179,7 +179,7 @@ node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-d
 新增驗證：
 
 ```powershell
-node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-gripper.mjs
+node --import ../core/tools/register.mjs tools/verify-gripper.mjs
 ```
 
 [夾具檢核](review/gripper-verification.json) 包含 15,098 個時間／事件取樣、101 個開合位置、10 項結構檢查、實際零件定向包圍盒及桶輪廓邊線取樣。未檢出設備干涉、穿桶或越界；夾具至 40 mm 圍籬框的取樣最小淨距約 9.96 mm，金屬至桶身約 1.61 mm。小間隙尚須計入製造公差與桶型變異，不能視為製造驗證。`tools/review-camera.mjs` 可由 Browser 工作階段呼叫 `runCameraReview(cdp, tab, outputDirectory)`；[互動報告](review/camera/camera-review.json) 記錄 28 項追蹤及視窗操作測試，包含從全景選擇已離線目標時保留相機位置。

@@ -39,12 +39,12 @@
 ## 啟動
 
 ```powershell
-python serve.py
+node ../core/tools/serve.mjs "shutter assembly"
 # 或不自動開外部瀏覽器
-python serve.py --no-open
+node ../core/tools/serve.mjs "shutter assembly" --no-open
 ```
 
-開啟 [本地模擬](http://127.0.0.1:8772/)，也可雙擊 `run.bat`。ES module 需要 HTTP，不能直接用 `file://` 開 HTML。
+開啟 [本地模擬](http://127.0.0.1:8770/shutter%20assembly/)，也可雙擊 `run.bat`（所有專案共用 `core/tools/serve.mjs`，首頁 http://127.0.0.1:8770/ 列出全部專案）。ES module 需要 HTTP，不能直接用 `file://` 開 HTML。
 
 ## 操作
 
@@ -73,7 +73,7 @@ python serve.py --no-open
 詳見[物理檢查紀錄](review/physical-review.md)與[檢查數據](review/physics.json)。導線預成形、卡勾避讓槽及彈性行程屬於本次模型的設計假設，需依實物／供應商 CAD 確認；15 N 力值為示意。
 
 ```powershell
-node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-physics.mjs
+node --import ../core/tools/register.mjs tools/verify-physics.mjs
 ```
 
 ### 2026-09-26 實物細節更新
@@ -89,7 +89,7 @@ node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-p
 新增 `tools/verify-product-detail.mjs`：檢查貫穿孔、324 個上蓋吸附面取樣、葉片吸附面、線圈與最低葉片 0.135 mm 的垂直淨空，以及正常／NG 流程 1,287 條上視相機光線的輪廓遮擋。結果在 `review/product-detail.json`。既有 `tools/verify.mjs` 的兩種完整流程與 576 個料格高度可達性檢查也通過；以上均為模型驗證。
 
 ```powershell
-node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-product-detail.mjs
+node --import ../core/tools/register.mjs tools/verify-product-detail.mjs
 ```
 
 GitHub 首頁與五專案發布設定：[static.yml](../tools/github-pages/static.yml)／[發布說明](../tools/github-pages/README.md)。需將新版工作流程放入 GitHub 儲存庫最外層 `.github/workflows/static.yml`，並上傳本專案 web 內容後才會更新線上網站。
@@ -121,7 +121,7 @@ GitHub 首頁與五專案發布設定：[static.yml](../tools/github-pages/stati
 需要 Node.js 22 以上，不需 npm 套件：
 
 ```powershell
-node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify.mjs
+node --import ../core/tools/register.mjs tools/verify.mjs
 ```
 
 正常與疊片 NG 兩種情境都檢查：

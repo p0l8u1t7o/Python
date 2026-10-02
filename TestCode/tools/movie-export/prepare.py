@@ -9,6 +9,8 @@ parser=argparse.ArgumentParser()
 parser.add_argument('--project',choices=PROJECTS)
 args=parser.parse_args()
 if args.project: PROJECTS=[args.project]
+# 共用模組與 three.js（頁面 importmap 指向 ../core/）
+shutil.copytree(ROOT / 'core', OUT / 'core', dirs_exist_ok=True, ignore=shutil.ignore_patterns('tools', 'template', '*.md'))
 for name in PROJECTS:
     target = OUT / name
     shutil.copytree(ROOT / name / 'web', target, dirs_exist_ok=True)
