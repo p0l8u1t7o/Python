@@ -113,7 +113,7 @@ export function createDrumInstances(count) {
 
 // 夾桶爪：兩片弧形 PU 爪由局部 ±X 側夾住桶身；局部 +Y 為桶軸、原點在桶中心。
 // armTo：手臂夾爪的連桿往局部 −Z 接回本體（龍門夾爪由上方吊桿連接，不需要）。
-export function drumJaws(parent, armTo = null) {
+export function drumJaws(parent, armTo = null, stroke = 130) {
   const jaws = [];
   for (const s of [-1, 1]) {
     const g = new THREE.Group(); parent.add(g);
@@ -128,5 +128,5 @@ export function drumJaws(parent, armTo = null) {
     }
     jaws.push({ g, s });
   }
-  return { set(v) { for (const { g, s } of jaws) g.position.x = s * (1 - v) * 130; } };
+  return { set(v) { for (const { g, s } of jaws) g.position.x = s * (1 - v) * stroke; } };
 }

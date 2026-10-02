@@ -81,23 +81,31 @@ INBOUND.arcStart = [INBOUND.x + INBOUND.arc, AISLE.zc];
 INBOUND.arcEnd = [INBOUND.x, AISLE.zc - INBOUND.arc];
 
 // 棧板站＋三軸龍門＋翻轉夾爪
-export const PALLET_STATION = { x: 3900, z: 9700, stand: 100 };
+// 棧板站南移 50 mm：龍門夾爪張開取北側桶時不越過龍門圍籬北線
+export const PALLET_STATION = { x: 3900, z: 9750, stand: 100 };
 export const GANTRY = {
   posts: [[3000, 9050], [6600, 9050], [3000, 10350], [6600, 10350]], beamY: 3000,
   hang: 150 + DRUM.H / 2,      // 翻轉軸到桶中心
   safeY: 2200, placeY: 800, home: { x: 4600, z: 9700 },
+  jawOpen: 90,                 // 夾爪單側張開行程（mm）
 };
 GANTRY.pickY = PALLET_STATION.stand + PALLET.H + DRUM.H + 150;
 
 // 橫躺輸送：桶軸沿 X，桶頂朝西、桶底朝東（供翻轉機使用）；水平沙漏形（V 槽）滾輪
-export const LYING = { z: 9700, y: 800, x0: 5400, x1: 10000, place: 5900, label: 7500, buffer: 9000, speed: 400, vee: 25 };
+export const LYING = { z: 9700, y: 800, x0: 5400, x1: 10000, place: 5900, label: 7700, buffer: 9000, speed: 400, vee: 25 };
 LYING.upender = 11000 - DRUM.H / 2;
-export const LABEL = { x: LYING.label, standZ: 10560, camY: 2000, size: [100, 150] };
+// 貼標站：同一支相機斜拍桶頂端面與桶身上方，先辨識 2" 桶塞方位、轉到定位再貼，貼後讀碼並量標籤相對桶塞的角度。
+// angle：標籤中心相對 2" 桶塞的方位（依客戶規定，0 = 對齊 2" 桶塞）；tol：允收偏差
+export const LABEL = {
+  x: LYING.label, standZ: 10560, size: [100, 150], angle: 0, tol: 2,
+  cam: { pos: [6750, 1450, 9700], target: [7500, 850, 9700], fov: 50 },   // 西側斜上方約俯 39°，避開龍門翻桶擺動範圍
+  rotSpeed: 60,                                                          // 旋轉輥帶桶轉速 °/s
+};
 // 翻桶機：L 形搖籃以桶底下緣為軸翻 90°
 export const UPENDER = { pivot: [11000, LYING.y - DRUM.R, LYING.z] };
 // 立放輸送：翻桶後一路往南直送；手臂在取桶位取下、洗完放回同一條線的下游，再往南送到裝填區
 export const UPRIGHT = { x: 11000 + DRUM.R, top: LYING.y - DRUM.R, z0: LYING.z, decap: 10800, pick: 12400, place: 13400, handoff: 15000, z1: 15350, speed: 300 };
-export const DECAP = { z: UPRIGHT.decap, camY: 2500, safeY: 1750, bin: { x: 11850, z: UPRIGHT.decap } };
+export const DECAP = { z: UPRIGHT.decap, camY: 2500, safeY: 1750, bin: { x: 11780, z: UPRIGHT.decap }, rail: 760 };   // rail：XY 模組 Z 向導軌距中心線
 
 // 清洗手臂與沖洗站
 export const ROBOT = { x: 9400, z: 12000, name: 'FANUC R-2000iC/165F', grip: 250 + DRUM.R };
@@ -146,8 +154,10 @@ export function maxWaterL() {
 }
 
 // 清洗區圍籬（手臂以 DCS 限制在圍籬內）；南側為牆，東南角留給裝填區
-export const FENCE = [[7000, 15520], [7000, 11300], [11700, 11300], [11700, 13850], [10200, 13850], [10200, 15520]];
-export const GANTRY_FENCE = [[2900, 8950], [6700, 8950], [6700, 10450], [2900, 10450]];
+// 北側在 X 8200–10300 往北凸到 Z 10800：手臂朝南時前臂後方馬達組往北擺，最北約 Z 10920（tools/verify-scene.mjs 量得）
+export const FENCE = [[7000, 15520], [7000, 11300], [8200, 11300], [8200, 10800], [10300, 10800], [10300, 11300], [11700, 11300], [11700, 13850], [10200, 13850], [10200, 15520]];
+export const FENCE_GATES = { in: [11000 + DRUM.R, 11300], out: [11000 + DRUM.R, 13850] };   // 立放輸送進出清洗區的開口
+export const GANTRY_FENCE = [[2900, 8950], [6700, 8950], [6700, 10550], [2900, 10550]];
 
 // 廢液回收：放在清洗區圍籬外西南側（控制櫃南面）的防溢堤內，避開手臂迴轉範圍。
 // 酸、鹼殘液依讀到的桶號分流到兩個廢液槽，避免混合後發熱或產生氣體；防溢堤往西延伸到預留區
@@ -173,10 +183,10 @@ export const FOOTPRINTS = {
   charger: [7900, 5600, 8300, 5750, 1400],   // 柱面充電櫃（西半；東半留給東道 AGV 迴轉）
   inbound: [INBOUND.x - 650, INBOUND.z - 650, INBOUND.x + 650, INBOUND.z + 650, 250],
   jib: [INBOUND.jib.x - 150, INBOUND.jib.z - 150, INBOUND.jib.x + 150, INBOUND.jib.z + 150, 3200],
-  gantry: [2900, 8950, 6700, 10450, 3200],
+  gantry: [2900, 8950, 6700, 10550, 3200],
   lying: [5400, 9300, 10000, 10100, 1100],
   labeler: [7000, 10120, 8000, 10900, 1800],
-  hmi: [8500, 10500, 8900, 10900, 1500],
+  hmi: [8250, 10350, 8650, 10750, 1500],   // 移到清洗區圍籬北凸段外
   upender: [10000, 9250, 11650, 10150, 1500],
   upright: [10900, 10150, 11690, UPRIGHT.z1, 700],
   decap: [10600, 10350, 12100, 11250, 2700],

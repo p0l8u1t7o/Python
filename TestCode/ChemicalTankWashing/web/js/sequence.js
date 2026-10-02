@@ -43,6 +43,8 @@ const YAW0 = [37, 151, 263, 312], YAW_IN = [12, 205, 98, 300];
 // 桶內原化學品（標籤讀碼後由 MES 帶出）：決定廢液進酸槽或鹼槽
 export const CHEM = ['acid', 'alkali', 'acid', 'alkali'];
 const RESIDUAL_G = [46, 38, 57, 41];   // 模擬的秤重殘水量（g）
+const SLIP = [1.8, -2.4, .9, -1.3];     // 模擬翻桶與輸送時桶身轉動的角度（°），由開蓋站旋轉台微調
+const wrap = a => ((a % 360) + 540) % 360 - 180;
 const TANK_NAME = { WA: 'TK-WA 酸性廢液槽', WB: 'TK-WB 鹼性廢液槽', R: 'TK-R 回收槽' };
 // 每次沖洗時間：兩支噴槍同時進水（2" 旋轉噴頭＋3/4" 直噴）
 export const SPRAY_S = WASTE.rinseL / (BOOTH.flow.big + BOOTH.flow.small) * 60;
@@ -182,8 +184,17 @@ export function createSequence({ robot }) {
     d.add(travelLy(LYING.label - LYING.place), { lx: LYING.label, state: '往貼標站' }, { at: r.place });
     // ---- S3 貼標＋讀碼
     labeler.hold(d.t);
-    const p0 = labeler.add(1.8, { print: 1 }, { action: '列印識別標籤', sub: `${id}｜QR＋桶號` });
-    if (k === 0) ev(p0, 'label', '貼標站開始');
+    // 到位辨識：斜拍桶頂端面找 2" 桶塞（桶蓋未拆，白蓋對藍桶頂），算出要轉的角度，一次轉到定位再確認
+    // 2" 桶塞在桶局部 +X；橫躺時貼標方位 labelAng = −yaw，要讓 labelAng = 90° + 規定角度
+    const bungNow = wrap(d.state.yaw + 90), toTarget = wrap(-90 - LABEL.angle - d.state.yaw);
+    const p0 = labeler.add(.5, { flash: true }, { action: '相機到位辨識', sub: `2" 桶塞目前在標籤基準 ${bungNow.toFixed(0)}°，需轉 ${toTarget.toFixed(0)}°（模擬）` });
+    if (k === 0) ev(p0, 'label', '貼標站：相機辨識桶塞方位');
+    labeler.add(.1, { flash: false });
+    const rr = labeler.add(Math.abs(toTarget) / LABEL.rotSpeed + .8, { spin: labeler.state.spin + toTarget / 90 }, { action: '旋轉輥轉到貼標方位', sub: `標籤中心對 2" 桶塞 ${LABEL.angle}°（客戶規定）` });
+    d.add(rr.dur, { yaw: d.state.yaw + toTarget }, { at: rr.start });
+    labeler.add(.4, { flash: true }, { action: '確認到位', sub: '再取像一次：偏差 0.4°，允收 ±' + LABEL.tol + '°（模擬）' });
+    labeler.add(.1, { flash: false });
+    labeler.add(1.8, { print: 1 }, { action: '列印識別標籤', sub: `${id}｜QR＋桶號` });
     labeler.add(1.2, { pad: 1 }, { action: '貼標頭推出', sub: '吸附標籤推向桶身南側' });
     // 貼附當下桶面朝南的局部方位
     const qLy = yaw => new THREE.Quaternion().setFromAxisAngle(V(0, 0, 1), Math.PI / 2).multiply(new THREE.Quaternion().setFromAxisAngle(UP, yaw * D2R));
@@ -197,9 +208,13 @@ export function createSequence({ robot }) {
     const spin = [90, -90].find(sg => upLocal(d.state.yaw + sg).dot(lblVec) > .99) ?? 90;
     const rs = labeler.add(1.6, { spin: labeler.state.spin + spin / 90 }, { action: '旋轉輥帶動桶身', sub: '標籤轉到正上方' });
     d.add(1.6, { yaw: d.state.yaw + spin }, { at: rs.start });
-    ev(labeler.add(.9, { flash: true }, { action: '相機取像讀碼', sub: `QR ${id} 讀取 OK · 位置偏差 0.6 mm（模擬）` }), 'label', `${id} 讀碼`);
+    ev(labeler.add(.9, { flash: true }, { action: '同一相機貼後檢查', sub: `QR ${id} 讀取 OK；標籤中心對 2" 桶塞 ${(LABEL.angle + .4).toFixed(1)}°，允收 ±${LABEL.tol}°（模擬）` }), 'label', `${id} 讀碼與位置檢查`);
     d.add(0, { read: true, chem: CHEM[k] }, { at: labeler.t });
     labeler.add(.2, { flash: false }, { action: '讀碼完成' });
+    // 出站方位：轉到立起後 2" 桶塞朝北（yaw = 90°），開蓋站只需微調
+    const toExit = wrap(90 - d.state.yaw);
+    const ex = labeler.add(Math.abs(toExit) / LABEL.rotSpeed + .6, { spin: labeler.state.spin + toExit / 90 }, { action: '轉到出站方位', sub: '翻正後 2" 桶塞朝北，開蓋站只需微調' });
+    d.add(ex.dur, { yaw: d.state.yaw + toExit }, { at: ex.start });
     r.labelDone = labeler.t;
     // ---- 貼標站 → 緩衝位 → 翻桶機
     r.label = Math.max(r.labelDone, prev.buffer ?? 0);
@@ -215,7 +230,7 @@ export function createSequence({ robot }) {
     upender.add(.6, { clamp: 0 }, { action: '側夾鬆開' });
     r.upender = Math.max(upender.t, prev.decap ?? 0);
     d.add(0, { mode: 'upright', uz: UPRIGHT.z0, yaw: d.state.yaw, state: '立放輸送' }, { at: r.upender });
-    d.add(travelUp(DECAP.z - UPRIGHT.z0), { uz: DECAP.z }, { at: r.upender });
+    d.add(travelUp(DECAP.z - UPRIGHT.z0), { uz: DECAP.z, yaw: d.state.yaw + SLIP[k] }, { at: r.upender });   // 翻桶與輸送讓桶身轉動數度
     upender.add(3.5, { tilt: 0 }, { at: r.upender + 2.5, action: '翻轉台復歸' });
     upFree = upender.t;
     // ---- S5 開蓋
@@ -223,10 +238,10 @@ export function createSequence({ robot }) {
     const c0 = decap.add(.8, { clamp: 1 }, { action: '定心夾持', sub: id });
     if (k === 0) ev(c0, 'decap', '開蓋站開始');
     const bungAt = ((d.state.yaw % 360) + 360) % 360;
-    decap.add(1, { flash: true }, { action: '頂視相機定位桶塞', sub: `2" 桶塞方位 ${bungAt.toFixed(0)}°、3/4" ${((bungAt + 180) % 360).toFixed(0)}°（模擬）` });
+    const delta = wrap(90 - d.state.yaw);
+    decap.add(1, { flash: true }, { action: '頂視相機確認桶蓋與偏差', sub: `兩個桶蓋都在；2" 桶塞偏離北側 ${(-delta).toFixed(1)}°（模擬）` });
     decap.add(.2, { flash: false });
-    const delta = ((90 - d.state.yaw) % 360 + 540) % 360 - 180;
-    const rt0 = decap.add(Math.abs(delta) / 60 + 1, { table: decap.state.table + delta }, { action: '旋轉台對位', sub: '2" 桶塞轉到北側、3/4" 轉到南側' });
+    const rt0 = decap.add(Math.abs(delta) / 30 + .6, { table: decap.state.table + delta }, { action: '旋轉台微調', sub: `修正 ${delta.toFixed(1)}°（貼標站已轉到出站方位，微調範圍 ±5°）` });
     d.add(rt0.dur, { yaw: d.state.yaw + delta }, { at: rt0.start });
     const capTop = UPRIGHT.top + DRUM.H / 2 + 463 + 12;
     for (const [key, hx, hz, binX, name] of [['Big', 90, -200, DECAP.bin.x - UPRIGHT.x + 90, '2"'], ['Small', -90, 200, DECAP.bin.x - UPRIGHT.x - 90, '3/4"']]) {

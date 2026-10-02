@@ -1,6 +1,6 @@
 {
   "ok": true,
-  "samples": 15954,
+  "samples": 16051,
   "dt": 0.05,
   "checks": [
     {
@@ -160,7 +160,7 @@
       "ok": true,
       "detail": {
         "mm": 1.4545077653916003,
-        "activeSamples": 12930
+        "activeSamples": 12934
       }
     },
     {

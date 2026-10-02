@@ -28,7 +28,7 @@ export function createRobot() {
   housing(j.j2, 320, K.upper - 200, 300, MAT.fanuc, 0, K.upper / 2, 120, 28);
   cyl(j.j2, 230, 280, MAT.fanuc, 0, 0, 160, 'z', 28);
   cyl(j.j2, 210, 380, MAT.fanuc, 0, K.upper, 100, 'z', 28);
-  box(j.j2, 140, 700, 120, MAT.fanucDark, -170, 450, 260);                                  // 平衡器
+  box(j.j2, 140, 700, 120, MAT.fanucDark, -170, 453, 260);                                  // 平衡器
   j.j3 = new THREE.Group(); j.j3.position.set(0, K.upper, 0); j.j2.add(j.j3);
   housing(j.j3, 620, 440, 360, MAT.fanuc, -120, 150, -60, 30);
   for (const [y, z] of [[90, -150], [250, -150], [170, 40]]) cyl(j.j3, 85, 220, MAT.fanucDark, -500, y, z, 'x', 18);

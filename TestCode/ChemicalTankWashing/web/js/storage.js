@@ -26,7 +26,7 @@ export function createStorage(scene, makeDrum) {
     const xs = [[RACK.lanes[lanes[0]] - half, front(lanes[0])], ...lanes.map((l, k) => [RACK.lanes[l] + half, Math.max(front(l), k + 1 < lanes.length ? front(lanes[k + 1]) : 0)])];
     for (const [x, f] of xs) {
       const zs = framesTo(f);
-      for (const z of zs) { box(group, 90, RACK.topBeam, 90, MAT.steelBlue, x, RACK.topBeam / 2, z); foot(group, x, z, 90); }
+      for (const z of zs) { box(group, 90, RACK.topBeam, 90, MAT.steelBlue, x, RACK.topBeam / 2, z); foot(group, x, z, 130); }
       for (let k = 0; k < zs.length - 1; k++) for (let y = 430; y < 3100; y += 1330) rod(group, [x, y, zs[k]], [x, y + 980, zs[k + 1]], 12, MAT.steel, 8);
       for (let k = 0; k < zs.length - 1; k++) box(group, 40, 40, zs[k + 1] - zs[k], MAT.steelBlue, x, RACK.topBeam - 300, (zs[k] + zs[k + 1]) / 2);
     }

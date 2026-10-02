@@ -11,7 +11,7 @@ export function createWashing(scene) {
   const walls = new THREE.Group(); group.add(walls);
   // 排液口穿牆套管：PP 板切出孔洞，管線不再穿過實心板。
   const sidePanel = (x, z, radius) => {
-    const shape = new THREE.Shape(); shape.moveTo(0, 0); shape.lineTo(b.z1 - b.z0, 0); shape.lineTo(b.z1 - b.z0, H); shape.lineTo(0, H); shape.closePath();
+    const shape = new THREE.Shape(); shape.moveTo(0, 0); shape.lineTo(b.z1 - b.z0, 0); shape.lineTo(b.z1 - b.z0, H - 10); shape.lineTo(0, H - 10); shape.closePath();
     const opening = new THREE.Path(); opening.absarc(b.z1 - z, 120, radius, 0, Math.PI * 2, true); shape.holes.push(opening);
     const mesh = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth: 20, bevelEnabled: false, curveSegments: 24 }), MAT.pp);
     mesh.rotation.y = Math.PI / 2; mesh.position.set(x, 0, b.z1); mesh.receiveShadow = mesh.castShadow = true; walls.add(mesh);
@@ -21,26 +21,27 @@ export function createWashing(scene) {
   };
   sidePanel(b.x0, (b.funnel.z0 + b.funnel.z1) / 2, 52);
   sidePanel(b.x1 - 20, 15150, 46);
-  boxAt(walls, [b.x0, 0, b.z1 - 20], [b.x1, H, b.z1], MAT.pp);
+  // PP 板頂緣埋進屋頂板、屋頂再低 2 mm：與框架頂面與屋頂設備底面都不共面
+  boxAt(walls, [b.x0, 0, b.z1 - 20], [b.x1, H - 10, b.z1], MAT.pp);
   const roofShape = new THREE.Shape(); roofShape.moveTo(b.x0, -b.z0); roofShape.lineTo(b.x1, -b.z0); roofShape.lineTo(b.x1, -b.z1); roofShape.lineTo(b.x0, -b.z1); roofShape.closePath();
   for (const [x, z, r] of [[...b.lance, 42], [...b.lance2, 20], [8900, 15250, 140]]) {
     const hole = new THREE.Path(); hole.absarc(x, -z, r, 0, Math.PI * 2, false); roofShape.holes.push(hole);
   }
   const roof = new THREE.Mesh(new THREE.ExtrudeGeometry(roofShape, {depth:20,bevelEnabled:false,curveSegments:24}), MAT.pp);
-  roof.rotation.x = -Math.PI / 2; roof.position.y = H - 20; roof.castShadow = roof.receiveShadow = true; walls.add(roof);
-  boxAt(walls, [b.x0, 0, b.z0], [ox0, H, b.z0 + 20], MAT.pp);
-  boxAt(walls, [ox1, 0, b.z0], [b.x1, H, b.z0 + 20], MAT.pp);
-  boxAt(walls, [ox0, oy1, b.z0], [ox1, H, b.z0 + 20], MAT.pp);
+  roof.rotation.x = -Math.PI / 2; roof.position.y = H - 22; roof.castShadow = roof.receiveShadow = true; walls.add(roof);
+  boxAt(walls, [b.x0, 0, b.z0], [ox0, H - 10, b.z0 + 20], MAT.pp);
+  boxAt(walls, [ox1, 0, b.z0], [b.x1, H - 10, b.z0 + 20], MAT.pp);
+  boxAt(walls, [ox0, oy1, b.z0], [ox1, H - 10, b.z0 + 20], MAT.pp);
   boxAt(walls, [ox0, 0, b.z0], [ox1, oy0, b.z0 + 20], MAT.pp);
   for (const [x, z] of [[b.x0, b.z0], [b.x1, b.z0], [b.x0, b.z1], [b.x1, b.z1], [ox0, b.z0], [ox1, b.z0]]) box(group, 60, H, 60, MAT.steel, x, H / 2, z);
-  for (const z of [b.z0, b.z1]) box(group, b.x1 - b.x0, 60, 60, MAT.steel, (b.x0 + b.x1) / 2, H, z);
-  box(group, ox1 - ox0, 50, 50, MAT.steel, (ox0 + ox1) / 2, oy1, b.z0);
+  for (const z of [b.z0, b.z1]) box(group, b.x1 - b.x0 + 60, 60, 60, MAT.steel, (b.x0 + b.x1) / 2, H, z);
+  box(group, ox1 - ox0 + 20, 50, 50, MAT.steel, (ox0 + ox1) / 2, oy1, b.z0);
   // 開口兩側風刀：手臂帶桶退出時吹掉桶外表水珠
   const knives = [];
   for (const [x, s] of [[ox0 + 40, 1], [ox1 - 40, -1]]) {
     box(group, 60, 1700, 80, MAT.steel, x, 1350, b.z0 - 70);
     const air = new THREE.Mesh(new THREE.PlaneGeometry(380, 1650), new THREE.MeshBasicMaterial({ color: 0xbfe8ff, transparent: true, opacity: .28, side: THREE.DoubleSide, depthWrite: false }));
-    air.position.set(x + s * 190, 1350, b.z0 - 70); air.visible = false; group.add(air); knives.push(air);
+    air.position.set(x + s * 190, 1350, b.z0 - 70); air.visible = false; air.userData.fx = true; group.add(air); knives.push(air);
   }
   // 開口上方的防濺簾（條狀 PVC）
   for (let x = ox0 + 60; x < ox1; x += 120) box(group, 100, 220, 4, MAT.pp, x, oy1 - 110, b.z0 + 40);
@@ -56,7 +57,7 @@ export function createWashing(scene) {
   for (const [x, z] of [[f.x0, f.z0], [f.x1, f.z0], [f.x0, f.z1], [f.x1, f.z1]]) box(group, 50, f.y, 50, MAT.steel, x, f.y / 2, z);
   box(group, 600, 240, 600, MAT.ppDark, fx, 120, fz);                                   // 集液槽 SUMP（漏斗正下方）
   const sumpLevel = box(group, 560, 1, 560, MAT.waste, fx, 10, fz);
-  const pool = new THREE.Mesh(new THREE.PlaneGeometry(fw * .55, fd * .55), MAT.water); pool.rotation.x = -Math.PI / 2; pool.position.set(fx, f.y - 230, fz); pool.visible = false; group.add(pool);
+  const pool = new THREE.Mesh(new THREE.PlaneGeometry(fw * .55, fd * .55), MAT.water); pool.rotation.x = -Math.PI / 2; pool.position.set(fx, f.y - 230, fz); pool.visible = false; pool.userData.fx = true; group.add(pool);
 
   // ---- 沖洗噴槍：2" 旋轉噴頭（長行程，末道兼負壓抽液管）＋3/4" 直噴頭，皆由屋頂氣缸推出 ----
   const [lx, lz] = b.lance, [lx2, lz2] = b.lance2;
@@ -74,8 +75,8 @@ export function createWashing(scene) {
   cyl(lance2, 9, 900, MAT.steel, 0, 450, 0, 'y', 10);
   cyl(lance2, 10, 40, MAT.steelDark, 0, 15, 0, 'y', 10);
   const sprayMat = MAT.water.clone(); sprayMat.opacity = .35; sprayMat.side = THREE.DoubleSide;
-  const spray = new THREE.Mesh(new THREE.ConeGeometry(240, 420, 24, 1, true), sprayMat); spray.position.y = -210; spray.visible = false; lance.add(spray);
-  const jet = new THREE.Mesh(new THREE.CylinderGeometry(14, 22, 700, 10, 1, true), sprayMat); jet.position.y = -350; jet.visible = false; lance2.add(jet);
+  const spray = new THREE.Mesh(new THREE.ConeGeometry(240, 420, 24, 1, true), sprayMat); spray.position.y = -210; spray.visible = false; spray.userData.fx = true; lance.add(spray);
+  const jet = new THREE.Mesh(new THREE.CylinderGeometry(14, 22, 700, 10, 1, true), sprayMat); jet.position.y = -350; jet.visible = false; jet.userData.fx = true; lance2.add(jet);
   // 熱風機 HB-1（屋頂）：鼓風機＋電熱器，經 3/4" 噴槍送入熱風
   box(group, 460, 340, 380, MAT.steelOrange, 9330, H + 170, 15150);
   plate(group, ['HB-1 熱風機 70°C'], 600, 120, [9330, H + 430, 14955], Math.PI, { w: 640, h: 110 });
@@ -86,13 +87,13 @@ export function createWashing(scene) {
   // ---- 倒液水柱（每幀由桶口位置更新）----
   const streamTex = flowTexture(0x7fcfff); streamTex.repeat.set(1, 6); streamTex.wrapT = THREE.RepeatWrapping;
   const streamMat = new THREE.MeshStandardMaterial({ color: 0x9fdcff, map: streamTex, transparent: true, opacity: .75, emissive: 0x1d5f8f, emissiveIntensity: .5, depthWrite: false });
-  const stream = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 12, 1, true), streamMat); stream.visible = false; group.add(stream);
+  const stream = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 12, 1, true), streamMat); stream.visible = false; stream.userData.fx = true; group.add(stream);
 
   // ---- 廢液回收（圍籬外西南側）：防溢堤＋三槽 ----
   const [bx0, bz0, bx1, bz1] = WASTE.bund;
-  box(group, bx1 - bx0, 40, bz1 - bz0, MAT.ppDark, (bx0 + bx1) / 2, 20, (bz0 + bz1) / 2);
   const bw = WASTE.wall;
-  for (const [w, d, x, z] of [[bx1 - bx0, bw, (bx0 + bx1) / 2, bz0 + bw / 2], [bx1 - bx0, bw, (bx0 + bx1) / 2, bz1 - bw / 2], [bw, bz1 - bz0, bx0 + bw / 2, (bz0 + bz1) / 2], [bw, bz1 - bz0, bx1 - bw / 2, (bz0 + bz1) / 2]]) box(group, w, 300, d, MAT.steelOrange, x, 150, z);
+  box(group, bx1 - bx0 - 2 * bw, 40, bz1 - bz0 - 2 * bw, MAT.ppDark, (bx0 + bx1) / 2, 20, (bz0 + bz1) / 2);   // 底板在堤牆內側
+  for (const [w, d, x, z] of [[bx1 - bx0, bw, (bx0 + bx1) / 2, bz0 + bw / 2], [bx1 - bx0, bw, (bx0 + bx1) / 2, bz1 - bw / 2], [bw, bz1 - bz0, bx0 + bw / 2, (bz0 + bz1) / 2], [bw, bz1 - bz0, bx1 - bw / 2 - 40, (bz0 + bz1) / 2]]) box(group, w, 300, d, MAT.steelOrange, x, 150, z);   // 東堤牆內退 40 mm，讓出清洗區圍籬立柱
   const tanks = {};
   for (const [k, t] of Object.entries(WASTE.tanks)) {
     const shell = cyl(group, t.r, t.h, MAT.tankW, t.x, 40 + t.h / 2, t.z, 'y', 36); shell.castShadow = false;

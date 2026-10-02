@@ -5,7 +5,7 @@
 // 以 0.05 s 取樣，屬於有限取樣檢查，不是連續碰撞證明。
 import * as THREE from 'three';
 import { writeFileSync, mkdirSync } from 'node:fs';
-import { layoutChecks, BOOTH, UPRIGHT, FENCE, COLUMN, rackBlocks, RACK, GANTRY, AGV, PALLET, DRUM, pointInPolygon, OUTLINE, DECAP, ROBOT, FOOTPRINTS } from '../web/js/layout.js';
+import { layoutChecks, BOOTH, UPRIGHT, FENCE, COLUMN, rackBlocks, RACK, GANTRY, AGV, PALLET, DRUM, pointInPolygon, OUTLINE, DECAP, ROBOT, FOOTPRINTS, LABEL } from '../web/js/layout.js';
 import { createRobot, LIMITS, SPEED, JOINTS } from '../web/js/robot.js';
 import { createSequence, drumWorld, DRUM_KEYS } from '../web/js/sequence.js';
 import { createWashing } from '../web/js/washing.js';
@@ -35,7 +35,10 @@ const conveyorBoxes = [
   ...[[-650, -400], [650, -400], [-650, 400], [650, 400]].map(([dx, dz]) => [UPRIGHT.x + dx - 50, 0, DECAP.z + dz - 50, UPRIGHT.x + dx + 50, 2600, DECAP.z + dz + 50]),
 ];
 // 龍門：四支立柱＋兩道 X 樑（樑底在 beamY + 100）
-const gantryBoxes = [...GANTRY.posts.map(([x, z]) => [x - 100, 0, z - 100, x + 100, GANTRY.beamY + 100, z + 100]), ...[GANTRY.posts[0][1], GANTRY.posts[2][1]].map(z => [GANTRY.posts[0][0] - 100, GANTRY.beamY + 100, z - 100, GANTRY.posts[1][0] + 100, GANTRY.beamY + 320, z + 100])];
+// 貼標相機（含支架）也在龍門翻桶擺動範圍旁
+const [lcx, lcy, lcz] = LABEL.cam.pos;
+const labelCamBoxes = [[lcx - 70, lcy - 80, lcz - 80, lcx + 70, lcy + 80, lcz + 80], [lcx + 55, 0, lcz - 565, lcx + 145, lcy + 170, lcz - 475], [lcx + 60, lcy + 110, lcz - 520, lcx + 140, lcy + 170, lcz]];
+const gantryBoxes = [...labelCamBoxes, ...GANTRY.posts.map(([x, z]) => [x - 100, 0, z - 100, x + 100, GANTRY.beamY + 100, z + 100]), ...[GANTRY.posts[0][1], GANTRY.posts[2][1]].map(z => [GANTRY.posts[0][0] - 100, GANTRY.beamY + 100, z - 100, GANTRY.posts[1][0] + 100, GANTRY.beamY + 320, z + 100])];
 const robotBase = [ROBOT.x - 500, 0, ROBOT.z - 500, ROBOT.x + 500, 380, ROBOT.z + 500];
 const distToBox = (p, a) => Math.hypot(Math.max(a[0] - p.x, 0, p.x - a[3]), Math.max(a[1] - p.y, 0, p.y - a[4]), Math.max(a[2] - p.z, 0, p.z - a[5]));
 // 圍籬內：多邊形內且距各邊 ≥ r（南側為牆）

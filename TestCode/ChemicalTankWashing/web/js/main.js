@@ -4,15 +4,8 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RACK, COLUMN, UPRIGHT, DECAP, BOOTH, WASTE, layoutChecks, ROBOT, LABEL, LYING, INBOUND, PAYLOAD, payloadAt } from './layout.js';
 import { MAT, D2R, smooth } from './parts.js';
-import { createBuilding } from './building.js';
-import { createStorage } from './storage.js';
-import { createAgv } from './agv.js';
-import { createLine } from './line.js';
-import { createRobot } from './robot.js';
-import { createWashing } from './washing.js';
-import { createDrum, BIG_CAP, SMALL_CAP } from './drum.js';
-import { createSequence, drumWorld, palletWorld, STATIONS, DRUM_IDS, IN_IDS, DRUM_KEYS, SPRAY_S, SPRAY_SINGLE_S } from './sequence.js';
-import { createInbound } from './inbound.js';
+import { buildPlant, applyPlant } from './plant.js';
+import { createSequence, STATIONS, DRUM_IDS, IN_IDS, DRUM_KEYS, SPRAY_S, SPRAY_SINGLE_S } from './sequence.js';
 import { finishMaterials } from './detail.js';
 import { createFocusTracking, createCameraWindow } from './view-controls.js';
 
@@ -41,23 +34,14 @@ Object.assign(sun.shadow.camera, { left: -11000, right: 11000, top: 11000, botto
 sun.shadow.bias = -.0003; sun.shadow.normalBias = 3; scene.add(sun, sun.target);
 const fill = new THREE.DirectionalLight(0x9fb8ff, .45); fill.position.set(16000, 9000, 22000); scene.add(fill);
 
-// ---------------------------------------------------------------- 物件
-const building = createBuilding(scene);
-const storage = createStorage(scene, id => createDrum(id));
-const agv = createAgv(scene);
-const line = createLine(scene);
-const robot = createRobot(); scene.add(robot.root);
-const washing = createWashing(scene);
-const inbound = createInbound(scene);
-const drums = [...DRUM_IDS, ...IN_IDS].map(id => { const d = createDrum(id); scene.add(d.root); return d; });
-const held = { big: new THREE.Mesh(BIG_CAP, MAT.cap), small: new THREE.Mesh(SMALL_CAP, MAT.cap) };
-for (const k of ['big', 'small']) { held[k].position.y = 8; line.socket(k).add(held[k]); }
+// ---------------------------------------------------------------- 物件（與 tools/verify-scene.mjs 共用 plant.js）
+const plant = buildPlant(scene);
+const { building, storage, agv, line, robot, washing, inbound, drums } = plant;
 const seq = createSequence({ robot });
-const demoPallet = storage.demo[0].group;
 
 // 相機取像事件（子畫面用）
 const shots = [];
-for (const [key, cam, title] of [['labeler', line.labelCam, '讀碼相機 · 標籤檢查（模擬影像）'], ['decap', line.decapCam, '頂視相機 · 桶塞定位（模擬影像）']])
+for (const [key, cam, title] of [['labeler', line.labelCam, '貼標相機 · 桶塞定位／標籤檢查（模擬影像）'], ['decap', line.decapCam, '頂視相機 · 桶塞定位（模擬影像）']])
   for (const s of seq.tracks[key].steps) if (s.end.flash && !s.initial.flash) shots.push({ start: s.start, cam, title, result: s.sub });
 shots.sort((a, b) => a.start - b.start);
 
@@ -65,28 +49,7 @@ shots.sort((a, b) => a.start - b.start);
 let S = null;
 function applyState(sm) {
   needsFrame = true; renderer.shadowMap.needsUpdate = true;
-  S = sm; const st = sm.st;
-  agv.set({ ...st.agv, time: sm.time });
-  storage.setDemo([null, st.pal1, st.pal2, st.pal3], st.shuttle);
-  const pw = palletWorld(st.pallet, st.agv); demoPallet.position.copy(pw.pos); demoPallet.rotation.y = pw.yaw * D2R;
-  line.setGantry(st.gantry); line.setLabeler(st.labeler); line.setUpender(st.upender); line.setDecap(st.decap);
-  held.big.visible = st.decap.heldBig; held.small.visible = st.decap.heldSmall;
-  robot.setJaw(st.grip.jaw); robot.root.updateMatrixWorld(true);
-  inbound.set({ dollyX: st.dolly.x, a: st.jib.a, r: st.jib.r, y: st.jib.y, clamp: st.jib.clamp });
-  drums.forEach((d, k) => {
-    const key = DRUM_KEYS[k], s = st[key], w = drumWorld(key, st, robot.tcp.matrixWorld);
-    d.root.visible = !w.hidden; if (w.hidden) return;
-    d.root.position.copy(w.pos); d.root.quaternion.copy(w.q); d.root.updateMatrixWorld(true);
-    d.setCaps(s.capBig, s.capSmall); d.setLabel(s.label, s.labelAng * D2R); d.setWater(s.water);
-  });
-  const b = st.booth, sp = st.sump;
-  washing.set({
-    knife: b.knife, lance: b.lance, lance2: b.lance2, spray: b.spray, pool: b.pool, sump: sp.level, tanks: st.tanks,
-    pour: b.pour !== '' ? drums[+b.pour].bungWorld('big') : null,
-    flows: { hot: b.hot, vac: b.vac, vacOut: b.vac, supply: b.spray, supply2: b.spray, fromF: b.spray && b.src === 'F', fromR: b.spray && b.src === 'R', sump: sp.pump, riser: sp.pump, toWA: sp.pump && sp.dest === 'WA', toWB: sp.pump && sp.dest === 'WB', toR: sp.pump && sp.dest === 'R', city: st.makeup.on },
-  });
-  line.setScale(st.scale);
-  line.setTower(playing ? 'run' : 'wait');
+  S = sm; applyPlant(plant, sm, { playing });
 }
 
 // ---------------------------------------------------------------- UI
@@ -160,7 +123,7 @@ ui.xray.onchange = () => drums.forEach(d => d.setXray(ui.xray.checked));
 const VIEWS = {
   iso: [[-3500, 14500, 24000], [5600, 0, 8200]], top: [[5040, 28000, 7790], [5040, 0, 7760]],
   storage: [[2300, 4300, 8600], [6300, 1500, 3800]], gantry: [[1200, 4300, 13800], [4700, 1100, 9700]],
-  label: [[6000, 2900, 7300], [7500, 900, 9800]], upender: [[8400, 3600, 7400], [10900, 1000, 10100]],
+  label: [[6300, 2600, 7600], [7550, 850, 9750]], upender: [[8400, 3600, 7400], [10900, 1000, 10100]],
   decap: [[9700, 3300, 8900], [11290, 1350, 11000]], robot: [[6200, 5600, 10200], [9900, 1100, 13400]],
   booth: [[7600, 2800, 12000], [9400, 1350, 14700]], waste: [[1500, 4300, 11600], [5000, 800, 14600]],
   inbound: [[-900, 3900, 7400], [2300, 900, 2900]], weigh: [[10150, 1500, 12650], [11292, 650, 13400]],
@@ -247,7 +210,7 @@ function drawHud() {
 function resize() { const w = canvas.clientWidth, h = canvas.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); needsFrame = true; }
 addEventListener('resize', resize);
 function render(dt) {
-  washing.tick(T); line.animate(T, S.st);
+  washing.tick(T);
   drawHud();
   const w = canvas.clientWidth, h = canvas.clientHeight;
   renderer.setScissorTest(false); renderer.setViewport(0, 0, w, h); renderer.render(scene, camera);

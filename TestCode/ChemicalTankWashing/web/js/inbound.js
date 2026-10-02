@@ -35,7 +35,7 @@ export function createInbound(scene) {
   for (const [dx, dz] of [[-660, 300], [-660, -300], [300, -660], [-300, -660]]) box(group, dx ? 40 : 300, 200, dx ? 300 : 40, MAT.yellow, ib.x + dx, ib.stand + 100, ib.z + dz);
   // 懸臂吊
   const j = ib.jib;
-  cyl(group, 130, j.armY + 200, MAT.steelOrange, j.x, (j.armY + 200) / 2, j.z, 'y', 20);
+  cyl(group, 130, j.armY + 190, MAT.steelOrange, j.x, (j.armY + 190) / 2, j.z, 'y', 20);
   box(group, 600, 40, 600, MAT.steelDark, j.x, 20, j.z);
   const arm = new THREE.Group(); arm.position.set(j.x, j.armY, j.z); group.add(arm);
   box(arm, j.reach, 140, 35, MAT.steelOrange, j.reach / 2, 0, 0);
@@ -65,7 +65,7 @@ export function createInbound(scene) {
       worker.position.set(workerX, 0, workerZ);
       arm.rotation.y = a * D2R; trolley.position.x = r;
       const clampY = y + DRUM.H / 2 + 40 - j.armY;   // 夾具在桶頂 L 環上方
-      clamp.position.y = clampY; chain.scale.y = Math.max(1, -clampY - 150); chain.position.y = (clampY - 150) / 2;
+      clamp.position.y = clampY; chain.scale.y = Math.max(1, -clampY - 160); chain.position.y = (clampY + 10 - 150) / 2;   // 吊鏈下端埋進夾具 10 mm
       for (const k of claws) k.position.x = k.userData.s * (DRUM.R - 10 + (1 - c) * 60);
     },
   };

@@ -80,14 +80,14 @@ export function gauge(parent, x, y, z) {
 }
 export function sensor(parent, x, y, z, yaw = 0) {
   const g = new THREE.Group(); g.position.set(x, y, z); g.rotation.y = yaw; parent.add(g);
-  box(g, 36, 58, 30, MAT.black); cyl(g, 10, 3, MAT.red, 0, 0, -17, 'z', 12);
+  box(g, 36, 58, 32, MAT.black); cyl(g, 10, 3, MAT.red, 0, 0, -17, 'z', 12);
   box(g, 50, 5, 50, MAT.steel, 0, -32, 5); return g;
 }
 export function cabinetDetails(parent, x0, z0, x1, z1, h) {
   const x = (x0 + x1) / 2, w = x1 - x0;
   box(parent, w - 24, h - 70, 3, MAT.alu, x, h / 2, z0 - 2);
   box(parent, 12, 130, 18, MAT.black, x1 - 65, h * .55, z0 - 12);
-  for (const y of [h * .25, h * .75]) box(parent, 22, 65, 14, MAT.steelDark, x0 + 32, y, z0 - 8);
+  for (const y of [h * .25, h * .75]) box(parent, 22, 65, 14, MAT.steelDark, x0 + 32, y, z0 - 9);
   for (let k = 0; k < 8; k++) box(parent, w * .45, 6, 4, MAT.black, x, 130 + k * 17, z0 - 5);
   plate(parent, ['⚡ 400 V'], 150, 90, [x1 - 120, h - 350, z0 - 7], Math.PI, { bg: '#f4c542', fg: '#161a20' });
 }

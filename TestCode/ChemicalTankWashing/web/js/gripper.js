@@ -31,7 +31,7 @@ export function createWashGripper(tool) {
   for(const y of [-130,130]) {
     rails.push(mark(box(root,840,40,38,MAT.alu,0,y,125)));
     rails.push(mark(box(root,840,16,18,MAT.steel,0,y,153)));
-    for(const s of [-1,1]) mark(box(root,22,65,65,MAT.black,s*409,y,130));
+    for(const s of [-1,1]) mark(box(root,24,65,67,MAT.black,s*409,y,131));
   }
   for(const s of [-1,1]) {
     const slide = new THREE.Group(); slide.name = s<0?'左移動夾爪':'右移動夾爪'; root.add(slide); slides.push({slide,s});
@@ -52,7 +52,7 @@ export function createWashGripper(tool) {
       const theta=s>0?0:Math.PI;
       const pad=arcBand(slide,DRUM.R,DRUM.R+12,96,y,theta,MAT.pu); pads.push(pad);
       mark(arcBand(slide,DRUM.R+12,DRUM.R+28,112,y,theta,MAT.steel));
-      mark(box(slide,34,80,45,MAT.steel,s*324,y,ROBOT.grip));
+      mark(box(slide,34,80,47,MAT.steel,s*324,y,ROBOT.grip));
     }
     // C 形防脫扣：上下包住頂部 L 環，全部隨側爪退開，沒有固定橫桿穿過桶頂。
     const hook = new THREE.Group(); slide.add(hook); hooks.push(hook);
