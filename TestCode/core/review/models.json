@@ -1,0 +1,50 @@
+[
+  {
+    "id": "conveyor",
+    "name": "滾筒輸送線",
+    "ok": true,
+    "meshes": 34,
+    "dynamic": [],
+    "zfight": []
+  },
+  {
+    "id": "gantry",
+    "name": "兩軸龍門＋平行夾爪",
+    "ok": true,
+    "meshes": 23,
+    "dynamic": [],
+    "zfight": []
+  },
+  {
+    "id": "motor",
+    "name": "伺服馬達",
+    "ok": true,
+    "meshes": 12,
+    "dynamic": [],
+    "zfight": []
+  },
+  {
+    "id": "sensor",
+    "name": "光電感測器",
+    "ok": true,
+    "meshes": 3,
+    "dynamic": [],
+    "zfight": []
+  },
+  {
+    "id": "foot",
+    "name": "腳座（含地腳螺栓）",
+    "ok": true,
+    "meshes": 1,
+    "dynamic": [],
+    "zfight": []
+  },
+  {
+    "id": "gauge",
+    "name": "壓力表",
+    "ok": true,
+    "meshes": 3,
+    "dynamic": [],
+    "zfight": []
+  }
+]

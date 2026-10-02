@@ -7,6 +7,7 @@
 //     "quick": ["tools/verify.mjs"],                      // 快速＋完整都跑
 //     "full":  ["tools/verify-scene.mjs --dt=0.5", …]     // 只在完整檢查跑
 //   }
+// core 本身：models（core/models 每個模型走完狀態範圍的干涉與重合面，快速）。
 // core 內建檢查（每個專案都跑；後三項需要 web/js/project.js）：
 //   imports      靜態 import 路徑（快速）
 //   determinism  倒序／跳播一致（快速）
@@ -37,6 +38,14 @@ const BUILTIN = {
 
 const split = cmd => cmd.match(/"[^"]*"|\S+/g).map(s => s.replace(/^"|"$/g, ''));
 const results = [];
+// core 本身：共用模型（core/models）的干涉與重合面；指定專案時略過
+if (!argv.some(a => !a.startsWith('--')) && (!only || only.includes('models'))) {
+  const t0 = Date.now(), r = await runScript({ dir: CORE }, join(CORE, 'verify', 'models.mjs'), [], { echo: false });
+  const lines = r.out.trim().split('\n'), sec = (Date.now() - t0) / 1000;
+  results.push({ project: 'core', check: 'models', ok: r.code === 0, note: `${lines.filter(l => l.startsWith('✓')).length}/${lines.filter(l => /^[✓✗]/.test(l)).length} 個模型`, seconds: +sec.toFixed(1) });
+  console.log(`${r.code === 0 ? '✓' : '✗'} core · models  ${results.at(-1).note}  (${sec.toFixed(1)} s)`);
+  if (r.code) for (const l of lines.filter(l => !l.startsWith('✓'))) console.log('     ' + l);
+}
 for (const p of projects) {
   const scripts = [...(p.checks?.quick || []), ...(quick ? [] : p.checks?.full || [])];
   const hasProject = existsSync(join(p.web, 'js', 'project.js')), cc = p.core || {};

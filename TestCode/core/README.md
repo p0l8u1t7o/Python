@@ -9,6 +9,8 @@ TestCode 底下每個有 `web/index.html` 的資料夾都是一個展示專案�
 | `vendor/` | three.js r160（`three.module.js`）與 addons，全站只有這一份 |
 | `geom/` | 基本形狀與細節：`primitives.js`（block／cylinder／decal／tube／bevelBox／screw…）、`parts.js`（MAT 材質表、box／cyl／rod／pipe／plate…）、`hardware.js`（倒角外殼、螺栓、腳座、馬達、感測器…）、`finish.js`、`surfaces.js`、`perforated.js` |
 | `robot/` | `kinematics.js`：6 軸阻尼最小平方 IK（參數可調） |
+| `models/` | 共用模型庫：每個模型有 `meta`（名稱、分類、可調參數、可動狀態、用法）與 `create(params) → { root, set(state) }`，在 `models/index.js` 登記；目錄頁 `/core/catalog/` 可預覽與調參 |
+| `catalog/` | 模型目錄頁（發布在 Pages） |
 | `anim/` | `track.js`：時間軌與時間軸（`createTimeline`、`Track`、`smooth`），狀態只由時間決定 |
 | `electrical/` | 線材、拖鏈、電盤、電控元件與檢視器 |
 | `ui/` | `stage.js`（renderer／場景／相機／燈光／3D 標籤／視角轉場／畫面迴圈／`exposeSim`）、`player.js`（標準播放列）、`viewer-workspace`（相機視窗與焦點）、`view-controls`、`vision-overlay` |
@@ -116,6 +118,7 @@ node core/tools/check.mjs --only scene     # 只跑某項
 
 | 檢查 | 快速 | 內容 |
 |---|---|---|
+| `models`（core） | ✓ | 每個共用模型以預設參數建立，狀態走完全範圍，做干涉與重合面檢查（`core/review/models.json`） |
 | `imports` | ✓ | 從 index.html 走遍 import 圖，找不到的檔案（部署後才會壞的路徑） |
 | `determinism` | ✓ | 40 個時間點順序與倒序取樣，所有可見物件的世界矩陣必須相同 |
 | `layout` | ✓ | `layoutChecks()` 全數通過 |
