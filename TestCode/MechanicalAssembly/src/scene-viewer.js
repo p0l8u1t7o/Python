@@ -96,7 +96,14 @@ export class AssemblyViewer {
     this.scene.add(fill);
     this.ground = new THREE.Mesh(
       new THREE.PlaneGeometry(200, 200),
-      new THREE.MeshStandardMaterial({ roughness: 0.95, metalness: 0 }),
+      // 略為透明：從下方裝入的零件在地面以下時仍看得到
+      new THREE.MeshStandardMaterial({
+        roughness: 0.95,
+        metalness: 0,
+        transparent: true,
+        opacity: 0.86,
+        depthWrite: false,
+      }),
     );
     this.ground.rotation.x = -Math.PI / 2;
     this.ground.receiveShadow = true;
@@ -273,8 +280,11 @@ export class AssemblyViewer {
         (geometry.index?.count || geometry.attributes.position.count) / 3;
     });
     this.setQuality(this.quality);
-    this.ground.position.y = (-extent.y * scale) / 2 - 0.025;
-    this.grid.position.y = this.ground.position.y + 0.002;
+    // 地面固定在組合完成時的設備底部，不隨展開或組裝中的零件移動
+    this.floorBase = Math.min(...this.meshes.map((m) => m.userData.baseMinY));
+    if (!Number.isFinite(this.floorBase)) this.floorBase = (-extent.y * scale) / 2;
+    this.ground.position.y = this.floorBase - 0.003;
+    this.grid.position.y = this.floorBase - 0.001;
     if (this.wire) this.setWire(true);
     this.fit();
   }
@@ -326,8 +336,11 @@ export class AssemblyViewer {
     const vectors = new Map();
     const size = new THREE.Vector3();
     for (const [id, meshes] of meshesOf) {
-      const step = station.plan[index.stepOf.get(id)];
+      let step = station.plan[index.stepOf.get(id)];
       if (!step) continue;
+      // 基座原本不移動；改由上方降落定位，播放第一步時看得出動作
+      if (step.kind === "base" && !step.distance)
+        step = { ...step, axis: "y", distance: 0.5 };
       const box = new THREE.Box3();
       meshes.forEach((m) => box.union(m.userData.bounds));
       const center = box.getCenter(new THREE.Vector3());
@@ -421,9 +434,11 @@ export class AssemblyViewer {
       if (visible || mesh.userData.label) this.label(mesh).visible = visible;
     }
     this.showArrows(mode === "assemble" && options.arrows !== false ? current : -1);
+    // 單獨檢視時零件落在地面；其餘情況地面固定在完成組合的底部
+    if (!this.isolate && Number.isFinite(this.floorBase)) floorY = this.floorBase;
     if (Number.isFinite(floorY)) {
-      this.ground.position.y = floorY - 0.025;
-      this.grid.position.y = floorY - 0.023;
+      this.ground.position.y = floorY - 0.003;
+      this.grid.position.y = floorY - 0.001;
     }
   }
   setGhost(mesh, ghost) {
