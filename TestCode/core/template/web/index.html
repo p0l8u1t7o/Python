@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>__TITLE__</title>
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">
+{ "imports": {
+    "three": "../core/vendor/three.module.js",
+    "three/addons/": "../core/vendor/addons/",
+    "@core/": "../core/"
+} }
+</script>
+</head>
+<body>
+<div id="app">
+  <canvas id="c"></canvas>
+  <header id="topbar">
+    <h1>__TITLE__</h1>
+    <nav id="views"></nav>
+  </header>
+  <aside id="side">
+    <section><h2>目前動作</h2><p id="phase">待命</p><p id="cycleTime" class="muted"></p></section>
+    <section><h2>空間檢核</h2><ul id="checks"></ul></section>
+  </aside>
+  <footer id="bottombar">
+    <button id="playBtn">▶ 播放</button>
+    <button id="restartBtn">⟲ 重播</button>
+    <label>速度 <input id="speed" type="range"> <span id="speedVal"></span></label>
+    <button id="previous" title="上一步">◀</button>
+    <select id="stepSelect"></select>
+    <button id="next" title="下一步">▶</button>
+    <input id="timeline" type="range">
+    <span id="clock">00:00.0</span>
+  </footer>
+  <div id="loading">載入中…</div>
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

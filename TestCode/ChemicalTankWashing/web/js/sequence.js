@@ -3,32 +3,10 @@
 import * as THREE from 'three';
 import { RACK, PALLET, DRUM, AGV, FORK, AISLE, PALLET_STATION, GANTRY, LYING, LABEL, UPENDER, UPRIGHT, DECAP, BOOTH, WASTE, INBOUND, WEIGH, AIR_KNIFE } from './layout.js';
 import { jibPoint, jibTarget, DOLLY_H } from './inbound.js';
-import { smooth, D2R } from '@core/geom/parts.js';
+import { D2R } from '@core/geom/parts.js';
+import { Track, smooth } from '@core/anim/track.js';
 import { JOINTS, SPEED } from './robot.js';
 
-class Track {
-  constructor(name, base) { this.name = name; this.base = { ...base }; this.state = { ...base }; this.steps = []; this.t = 0; }
-  // dur 秒內把 values 的數值以 S 曲線插到目標；非數值鍵在步驟開始時立即生效
-  add(dur, values = {}, o = {}) {
-    const start = Math.max(o.at ?? this.t, this.t), initial = { ...this.state }, end = { ...initial, ...values };
-    const s = { track: this.name, start, dur, initial, end, action: o.action ?? '', sub: o.sub ?? '', ease: o.ease ?? smooth, motion: o.motion, event: o.event, station: o.station };
-    if (s.motion) Object.assign(s.end, s.motion(1));
-    this.steps.push(s); this.state = s.end; this.t = start + dur; return s;
-  }
-  hold(until) { this.t = Math.max(this.t, until); }
-  find(T) { let lo = 0, hi = this.steps.length - 1, idx = -1; while (lo <= hi) { const m = (lo + hi) >> 1; if (this.steps[m].start <= T) { idx = m; lo = m + 1; } else hi = m - 1; } return idx; }
-  sample(T) {
-    const i = this.find(T); if (i < 0) return { ...this.base };
-    const s = this.steps[i], t = s.dur > 0 ? Math.min(1, (T - s.start) / s.dur) : 1;
-    if (t >= 1) return { ...s.end };
-    const e = s.ease(t), out = {};
-    for (const k in s.end) { const a = s.initial[k], b = s.end[k]; out[k] = typeof a === 'number' && typeof b === 'number' ? a + (b - a) * e : b; }
-    if (s.motion) Object.assign(out, s.motion(e, t));
-    return out;
-  }
-  active(T) { const i = this.find(T); if (i < 0) return null; const s = this.steps[i]; return T < s.start + s.dur ? s : null; }
-  get end() { return this.steps.length ? Math.max(...this.steps.map(s => s.start + s.dur)) : 0; }
-}
 
 export const STATIONS = [
   { id: 'inbound', name: '散桶入庫', short: 'S0' }, { id: 'agv', name: '倉儲／AGV', short: 'S1' }, { id: 'gantry', name: '龍門上料', short: 'S2' },
