@@ -349,7 +349,7 @@ export function createSequence({ robot }) {
   agv.add(.5, { moving: false }, { action: '走道待命', sub: '等待 4 個散桶上棧板' });
 
   // ---- S0 散桶入庫：台車推入 → 懸臂吊夾桶 → 放上棧板（先放遠側兩格）
-  const dropAt = jibTarget(ib.dolly.x1, ib.dolly.z), dollyY = DOLLY_H + DRUM.H / 2, deckY = ib.stand + PALLET.H + DRUM.H / 2, carryY = deckY + 220;
+  const dropAt = jibTarget(ib.dolly.x1, ib.dolly.z), dollyY = DOLLY_H + DRUM.H / 2, deckY = ib.stand + PALLET.H + DRUM.H / 2, carryY = deckY + DRUM.H + 100;   // 旋臂經過已放的桶上方
   const order = [2, 3, 0, 1];
   dolly.hold(Math.max(tPalletAtInbound - 6, 0)); jib.hold(agv.t);
   IN_IDS.forEach((id, i) => {
@@ -362,7 +362,7 @@ export function createSequence({ robot }) {
     jib.add(1.2, { y: dollyY }, { action: '夾具下降套住桶頂 L 環' });
     jib.add(.8, { clamp: 1 }, { action: '夾具夾緊' });
     d.add(0, { mode: 'jib', state: '懸臂吊搬運' }, { at: jib.t });
-    jib.add(1.5, { y: carryY }, { action: '吊起', sub: '桶底高過棧板 220 mm' });
+    jib.add(1.5, { y: carryY }, { action: '吊起', sub: '桶底高過已放的桶 100 mm' });
     dolly.hold(jib.t); dolly.add((ib.dolly.x1 - ib.dolly.x0) / 700 + 1, { x: ib.dolly.x0 }, { action: '台車回門外取下一桶' });
     const sw = jib.add(Math.abs(to.a - jib.state.a) / 45 + Math.abs(to.r - jib.state.r) / 800 + 1.2, { a: to.a, r: to.r }, { action: `旋臂到棧板第 ${slot + 1} 格`, sub: '先放遠側兩格，近側兩格不必越過' });
     if (i === 0) ev(sw, 'inbound', '懸臂吊上棧板');

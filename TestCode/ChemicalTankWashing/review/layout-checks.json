@@ -1,4 +1,6 @@
 {
+  "variant": "預設",
+  "params": {},
   "ok": true,
   "count": 20,
   "failures": [],
@@ -144,5 +146,5 @@
       "note": ""
     }
   ],
-  "seconds": 0
+  "seconds": 0.1
 }

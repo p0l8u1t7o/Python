@@ -26,13 +26,13 @@ export function createInbound(scene) {
   const group = new THREE.Group(); group.name = 'inbound'; scene.add(group);
   const ib = INBOUND, [d0, d1] = ib.door;
   // 西牆捲門：門框＋捲門箱（開口）
-  for (const z of [d0, d1]) box(group, 260, 2600, 120, MAT.yellow, -60, 1300, z);
-  box(group, 360, 380, d1 - d0 + 240, MAT.steelDark, -80, 2800, (d0 + d1) / 2);
-  for (let z = d0 + 150; z < d1; z += 300) box(group, 20, 60, 150, MAT.black, 20, 2620, z);
+  for (const z of [d0 + 60, d1 - 60]) box(group, 260, 2600, 120, MAT.yellow, -60, 1300, z);   // 側導軌在開口內，不埋進牆
+  box(group, 300, 380, d1 - d0 + 240, MAT.steelDark, 152, 2680, (d0 + d1) / 2);   // 捲門箱裝在牆內面、門楣上方；深 300 讓開懸臂吊台車（取桶時台車 x 359 起），頂面低於手臂底面
+  for (let z = d0 + 150; z < d1; z += 300) box(group, 20, 60, 150, MAT.black, 152, 2460, z);
   plate(group, ['散桶入庫門'], 900, 160, [60, 3200, (d0 + d1) / 2], Math.PI / 2, { w: 640, h: 110 });
   // 入庫棧板座
-  box(group, 1300, ib.stand, 1300, MAT.steelDark, ib.x, ib.stand / 2, ib.z);
-  for (const [dx, dz] of [[-660, 300], [-660, -300], [300, -660], [-300, -660]]) box(group, dx ? 40 : 300, 200, dx ? 300 : 40, MAT.yellow, ib.x + dx, ib.stand + 100, ib.z + dz);
+  box(group, 1260, ib.stand, 1260, MAT.steelDark, ib.x, ib.stand / 2, ib.z);   // 不碰到東側貨架腳座
+  for (const [dx, dz] of [[-660, 300], [-660, -300], [300, -660], [-300, -660]]) box(group, Math.abs(dx) === 660 ? 40 : 300, 40, Math.abs(dx) === 660 ? 300 : 40, MAT.yellow, ib.x + dx, ib.stand + 20, ib.z + dz);   // 定位擋條在棧板外、高 40：AGV 叉起棧板（離台 60 mm）弧線駛出時從上方通過
   // 懸臂吊
   const j = ib.jib;
   cyl(group, 130, j.armY + 190, MAT.steelOrange, j.x, (j.armY + 190) / 2, j.z, 'y', 20);
@@ -40,7 +40,7 @@ export function createInbound(scene) {
   const arm = new THREE.Group(); arm.position.set(j.x, j.armY, j.z); group.add(arm);
   box(arm, j.reach, 140, 35, MAT.steelOrange, j.reach / 2, 0, 0);
   for (const y of [-85, 85]) box(arm, j.reach, 30, 180, MAT.steelOrange, j.reach / 2, y, 0);
-  rod(arm, [100, 180, 0], [1900, 100, 0], 18, MAT.steelDark);
+  rod(arm, [100, 180, 0], [j.reach - 300, 100, 0], 18, MAT.steelDark);   // 拉桿隨臂長
   bolts(group, [-1, 1].flatMap(a => [-1, 1].map(b => [j.x + a * 230, 48, j.z + b * 230])), 20);
   box(arm, 300, 160, 160, MAT.steelDark, 0, 120, 0);
   const trolley = new THREE.Group(); arm.add(trolley);

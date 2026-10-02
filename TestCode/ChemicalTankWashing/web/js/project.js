@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { buildPlant, applyPlant } from './plant.js';
 import { createSequence } from './sequence.js';
-import { FOOTPRINTS, layoutChecks } from './layout.js';
+import { layoutChecks } from './layout.js';
 
 export function createProject({ scene }) {
   const plant = buildPlant(scene), seq = createSequence({ robot: plant.robot });
@@ -19,12 +19,8 @@ export function createProject({ scene }) {
       dt: .5,
       skip: o => nonPhysical.has(o),
       moduleOf,
-      // 產線（line）內再依工位外框分組：不同工位的固定件互相穿插也算架設相撞
-      stationOf: m => {
-        if (moduleOf(m) !== 'line') return 'misc';
-        const c = new THREE.Box3().setFromObject(m).getCenter(new THREE.Vector3());
-        return Object.entries(FOOTPRINTS).find(([, r]) => c.x >= r[0] - 150 && c.x <= r[2] + 150 && c.z >= r[1] - 150 && c.z <= r[3] + 150)?.[0] ?? 'misc';
-      },
+      // 產線（line）內依 line.js 建立時標記的工位分組：不同工位的固定件互相穿插也算架設相撞
+      stationOf: m => { for (let p = m; p; p = p.parent) if (p.userData.station) return p.userData.station; return 'misc'; },
       allow: [
         { why: '桶由各站支撐、夾持或噴槍伸入，桶的干涉另由 verify.mjs 檢查', test: (a, b, c) => c.moduleOf(a) === 'drum' || c.moduleOf(b) === 'drum' },
         { why: 'AGV 與棧板、貨架以 2D 車身多邊形另行驗證（verify.mjs），叉子插入棧板屬正常', test: (a, b, c) => [a, b].some(m => c.moduleOf(m) === 'agv') && [a, b].some(m => ['storage', 'agv'].includes(c.moduleOf(m))) },
