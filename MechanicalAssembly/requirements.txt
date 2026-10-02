@@ -1,0 +1,5 @@
+# Python 3.12（cadquery-ocp 8.0.1 只提供 cp312 wheel）
+# 用途：scripts/cad/ 的 STEP 轉換、SolidWorks 原生檔解析、PDF 盤點
+cadquery-ocp==8.0.1.0.0
+olefile==0.47
+pymupdf==1.28.2
