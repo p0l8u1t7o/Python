@@ -1,0 +1,216 @@
+#equipment-overview {
+  width: min(1500px, 96vw);
+  max-width: 96vw;
+  max-height: 94dvh;
+  padding: 24px;
+  background: var(--page);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.overview-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+.overview-heading h2 {
+  margin: 7px 0 3px;
+  font-size: 27px;
+}
+.overview-heading p {
+  margin: 0 0 18px;
+  font-size: 12px;
+}
+.overview-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.overview-toolbar label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  flex: 1;
+  min-width: 200px;
+}
+.overview-toolbar select {
+  padding: 9px;
+  min-width: 0;
+  width: 100%;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+.overview-status {
+  min-height: 28px;
+  padding: 7px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.overview-status.working {
+  color: var(--green);
+}
+.overview-export a {
+  display: block;
+  font-size: 12px;
+  color: var(--text);
+  margin: 0 0 12px;
+  overflow-wrap: anywhere;
+}
+.overview-toolbar label {
+  white-space: nowrap;
+}
+.overview-scene {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.overview-viewport {
+  position: relative;
+  height: clamp(330px, 56vh, 690px);
+  width: 100%;
+}
+.overview-caption {
+  position: absolute;
+  top: 18px;
+  left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #253b47;
+  padding: 9px 13px;
+  background: #eff4f6df;
+  border-radius: 6px;
+  pointer-events: none;
+}
+.overview-caption span {
+  font-size: 11px;
+}
+.overview-views {
+  position: absolute;
+  bottom: 14px;
+  left: 14px;
+  display: flex;
+  gap: 4px;
+}
+.overview-views button {
+  background: var(--surface);
+  padding: 7px 12px;
+}
+.overview-empty {
+  position: absolute;
+  inset: 40% 8% auto;
+  padding: 30px;
+  text-align: center;
+  background: var(--surface);
+  border-radius: 8px;
+}
+.overview-note {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.8;
+  margin-top: 14px;
+}
+.overview-atlas-heading h3 {
+  margin: 3px 0 8px;
+}
+.overview-atlas-heading p {
+  font-size: 12px;
+}
+.overview-cards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.overview-card {
+  padding: 0 0 14px;
+  overflow: hidden;
+  text-align: left;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.overview-card img,
+.overview-missing {
+  width: 100%;
+  aspect-ratio: 1.8;
+  object-fit: contain;
+  background: #d9dfe5;
+}
+.overview-card strong,
+.overview-card small {
+  display: block;
+  margin: 10px 12px 0;
+  overflow-wrap: anywhere;
+}
+.overview-card small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.overview-missing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 8px;
+  color: #5f727e;
+  font-size: 24px;
+}
+.overview-missing span {
+  font-size: 12px;
+  padding: 12px;
+}
+.equipment-entry {
+  margin: 0 0 12px;
+  width: 100%;
+  text-align: left;
+}
+@media (max-width: 700px) {
+  #equipment-overview {
+    padding: 13px;
+    width: 96vw;
+  }
+  .overview-heading h2 {
+    font-size: 22px;
+  }
+  .overview-heading .button {
+    white-space: nowrap;
+    padding: 8px;
+    font-size: 11px;
+  }
+  .overview-toolbar {
+    gap: 8px;
+    padding: 9px;
+  }
+  .overview-toolbar .segmented {
+    width: 100%;
+  }
+  .overview-toolbar .segmented button {
+    flex: 1;
+    padding: 8px 5px;
+    font-size: 11px;
+  }
+  .overview-toolbar label {
+    min-width: 100%;
+  }
+  .overview-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .overview-views button {
+    padding: 6px 8px;
+    font-size: 10px;
+  }
+  .equipment-entry {
+    width: auto;
+    margin: 8px 12px;
+  }
+}

@@ -1,0 +1,241 @@
+[
+  {
+    "id": "fe17654aeb3e4d96-202401-AA00",
+    "stationId": "202401-AA00",
+    "name": "202401-AA00 · 上料機 STEP 分站",
+    "source": "Load machine_240608.STEP",
+    "sourceAsset": "fe17654aeb3e4d96",
+    "assemblyNames": [
+      "202401-AA01"
+    ],
+    "format": "step",
+    "parts": 243,
+    "triangles": 2740972,
+    "bytes": 41000976,
+    "url": "models/stations/fe17654aeb3e4d96-202401-AA00.glb",
+    "upAxis": "y",
+    "quality": {
+      "linearUnit": "millimeter",
+      "linearDeflectionType": "absolute_value",
+      "linearDeflection": 0.08,
+      "angularDeflection": 0.22
+    },
+    "geometrySource": "cad-tessellation",
+    "scope": "設備 STEP 分站模型",
+    "status": "ready",
+    "diagnostics": []
+  },
+  {
+    "id": "fe17654aeb3e4d96-202401-BA00",
+    "stationId": "202401-BA00",
+    "name": "202401-BA00 · 上料機 STEP 分站",
+    "source": "Load machine_240608.STEP",
+    "sourceAsset": "fe17654aeb3e4d96",
+    "assemblyNames": [
+      "202401-BA00"
+    ],
+    "format": "step",
+    "parts": 125,
+    "triangles": 843312,
+    "bytes": 10874284,
+    "url": "models/stations/fe17654aeb3e4d96-202401-BA00.glb",
+    "upAxis": "y",
+    "quality": {
+      "linearUnit": "millimeter",
+      "linearDeflectionType": "absolute_value",
+      "linearDeflection": 0.08,
+      "angularDeflection": 0.22
+    },
+    "geometrySource": "cad-tessellation",
+    "scope": "設備 STEP 分站模型",
+    "status": "ready",
+    "diagnostics": []
+  },
+  {
+    "id": "fe17654aeb3e4d96-202401-CA00",
+    "stationId": "202401-CA00",
+    "name": "202401-CA00 · 上料機 STEP 分站",
+    "source": "Load machine_240608.STEP",
+    "sourceAsset": "fe17654aeb3e4d96",
+    "assemblyNames": [
+      "202401-CA01",
+      "202401-CA03",
+      "202401-CA04"
+    ],
+    "format": "step",
+    "parts": 499,
+    "triangles": 2050518,
+    "bytes": 14997152,
+    "url": "models/stations/fe17654aeb3e4d96-202401-CA00.glb",
+    "upAxis": "y",
+    "quality": {
+      "linearUnit": "millimeter",
+      "linearDeflectionType": "absolute_value",
+      "linearDeflection": 0.08,
+      "angularDeflection": 0.22
+    },
+    "geometrySource": "cad-tessellation",
+    "scope": "設備 STEP 分站模型",
+    "status": "ready",
+    "diagnostics": []
+  },
+  {
+    "id": "fe17654aeb3e4d96-202401-DA00",
+    "stationId": "202401-DA00",
+    "name": "202401-DA00 · 上料機 STEP 分站",
+    "source": "Load machine_240608.STEP",
+    "sourceAsset": "fe17654aeb3e4d96",
+    "assemblyNames": [
+      "202401-DA01"
+    ],
+    "format": "step",
+    "parts": 37,
+    "triangles": 284323,
+    "bytes": 7643032,
+    "url": "models/stations/fe17654aeb3e4d96-202401-DA00.glb",
+    "upAxis": "y",
+    "quality": {
+      "linearUnit": "millimeter",
+      "linearDeflectionType": "absolute_value",
+      "linearDeflection": 0.08,
+      "angularDeflection": 0.22
+    },
+    "geometrySource": "cad-tessellation",
+    "scope": "設備 STEP 分站模型",
+    "status": "ready",
+    "diagnostics": []
+  },
+  {
+    "id": "9f33ecc4997ff6dc-202401-BA00",
+    "stationId": "202401-BA00",
+    "name": "202401-BA00 · 下料機 STEP 分站",
+    "source": "UnLoad machine_240608.STEP",
+    "sourceAsset": "9f33ecc4997ff6dc",
+    "assemblyNames": [
+      "202401-BA00"
+    ],
+    "format": "step",
+    "parts": 125,
+    "triangles": 843356,
+    "bytes": 10874688,
+    "url": "models/stations/9f33ecc4997ff6dc-202401-BA00.glb",
+    "upAxis": "y",
+    "quality": {
+      "linearUnit": "millimeter",
+      "linearDeflectionType": "absolute_value",
+      "linearDeflection": 0.08,
+      "angularDeflection": 0.22
+    },
+    "geometrySource": "cad-tessellation",
+    "scope": "設備 STEP 分站模型",
+    "status": "ready",
+    "diagnostics": []
+  },
+  {
+    "id": "9f33ecc4997ff6dc-202401-AA00",
+    "stationId": "202401-AA00",
+    "name": "202401-AA00 · 下料機 STEP 分站",
+    "source": "UnLoad machine_240608.STEP",
+    "sourceAsset": "9f33ecc4997ff6dc",
+    "assemblyNames": [
+      "202401-AA02"
+    ],
+    "format": "step",
+    "parts": 228,
+    "triangles": 2663298,
+    "bytes": 42107636,
+    "url": "models/stations/9f33ecc4997ff6dc-202401-AA00.glb",
+    "upAxis": "y",
+    "quality": {
+      "linearUnit": "millimeter",
+      "linearDeflectionType": "absolute_value",
+      "linearDeflection": 0.08,
+      "angularDeflection": 0.22
+    },
+    "geometrySource": "cad-tessellation",
+    "scope": "設備 STEP 分站模型",
+    "status": "ready",
+    "diagnostics": []
+  },
+  {
+    "id": "9f33ecc4997ff6dc-202401-DA00",
+    "stationId": "202401-DA00",
+    "name": "202401-DA00 · 下料機 STEP 分站",
+    "source": "UnLoad machine_240608.STEP",
+    "sourceAsset": "9f33ecc4997ff6dc",
+    "assemblyNames": [
+      "202401-DA02"
+    ],
+    "format": "step",
+    "parts": 35,
+    "triangles": 282867,
+    "bytes": 7597768,
+    "url": "models/stations/9f33ecc4997ff6dc-202401-DA00.glb",
+    "upAxis": "y",
+    "quality": {
+      "linearUnit": "millimeter",
+      "linearDeflectionType": "absolute_value",
+      "linearDeflection": 0.08,
+      "angularDeflection": 0.22
+    },
+    "geometrySource": "cad-tessellation",
+    "scope": "設備 STEP 分站模型",
+    "status": "ready",
+    "diagnostics": []
+  },
+  {
+    "id": "9f33ecc4997ff6dc-202401-CA00",
+    "stationId": "202401-CA00",
+    "name": "202401-CA00 · 下料機 STEP 分站",
+    "source": "UnLoad machine_240608.STEP",
+    "sourceAsset": "9f33ecc4997ff6dc",
+    "assemblyNames": [
+      "202401-CA02",
+      "202401-CA05",
+      "202401-CA06"
+    ],
+    "format": "step",
+    "parts": 465,
+    "triangles": 1975180,
+    "bytes": 14634728,
+    "url": "models/stations/9f33ecc4997ff6dc-202401-CA00.glb",
+    "upAxis": "y",
+    "quality": {
+      "linearUnit": "millimeter",
+      "linearDeflectionType": "absolute_value",
+      "linearDeflection": 0.08,
+      "angularDeflection": 0.22
+    },
+    "geometrySource": "cad-tessellation",
+    "scope": "設備 STEP 分站模型",
+    "status": "ready",
+    "diagnostics": []
+  },
+  {
+    "id": "9f33ecc4997ff6dc-202401-HA00",
+    "stationId": "202401-HA00",
+    "name": "202401-HA00 · 下料機 STEP 分站",
+    "source": "UnLoad machine_240608.STEP",
+    "sourceAsset": "9f33ecc4997ff6dc",
+    "assemblyNames": [
+      "202401-HA00",
+      "202401-HA01"
+    ],
+    "format": "step",
+    "parts": 46,
+    "triangles": 791205,
+    "bytes": 23094972,
+    "url": "models/stations/9f33ecc4997ff6dc-202401-HA00.glb",
+    "upAxis": "y",
+    "quality": {
+      "linearUnit": "millimeter",
+      "linearDeflectionType": "absolute_value",
+      "linearDeflection": 0.08,
+      "angularDeflection": 0.22
+    },
+    "geometrySource": "cad-tessellation",
+    "scope": "設備 STEP 分站模型",
+    "status": "ready",
+    "diagnostics": []
+  }
+]

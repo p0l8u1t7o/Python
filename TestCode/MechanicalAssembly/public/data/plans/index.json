@@ -1,0 +1,110 @@
+{
+ "plannerVersion": 1,
+ "assets": {
+  "6f9a499bfbeeca04": {
+   "steps": 39,
+   "forced": 0,
+   "parts": 153
+  },
+  "4c566f17b1d87118": {
+   "steps": 166,
+   "forced": 13,
+   "parts": 280
+  },
+  "c0ed5e66385aba0c": {
+   "steps": 82,
+   "forced": 9,
+   "parts": 147
+  },
+  "50811ff9e889803f": {
+   "steps": 14,
+   "forced": 5,
+   "parts": 29
+  },
+  "65a784fe62d52253": {
+   "steps": 10,
+   "forced": 0,
+   "parts": 10
+  },
+  "957ec1f93f4ac91c": {
+   "steps": 1,
+   "forced": 0,
+   "parts": 1
+  },
+  "fe17654aeb3e4d96": {
+   "steps": 635,
+   "forced": 144,
+   "parts": 909
+  },
+  "1aa9432d8a8b8820": {
+   "steps": 3,
+   "forced": 0,
+   "parts": 5
+  },
+  "9f33ecc4997ff6dc": {
+   "steps": 669,
+   "forced": 137,
+   "parts": 904
+  },
+  "877d78ae26925422": {
+   "steps": 533,
+   "forced": 67,
+   "parts": 802
+  },
+  "5a8b8d585d136e53": {
+   "steps": 1,
+   "forced": 0,
+   "parts": 1
+  },
+  "58fe07a480fbe9a1": {
+   "steps": 1480,
+   "forced": 179,
+   "parts": 2283
+  },
+  "fe17654aeb3e4d96-202401-AA00": {
+   "steps": 170,
+   "forced": 98,
+   "parts": 243
+  },
+  "fe17654aeb3e4d96-202401-BA00": {
+   "steps": 35,
+   "forced": 0,
+   "parts": 125
+  },
+  "fe17654aeb3e4d96-202401-CA00": {
+   "steps": 396,
+   "forced": 40,
+   "parts": 499
+  },
+  "fe17654aeb3e4d96-202401-DA00": {
+   "steps": 26,
+   "forced": 2,
+   "parts": 37
+  },
+  "9f33ecc4997ff6dc-202401-BA00": {
+   "steps": 37,
+   "forced": 0,
+   "parts": 125
+  },
+  "9f33ecc4997ff6dc-202401-AA00": {
+   "steps": 161,
+   "forced": 83,
+   "parts": 228
+  },
+  "9f33ecc4997ff6dc-202401-DA00": {
+   "steps": 23,
+   "forced": 0,
+   "parts": 35
+  },
+  "9f33ecc4997ff6dc-202401-CA00": {
+   "steps": 395,
+   "forced": 70,
+   "parts": 465
+  },
+  "9f33ecc4997ff6dc-202401-HA00": {
+   "steps": 41,
+   "forced": 0,
+   "parts": 46
+  }
+ }
+}

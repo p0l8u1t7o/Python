@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.python-libs/
+test-results/
+tmp/
+.cache/
+__pycache__/
+public/models/
+output/
+public/vendor/

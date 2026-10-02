@@ -1,0 +1,29 @@
+{
+  "name": "mechanical-assembly-studio",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "prebuild": "node scripts/prepare-assets.js",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "node --test tests/*.test.js",
+    "inventory": "python scripts/inventory.py",
+    "catalog:native": "python scripts/native-display.py --all",
+    "catalog:build": "node scripts/build-catalog.js && node scripts/extract-stations.js && node scripts/build-catalog.js",
+    "catalog:plan": "node --max-old-space-size=8192 scripts/plan-catalog.js",
+    "test:native": "python -m unittest discover -s tests -p *_test.py -v",
+    "prepare": "node scripts/prepare-assets.js"
+  },
+  "dependencies": {
+    "occt-import-js": "0.0.23",
+    "three": "0.186.1",
+    "three-mesh-bvh": "0.9.15"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0",
+    "prettier": "^3.9.9",
+    "vite": "^7.1.0"
+  }
+}
