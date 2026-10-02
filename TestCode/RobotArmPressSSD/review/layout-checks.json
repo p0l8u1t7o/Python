@@ -1,4 +1,6 @@
 {
+  "variant": "預設",
+  "params": {},
   "ok": true,
   "count": 3,
   "failures": [],
@@ -24,5 +26,5 @@
       "note": "投影座標最大絕對值，< 1 表示在畫面內"
     }
   ],
-  "seconds": 0
+  "seconds": 0.5
 }

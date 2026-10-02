@@ -53,7 +53,7 @@ export function cabinetShell(parent,name,{center,size,entries=[],thickness=12,ma
     for(const y of [-h*.3,h*.3])box(dg,'door hinge',[9,22,6],[x-w/doors*.45,y,d/2+2],steel);
   }
   // Backplate bolts and cabinet feet remain visible when doors are removed.
-  for(const x of [-w*.4,w*.4])for(const z of [-d*.35,d*.35])box(g,'cabinet plinth',[36,8,36],[x,-h/2+4,z],dark);
+  for(const x of [-w*.4,w*.4])for(const z of [-d*.35,d*.35])box(g,'cabinet plinth',[36,8,36],[x,-h/2+4.8,z],dark);   // 底面高於櫃底板 0.8 mm，不共面
   return {group:g,solids,top,entries};
 }
 

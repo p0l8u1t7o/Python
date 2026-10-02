@@ -6,7 +6,8 @@
 // OBB 對圓柱、球為保守外框，曲面另以頂點射線複核；穿插門檻 2 mm。不是連續碰撞證明。
 import * as THREE from 'three';
 
-export const TOL = 2;
+export const TOL = 2;                       // 預設穿插門檻 mm（設備尺度）
+export const ZF = { dist: .6, area: 25 };    // 預設重合面：距離 mm、重疊面積 mm²
 
 // 專案可在 verify 設定裡標記：
 //   物件 userData.fx         效果（噴霧、光束），不是實體
@@ -56,16 +57,40 @@ export function verifyScene(project, scene, {
   }
   const spinner = new Set(meshes.filter(m => AXI.has(m.geometry.type) && !moved.has(m)));
   const spinnerJoint = p => { let only = true; p.traverse(c => { if (c.isMesh && !spinner.has(c)) only = false; }); return only; };
-  const bodyOf = o => { if (spinner.has(o)) return null; for (let p = o; p && p !== scene; p = p.parent) if (joints.has(p) && !spinnerJoint(p)) return p; return null; };
+  // 自轉件本身不算關節，但仍屬於它所在的會動群組（例如繞自身軸轉的肩部屬於 J1）；只在固定群組裡的自轉件（滾輪）才是固定件
+  const bodyOf = o => { for (let p = spinner.has(o) ? o.parent : o; p && p !== scene; p = p.parent) if (joints.has(p) && !spinnerJoint(p)) return p; return null; };
   const parentBody = b => bodyOf(b.parent);
-  const moving = meshes.filter(m => bodyOf(m)), fixed = meshes.filter(m => !bodyOf(m));
+  const movingSet = new Set(meshes.filter(m => bodyOf(m) && !spinner.has(m)));
+  const moving = [...movingSet], fixed = meshes.filter(m => !bodyOf(m) || spinner.has(m));   // 自轉件外框不變，以固定件取樣即可
   const visible = o => { for (let p = o; p; p = p.parent) if (!p.visible) return false; return true; };
   const ctx = { info, bodyOf, parentBody, moduleOf: m => info.get(m).module, scene };
+  // 門檻可依模組調整（例如精密產品用 0.01 mm）：verify.thresholds = { 模組名: { tol, dist, area } }；兩零件取較嚴者
+  const TH = cfg.thresholds || {};
+  const th = m => TH[info.get(m)?.module] || {};
+  const pair = (a, b) => { const A = th(a), B = th(b); return { tol: Math.min(A.tol ?? TOL, B.tol ?? TOL), dist: Math.min(A.dist ?? ZF.dist, B.dist ?? ZF.dist), area: Math.min(A.area ?? ZF.area, B.area ?? ZF.area) }; };
 
   // ---------------------------------------------------------------- 允許的接觸（逐條說明原因）
+  // 線材群組（cable-routing 的 userData.cable）：端點 30 mm 內落在對方外框裡就是接入
+  const cableOf = m => { for (let p = m; p; p = p.parent) if (p.userData.cable) return p; return null; };
+  // 只放行小型安裝五金本身（線夾、格蘭頭、護套、支撐柱）；線材外皮、線槽、拖鏈照常檢查
+  const MOUNT = new Set(['clamp', 'gland', 'strain-relief', 'support']);
+  const hardwareOf = m => MOUNT.has(m.userData.routingHardware) ? m : null;
+  function cableEndIn(a, b) {
+    const c = cableOf(a); if (!c) return false;
+    const pts = c.userData.cable.points, r = (c.userData.cable.radius || 3) + 30;
+    const box = new THREE.Box3().setFromObject(b).expandByScalar(r);
+    return [pts[0], pts.at(-1)].some(q => box.containsPoint(new THREE.Vector3(...q).applyMatrix4(c.matrixWorld)));
+  }
+  // 固定件的 bodyOf 為 null：「同一剛體」必須是同一個非 null 關節，否則固定件之間、頂層移動件對所有固定件都會被放行。
+  // 移動件只對「安裝它的上游零件」放行：上游剛體相同，且該零件就在移動件的父群組底下（同一台設備）。
+  const inside = (o, root) => { for (let p = o; p; p = p.parent) if (p === root) return true; return false; };
+  const mountedOn = (A, m) => bodyOf(m) === parentBody(A) && inside(m, A.parent);
+  const sameMount = (A, B) => parentBody(A) === parentBody(B) && (parentBody(A) !== null || A.parent === B.parent);
   const ALLOW = [
-    { why: '同一剛體或直接相連的關節（導軌、滑座、轉軸）', test: (a, b) => { const A = bodyOf(a), B = bodyOf(b); return A === B || (A && parentBody(A) === B) || (B && parentBody(B) === A); } },
-    { why: '伸縮連桿（鏈條、活塞桿等長度會變的零件）與同一載體上的零件相接', test: (a, b) => { const A = bodyOf(a), B = bodyOf(b); return (A && stretch.has(A) && (parentBody(A) === B || (B && parentBody(B) === parentBody(A)))) || (B && stretch.has(B) && (parentBody(B) === A || (A && parentBody(A) === parentBody(B)))); } },
+    { why: '同一剛體或直接相連的關節（導軌、滑座、轉軸裝在上游零件上）', test: (a, b) => { const A = bodyOf(a), B = bodyOf(b); return (A && A === B) || (A && mountedOn(A, b)) || (B && mountedOn(B, a)); } },
+    { why: '伸縮連桿（鏈條、活塞桿等長度會變的零件）與同一載體上的零件相接', test: (a, b) => { const A = bodyOf(a), B = bodyOf(b); return (A && stretch.has(A) && (mountedOn(A, b) || (B && sameMount(A, B)))) || (B && stretch.has(B) && (mountedOn(B, a) || (A && sameMount(A, B)))); } },
+    { why: '線材（core/electrical cable）端點接入接頭、端子或格蘭頭；線材沿線間隙由各專案的配線檢查負責', test: (a, b) => cableEndIn(a, b) || cableEndIn(b, a) },
+    { why: '線夾、格蘭頭、護套、支撐柱等小型配線五金（userData.routingHardware）夾在安裝面上', test: (a, b) => !!(hardwareOf(a) || hardwareOf(b)) },
     { why: '套筒式伸縮軸：外管與內管標記為 nested', test: (a, b) => { const A = bodyOf(a), B = bodyOf(b); return !!(A && B && (A.userData.nested === B || B.userData.nested === A)); } },
     { why: '移動件在指定導軌上滑行（導軌 userData.guide，移動件 userData.on）', test: (a, b) => { const A = bodyOf(a), B = bodyOf(b); return (A && A.userData.on && b.userData.guide === A.userData.on) || (B && B.userData.on && a.userData.guide === B.userData.on); } },
     ...(cfg.allow || []).map(r => ({ why: r.why, test: (a, b) => r.test(a, b, ctx) })),
@@ -81,10 +106,10 @@ export function verifyScene(project, scene, {
     sample(t); samples++;
     const mov = moving.filter(visible).flatMap(toObbs), movGrid = grid(mov);
     for (const a of mov) for (const b of [...fixedGrid.near(a), ...movGrid.near(a)]) {
-      if (b.m === a.m || (bodyOf(b.m) && b.m.id < a.m.id)) continue;   // 會動對會動只算一次
+      if (b.m === a.m || (movingSet.has(b.m) && b.m.id < a.m.id)) continue;   // 會動對會動只算一次
       if (!aabbHit(a, b) || allowed(a.m, b.m)) continue;
-      const g = gap(a, b); if (g >= -TOL) continue;
-      if (curved(a.m, b.m) && g > -40 && !vertexInside(a.m, b.m)) continue;
+      const P = pair(a.m, b.m), g = gap(a, b); if (g >= -P.tol) continue;
+      if (curved(a.m, b.m) && !vertexInside(a.m, b.m, P.tol)) continue;              // 曲面件的外框偏保守，一律以實際頂點複核
       const key = a.m.id + '|' + b.m.id, cur = dyn.get(key);
       if (!cur) dyn.set(key, { first: +t.toFixed(2), last: +t.toFixed(2), worst: g, a: desc(a), b: desc(b), count: 1 });
       else { cur.last = +t.toFixed(2); cur.count++; if (g < cur.worst) cur.worst = g; }
@@ -99,8 +124,8 @@ export function verifyScene(project, scene, {
     const ia = info.get(a.m), ib = info.get(b.m);
     const different = ia.module !== ib.module || (ia.station !== ib.station && ia.station !== 'misc' && ib.station !== 'misc');
     if (!different || allowed(a.m, b.m)) continue;
-    const g = gap(a, b); if (g >= -TOL) continue;
-    if (curved(a.m, b.m) && g > -40 && !vertexInside(a.m, b.m)) continue;
+    const P = pair(a.m, b.m), g = gap(a, b); if (g >= -P.tol) continue;
+    if (curved(a.m, b.m) && !vertexInside(a.m, b.m, P.tol)) continue;
     stat.push({ worst: +g.toFixed(1), a: desc(a), b: desc(b) });
   }
 
@@ -117,9 +142,10 @@ export function verifyScene(project, scene, {
       for (const f of a.F) for (const g of b.F) {
         const dot = f.N.dot(g.N); if (Math.abs(dot) < .9999) continue;
         if (f.N.y < -.99 && f.C.y < 6) continue;              // 貼地朝下的底面看不到
-        if (Math.abs(g.C.clone().sub(f.C).dot(f.N)) > .6) continue;
+        const P = pair(a.m, b.m);
+        if (Math.abs(g.C.clone().sub(f.C).dot(f.N)) > P.dist) continue;
         if (dot < 0 && !f.both && !g.both) continue;          // 背對背的面不會同時畫出
-        const area = overlapArea(f, g); if (area < 25) continue;
+        const area = overlapArea(f, g); if (area < P.area) continue;
         const key = a.m.id + '|' + b.m.id;
         if (!zf.has(key)) zf.set(key, { t: +t.toFixed(2), area: Math.round(area), a: desc(a), b: desc(b) });
       }
@@ -145,7 +171,8 @@ export function verifyScene(project, scene, {
     zfight: [...zf.values()],
     envelope,
     allowances: ALLOW.map(r => r.why),
-    scope: `OBB 分離軸（穿插門檻 ${TOL} mm，圓柱為保守外框、曲面以頂點複核）；動態每 ${DT} s 取樣；重合面檢查盒、倒角外殼、圓柱端面與平面，距離 < 0.6 mm、重疊 > 25 mm²、外觀不同者，取 ${zfightTimes} 個時刻。不是連續碰撞證明。`,
+    thresholds: TH,
+    scope: `OBB 分離軸（穿插門檻 ${TOL} mm，可依模組調整，圓柱為保守外框、曲面以頂點複核）；動態每 ${DT} s 取樣；重合面檢查盒、倒角外殼、圓柱端面與平面，距離 < 0.6 mm、重疊 > 25 mm²、外觀不同者，取 ${zfightTimes} 個時刻。不是連續碰撞證明。`,
   };
 }
 
@@ -193,20 +220,21 @@ function grid(list, cell = 600) {
 }
 // 曲面零件的 OBB 偏保守：外框重疊不深時，改以實際頂點是否落在對方封閉網格內複核（射線奇偶判定）
 const isBox = m => ['BoxGeometry', 'ExtrudeGeometry'].includes(m.geometry.type);
-const curved = (a, b) => !isBox(a) || !isBox(b);
+const holed = m => m.geometry.type === 'ExtrudeGeometry' && [m.geometry.parameters.shapes].flat().some(sh => sh?.holes?.length);
+const curved = (a, b) => !isBox(a) || !isBox(b) || holed(a) || holed(b);   // 曲面件與有開孔的擠出件：外框偏保守，以頂點複核
 const ray = new THREE.Raycaster(), dirs = [new THREE.Vector3(1, .013, .007).normalize(), new THREE.Vector3(-.011, 1, .017).normalize()];
-function inside(p, target) {
-  if (target.geometry.type === 'BoxGeometry') { const l = target.worldToLocal(p.clone()), q = target.geometry.parameters; return Math.abs(l.x) < q.width / 2 - TOL && Math.abs(l.y) < q.height / 2 - TOL && Math.abs(l.z) < q.depth / 2 - TOL; }
+function inside(p, target, tol = TOL) {
+  if (target.geometry.type === 'BoxGeometry') { const l = target.worldToLocal(p.clone()), q = target.geometry.parameters; return Math.abs(l.x) < q.width / 2 - tol && Math.abs(l.y) < q.height / 2 - tol && Math.abs(l.z) < q.depth / 2 - tol; }
   const mat = Array.isArray(target.material) ? target.material[0] : target.material, side = mat.side; mat.side = THREE.DoubleSide;
   let odd = true; for (const d of dirs) { ray.set(p, d); if (ray.intersectObject(target, false).length % 2 === 0) odd = false; }
   mat.side = side; return odd;
 }
-function vertexInside(a, b) {
+function vertexInside(a, b, tol = TOL) {
   for (const [m, t] of [[a, b], [b, a]]) {
     if (t.geometry.parameters?.openEnded || t.geometry.type === 'PlaneGeometry') continue;   // 開放殼不是封閉體
     const pos = m.geometry.attributes.position; if (!pos) continue;
     const step = Math.max(1, Math.floor(pos.count / 400));
-    for (let i = 0; i < pos.count; i += step) if (inside(new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld), t)) return true;
+    for (let i = 0; i < pos.count; i += step) if (inside(new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld), t, tol)) return true;
   }
   return false;
 }

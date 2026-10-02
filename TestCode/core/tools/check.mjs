@@ -27,7 +27,9 @@ const RUN = join(CORE, 'verify', 'run.mjs');
 const viaRunner = (check, args = []) => async p => {
   const r = await runScript(p, RUN, [check, ...args], { echo: false });
   const lines = r.out.trim().split('\n');
-  return { ok: r.code === 0, note: lines.find(l => /^\{|一致|通過|略過/.test(l))?.slice(0, 160) || `exit ${r.code}`, detail: r.code ? lines.slice(-25) : [] };
+  // 每個情境一行摘要（scene 的 JSON、determinism 的「一致」、layout 的「通過」）
+  const summary = lines.filter(l => /^(\[[^\]]+\] )?(\{|一致|不一致|\d+\/\d+ 通過)|略過/.test(l)).map(l => l.replace(/"(meshes|moving|joints|samples)":\d+,?/g, '').slice(0, 140));
+  return { ok: r.code === 0, note: summary.join(' ／ ') || `exit ${r.code}`, detail: r.code ? lines.slice(-25) : [] };
 };
 const BUILTIN = {
   imports: { quick: true, run: async p => { const r = checkImports(p); return { ok: !r.missing.length, note: `${r.modules} 個模組`, detail: r.missing }; } },

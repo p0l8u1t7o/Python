@@ -71,7 +71,7 @@ export function electricalDevice(parent,spec,at){
     if(['plc','safety','drive','light'].includes(spec.kind))box(g,'status display',[w*.55,h*.18,1],[0,h*.03,d+1.3],mat(0x123a47));   // 比通風槽前凸 0.8 mm，不共面
     if(['psu','ipc','drive'].includes(spec.kind))for(let i=0;i<5;i++)box(g,'heat sink fin',[2,h*.68,5],[-w*.4+i*w*.2,0,d+2.5],metal);
     if(['switch','ipc','robot','gateway'].includes(spec.kind))for(let i=0;i<Math.max(2,Math.min(5,Math.floor(w/22)));i++){
-      const x=-w*.35+i*16;box(g,'RJ45 / service socket',[12,9,2],[x,-h*.15,d+1],metal);box(g,'socket aperture',[9,6,1],[x,-h*.15,d+2.1],black);
+      const x=-w*.35+i*16;box(g,'RJ45 / service socket',[12,9,2],[x,-h*.15,d+1],metal);box(g,'socket aperture',[9,6,1],[x,-h*.15,d+2.4],black);   // 前面比插座外殼凸 0.9 mm
     }
   }
   for(const x of [-w*.28,w*.28]){
@@ -101,7 +101,7 @@ export function populatePanel(panel,{profile,width,height}){
     for(const item of row.items){x+=item.size[0]/2;const o=electricalDevice(g,item,[x,row.y,15]);devices.set(item.id,o);rowBottom.set(item.id,bottom);x+=item.size[0]/2+gap;}
     box(g,'device DIN rail',[Math.max(total,80),35,5],[0,row.y,5.5]);
     for(const x of [-total*.4,total*.4])box(g,'rail fixing spacer',[12,14,3],[x,row.y,3.5]);
-    box(g,'horizontal wire duct base',[width*.87,18,3],[0,bottom,8],black);
+    box(g,'horizontal wire duct base',[width*.87,18,3],[0,bottom,8.8],black);   // 與直立線槽底板錯開 0.8 mm
     for(let x=-width*.42;x<width*.42;x+=24)for(const dy of [-8,8])box(g,'duct comb',[10,2,24],[x,bottom+dy,20],black);
     for(const x of [-width*.35,width*.35])box(g,'duct mounting spacer',[12,12,5],[x,bottom,4.5]);
   }
@@ -123,7 +123,7 @@ export function robotController(parent,{at,crc=false,id='RC1',floor=4}){
   d.children.find(m=>m.name==='mounting shoe').visible=false;
   const bottom=at[1]-size[1]/2;
   box(parent,id+' shelf',[size[0]+12,4,size[2]+4],[at[0],bottom-2,at[2]+size[2]/2]);
-  for(const x of [-size[0]*.4,size[0]*.4])for(const z of [18,size[2]-18])box(parent,id+' shelf foot',[14,bottom-4-floor,14],[at[0]+x,(bottom-4+floor)/2,at[2]+z]);
+  for(const x of [-size[0]*.4,size[0]*.4])for(const z of [18,size[2]-18])box(parent,id+' shelf foot',[14,bottom-4.8-floor,14],[at[0]+x,(bottom-4.8+floor)/2,at[2]+z]);   // 頂面低於腳座頂 0.8 mm
   return d;
 }
 export function controllerLeads(parent,controller,panel){
