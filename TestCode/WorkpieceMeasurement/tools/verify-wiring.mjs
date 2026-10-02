@@ -69,6 +69,9 @@ for(const s of Object.values(SPECS)){
      if(owners.includes(m.id))continue;const a=bounds(m),lo=at.map((v,i)=>v-size[i]/2),hi=at.map((v,i)=>v+size[i]/2);
      if([0,1,2].every(i=>hi[i]>a.min[i]+.1&&lo[i]<a.max[i]-.1))issue('moving support/'+id+'/'+m.id,{tag,support:id,body:m.id});
    }
+   // 掛在不同軸上的移動支架不得互相穿過（例如 Z 鏈座隨 Z 上下時不可穿過 X 鏈固定座）
+   const ms=movingSupports(st,s);
+   for(let i=0;i<ms.length;i++)for(let j=i+1;j<ms.length;j++){const [ia,sa,pa,,fa]=ms[i],[ib,sb,pb,,fb]=ms[j];if(fa!==fb&&[0,1,2].every(k=>Math.abs(pa[k]-pb[k])<(sa[k]+sb[k])/2-.1))issue('moving support pair/'+ia+'/'+ib,{tag,supports:[ia,ib]});}
   }
  }
 }

@@ -147,7 +147,8 @@ export function trayBodies(st, s) {
     B.push(box('tray' + id, p.x - g.w / 2, p.x + g.w / 2, YT - 9, YT + 1, p.z - g.d / 2, p.z + g.d / 2, 'tray'));
     for (const i of occupied(id, st)) { const q = pocket(id, i); B.push(cyl(`part${id}${i}`, [q.x, YT, p.z + q.lz], [q.x, YT + s.len, p.z + q.lz], s.od / 2 + (s.flare ? s.flare.dr : 0), 'part')); }
   }
-  for (const [id, x] of [['In', -255], ['Out', -115]]) { const z = id === 'In' ? st.inZ : st.outZ, w = id === 'In' ? 84 : 186; B.push(box('table' + id, x - w / 2, x + w / 2, Y0 + 40, YT - 9, z - 40, z + 40, 'plate')); }
+  // 入料梭台寬 78（原 84 會吃進通道 B 鏡頭立柱 x −215 2 mm）：保留 1 mm
+  for (const [id, x] of [['In', -255], ['Out', -115]]) { const z = id === 'In' ? st.inZ : st.outZ, w = id === 'In' ? 78 : 186; B.push(box('table' + id, x - w / 2, x + w / 2, Y0 + 40, YT - 9, z - 40, z + 40, 'plate')); }
   return B;
 }
 // 工件底面中心位置與自轉角

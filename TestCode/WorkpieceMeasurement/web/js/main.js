@@ -2,17 +2,16 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { SPECS, SCENARIOS, TRAYS, DEMO, X1, X2, Y0, YA, YM, YS, YT, DIR_A, occupied, measurement, inTol } from './spec.js';
-import { createSequence, smooth, STATIONS } from './sequence.js';
-import { createMachine } from './machine.js';
+import { SPECS, SCENARIOS, TRAYS, DEMO, X1, X2, Y0, YA, YM, YS, YT, DIR_A, occupied, inTol } from './spec.js';
+import { smooth, STATIONS } from './sequence.js';
+import { createProject } from './project.js';
 import { createCameraSim, TITLES } from './camera-sim.js';
-import { surfaceTexture, overviewFrame } from './render-finishes.js';
+import { overviewFrame } from './render-finishes.js';
 
 const qp = new URLSearchParams(location.search);
 const compactViewport=matchMedia('(max-width:900px), (max-height:520px)').matches;
 document.body.classList.toggle('info-hidden',compactViewport);
 const specId = SPECS[qp.get('spec')] ? qp.get('spec') : 'B', scenarioId = SCENARIOS[qp.get('result')] ? qp.get('result') : 'OK';
-const s = SPECS[specId], sc = SCENARIOS[scenarioId], m = measurement(s, scenarioId);
 
 // ---------------------------------------------------------------- 場景
 const canvas = document.getElementById('c');
@@ -33,12 +32,11 @@ scene.add(sun, sun.target);
 const fill = new THREE.DirectionalLight(0x9fb8ff, 0.5); fill.position.set(1200, 1500, -1500); scene.add(fill);
 sun.shadow.mapSize.set(innerWidth > 900 ? 4096 : 2048, innerWidth > 900 ? 4096 : 2048);
 const rim = new THREE.DirectionalLight(0xffead2, .65); rim.position.set(700, 2100, -500); scene.add(rim);
-const floorFinish = surfaceTexture('powder').clone(); floorFinish.repeat.set(240, 240); floorFinish.needsUpdate = true;
-const floor = new THREE.Mesh(new THREE.PlaneGeometry(100000, 100000), new THREE.MeshStandardMaterial({ color: 0x29323a, roughness: .86, roughnessMap: floorFinish, metalness: 0 })); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
-const grid = new THREE.GridHelper(6000, 60, 0x2a3644, 0x1c2530); grid.position.y = 0.5; scene.add(grid);
-grid.visible = qp.has('grid');
 
-const machine = createMachine(scene, s);
+// ---------------------------------------------------------------- 物件（與 core 統一檢查共用 project.js）
+const project = createProject({ scene, spec: specId, scenario: scenarioId });
+const { machine, sequence, spec: s, scenario: sc, measurement: m } = project;
+project.grid.visible = qp.has('grid');
 const pipCanvas = document.getElementById('pipImage'), sim = createCameraSim(pipCanvas, s, m, scenarioId);
 const ids = ['action', 'substep', 'zoneDot', 'zoneTxt', 'checklist', 'chkCount', 'playBtn', 'restartBtn', 'speed', 'speedVal', 'loop', 'progBar', 'clock', 'timeline', 'stepSelect', 'previous', 'next', 'signals', 'poseError', 'phase', 'result', 'specSel', 'exportBtn', 'showGuards', 'showLabels', 'showBeams', 'showPip', 'cycleTime', 'pipFrame', 'pipTitle', 'stations', 'meas', 'verdict', 'trayMap', 'trayNote', 'specName', 'specNote', 'detailNote'];
 const ui = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
@@ -65,8 +63,10 @@ STATIONS.forEach((name, i) => { const b = document.createElement('button'); b.cl
 
 // ---------------------------------------------------------------- 時間軸
 let S, current, playing = !qp.has('pause'), T = 0, speed = +(qp.get('speed') || 0.5), curStation = -1, curStep = -1;
-const sequence = createSequence({ spec: specId, scenario: scenarioId, apply: x => { S = x; machine.apply(x); } });
-const total = sequence.total; ui.timeline.max = total; ui.speed.value = speed; ui.speedVal.textContent = speed.toFixed(2).replace(/0$/, '') + '×';
+// 場景依時間的狀態一律由 project.apply 套用（與統一檢查同一份）；外罩、光束、三色燈另依介面勾選與播放狀態
+const displayOpts = () => ({ playing, hood: ui.showGuards.checked, beams: ui.showBeams.checked });
+function sampleAt(t) { current = project.apply(t, displayOpts()); S = current.state; }
+const total = project.total; ui.timeline.max = total; ui.speed.value = speed; ui.speedVal.textContent = speed.toFixed(2).replace(/0$/, '') + '×';
 ui.cycleTime.textContent = `規劃 ${total.toFixed(1)} s／件 ≈ ${Math.round(3600 / total)} UPH（單件流）`;
 sequence.steps.forEach((x, i) => ui.stepSelect.add(new Option(`S${x.station} · ${x.action}`, i)));
 const has = id => c => c.has(id);
@@ -108,7 +108,7 @@ function setView(name, instant = false) {
 }
 document.querySelectorAll('.views button').forEach(b => b.onclick = () => setView(b.dataset.view));
 const setPlaying = v => { playing = v; ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放'; };
-function seekTo(sec) { T = Number.isFinite(sec) ? THREE.MathUtils.clamp(sec, 0, total) : 0; current = sequence.sample(T); render(); }
+function seekTo(sec) { T = Number.isFinite(sec) ? THREE.MathUtils.clamp(sec, 0, total) : 0; sampleAt(T); render(); }
 ui.playBtn.onclick = () => { if (T >= total) seekTo(0); setPlaying(!playing); };
 ui.restartBtn.onclick = () => { seekTo(0); setPlaying(true); };
 ui.previous.onclick = () => { setPlaying(false); seekTo(sequence.steps[Math.max(0, current.index - 1)].start); };
@@ -174,8 +174,7 @@ function drawHud() {
   if (S.loc === 'in' || S.loc === 'noz' && !done.has('clamp')) trayEls.IN[cellIndex('IN', DEMO.k)].className = 'cur';
   if (S.loc === 'back') trayEls.IN[cellIndex('IN', DEMO.k)].className = 'err';
   if (String(S.loc).startsWith('out:')) trayEls[sc.out][cellIndex(sc.out, DEMO.filled[sc.out])].className = cls;
-  machine.setTower(judged && m.result !== 'OK' ? sc.tower : done.has('err0') ? 'yellow' : playing || T >= total ? 'green' : 'yellow');
-  machine.hood.visible = ui.showGuards.checked;
+  project.display(current, displayOpts());
   if (curStep !== current.index || judged !== drawHud.judged) { curStep = current.index; drawHud.judged = judged; machine.drawScreen([`${s.recipe}　${STATIONS[S.station]}`, judged ? `判定 ${m.result}` : '量測中', S.action, `節拍 ${total.toFixed(1)} s ≈ ${Math.round(3600 / total)} UPH`, `治具 ${s.ring}　模型 v1.3`, '模擬畫面 · 未接實機'], judged ? { ok: '#7fe0b4', ng: '#ff8d80', err: '#ffc857' }[cls] : '#7fe0b4'); }
   if (curStation !== S.station) { curStation = S.station; ui.checklist.innerHTML = ''; checklist[curStation].forEach(([txt]) => { const li = document.createElement('li'); li.innerHTML = `<span class="box"></span><span>${txt}</span>`; ui.checklist.appendChild(li); }); }
   let n = 0; [...ui.checklist.children].forEach((li, i) => { const d = checklist[S.station][i][1](done); li.classList.toggle('done', d); li.querySelector('.box').textContent = d ? '✓' : ''; if (d) n++; });
@@ -184,7 +183,6 @@ function drawHud() {
   ui.timeline.value = T; ui.stepSelect.value = current.index; ui.progBar.style.width = T / total * 100 + '%';
   ui.clock.textContent = `${Math.floor(T / 60).toString().padStart(2, '0')}:${(T % 60).toFixed(2).padStart(5, '0')}`;
   ui.pipFrame.hidden = !ui.showPip.checked; if (ui.showPip.checked) { ui.pipTitle.textContent = TITLES[sim.draw(S, done)] + '（模擬）'; ui.pipFrame.classList.toggle('flash', !!S.flash); }
-  if (!ui.showBeams.checked) machine.root.traverse(o => { if (o.material && o.material.blending === THREE.AdditiveBlending) o.visible = false; });
   for (const l of labels) { const p = l.pos.clone().project(camera), vis = ui.showLabels.checked && p.z < 1 && Math.abs(p.x) < 0.98 && Math.abs(p.y) < 0.95; l.el.style.display = vis ? 'block' : 'none'; if (vis) { l.el.style.left = canvas.offsetLeft + (p.x * 0.5 + 0.5) * canvas.clientWidth + 'px'; l.el.style.top = canvas.offsetTop + (-p.y * 0.5 + 0.5) * canvas.clientHeight + 'px'; } }
   document.getElementById('diagnostics').textContent = JSON.stringify({ time: T, total, step: current.index, station: S.station, action: S.action, loc: S.loc, optic: S.optic, pip: S.pip, playing, spec: specId, scenario: scenarioId });
 }
@@ -197,15 +195,15 @@ function render() { drawHud(); renderer.render(scene, camera); }
 const clock = new THREE.Clock();
 function frame() {
   requestAnimationFrame(frame); const dt = Math.min(clock.getDelta(), 0.05);
-  if (playing) { T = Math.min(total, T + dt * speed); current = sequence.sample(T); if (T >= total) { if (ui.loop.checked) T = 0; else setPlaying(false); } }
+  if (playing) { T = Math.min(total, T + dt * speed); sampleAt(T); if (T >= total) { if (ui.loop.checked) T = 0; else setPlaying(false); } }
   const p = machine.partWorld();
   if (selectedView === 'part') { const d = p.clone().sub(lastPart); camera.position.add(d); controls.target.add(d); if (camAnim) for (const k of ['p0', 't0', 'p', 't']) camAnim[k].add(d); }
   lastPart.copy(p);
   if (camAnim) { camAnim.u = Math.min(1, camAnim.u + dt * 1.4); camera.position.lerpVectors(camAnim.p0, camAnim.p, smooth(camAnim.u)); controls.target.lerpVectors(camAnim.t0, camAnim.t, smooth(camAnim.u)); if (camAnim.u === 1) camAnim = null; }
   controls.update(); render();
 }
-current = sequence.sample(0); lastPart.copy(machine.partWorld()); resize(); setView('iso', true); setPlaying(playing);
-window.sim = { seekTo, pause: () => setPlaying(false), play: () => setPlaying(true), setView, get state() { return S; }, total, steps: sequence.steps, stationStart: sequence.stationStart, spec: s, scenario: sc, measurement: m };
+sampleAt(0); lastPart.copy(machine.partWorld()); resize(); setView('iso', true); setPlaying(playing);
+window.sim = { seekTo, pause: () => setPlaying(false), play: () => setPlaying(true), setView, views: Object.keys(views), get T() { return T; }, get state() { return S; }, total, project, steps: sequence.steps, stationStart: sequence.stationStart, spec: s, scenario: sc, measurement: m };
 if (qp.has('st')) { setPlaying(false); seekTo(previewTime(THREE.MathUtils.clamp(+qp.get('st') || 0, 0, STATIONS.length - 1))); }
 if (qp.has('step')) { setPlaying(false); seekTo(sequence.steps[THREE.MathUtils.clamp(+qp.get('step') || 0, 0, sequence.steps.length - 1)].start + (+qp.get('t') || 0)); }
 if (qp.has('time')) { setPlaying(false); seekTo(+qp.get('time')); }

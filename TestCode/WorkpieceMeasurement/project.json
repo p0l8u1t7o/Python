@@ -10,5 +10,21 @@
       "tools/verify-details.mjs",
       "tools/verify-wiring.mjs"
     ]
-  }
+  },
+  "variants": [
+    {
+      "name": "A/NG-A",
+      "params": {
+        "spec": "A",
+        "scenario": "NG-A"
+      }
+    },
+    {
+      "name": "C/ERR",
+      "params": {
+        "spec": "C",
+        "scenario": "ERR"
+      }
+    }
+  ]
 }

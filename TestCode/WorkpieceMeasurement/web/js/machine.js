@@ -68,12 +68,13 @@ export function createMachine(scene, s) {
   for (const x of [-345, 345]) addBox(hood, MAT.frame, 20, 20, 470, x, top, 0);
   addBox(hood, MAT.glass, 670, H - 20, 3, 0, Y0 - 42 + H / 2, -245); addBox(hood, MAT.glass, 3, H - 20, 470, -345, Y0 - 42 + H / 2, 0); addBox(hood, MAT.glass, 3, H - 20, 470, 345, Y0 - 42 + H / 2, 0); addBox(hood, MAT.glass, 670, 3, 470, 0, top, 0);
   addBox(hood, MAT.glass, 300, H - 20, 3, 195, Y0 - 42 + H / 2, 245);           // 前門只蓋量測區，托盤側開放人工上下料
-  // HMI
-  addBox(deco, MAT.frame, 30, 30, 30, 395, top - 120, 200); addBox(deco, MAT.frame, 14, 14, 60, 370, top - 120, 215);
-  const hmi = addBox(deco, MAT.axis, 370, 235, 22, 470, top - 110, 270); hmi.rotation.y = -0.45; hmi.rotation.x = -0.12;
+  // HMI：整組比原配置往 +X 移 60 mm，面板左端（約 x 364）留在外罩右側框（x 355）外，不再穿過外罩玻璃與光纖路線
+  const HX = 60;
+  addBox(deco, MAT.frame, 30, 30, 30, 395 + HX, top - 120, 200); addBox(deco, MAT.frame, 14, 14, 60, 370 + HX, top - 120, 215);
+  const hmi = addBox(deco, MAT.axis, 370, 235, 22, 470 + HX, top - 110, 270); hmi.rotation.y = -0.45; hmi.rotation.x = -0.12;
   const screenTex = new THREE.CanvasTexture(document.createElement('canvas'));
   screenTex.colorSpace = THREE.SRGBColorSpace; screenTex.anisotropy = 4;
-  const screen = new THREE.Mesh(new THREE.PlaneGeometry(340, 205), new THREE.MeshBasicMaterial({ map: screenTex })); screen.position.set(0, 0, 11.6); hmi.add(screen);
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(340, 205), new THREE.MeshBasicMaterial({ map: screenTex })); screen.position.set(0, 0, 11.75); hmi.add(screen);
   // 三色燈
   const tower = {}; [['red', 0xff3b30], ['yellow', 0xffc400], ['green', 0x2ee67a]].forEach(([k, c], i) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(16, 16, 28, 24), M(c, 0, 0.35, { emissive: c, emissiveIntensity: 0.05, transparent: true, opacity: 0.92 })); m.position.set(330, top + 90 - i * 30, -230); deco.add(m); tower[k] = m; });
   addBox(deco, MAT.frame, 10, 40, 10, 330, top + 25, -230);
@@ -86,7 +87,7 @@ export function createMachine(scene, s) {
     const t = TRAYS[id], g = traySize(id), grp = new THREE.Group(); root.add(grp);
     addBox(grp, MAT.tray, g.w, g.h, g.d, 0, YT - 4, 0);
     const edge = { IN: 0x4aa8ff, OK: 0x3dd68c, NG1: 0xff8a4d, NG2: 0xff4d4d }[id];
-    addBox(grp, M(edge, 0.1, 0.5, { emissive: edge, emissiveIntensity: 0.35 }), g.w, 1.2, 1.5, 0, YT + 0.4, g.d / 2 - 0.75);
+    addBox(grp, M(edge, 0.1, 0.5, { emissive: edge, emissiveIntensity: 0.35 }), g.w, 1.3, 1.5, 0, YT + 1.05, g.d / 2 - 0.05);   // 色條凸出盤面與前緣 0.7 mm，避免重合面閃爍
     const parts = [];
     for (let i = 0; i < t.cols * t.rows; i++) {
       const q = pocket(id, i), hole = new THREE.Mesh(new THREE.CylinderGeometry(s.od / 2 + 0.15, s.od / 2 + 0.15, 1.02, 32), M(0x07090b, 0, 0.9)); hole.position.set(q.x - t.cx, YT + 0.5, q.lz); grp.add(hole);
@@ -94,14 +95,16 @@ export function createMachine(scene, s) {
     }
     trays[id] = { grp, parts };
   }
-  for (const [id, x, w] of [['in', -255, 84], ['out', -115, 186]]) { const g = new THREE.Group(); addBox(g, MAT.anodized, w, YT - 9 - (Y0 + 40), 80, x, (Y0 + 40 + YT - 9) / 2, 0); root.add(g); tables[id] = g; }
+  for (const [id, x, w] of [['in', -255, 78], ['out', -115, 186]]) { const g = new THREE.Group(); addBox(g, MAT.anodized, w, YT - 9 - (Y0 + 40), 80, x, (Y0 + 40 + YT - 9) / 2, 0); root.add(g); tables[id] = g; }
 
   // ---------------------------------------------- 移載
   const tr = {}, ref = { tx: 0, zt: 0, a: 0 };
-  for (const b of transferBodies(ref, s)) { const m = mesh(b); m.userData.c0 = m.position.clone(); root.add(m); tr[b.id] = m; }
-  const pad = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.5, 0.8), M(0x20242a, 0, 0.8)); root.add(pad);
-  const chain = addBox(root, MAT.axis, 560, 24, 30, -5, Y0 + 62, -215);
-  chain.name = 'cableChain';
+  // 依安裝關係分層：X 滑座（carriage、zcol）→ Z 滑台（zplate）→ 貼靠氣缸（armBody、blade、吸盤墊）
+  const xg = new THREE.Group(), zg = new THREE.Group(), ag = new THREE.Group();
+  xg.name = 'transfer X'; zg.name = 'transfer Z'; ag.name = 'transfer approach'; root.add(xg); xg.add(zg); zg.add(ag);
+  for (const b of transferBodies(ref, s)) { const m = mesh(b); (b.id === 'zcol' || b.id === 'carriage' ? xg : b.id === 'zplate' ? zg : ag).add(m); tr[b.id] = m; }
+  const pad = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.5, 0.8), M(0x20242a, 0, 0.8)); pad.position.set(0, 1.85, -s.padR - 0.4); ag.add(pad);
+  // X 軸拖鏈由 wiring-render.js 的 X-CHAIN（固定長度折返、逐節繪製）表示；舊的整條方塊已移除（與它重疊）
 
   // ---------------------------------------------- 工件
   const part = createPart(s, 0xfff0d6); root.add(part);
@@ -128,7 +131,8 @@ export function createMachine(scene, s) {
   spiral.position.y = s.base + 0.01; part.add(spiral); spiral.frustumCulled = false;
 
   // ---------------------------------------------- 套用狀態
-  const details=addEquipmentDetail({root,deco,byId,cabinetFaces,rotor1,rotor2,s});
+  // 移動線材支架掛在所屬軸上（X 滑座、Z 滑台、C 型架、上感測頭）
+  const details=addEquipmentDetail({root,deco,byId,cabinetFaces,rotor1,rotor2,s,owners:{x:xg,z:zg,cframe,head:byId.sensorUp}});
   const state = { last: null };
   function apply(S) {
     state.last = S;
@@ -138,8 +142,7 @@ export function createMachine(scene, s) {
     for (const j of jaws) j.m.position.x = j.r + S.jaw * 1.2;
     for (const id of Object.keys(TRAYS)) { const p = trayPose(id, S), occ = new Set(occupied(id, S)); trays[id].grp.position.set(p.x, 0, p.z); trays[id].parts.forEach((m, i) => { m.visible = occ.has(i) && !(id === 'IN' && i === DEMO.k) && !(S.loc === 'out:' + id && i === DEMO.filled[id]); }); }
     tables.in.position.z = S.inZ; tables.out.position.z = S.outZ;
-    for (const [id, m] of Object.entries(tr)) { const c = m.userData.c0; m.position.set(c.x + S.tx, id === 'zcol' || id === 'carriage' ? c.y : c.y + S.zt, id === 'blade' || id === 'armBody' ? c.z - S.a : c.z); }
-    pad.position.set(S.tx, S.zt + 1.85, -s.padR - S.a - 0.4);
+    xg.position.x = S.tx; zg.position.y = S.zt; ag.position.z = -S.a;
     pad.material.emissive.setHex(S.vac ? 0x1d7dff : 0); pad.material.emissiveIntensity = S.vac ? 0.9 : 0;
     const p = partPose(S, s); part.position.set(p.x, p.y, p.z); part.rotation.y = -p.rot;
     for (const [k, list] of Object.entries(beam)) for (const m of list) m.visible = S.optic === k;
@@ -157,5 +160,6 @@ export function createMachine(scene, s) {
     g.font = '22px "Microsoft JhengHei",sans-serif'; lines.slice(1).forEach((t, i) => { g.fillStyle = i === 0 ? color : '#a9c0d2'; g.fillText(t, 18, 96 + i * 38); });
     screenTex.needsUpdate = true;
   }
-  return { root, hood, part, apply, setTower, drawScreen, partWorld: () => part.position.clone().add(V(0, s.len / 2, 0)), byId, trays, details };
+  // 其餘群組給 project.js 分模組（統一檢查用）
+  return { root, hood, deco, part, pad, ringLight, beams, tables, transfer: tr, transferGroups: { x: xg, z: zg, a: ag }, rotor1, rotor2, cframe, apply, setTower, drawScreen, partWorld: () => part.position.clone().add(V(0, s.len / 2, 0)), byId, trays, details };
 }

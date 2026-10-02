@@ -71,50 +71,61 @@ export function movingRoutes(S,s){
 // Structural support bars: intentional attachment contact, not free-floating cable geometry.
 export const FIXED_SUPPORTS=[
  ['rear chain tray',[570,4,30],[-5,951,-222]],
- ['rear tray left bracket',[25,8,45],[-290,945,-213]],
- ['rear tray right bracket',[40,8,45],[290,945,-213]],
+ // 托架後段止於 X 軸背面（z −200），以端面鎖固，不吃進 X 軸
+ ['rear tray left bracket',[25,8,35.5],[-290,945,-217.75]],
+ ['rear tray right bracket',[40,8,35.5],[290,945,-217.75]],
  ['front loom rail with open exit ends',[532,8,12],[0,910,225]],
- ['front rail mount left',[20,20,32],[-240,902,213]],
- ['front rail mount right',[20,20,32],[240,902,213]],
+ // 線槽座鎖在花崗岩前端面（z 215）外側，不吃進花崗岩與入料梭台軸端
+ ['front rail mount left',[20,14,16],[-240,907,223]],
+ ['front rail mount right',[20,14,16],[240,907,223]],
  ['CAM A drop support',[16,96,8],[147,970,233]],
- ['CAM A post bracket',[24,6,90],[131,1006,192]],
+ ['CAM A post bracket',[24,6,76.8],[131,1006,198.6]],   // 由立柱 postA1 前面（z 160.2）伸出
  ['CAM B drop support',[10,90,10],[-228,988,81]],
- ['CAM B post bracket',[18,6,50],[-211,1028,61]],
+ ['CAM B post bracket',[18,6,40],[-211,1028,66]],   // 由鏡頭立柱 lensPost0 前面（z 46）伸出
  ['CAM B carrier tip',[14,6,6],[-226,1028,83]],
  ['CAM C vertical carrier',[10,360,10],[75,1120,190]],
- ['CAM C column bracket low',[23,8,39],[52.5,956,173]],
- ['CAM C column bracket high',[23,8,39],[52.5,1260,173]],
+ // 由 ST1 立柱 col1 側面（x 50）伸出
+ ['CAM C column bracket low',[14,8,39],[57,956,173]],
+ ['CAM C column bracket high',[14,8,39],[57,1260,173]],
  ['CAM C support tip low',[20,8,6],[72,956,190]],
  ['CAM C support tip high',[20,8,6],[72,1260,190]],
- ['optical side carrier',[12,374,10],[320,1098,234]],
- ['optical carrier bracket low',[33,6,20],[330,936,239]],
- ['optical carrier bracket high',[33,6,20],[330,1254,239]],
+ // 側承架起點在 y 921（桌板線夾支撐桿上方）；托架止於外罩角柱內面（x 335）、前玻璃內側（z 243）
+ ['optical side carrier',[12,364,10],[320,1103,234]],
+ ['optical carrier bracket low',[21.5,6,14],[324.25,936,236]],
+ ['optical carrier bracket high',[21.5,6,14],[324.25,1254,236]],
  ['optical stationary loop anchor',[8,4,66],[320,1206,167]],
  ['optical anchor side arm',[20,4,6],[328,1206,197]],
  ['optical anchor post arm',[8,4,40],[338,1206,217]],
  ['optical upper anchor standoff',[8,9,8],[320,1212.5,140]],
 ];
+// 每個移動支架：[名稱, 尺寸, 世界座標中心, 貼靠的機構 id, 所屬軸]；所屬軸 x＝X 滑座、z＝Z 滑台、cframe＝C 型架、head＝上感測頭
+// X 鏈固定座走在 Z 行程下方（y ≤ 1002）再由後側立柱接到鏈端，避免 Z 鏈座、Z-TO-VALVE 隨 Z 上下時穿過它
 export function movingSupports(S,s){
  const x=S.tx,y=S.zt,r=S.r2,head=YS+s.base+s.wd+70+S.headLift;
  return [
- ['X chain carriage anchor',[10,12,80],[x-21,1030,-196],['zcol']],
- ['X chain endpoint seat',[18,8,6],[x-10,1020,-231],[]],
- ['Z chain endpoint seat',[36,4,8],[x-14,y+19,-184],[]],
- ['Z chain side bracket',[6,4,46],[x-30,y+19,-165],[]],
- ['Z chain plate attachment',[14,4,10],[x-24,y+19,-143],['zplate']],
- ['valve / vacuum manifold',[12,16,20],[x+20,y+25,-121],[]],
- ['manifold bolted bracket',[26,4,40],[x+23,y+18,-128],['zplate']],
- ['hose anchor',[7,8,10],[x+34,y+34,-125],[]],
- ['fiber routing upright',[8,285,8],[320+r,1084.5,88],[]],
- ['fiber clamp support upper',[12,8,65],[300+r,1180,55],['colC']],
- ['fiber clamp support lower',[12,8,65],[300+r,955,55],['colC']],
- ['fiber clamp support R',[12,8,65],[300+r,1190,55],['colC']],
- ['fiber support tip upper',[30,8,8],[313+r,1180,88],[]],
- ['fiber support tip lower',[30,8,8],[313+r,955,88],[]],
- ['fiber support tip R',[30,8,8],[313+r,1190,88],[]],
- ['head collar bracket',[30,6,8],[X2+r+20,head-15,12],['sensorUp']],
- ['head lead upright',[8,40,8],[X2+r+35,head+5,12],[]],
- ['head lead support',[8,6,52],[X2+r+35,head+25,36],[]],
- ['head loop moving anchor',[12,6,8],[X2+r+41,head+25,60],[]],
+ ['X chain carriage anchor',[10,10,80],[x-21,997,-196],['zcol'],'x'],
+ ['X chain anchor riser',[10,40,10],[x-21,1012,-231],[],'x'],
+ ['X chain endpoint seat',[18,8,6],[x-10,1020,-231],[],'x'],
+ ['Z chain endpoint seat',[36,4,8],[x-14,y+19,-184],[],'z'],
+ ['Z chain side bracket',[6,4,46],[x-30,y+19,-165],[],'z'],
+ ['Z chain plate attachment',[14,4,10],[x-24,y+19,-143],['zplate'],'z'],
+ ['valve / vacuum manifold',[12,16,20],[x+20,y+25,-121],[],'z'],
+ ['manifold bolted bracket',[26,4,40],[x+23,y+18,-128],['zplate'],'z'],
+ ['hose anchor',[7,8,10],[x+34,y+34,-125],[],'z'],
+ ['fiber routing upright',[8,285,8],[320+r,1084.5,88],[],'cframe'],
+ ['fiber clamp support upper',[12,8,65],[300+r,1180,55],['colC'],'cframe'],
+ ['fiber clamp support lower',[12,8,65],[300+r,955,55],['colC'],'cframe'],
+ ['fiber clamp support R',[12,8,65],[300+r,1190,55],['colC'],'cframe'],
+ ['fiber support tip upper',[30,8,8],[313+r,1180,88],[],'cframe'],
+ ['fiber support tip lower',[30,8,8],[313+r,955,88],[],'cframe'],
+ ['fiber support tip R',[30,8,8],[313+r,1190,88],[],'cframe'],
+ ['head collar bracket',[30,6,8],[X2+r+20,head-15,12],['sensorUp'],'head'],
+ ['head lead upright',[8,40,8],[X2+r+35,head+5,12],[],'head'],
+ ['head lead support',[8,6,52],[X2+r+35,head+25,36],[],'head'],
+ ['head loop moving anchor',[12,6,8],[X2+r+41,head+25,60],[],'head'],
  ];
+}
+// 各軸在世界座標的原點（與 machine.js 的群組位置一致），支架掛到所屬軸時換成局部座標
+export function frameOrigin(frame,S,s){
+ return frame==='x'?[S.tx,0,0]:frame==='z'?[S.tx,S.zt,0]:frame==='cframe'?[S.r2,0,0]:frame==='head'?[X2+S.r2,YS+s.base+s.wd+35+S.headLift,0]:[0,0,0];
 }

@@ -11,7 +11,7 @@ function ring(g,n,ro,ri,h,at,m=steel){const geo=new THREE.LatheGeometry([[ri,-h/
 function label(g,text,w,h,at){if(typeof document==='undefined')return;const c=document.createElement('canvas');c.width=768;c.height=128;const x=c.getContext('2d');x.fillStyle='#10212c';x.fillRect(0,0,768,128);x.fillStyle='#e4edf3';x.font='bold 36px sans-serif';x.textAlign='center';x.fillText(text,384,77,736);const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;const o=new THREE.Mesh(new THREE.PlaneGeometry(w,h),new THREE.MeshBasicMaterial({map:t}));o.position.set(...at);g.add(o);return o;}
 function wire(g,name,points,color,r=1.5){const path=new THREE.CatmullRomCurve3(points.map(V));const o=new THREE.Mesh(new THREE.TubeGeometry(path,Math.max(32,points.length*12),r,6,false),mat(color,0));o.name=name;o.userData.route=points;g.add(o);return o;}
 function screw(g,at,r=2){const o=new THREE.Mesh(new THREE.CylinderGeometry(r,r,1.3,6),steel);o.rotation.x=Math.PI/2;o.position.set(...at);g.add(o);return o;}
-export function addEquipmentDetail({root,deco,byId,cabinetFaces,rotor1,rotor2,s}) {
+export function addEquipmentDetail({root,deco,byId,cabinetFaces,rotor1,rotor2,s,owners}) {
   const electrical=new THREE.Group();electrical.name='Control cabinet / planning';root.add(electrical);
   const panel=new THREE.Group();panel.position.set(...PANEL.center);electrical.add(panel);
   box(panel,'bolted backplate',[620,660,3],[0,0,0]);
@@ -42,15 +42,16 @@ export function addEquipmentDetail({root,deco,byId,cabinetFaces,rotor1,rotor2,s}
   // Top service plate has two actual through-holes, outside the granite slab.
   const sh=new THREE.Shape();sh.moveTo(-350,-250);sh.lineTo(350,-250);sh.lineTo(350,250);sh.lineTo(-350,250);sh.closePath();
   for(const x of [-290,290]){const hole=new THREE.Path();hole.absarc(x,231,13,0,Math.PI*2,true);sh.holes.push(hole);}
-  const top=new THREE.Mesh(new THREE.ExtrudeGeometry(sh,{depth:4,bevelEnabled:false}),mat(0xb7c1c5,.12));top.rotation.x=Math.PI/2;top.position.y=820;deco.add(top);cabinetFaces.push(top);
+  const top=new THREE.Mesh(new THREE.ExtrudeGeometry(sh,{depth:4,bevelEnabled:false}),mat(0xb7c1c5,.12));top.name='cabinet service top plate';top.rotation.x=Math.PI/2;top.position.y=820;deco.add(top);cabinetFaces.push(top);
   for(const x of [-290,290]){
-    ring(root,'panel feed-through / real opening',17,10,14,[x,822,231],rubber);
+    // 護口：上下翻邊 Ø34 夾住桌板（y 816～820），中段 R12.8 卡在 R13 開孔內，不與板材互相穿插
+    {const g=new THREE.LatheGeometry([[10,-7],[17,-7],[17,-6.05],[12.8,-6.05],[12.8,-1.95],[17,-1.95],[17,7],[10,7],[10,-7]].map(a=>new THREE.Vector2(...a)),48);const o=new THREE.Mesh(g,rubber);o.name='panel feed-through / real opening';o.position.set(x,822,231);root.add(o);}
     const color=x<0?CIRCUITS.ac.color:CIRCUITS.signal.color;
     wire(root,'field harness through deck gland',[[x,960,231],[x,880,231],[x,822,231],[x,798,231],[x,780,218],[x,766,180],[x,741,-100],[x,735,-186]],color,5);
     // Clamp plates and fasteners meet the rear posts/inner cabinet side.
     for(const y of [795,865,918]){
       ring(root,'split saddle / clear cable bore',8,5.6,7,[x,y,231],dark);
-      box(root,'saddle support',[345-Math.abs(x)-8,5,8],[(x+Math.sign(x)*353)/2,y,231]);
+      box(root,'saddle support',[345-Math.abs(x)-8,5,8],[(x+Math.sign(x)*353)/2,y,233]);   // 偏後 2 mm，讓開 z 225 的 X-FEED 線
     }
   }
   // Visible fasteners remain within existing fixture envelopes.
@@ -65,7 +66,7 @@ export function addEquipmentDetail({root,deco,byId,cabinetFaces,rotor1,rotor2,s}
   ring(byId.sensorUp,'split clamp on lift carriage',16,14,9,[0,20,0]);
   box(byId.sensorUp,'DH lift carriage',[30,22,12],[0,20,-19]);
   const railHeight=byId.zadj.geometry.parameters.height;
-  box(byId.zadj,'DH mounting cap to upper arm',[40,6,56],[0,railHeight/2,16]);
+  box(byId.zadj,'DH mounting cap to upper arm',[42,6,56.3],[0,railHeight/2,15.85]);   // 比滑軌寬 1 mm、後緣多 0.8 mm，避免側面與背面重合閃爍
   // OP-88864 is an adjustment fixture, not the workpiece-holding chuck.
   label(root,'ST2  /  OP-88864 adjustment concept',95,10,[278,1192,27]);
   for(const id of ['colC','zadj','chuck']){const o=byId[id];if(!o)continue;const bounds=new THREE.Box3().setFromObject(o);const z=bounds.max.z+.5;for(const dx of [-.3,.3]){const p=bounds.getCenter(new THREE.Vector3());screw(o,[dx*(bounds.max.x-bounds.min.x),0,z-o.position.z],1.6);}}
@@ -73,7 +74,7 @@ export function addEquipmentDetail({root,deco,byId,cabinetFaces,rotor1,rotor2,s}
     const knob=new THREE.Mesh(new THREE.CylinderGeometry(5,5,9,24),dark);knob.rotation.z=Math.PI/2;knob.position.set(26,y,0);byId.zadj.add(knob);
     box(byId.zadj,'adjustment screw boss',[4,18,18],[21,y,0]);
   }
-  const wiring=managedWiring(root,s),moving=wiring.moving;
+  const wiring=managedWiring(root,s,owners),moving=wiring.moving;
   function update(S){
     wiring.update(S);
     for(const [id,o]of Object.entries(devices)){const led=o.userData.electricalLed;if(led)led.material.emissiveIntensity=id==='CL1'||id.startsWith('OM')?(S.optic==='CF'?1.2:.15):.3;}

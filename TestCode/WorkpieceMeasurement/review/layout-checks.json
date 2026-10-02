@@ -1,0 +1,36 @@
+{
+  "ok": true,
+  "variants": [
+    {
+      "variant": "預設",
+      "params": {},
+      "ok": true,
+      "count": 0,
+      "failures": [],
+      "rows": []
+    },
+    {
+      "variant": "A/NG-A",
+      "params": {
+        "spec": "A",
+        "scenario": "NG-A"
+      },
+      "ok": true,
+      "count": 0,
+      "failures": [],
+      "rows": []
+    },
+    {
+      "variant": "C/ERR",
+      "params": {
+        "spec": "C",
+        "scenario": "ERR"
+      },
+      "ok": true,
+      "count": 0,
+      "failures": [],
+      "rows": []
+    }
+  ],
+  "seconds": 0.1
+}

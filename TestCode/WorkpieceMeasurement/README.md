@@ -77,7 +77,7 @@ node ../core/tools/serve.mjs WorkpieceMeasurement --no-open
 - `?pause&st=3&view=st2`：停在 ST2 掃描；`?pause&step=7&view=chuck`：停在夾持；`?pause&time=6.2`：指定秒數。
 - `?hood=0`、`?pip=0`、`?labels`、`?speed=1`、`cam=x,y,z,tx,ty,tz`。
 
-主控台：`window.sim.seekTo(sec)`、`pause()`、`play()`、`setView(name)`、`steps`、`measurement`。
+主控台：`window.sim.seekTo(sec)`、`pause()`、`play()`、`setView(name)`、`views`、`total`、`steps`、`measurement`、`project`。
 
 ## 機構配置
 
@@ -134,7 +134,26 @@ node tools/verify.mjs
 
 最近一次結果（`review/verification.json`）：全部通過。最小間隙：對托盤 0.30 mm（吸嘴底面到托盤上表面）、對夾爪 0.55 mm（規格 A）、對固定機構 0.68 mm（落座前）。新報價 CL-S015 未取得完整光錐資料，因此不宣稱杯口光路通過。
 
-這是離散取樣的模型檢查，不是實機安全或公差認證。3D 畫面與干涉檢查用同一份機構資料（`web/js/spec.js`）。底櫃、外罩、HMI、光束示意不在檢查範圍內。
+這是離散取樣的模型檢查，不是實機安全或公差認證。3D 畫面與干涉檢查用同一份機構資料（`web/js/spec.js`）。`verify.mjs` 不檢查底櫃、外罩、HMI 與光束示意，這些由下面的統一檢查涵蓋。
+
+### 統一檢查（共用框架）
+
+```powershell
+node ../core/tools/check.mjs WorkpieceMeasurement     # 在本資料夾；在 TestCode 則是 node core/tools/check.mjs Workpiece
+```
+
+依序跑 `imports`、`determinism`（倒序／跳播一致）、`layout`、`scene`（全場動態干涉、架設相撞、重合面閃爍，結果在 `review/scene-verification.txt`），再跑 `project.json` 列的 `tools/verify.mjs`、`verify-details.mjs`、`verify-wiring.mjs`。`scene` 與網頁用同一個 `web/js/project.js` 建場景，所以檢查的就是畫面上的幾何；地面與光束示意不列入。
+
+遷移時依 `scene` 結果修正（2026-10-03）：
+- 移載分成 X 滑座 → Z 滑台 → 貼靠氣缸三層群組，移動線材支架掛到所屬軸（X、Z、C 型架、上感測頭），安裝接觸改由結構表示，不靠允許規則。
+- X 拖鏈固定座原本在 y 1024～1036，Z 鏈座與 Z-TO-VALVE 隨 Z 上下時會穿過它；改成走 Z 行程下方（y ≤ 1002）再由後側立柱接到鏈端。`verify-wiring.mjs` 加了「不同軸的移動支架不得互相穿過」。
+- 入料梭台寬 84 → 78 mm（原本吃進通道 B 鏡頭立柱 2 mm）；X／Z 鏈接續點只留一個應力消除環，軟管起點不另加環。
+- 托盤色條、Z 軸調整滑軌蓋板、CAM B 立柱支架、HMI 螢幕各移開 0.7～1 mm，消除重合面閃爍。
+- HMI 整組往 +X 移 60 mm（原本面板穿過外罩右側玻璃 45 mm 與光纖固定路線）；全景依外廓自動取景，所以全景畫面會略為縮放。
+- 移除舊的整條 X 拖鏈方塊（與 X-CHAIN 逐節拖鏈、後方托槽重疊）。
+- 支架改成鎖在相鄰件表面、不吃進去：後方托槽托架止於 X 軸背面、前線槽座改鎖花崗岩前端面（原本也碰到入料梭台軸端）、CAM A／B／C 支架由立柱表面伸出、光纖側承架托架止於外罩角柱內面；桌板護口改成有卡槽的形狀夾住板材。
+- `project.json` 的 `variants` 另外檢查規格 A／NG-A 與 C／ERR 兩組（工件、環座、夾爪與流程不同）。
+- 允許規則只有兩條：移動線材端點接入自己的接頭座、固定線材在 x ±290 匯入穿過桌板的線束與線夾。
 
 ## 檔案
 
@@ -144,9 +163,10 @@ node tools/verify.mjs
 | `web/js/sequence.js` | 逐步流程、限速反推時間、由時間取樣狀態 |
 | `web/js/collision.js` | 間隙計算 |
 | `web/js/product.js` | 工件（依剖面車出） |
+| `web/js/project.js` | 專案介面：建地面與機台，`apply(t)` 把整個場景放到時間 t（main.js 與統一檢查共用） |
 | `web/js/machine.js` | 機台、托盤、移載、光束示意 |
 | `web/js/camera-sim.js` | 取像模擬子畫面 |
-| `web/js/main.js` | 場景、控制、介面、紀錄匯出 |
+| `web/js/main.js` | 渲染器與燈光、控制、介面、紀錄匯出（場景與時間狀態取自 `project.js`） |
 | `tools/verify.mjs` | 流程／幾何／運動驗證 |
 | `tools/update_cost_estimate.mjs` | 更新成本試算表並核對公式 |
 | `web/js/control-plan.js` | 3D 電盤／圖面共用元件與 I/O 清單 |
