@@ -10,7 +10,7 @@ const OUT = resolve(process.argv[2] || '_site');
 if (existsSync(OUT) && readdirSync(OUT).length) throw new Error(`輸出資料夾不是空的：${OUT}`);
 mkdirSync(OUT, { recursive: true });
 
-const SKIP_CORE = new Set(['tools', 'template']);
+const SKIP_CORE = new Set(['tools', 'template', 'verify', 'review']);   // 只在 Node 端用的檢查與報告不發布
 cpSync(CORE, join(OUT, 'core'), {
   recursive: true,
   filter: src => { const rel = relative(CORE, src).split(sep); return !(SKIP_CORE.has(rel[0]) || /\.md$/i.test(src)); },
