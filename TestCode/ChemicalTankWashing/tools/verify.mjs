@@ -23,6 +23,8 @@ const boothBoxes = [
   [b.x0, 0, b.z0, b.x0 + T20, b.h, b.z1], [b.x1 - T20, 0, b.z0, b.x1, b.h, b.z1], [b.x0, 0, b.z1 - T20, b.x1, b.h, b.z1], [b.x0, b.h - T20, b.z0, b.x1, b.h, b.z1],
   [b.x0, 0, b.z0, ox0, b.h, b.z0 + T20], [ox1, 0, b.z0, b.x1, b.h, b.z0 + T20], [ox0, oy1, b.z0, ox1, b.h, b.z0 + T20], [ox0, 0, b.z0, ox1, oy0, b.z0 + T20],
   [b.funnel.x0, 250, b.funnel.z0, b.funnel.x1, b.funnel.y, b.funnel.z1],
+  // 開口兩側風刀
+  [ox0 + 10, 500, b.z0 - 110, ox0 + 70, 2200, b.z0 - 30], [ox1 - 70, 500, b.z0 - 110, ox1 - 10, 2200, b.z0 - 30],
 ];
 const conveyorBoxes = [
   [UPRIGHT.x - 350, 0, UPRIGHT.z0 + 450, UPRIGHT.x + 350, UPRIGHT.top - 5, UPRIGHT.z1],

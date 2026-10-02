@@ -116,7 +116,10 @@ export const BOOTH = {
   dryS: 30, hotAirC: 70, filmG: 120,
 };
 // 乾燥驗收：放回位為秤重段，殘水 = 秤重 − 該桶號建檔的空桶重；同型號空桶重差約 ±100 g，故需逐桶建檔
-export const WEIGH = { limitG: 100, sec: 2.5, resolutionG: 10 };
+// 頂升秤台：梳齒從滾筒縫隙頂起，把桶托離滾筒後才秤，秤上只有秤台本身（約 10 kg），4 顆 20 kg 荷重元，解析度約 10–15 g
+export const WEIGH = { limitG: 100, sec: 1.5, lift: 12, stroke: 27, liftS: .8, resolutionG: 10 };
+// 風刀：沖洗站開口兩側，手臂帶桶退出時吹掉桶外表水珠，避免外表水被算進秤重
+export const AIR_KNIFE = { sec: 2.6 };
 
 // 手臂負載（R-2000iC/165F）：額定與手腕容許值取型錄等級概略值，採購前以 FANUC 型錄核對
 export const PAYLOAD = {

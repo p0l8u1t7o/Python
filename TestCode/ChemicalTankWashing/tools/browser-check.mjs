@@ -46,7 +46,7 @@ if (ready) {
     ['10-booth-pour', await at('倒液進集液漏斗', 2), 'booth'], ['11-hot-air-dry', await at('熱風吹乾內壁附著水', 8), 'booth'],
     ['12-waste', await at('末道沖洗水回收至 TK-R', 1), 'waste'], ['13-inbound-dolly', await at('散桶入庫：台車推入', 3), 'inbound'],
     ['14-inbound-jib', await at('懸臂吊上棧板', 2), 'inbound'], ['15-agv-inbound-arc', await at('AGV 取滿棧板入架', 6), 'inbound'],
-    ['16-weigh', await at('秤重確認殘水 < 100 g', 1), 'robot'], ['17-finish', report.total - 1, 'iso'],
+    ['16-weigh', await at('秤重確認殘水 < 100 g', .7), 'weigh'], ['16b-air-knife', await at('退出時風刀吹外表', 1.2), 'booth'], ['17-finish', report.total - 1, 'iso'],
   ];
   for (const [name, t, view, flag] of scenes) {
     if (flag === 'dims') await evaluate(`document.getElementById('showDims').click()`);

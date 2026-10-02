@@ -75,11 +75,11 @@ function applyState(sm) {
   });
   const b = st.booth, sp = st.sump;
   washing.set({
-    lance: b.lance, lance2: b.lance2, spray: b.spray, pool: b.pool, sump: sp.level, tanks: st.tanks,
+    knife: b.knife, lance: b.lance, lance2: b.lance2, spray: b.spray, pool: b.pool, sump: sp.level, tanks: st.tanks,
     pour: b.pour !== '' ? drums[+b.pour].bungWorld('big') : null,
     flows: { hot: b.hot, vac: b.vac, vacOut: b.vac, supply: b.spray, supply2: b.spray, fromF: b.spray && b.src === 'F', fromR: b.spray && b.src === 'R', sump: sp.pump, riser: sp.pump, toWA: sp.pump && sp.dest === 'WA', toWB: sp.pump && sp.dest === 'WB', toR: sp.pump && sp.dest === 'R', city: st.makeup.on },
   });
-  line.setScale(st.scale.on);
+  line.setScale(st.scale);
   line.setTower(playing ? 'run' : 'wait');
 }
 
@@ -130,7 +130,7 @@ const VIEWS = {
   label: [[6000, 2900, 7300], [7500, 900, 9800]], upender: [[8400, 3600, 7400], [10900, 1000, 10100]],
   decap: [[9700, 3300, 8900], [11290, 1350, 11000]], robot: [[6200, 5600, 10200], [9900, 1100, 13400]],
   booth: [[7300, 2300, 15000], [9400, 1150, 14550]], waste: [[1500, 4300, 11600], [5000, 800, 14600]],
-  inbound: [[-900, 3900, 7400], [2300, 900, 2900]],
+  inbound: [[-900, 3900, 7400], [2300, 900, 2900]], weigh: [[10150, 1500, 12650], [11292, 650, 13400]],
 };
 function setView(name, instant = false) {
   selectedView = name;

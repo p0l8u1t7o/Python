@@ -1,6 +1,6 @@
 // 產線設備：棧板站、三軸龍門＋翻轉夾爪、橫躺輸送、貼標讀碼站、翻桶機、立放直線輸送（開蓋→清洗→裝填區）、圍籬與控制櫃。
 import * as THREE from 'three';
-import { PALLET_STATION, PALLET, GANTRY, LYING, LABEL, UPENDER, UPRIGHT, DECAP, DRUM, FENCE, GANTRY_FENCE, FOOTPRINTS, ROOM } from './layout.js';
+import { PALLET_STATION, PALLET, GANTRY, LYING, LABEL, UPENDER, UPRIGHT, DECAP, DRUM, FENCE, GANTRY_FENCE, FOOTPRINTS, ROOM, WEIGH } from './layout.js';
 import { MAT, box, boxAt, cyl, rod, plate, D2R } from './parts.js';
 import { drumJaws } from './drum.js';
 
@@ -98,13 +98,21 @@ export function createLine(scene) {
   for (const [z0, z1] of [[up.z0 + 450, up.pick - 350], [up.pick + 350, up.place - 350], [up.place + 350, up.z1]])
     for (const s of [-1, 1]) box(group, 30, 120, z1 - z0, MAT.yellow, up.x + s * 340, up.top + 160, (z0 + z1) / 2);
   for (const z of [up.pick + DRUM.R + 20, up.place + DRUM.R + 20]) box(group, 120, 60, 40, MAT.steelOrange, up.x + 300, up.top + 40, z);   // 定位擋塊
-  // 放回位秤重段：輸送段架在四顆荷重元上，旁邊有秤重顯示器
-  box(group, 780, 30, 760, MAT.steelDark, up.x, 40, up.place);
-  for (const [dx, dz] of [[-330, -330], [330, -330], [-330, 330], [330, 330]]) cyl(group, 40, 60, MAT.steelBlue, up.x + dx, 85, up.place + dz);
+  // 放回位頂升秤台：梳齒在滾筒縫隙間，平時低於滾筒面；氣缸頂升時把桶托離滾筒，荷重元只承受秤台＋桶
+  const weigher = new THREE.Group(); group.add(weigher);
+  const gaps = []; for (let z = up.z0 + 450 + 60; z < up.z1; z += 120) if (Math.abs(z - up.place) < 300) gaps.push(z);
+  for (const z of gaps) {
+    box(weigher, 560, 40, 26, MAT.pu, up.x, up.top - 15 - 20, z);                    // 梳齒（頂面平時低於滾筒面 15 mm）
+    box(weigher, 30, 120, 26, MAT.steelDark, up.x, up.top - 95, z);
+  }
+  box(weigher, 600, 30, gaps.at(-1) - gaps[0] + 60, MAT.steelDark, up.x, up.top - 165, (gaps[0] + gaps.at(-1)) / 2);
+  for (const [dx, dz] of [[-240, -180], [240, -180], [-240, 180], [240, 180]]) cyl(weigher, 35, 50, MAT.steelBlue, up.x + dx, up.top - 205, up.place + dz);   // 荷重元
+  box(group, 640, 30, 520, MAT.steel, up.x, up.top - 245, up.place);                    // 頂升板
+  cyl(group, 55, up.top - 280, MAT.alu, up.x, (up.top - 280) / 2, up.place);           // 頂升氣缸
   const scaleScreen = box(group, 40, 200, 320, MAT.screen, up.x + 520, 1150, up.place); box(group, 60, 1050, 60, MAT.steelDark, up.x + 520, 525, up.place);
   box(group, 700, 40, 40, MAT.steelOrange, up.x, up.top + 40, up.z1 - 20);
   plate(group, ['取桶位'], 420, 110, [up.x - 420, up.top + 420, up.pick], -Math.PI / 2, { w: 512, h: 130 });
-  plate(group, ['放回位＋秤重'], 520, 110, [up.x - 420, up.top + 420, up.place], -Math.PI / 2, { w: 512, h: 110 });
+  plate(group, ['放回位＋頂升秤台'], 560, 110, [up.x - 420, up.top + 420, up.place], -Math.PI / 2, { w: 512, h: 110 });
   plate(group, ['→ 裝填區（下一站）'], 900, 160, [up.x - 420, 1150, up.handoff - 200], -Math.PI / 2, { w: 640, h: 110 });
 
   // ---------------------------------------------------------------- 自動開蓋站（相機定位 → 旋轉台對位 → 伺服鎖付軸反轉拆蓋）
@@ -201,7 +209,7 @@ export function createLine(scene) {
       turntable.rotation.y = table * D2R;
       capPile.forEach((c, i) => { c.visible = i < caps; });
     },
-    setScale(on) { scaleScreen.material = on ? MAT.green : MAT.screen; },
+    setScale({ on, lift }) { scaleScreen.material = on ? MAT.green : MAT.screen; weigher.position.y = lift * WEIGH.stroke; },
     setTower(state) { lamps.forEach((l, i) => { l.material.emissiveIntensity = (state === ['fault', 'wait', 'run'][i]) ? 1.2 : .05; }); },
     socket: k => spindles[k],
   };

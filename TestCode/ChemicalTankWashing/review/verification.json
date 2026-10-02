@@ -1,9 +1,9 @@
 {
   "ok": true,
-  "samples": 14921,
+  "samples": 15013,
   "dt": 0.05,
-  "total": 746,
-  "robotCycle": 150.1,
+  "total": 750.6,
+  "robotCycle": 151.1,
   "robotTrackingMax": {
     "mm": 0.05,
     "deg": 0.029
@@ -11,14 +11,14 @@
   "jointSpeedRatioMax": {
     "j1": 0.55,
     "j2": 0.7,
-    "j3": 0.47,
+    "j3": 0.44,
     "j4": 0.55,
     "j5": 0.29,
     "j6": 0.83
   },
   "minRobotClearance": {
-    "mm": 172,
-    "at": "580.80 s"
+    "mm": 166,
+    "at": "229.80 s"
   },
   "maxDrumStep": {
     "mm": 92.5,

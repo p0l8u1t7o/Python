@@ -19,6 +19,13 @@ export function createWashing(scene) {
   for (const [x, z] of [[b.x0, b.z0], [b.x1, b.z0], [b.x0, b.z1], [b.x1, b.z1], [ox0, b.z0], [ox1, b.z0]]) box(group, 60, H, 60, MAT.steel, x, H / 2, z);
   for (const z of [b.z0, b.z1]) box(group, b.x1 - b.x0, 60, 60, MAT.steel, (b.x0 + b.x1) / 2, H, z);
   box(group, ox1 - ox0, 50, 50, MAT.steel, (ox0 + ox1) / 2, oy1, b.z0);
+  // 開口兩側風刀：手臂帶桶退出時吹掉桶外表水珠
+  const knives = [];
+  for (const [x, s] of [[ox0 + 40, 1], [ox1 - 40, -1]]) {
+    box(group, 60, 1700, 80, MAT.steel, x, 1350, b.z0 - 70);
+    const air = new THREE.Mesh(new THREE.PlaneGeometry(380, 1650), new THREE.MeshBasicMaterial({ color: 0xbfe8ff, transparent: true, opacity: .28, side: THREE.DoubleSide, depthWrite: false }));
+    air.position.set(x + s * 190, 1350, b.z0 - 70); air.visible = false; group.add(air); knives.push(air);
+  }
   // 開口上方的防濺簾（條狀 PVC）
   for (let x = ox0 + 60; x < ox1; x += 120) box(group, 100, 220, 4, MAT.pp, x, oy1 - 110, b.z0 + 40);
   plate(group, ['沖洗站 · 酸鹼殘液'], 900, 160, [(b.x0 + b.x1) / 2, H + 140, b.z0 - 5], Math.PI, { w: 640, h: 110 });
@@ -110,9 +117,9 @@ export function createWashing(scene) {
   const _a = new THREE.Vector3(), _b = new THREE.Vector3();
   return {
     group, walls, lanceTip: () => new THREE.Vector3(lx, lanceY(lance.userData.ext || 0), lz),
-    set({ lance: ext = 0, lance2: ext2 = 0, spray: sp = false, pour = null, pool: pl = 0, sump = 0, tanks: lv = null, flows = {} }) {
+    set({ knife = false, lance: ext = 0, lance2: ext2 = 0, spray: sp = false, pour = null, pool: pl = 0, sump = 0, tanks: lv = null, flows = {} }) {
       lance.position.set(lx, lanceY(ext), lz); lance.userData.ext = ext; lance2.position.set(lx2, lanceY(ext2), lz2);
-      spray.visible = sp; jet.visible = sp; lamp.intensity = 500;
+      spray.visible = sp; jet.visible = sp; lamp.intensity = 500; for (const a of knives) a.visible = knife;
       if (pour) {
         _a.copy(pour); _b.set(pour.x, f.y - 120, pour.z);
         const L = _a.y - _b.y; stream.visible = L > 10; stream.position.set(_a.x, (_a.y + _b.y) / 2, _a.z); stream.scale.set(22, L, 22);

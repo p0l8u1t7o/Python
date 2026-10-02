@@ -1,7 +1,7 @@
 // 動畫排程：每台設備與每個桶各有一條時間軌，依站位占用（流水線阻塞）推算交接時刻。
 // 任一時刻的畫面完全由絕對時間決定，倒退、跳站與連續播放結果一致。
 import * as THREE from 'three';
-import { RACK, PALLET, DRUM, AGV, FORK, AISLE, PALLET_STATION, GANTRY, LYING, LABEL, UPENDER, UPRIGHT, DECAP, BOOTH, WASTE, INBOUND, WEIGH } from './layout.js';
+import { RACK, PALLET, DRUM, AGV, FORK, AISLE, PALLET_STATION, GANTRY, LYING, LABEL, UPENDER, UPRIGHT, DECAP, BOOTH, WASTE, INBOUND, WEIGH, AIR_KNIFE } from './layout.js';
 import { jibPoint, jibTarget, DOLLY_H } from './inbound.js';
 import { smooth, D2R } from './parts.js';
 import { JOINTS, SPEED } from './robot.js';
@@ -61,14 +61,14 @@ export function createSequence({ robot }) {
   const decap = track('decap', { hx: 0, hz: 0, hy: DECAP.safeY, spinBig: 0, spinSmall: 0, flash: false, clamp: 0, table: 0, caps: 0, heldBig: false, heldSmall: false });
   const grip = track('grip', { jaw: 0 });
   // lance：0 收回、1 噴洗深度、BOOTH.suckExt 伸到桶底抽液；lance2 為 3/4" 直噴頭
-  const booth = track('booth', { lance: 0, lance2: 0, spray: false, vac: false, hot: false, src: 'R', pour: '', pool: 0 });
-  const scale = track('scale', { on: false, g: 0 });   // pour：倒液中的桶序（字串，不插值）
+  const booth = track('booth', { lance: 0, lance2: 0, spray: false, vac: false, hot: false, knife: false, src: 'R', pour: '', pool: 0 });   // pour：倒液中的桶序（字串，不插值）
+  const scale = track('scale', { on: false, lift: 0, g: 0 });
   const sump = track('sump', { level: 0, pump: false, dest: 'WA' });
   const makeup = track('makeup', { on: false });   // TK-F 液位控制補水（廠務自來水／RO）
   const tanks = track('tanks', Object.fromEntries(Object.entries(WASTE.tanks).map(([k, t]) => [k, t.init])));
   const jib = track('jib', { a: INBOUND.jib.park, r: 700, y: 2000, clamp: 0 });
   const dolly = track('dolly', { x: INBOUND.dolly.x0 });
-  const drums = DRUM_IDS.map((id, k) => track('drum' + k, { mode: 'pallet', slot: k, yaw: YAW0[k], lx: LYING.place, uz: UPRIGHT.z0, water: 0, film: 0, weighG: -1, capBig: true, capSmall: true, label: false, labelAng: 0, read: false, rinse: 0, dry: false, state: '倉儲' }));
+  const drums = DRUM_IDS.map((id, k) => track('drum' + k, { mode: 'pallet', slot: k, yaw: YAW0[k], lx: LYING.place, uz: UPRIGHT.z0, water: 0, film: 0, weighG: -1, lift: 0, capBig: true, capSmall: true, label: false, labelAng: 0, read: false, rinse: 0, dry: false, state: '倉儲' }));
   const inDrums = IN_IDS.map((id, k) => track('in' + k, { mode: 'hidden', slot: 0, yaw: YAW_IN[k], water: 0, capBig: true, capSmall: true, label: false, labelAng: 0, read: false, rinse: 0, dry: false, state: '廠外待入' }));
   const events = [];
   const ev = (s, station, label) => { events.push({ time: s.start, station, label: label || s.action }); return s; };
@@ -307,7 +307,10 @@ export function createSequence({ robot }) {
     rt = booth.t;
     rAdd('lin', P.u, 1.5, { action: '轉正' });
     d.add(0, { state: '清洗完成' }, { at: rt });
-    rAdd('lin', P.entry, 1.6, { action: '退出沖洗站' });
+    // 退出時通過開口風刀，吹掉桶外表水珠
+    booth.hold(rt); const kn = booth.add(AIR_KNIFE.sec, { knife: true }, { action: '風刀吹乾桶外表', sub: '開口兩側風刀，手臂帶桶通過時吹掉外表水珠' }); booth.add(0, { knife: false });
+    if (k === 0) ev(kn, 'robot', '退出時風刀吹外表');
+    rAdd('lin', P.entry, AIR_KNIFE.sec, { at: kn.start, action: '退出沖洗站', sub: '通過開口風刀' });
     r.placeFree = prev.handoff ?? 0;
     rAdd('ptp', P.via, null, { action: '退到過渡點', sub: '先離開隔間東北角再轉回產線' });
     rAdd('ptp', P.above, null, { at: r.placeFree, action: '轉回產線放回位', sub: '關節同步插值（PTP）' });
@@ -316,9 +319,12 @@ export function createSequence({ robot }) {
     d.add(0, { mode: 'upright', uz: UPRIGHT.place, yaw: 90, state: '已洗淨' }, { at: rt });
     ev(rAdd('lin', P.retract, 1, { action: '夾爪退出' }), 'robot', `${id} 放回輸送線`);
     // 秤重段：殘水 = 秤重 − 桶號建檔的空桶重，< 100 g 才放行（NG 時手臂夾回補吹）
-    const wg = scale.add(WEIGH.sec, { on: true, g: RESIDUAL_G[k] }, { at: rt + 1, action: '秤重確認乾燥', sub: `殘水 ${RESIDUAL_G[k]} g < ${WEIGH.limitG} g，放行（模擬）` });
+    const lu = scale.add(WEIGH.liftS, { lift: 1 }, { at: rt + 1, action: '梳齒秤台頂升', sub: `從滾筒縫隙頂起 ${WEIGH.lift} mm，把桶托離輸送` });
+    d.add(WEIGH.liftS, { lift: WEIGH.lift, state: '秤重中' }, { at: lu.start });
+    const wg = scale.add(WEIGH.sec, { on: true, g: RESIDUAL_G[k] }, { action: '秤重確認乾燥', sub: `讀數穩定後計算：殘水 ${RESIDUAL_G[k]} g < ${WEIGH.limitG} g，放行（模擬）` });
     if (k === 0) ev(wg, 'robot', '秤重確認殘水 < 100 g');
-    scale.add(0, { on: false });
+    const ld = scale.add(WEIGH.liftS, { on: false, lift: 0 }, { action: '秤台下降', sub: '桶回到滾筒上' });
+    d.add(WEIGH.liftS, { lift: 0 }, { at: ld.start });
     d.add(0, { weighG: RESIDUAL_G[k], state: '秤重 OK' }, { at: scale.t });
     d.add(travelUp(UPRIGHT.handoff - UPRIGHT.place), { uz: UPRIGHT.handoff, state: '送往裝填區' }, { at: scale.t });
     r.handoff = d.t;
@@ -465,7 +471,7 @@ export function drumWorld(key, st, robotTcp) {
       pos.set(px + rx * Math.cos(a) - ry * Math.sin(a), py + rx * Math.sin(a) + ry * Math.cos(a), pz);
       q.setFromAxisAngle(Zax, a).multiply(_q.setFromAxisAngle(Zax, Math.PI / 2)).multiply(_q2.setFromAxisAngle(Yax, d.yaw * D2R)); break;
     }
-    case 'upright': pos.set(UPRIGHT.x, UPRIGHT.top + DRUM.H / 2, d.uz); q.setFromAxisAngle(Yax, d.yaw * D2R); break;
+    case 'upright': pos.set(UPRIGHT.x, UPRIGHT.top + DRUM.H / 2 + (d.lift || 0), d.uz); q.setFromAxisAngle(Yax, d.yaw * D2R); break;
     case 'robot': robotTcp.decompose(pos, q, new THREE.Vector3()); break;
   }
   return { pos, q };
