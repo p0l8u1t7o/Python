@@ -7,7 +7,7 @@
 ## 最新：台車展示影片（2026-10-02，Claude Code）
 
 - 新增 `scripts/render-showcase.mjs` 與 `window.studioAutomation`（`src/main.js`）：逐格算圖、NVENC 編碼、亮度稽核。
-- 產出 `TEMPideos\MechanicalAssembly-台車_1080p30.mp4`：86.9 秒、2607 格、約 93 MB；稽核 0 單格閃爍、0 黑畫面，相鄰格最大差 7.4（第一版因預組情境切換有 40.5 的跳變，已以交叉淡化修正）。
+- 產出 `TEMP\videos\MechanicalAssembly-台車_1080p30.mp4`：86.9 秒、2607 格、約 93 MB；稽核 0 單格閃爍、0 黑畫面，相鄰格最大差 7.4（第一版因預組情境切換有 40.5 的跳變，已以交叉淡化修正）。
 - 檢視器新增 `outsideContext = "hide"`（影片用：預組時隱藏其他零件）；地面 `renderOrder = -1` 固定透明排序。
 
 ## 前輪：模型朝上軸與 Z 朝上座標軸（2026-10-02，Claude Code）

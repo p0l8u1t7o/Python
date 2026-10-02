@@ -131,7 +131,7 @@ npm.cmd run build
 
 ```powershell
 npm.cmd run dev   # 另開視窗
-node scripts/render-showcase.mjs --station=202401-BA00 --out="D:\Working Space\Python\TestCode\TEMPideos\MechanicalAssembly-台車_1080p30.mp4"
+node scripts/render-showcase.mjs --station=202401-BA00 --out="D:\Working Space\Python\TestCode\TEMP\videos\MechanicalAssembly-台車_1080p30.mp4"
 ```
 
 以 Playwright 開啟工作台，透過 `window.studioAutomation` 以虛擬時鐘逐格指定狀態並算圖（GPU，1920×1080、30 fps），不受即時效能影響、不會掉格；畫面依序為片頭、組合外觀環繞、爆炸圖展開與環繞、收合、逐步組裝（字卡、箭頭、鏡頭跟隨）、片尾。以 NVENC（`MilitaryGradePC/tools/bin/ffmpeg.exe`，可用 `--ffmpeg=` 指定）編碼 H.264。
