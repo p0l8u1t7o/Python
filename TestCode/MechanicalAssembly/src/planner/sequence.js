@@ -12,7 +12,7 @@ import {
 
 export { isFastenerName, isFlexibleName };
 
-export const PLANNER_VERSION = 2;
+export const PLANNER_VERSION = 3;
 
 const AXES = [
   new Vector3(1, 0, 0),
@@ -406,13 +406,12 @@ function directionText(v, up) {
   const vertical = v.dot(up);
   if (vertical > 0.9) return "由上方往下放入";
   if (vertical < -0.9) return "由下方往上裝入";
+  // 以畫面顯示的座標命名（Z 朝上）：內部 X 為 X，內部 −Z 為 Y
   const axes = [
     ["+X", 1, 0, 0],
     ["−X", -1, 0, 0],
-    ["+Y", 0, 1, 0],
-    ["−Y", 0, -1, 0],
-    ["+Z", 0, 0, 1],
-    ["−Z", 0, 0, -1],
+    ["−Y", 0, 0, 1],
+    ["+Y", 0, 0, -1],
   ];
   const named = axes.find(([, x, y, z]) => v.x * x + v.y * y + v.z * z > 0.996);
   return named ? `由 ${named[0]} 側推入` : "沿特徵軸向插入";

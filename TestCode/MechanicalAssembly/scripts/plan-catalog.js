@@ -4,7 +4,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { normalizeGltf, describeParts } from "../src/importer.js";
+import { normalizeGltf, describeParts, orientRoot } from "../src/importer.js";
 import { extractAssembly } from "../src/planner/extract.js";
 import { planAssembly, PLANNER_VERSION } from "../src/planner/sequence.js";
 import { meshNameSignature } from "../src/planner-client.js";
@@ -15,6 +15,9 @@ const all = args.includes("--all");
 const limit = Number(args.find((a) => a.startsWith("--limit="))?.split("=")[1] || 3000);
 const only = args.filter((a) => !a.startsWith("--"));
 const catalog = JSON.parse(fs.readFileSync("public/data/cad-catalog.json", "utf8"));
+const orientation = fs.existsSync("public/data/orientation.json")
+  ? JSON.parse(fs.readFileSync("public/data/orientation.json", "utf8")).assets
+  : {};
 const assets = catalogAssets(catalog).filter((a) => a.url);
 const defaults = new Set(catalog.stations.map((s) => s.defaultAsset));
 const chosen = assets.filter((a) =>
@@ -43,8 +46,9 @@ for (const [n, asset] of chosen.entries()) {
         "",
       ),
     );
-    // 與瀏覽器 loadSample() 相同的座標轉換
-    if ((asset.upAxis || "y") === "z") scene.rotation.x = -Math.PI / 2;
+    // 與瀏覽器 loadSample() 相同的座標轉換（含逐一檢查後的朝上軸）
+    const up = orientation[asset.id] || asset.upAxis || "y";
+    orientRoot(scene, up);
     describeParts(scene, "catalog");
     const result = planAssembly(extractAssembly(scene));
     const file = path.join(outDir, `${asset.id}.json`);
@@ -52,6 +56,7 @@ for (const [n, asset] of chosen.entries()) {
       plannerVersion: PLANNER_VERSION,
       assetId: asset.id,
       source: asset.source,
+      up,
       partCount: result.partNode.length,
       signature: meshNameSignature(scene),
       result,

@@ -12,6 +12,7 @@
     "inventory": "python scripts/inventory.py",
     "catalog:native": "python scripts/native-display.py --all",
     "catalog:build": "node scripts/build-catalog.js && node scripts/extract-stations.js && node scripts/build-catalog.js",
+    "catalog:orient": "node --max-old-space-size=8192 scripts/orient-catalog.js",
     "catalog:plan": "node --max-old-space-size=8192 scripts/plan-catalog.js",
     "test:native": "python -m unittest discover -s tests -p *_test.py -v",
     "prepare": "node scripts/prepare-assets.js"

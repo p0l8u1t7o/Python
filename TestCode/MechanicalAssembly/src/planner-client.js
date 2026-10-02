@@ -52,7 +52,7 @@ export function runPlanner(root, { onProgress, timeout = 600000 } = {}) {
 
 let planIndex;
 /** 讀取建庫時預先推論的結果；模型不一致時回傳 null。 */
-export async function loadPrecomputedPlan(assetId, root) {
+export async function loadPrecomputedPlan(assetId, root, up = "y") {
   if (!assetId) return null;
   try {
     planIndex ||= fetch("/data/plans/index.json")
@@ -67,6 +67,7 @@ export async function loadPrecomputedPlan(assetId, root) {
     const partIds = meshPartIds(root);
     if (
       saved.plannerVersion !== PLANNER_VERSION ||
+      (saved.up || "y") !== up ||
       saved.partCount !== partIds.length ||
       saved.signature !== meshNameSignature(root)
     )

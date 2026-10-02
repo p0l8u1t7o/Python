@@ -1,0 +1,2463 @@
+{
+ "revision": "2026-10-02",
+ "note": "模型自身座標中朝上的軸；未列出者為 y",
+ "assets": {
+  "58fe07a480fbe9a1": "z",
+  "877d78ae26925422": "-z",
+  "4c566f17b1d87118": "z",
+  "1aa9432d8a8b8820": "z",
+  "5a8b8d585d136e53": "z",
+  "ba3d2629d9f716ef": "z",
+  "5cbee39014190948": "z",
+  "2d21ad40e437d398": "z",
+  "776de35fa094aabe": "z",
+  "78ff3f3605341a3d": "x",
+  "71408a5c822b8d1f": "x",
+  "93bc8eb84a83e60e": "z",
+  "a215828712ab20d4": "z",
+  "b7c9ff6fa56fa2cc": "z",
+  "81d5c0e71465b0d2": "z",
+  "1169236be6ed64cc": "z",
+  "29add3ee33592420": "z",
+  "1e2ced18f85e1b03": "x",
+  "9f41db8525cba12a": "-z",
+  "36eaca604a1fd3c9": "-z",
+  "729b7c2eb7d6f90c": "-y",
+  "c251d44ea709c029": "x",
+  "56635035d46b0042": "x",
+  "182b066f43d267ce": "-y",
+  "eb57df797512c930": "-y",
+  "24bc946ac78f8617": "-y",
+  "ee7bb9bf88c65cef": "-z",
+  "c691cc3d2fc3e505": "x",
+  "63dc33e9fe2e8f39": "-z",
+  "63a17ecc9aa4c59e": "-z",
+  "e49adc1b8cd47a4a": "-y",
+  "ff1fe5722ea1e3ca": "-x",
+  "79793309a6576433": "-z",
+  "78dafc94e30a935c": "z",
+  "837213dc0f2db4df": "x",
+  "57e38513b24335ec": "-z",
+  "0623ba7e7f03ece9": "-z",
+  "1da5d040e0dab4bd": "z",
+  "b7c86bd7c63922a5": "z",
+  "23c9e944a029ab4e": "-z",
+  "b623f26460b8d5b7": "-x",
+  "b2d35edeb694c51e": "-z",
+  "ff8cdd29a7e28c8a": "-z",
+  "06e9e011c32e1169": "z",
+  "ca83c31f26542331": "x",
+  "fa928fc100f56ef2": "-z",
+  "a69cff9840b419c9": "-z",
+  "e89fac884d98041c": "-z",
+  "da3d455946f1d882": "z",
+  "a68d4c10d0cd0c9d": "-y",
+  "5adc57702c8c2aa8": "z",
+  "1bf78ed5bb68ec6f": "z",
+  "d5b4861b79e0bea7": "z",
+  "e847491ba7546808": "x",
+  "fa8660a892972094": "x",
+  "9f31cb44734598d0": "-x",
+  "9c9278eef35aa306": "z",
+  "06ac86c439074809": "-x",
+  "939256fbeb1a4af6": "z",
+  "f28ec4c52faefc81": "z",
+  "bf9467bd3f784b90": "z",
+  "550be802dfee1fce": "z",
+  "d5209eae83c00fa3": "-z",
+  "dc2239540e88085e": "-y",
+  "cae24670234b0905": "z",
+  "0c16f7973effa207": "z",
+  "29fa3e4bb8e81f2d": "-y",
+  "a48b820c3539f356": "z",
+  "139a2db36a0853be": "z",
+  "3f59782e46fcc948": "-y",
+  "b6761344711e83a3": "z",
+  "592e933534939d68": "z",
+  "cd44fe1a18ee61b7": "z",
+  "85432d55567ae415": "-z",
+  "f733ebf82d061323": "x",
+  "49d5e87a33e3169c": "z",
+  "810192b6dd8e0951": "z",
+  "ce6c7b3cdacaeca5": "z",
+  "3d37049e417c9254": "z",
+  "148dc171b7b8509c": "-z",
+  "619bb09dba7f8988": "z",
+  "28dc0339f1552ceb": "-z",
+  "c768f5449d0c824a": "z",
+  "df73b74f45157a4d": "z",
+  "c8ac954ab48de693": "z",
+  "dc5355147bc41d47": "-z",
+  "7a2204e4dc83f4ea": "z",
+  "3278bd60d03b0d29": "x",
+  "b9412f5cc15738cd": "z",
+  "35380bdf8c282bb7": "x",
+  "1cdeeb60c4cc4d91": "x",
+  "b4d2b9d0057fbd93": "-z",
+  "f94969f4d2534f74": "z",
+  "a66cd1073ab4f663": "z",
+  "c115a02ca76a7cda": "z",
+  "807991b96c55c5c2": "z",
+  "2b4bde49ec9f22b7": "z",
+  "c0f642954732c157": "z",
+  "b1a1d57691b15b20": "x",
+  "d430e0eff7e9c64a": "-z",
+  "b13c3c7f4362a803": "z",
+  "6245af6fb132cf15": "z",
+  "ef19fc29546ea080": "z",
+  "9dc3125af2c7d375": "x",
+  "f130fb552ab35af6": "x",
+  "ded857c4227c69e4": "x",
+  "aab0d75b2dc0ffce": "-z",
+  "1ee58e9b24cb3eec": "-z",
+  "c39ae46e9280391c": "-z",
+  "28247509c9e1c437": "-y",
+  "56e2833f283bd572": "-y",
+  "ab91476ba79e9bb4": "-z",
+  "833796214a07f048": "-z",
+  "4fe115c63ef562d2": "z",
+  "6d60864ccc8b5b95": "z",
+  "a646485fc732b285": "z",
+  "a2fc4c61e6994074": "z",
+  "ecd0e83d7048ebd5": "x",
+  "5d6a26a6f23b5cca": "-z",
+  "536146354bcb198d": "-z",
+  "3482e73754f35f60": "-z",
+  "99c7abe09f899993": "z",
+  "f820f1ee516da61f": "z",
+  "710bc9fe8df7cf45": "-y",
+  "f0d04e83996b9526": "-y",
+  "3805369ed0e9d781": "-y",
+  "e4ca63062b9a2337": "z",
+  "f076d184948b7a36": "z",
+  "e16400eb0295ed96": "x",
+  "84475b93d53ed67b": "z",
+  "25c556cd0718da6a": "-z",
+  "424b3be3fe5348b4": "z",
+  "65a784fe62d52253": "x",
+  "25644182fcef57fc": "z",
+  "6cf70e2fbf38ce2e": "z",
+  "d1da34b41b0472f9": "-y",
+  "13a909b21d93fb3a": "-z",
+  "f024785c8327a259": "-z",
+  "e291599b2a8eae74": "-z",
+  "c7fda3acd572b4cb": "-x",
+  "b16cfe1fa0c7d158": "-z",
+  "a804921ac604c928": "-x",
+  "0c79c1caa8791d12": "-y",
+  "b0b07cb307ddd105": "-y",
+  "f1578b516da49bc9": "-y",
+  "b1164696f8bb11fb": "z",
+  "92d65d86bb2aa4ae": "z",
+  "eb5006ae3be8d606": "z",
+  "fe8c9ddd5d8824d5": "x",
+  "090adbe413e9834b": "z",
+  "7624725dc77e89b1": "z",
+  "c438df526d82a6b1": "-x",
+  "d11c220aac3074e6": "-x",
+  "0e2567d019a308a8": "z",
+  "0251c10e4bb8ae13": "z",
+  "dfe9606b88901f33": "-z",
+  "5cc01a41fa7a5137": "-z",
+  "e23188bdbef4ce96": "z",
+  "296b9c44860c975b": "-z",
+  "112c49117f6a9194": "-z",
+  "74286f8d692d21f2": "z",
+  "26fa537586e58a64": "-z",
+  "2637482f2a05fc92": "z",
+  "46977271dfb8babd": "-y",
+  "c13cf64f6464fcf2": "-x",
+  "b42605faa99851b9": "-x",
+  "b193d2a9df40a6ce": "-y",
+  "a2af70d7552041f0": "-y",
+  "e0e45d8fa965e356": "-y",
+  "e5db08d483683eac": "-y",
+  "372110296c81a467": "-y",
+  "64a9aa82e9df2e95": "z",
+  "ae8fb2821e1010a1": "z",
+  "f3ad7a5738985494": "z",
+  "340eb4e7febe0c99": "x",
+  "3fe3c20940dd6957": "-z",
+  "362d5e164cc22326": "z",
+  "59fe7505634f334b": "z",
+  "2b061ebbbc2eb175": "z",
+  "76c96bb0c543152d": "z",
+  "50d218c4120332bc": "z",
+  "0a84bf196bbf233a": "-z",
+  "8fd3e5fba4111c06": "z",
+  "72e17337d6fc6844": "-z",
+  "7a51f683f2f34540": "z",
+  "6be12a7e879546d3": "-z",
+  "703edc6d958df18d": "-x",
+  "411832645110a0d6": "x",
+  "cbc73716af2d5933": "-z",
+  "0babbc93173c6c49": "z",
+  "14244a67495c1465": "-y",
+  "01270fd82e59fd65": "z",
+  "ae628661be22fe1b": "-z",
+  "4d02d7b4d147cf3d": "z",
+  "01b42319356c39ab": "-z",
+  "a329ed50ad05f3b8": "z",
+  "90973d8e3afbbee2": "-z",
+  "34fbbaae5701bbab": "x",
+  "905fafd2ca0132b4": "-x",
+  "6d87a585a9fe786b": "z",
+  "98defd00fe1c3c80": "x",
+  "fb2d1103863d659a": "x",
+  "4df97e692ed283bb": "x",
+  "b84a4f5a07aa42f3": "x",
+  "3c6e682f6249c429": "x",
+  "adf860395f04d0df": "-x",
+  "47e7dd4bc776ea12": "-x",
+  "b9e538b6b6358597": "-z",
+  "6454d2d66a10ef40": "-y",
+  "f09c27ed7beb94b2": "-z",
+  "db06f46749bfc513": "-z",
+  "7d4112c41d26bb45": "-z",
+  "79fb35b56c0e0546": "-x",
+  "34ac2d6943616715": "-z",
+  "7430fcf04f4e8478": "x",
+  "64a51afa53749b32": "-z",
+  "6a1c7b4787757836": "-z",
+  "228d3eb81201f567": "z",
+  "94a2b27bdc02fcc2": "-y",
+  "32419d44d6822470": "-z",
+  "e9c002a688aecf3e": "z",
+  "f520ceae0e333bf7": "z",
+  "434b38ba7506b2f1": "-x",
+  "fbf2b6b4109ae507": "-x",
+  "30ce1ebb0583c96e": "-x",
+  "e1d2fd072d019213": "x",
+  "8383a97936f9714e": "-x",
+  "3f623be55af2dc34": "-z",
+  "6049e139f45ffda8": "-x",
+  "ae6d1e8144372269": "-z",
+  "b4068b6a392f806e": "-z",
+  "4f81c448378c257b": "-z",
+  "cf949835047f2368": "-z",
+  "37803b3fc695e169": "z",
+  "a0f5608e348455ec": "z",
+  "6c0fe005ec24c08b": "-z",
+  "705941e24f462c8a": "-z",
+  "c7a61c93c2b4367b": "-z",
+  "35e04226a985eea5": "z",
+  "e3f9330d23c5074a": "z",
+  "1f00069a7d7feed7": "z",
+  "dcddde2b15175f76": "-x",
+  "310d123348b2351e": "z",
+  "4e672c974cbf5ccc": "z",
+  "c6f3e998009be1b2": "-y",
+  "f1cb9da1b34facca": "-z",
+  "957ec1f93f4ac91c": "x",
+  "dc85b51b5e3ac808": "z",
+  "68d5b16769a5ad95": "z",
+  "01658a461d1aea87": "z"
+ },
+ "evidence": {
+  "58fe07a480fbe9a1": {
+   "up": "z",
+   "from": "目視確認",
+   "source": "自動線規劃_240503.SLDASM"
+  },
+  "877d78ae26925422": {
+   "up": "-z",
+   "from": "目視確認",
+   "source": "入水站.SLDASM"
+  },
+  "4c566f17b1d87118": {
+   "up": "z",
+   "from": "目視確認",
+   "source": "202401-EA00 入水除泡/202401-EA00.SLDASM"
+  },
+  "c0ed5e66385aba0c": {
+   "up": "y",
+   "from": "目視確認",
+   "source": "202401-GA00 烘乾/202401-GA00.SLDASM"
+  },
+  "1aa9432d8a8b8820": {
+   "up": "z",
+   "from": "目視確認",
+   "source": "Tray盤/Tray盤組件-5.STEP"
+  },
+  "fe17654aeb3e4d96": {
+   "up": "y",
+   "from": "目視確認",
+   "source": "Load machine_240608.STEP"
+  },
+  "9f33ecc4997ff6dc": {
+   "up": "y",
+   "from": "目視確認",
+   "source": "UnLoad machine_240608.STEP"
+  },
+  "6f9a499bfbeeca04": {
+   "up": "y",
+   "from": "目視確認",
+   "source": "202401-BA00 台車/202401-BA00(Magzin).STEP"
+  },
+  "5a8b8d585d136e53": {
+   "up": "z",
+   "from": "目視確認",
+   "source": "晶片3D_250312/JM0004-AMS-3-01-250312.SLDPRT"
+  },
+  "50811ff9e889803f": {
+   "up": "y",
+   "from": "目視確認",
+   "source": "202401-IA00 水下移載/202401-IA00.SLDASM"
+  },
+  "ba3d2629d9f716ef": {
+   "up": "z",
+   "from": "總裝引用 18/18",
+   "source": "Tray盤/Tray盤組件-V1.SLDASM"
+  },
+  "5cbee39014190948": {
+   "up": "z",
+   "from": "總裝引用 18/18",
+   "source": "Tray盤/202401-BD01-V1.SLDPRT"
+  },
+  "2d21ad40e437d398": {
+   "up": "z",
+   "from": "總裝引用 18/18",
+   "source": "Tray盤/202401-BD11.SLDPRT"
+  },
+  "776de35fa094aabe": {
+   "up": "z",
+   "from": "總裝引用 18/18",
+   "source": "Tray盤/202401-BD12.SLDPRT"
+  },
+  "78ff3f3605341a3d": {
+   "up": "x",
+   "from": "總裝引用 18/18",
+   "source": "Tray盤/MISUMI_定位襯套-JBHFSP15-P8.00-L11.8.SLDPRT"
+  },
+  "71408a5c822b8d1f": {
+   "up": "x",
+   "from": "總裝引用 18/18",
+   "source": "Tray盤/MISUMI_襯套-JBEMH16-P12.00-W8.00-L9.SLDPRT"
+  },
+  "93bc8eb84a83e60e": {
+   "up": "z",
+   "from": "總裝引用 342/342",
+   "source": "晶片3D_250312/JM0004-POS-3-01-250312.SLDPRT"
+  },
+  "a215828712ab20d4": {
+   "up": "z",
+   "from": "總裝引用 18/18",
+   "source": "Tray盤/治具-1.SLDPRT"
+  },
+  "b7c9ff6fa56fa2cc": {
+   "up": "z",
+   "from": "總裝引用 18/18",
+   "source": "Tray盤/治具-3.SLDPRT"
+  },
+  "81d5c0e71465b0d2": {
+   "up": "z",
+   "from": "總裝引用 54/54",
+   "source": "Tray盤/治具-4.SLDPRT"
+  },
+  "1169236be6ed64cc": {
+   "up": "z",
+   "from": "總裝引用 18/18",
+   "source": "Tray盤/202401-BD01-V3.SLDPRT"
+  },
+  "29add3ee33592420": {
+   "up": "z",
+   "from": "總裝引用 158/158",
+   "source": "Tray盤/待測物-2.SLDPRT"
+  },
+  "1e2ced18f85e1b03": {
+   "up": "x",
+   "from": "總裝引用 1/1",
+   "source": "UnLoad machine.SLDASM"
+  },
+  "9f41db8525cba12a": {
+   "up": "-z",
+   "from": "總裝引用 1/1",
+   "source": "202401-AA00 機架外罩/202401-AA02.SLDASM"
+  },
+  "36eaca604a1fd3c9": {
+   "up": "-z",
+   "from": "總裝引用 1/1",
+   "source": "202401-AA00 機架外罩/202401-AD11.SLDASM"
+  },
+  "d1be80ce67a3e773": {
+   "up": "y",
+   "from": "總裝引用 2/2",
+   "source": "202401-AA00 機架外罩/202401-AD01.1.SLDPRT"
+  },
+  "1331688fcf86b98a": {
+   "up": "y",
+   "from": "總裝引用 6/6",
+   "source": "202401-AA00 機架外罩/202401-AD01.2.SLDPRT"
+  },
+  "729b7c2eb7d6f90c": {
+   "up": "-y",
+   "from": "總裝引用 6/6",
+   "source": "202401-AA00 機架外罩/202401-AD01.3.SLDPRT"
+  },
+  "c251d44ea709c029": {
+   "up": "x",
+   "from": "總裝引用 10/14",
+   "source": "202401-AA00 機架外罩/202401-AD01.4.SLDPRT"
+  },
+  "cc575aae00a00686": {
+   "up": "y",
+   "from": "總裝引用 11/11",
+   "source": "202401-AA00 機架外罩/202401-AD01.5.SLDPRT"
+  },
+  "81555617d6f0bed0": {
+   "up": "y",
+   "from": "總裝引用 2/2",
+   "source": "202401-AA00 機架外罩/202401-AD01.6.SLDPRT"
+  },
+  "f7da35d7f7b520d9": {
+   "up": "y",
+   "from": "總裝引用 6/6",
+   "source": "202401-AA00 機架外罩/202401-AD01.7.SLDPRT"
+  },
+  "56635035d46b0042": {
+   "up": "x",
+   "from": "總裝引用 2/2",
+   "source": "202401-AA00 機架外罩/202401-AD01.8.SLDPRT"
+  },
+  "182b066f43d267ce": {
+   "up": "-y",
+   "from": "總裝引用 12/12",
+   "source": "202401-AA00 機架外罩/UWAUNS120/MISUMI_UWAUNS120_NEW.SLDASM"
+  },
+  "eb57df797512c930": {
+   "up": "-y",
+   "from": "總裝引用 12/12",
+   "source": "202401-AA00 機架外罩/UWAUNS120/HAIRLINE_MISUMI_UWAUNS120_NEW.SLDPRT"
+  },
+  "24bc946ac78f8617": {
+   "up": "-y",
+   "from": "總裝引用 24/24",
+   "source": "202401-AA00 機架外罩/UWAUNS120/HZGN-M4_MISUMI_UWAUNS120_NEW.SLDPRT"
+  },
+  "4f14831beb56d381": {
+   "up": "y",
+   "from": "總裝引用 12/24",
+   "source": "202401-AA00 機架外罩/UWAUNS120/NAT-M4_MISUMI_UWAUNS120_NEW.SLDPRT"
+  },
+  "ee7bb9bf88c65cef": {
+   "up": "-z",
+   "from": "總裝引用 1/1",
+   "source": "202401-AA00 機架外罩/202401-AD11.SLDPRT"
+  },
+  "5ee6bf60245f972f": {
+   "up": "y",
+   "from": "總裝引用 40/40",
+   "source": "202401-AA00 機架外罩/202401-AD04.SLDPRT"
+  },
+  "c691cc3d2fc3e505": {
+   "up": "x",
+   "from": "總裝引用 2/4",
+   "source": "202401-AA00 機架外罩/202401-AD05.SLDPRT"
+  },
+  "04a7996fd23ca2c2": {
+   "up": "y",
+   "from": "總裝引用 4/4",
+   "source": "202401-AA00 機架外罩/202401-AD06.SLDPRT"
+  },
+  "63dc33e9fe2e8f39": {
+   "up": "-z",
+   "from": "總裝引用 2/3",
+   "source": "202401-AA00 機架外罩/202401-AD07.SLDPRT"
+  },
+  "63a17ecc9aa4c59e": {
+   "up": "-z",
+   "from": "總裝引用 4/4",
+   "source": "202401-AA00 機架外罩/202401-AD08.SLDPRT"
+  },
+  "3b5a071e5bed0f0c": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-AA00 機架外罩/202401-AD12.SLDASM"
+  },
+  "6a0573f5da379bd0": {
+   "up": "y",
+   "from": "總裝引用 6/6",
+   "source": "202401-AA00 機架外罩/202401-AD02.1.SLDPRT"
+  },
+  "e49adc1b8cd47a4a": {
+   "up": "-y",
+   "from": "總裝引用 6/6",
+   "source": "202401-AA00 機架外罩/202401-AD02.2.SLDPRT"
+  },
+  "ff1fe5722ea1e3ca": {
+   "up": "-x",
+   "from": "總裝引用 6/6",
+   "source": "202401-AA00 機架外罩/BZ-0520.SLDPRT"
+  },
+  "49c4c2cc8c4c05b3": {
+   "up": "y",
+   "from": "總裝引用 6/6",
+   "source": "202401-AA00 機架外罩/天地栓連桿-R.SLDPRT"
+  },
+  "79793309a6576433": {
+   "up": "-z",
+   "from": "總裝引用 6/12",
+   "source": "202401-AA00 機架外罩/連桿導座.SLDPRT"
+  },
+  "18656a9e0d813278": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-AA00 機架外罩/202401-AD12.SLDPRT"
+  },
+  "78dafc94e30a935c": {
+   "up": "z",
+   "from": "總裝引用 8/8",
+   "source": "202401-AA00 機架外罩/FFU-MD18E(VR)(薄型).SLDPRT"
+  },
+  "386ae01d038efd87": {
+   "up": "y",
+   "from": "總裝引用 2/2",
+   "source": "202401-BA00 台車/202401-BA00.SLDASM"
+  },
+  "f4e1ede830554ef2": {
+   "up": "y",
+   "from": "總裝引用 2/2",
+   "source": "202401-BA00 台車/202401-BD02.SLDASM"
+  },
+  "176d5e549a3d772d": {
+   "up": "y",
+   "from": "總裝引用 2/2",
+   "source": "202401-BA00 台車/202401-BD02.1.SLDPRT"
+  },
+  "dcff1f6e3b5e2620": {
+   "up": "y",
+   "from": "總裝引用 4/4",
+   "source": "202401-BA00 台車/202401-BD02.2.SLDPRT"
+  },
+  "3b5ede213d7d47b5": {
+   "up": "y",
+   "from": "總裝引用 2/2",
+   "source": "202401-BA00 台車/202401-BD02.3.SLDPRT"
+  },
+  "837213dc0f2db4df": {
+   "up": "x",
+   "from": "總裝引用 8/8",
+   "source": "202401-BA00 台車/MISUMI_HFCL8-4040-B_NEW.SLDPRT"
+  },
+  "57e38513b24335ec": {
+   "up": "-z",
+   "from": "總裝引用 4/4",
+   "source": "202401-BA00 台車/HFCB8-4080-B/MISUMI_HFCB8-4080-B_NEW.SLDASM"
+  },
+  "0623ba7e7f03ece9": {
+   "up": "-z",
+   "from": "總裝引用 4/4",
+   "source": "202401-BA00 台車/HFCB8-4080-B/FRAME-CAP_MISUMI_HFCB8-4080-B_NEW.SLDPRT"
+  },
+  "1da5d040e0dab4bd": {
+   "up": "z",
+   "from": "總裝引用 4/4",
+   "source": "202401-BA00 台車/HFCB8-4080-B/NEZI-M5x15LS_MISUMI_HFCB8-4080-B_NEW.SLDPRT"
+  },
+  "6c01f4943fe01db1": {
+   "up": "y",
+   "from": "總裝引用 4/4",
+   "source": "202401-BA00 台車/MISUMI_HSGN65-12-R_NEW.SLDPRT"
+  },
+  "1bd2ff06e207a94e": {
+   "up": "y",
+   "from": "總裝引用 4/4",
+   "source": "202401-BA00 台車/HSGNS65-12-R/MISUMI_HSGNS65-12-R_NEW.SLDASM"
+  },
+  "d940cbb0ad9a4132": {
+   "up": "y",
+   "from": "總裝引用 4/4",
+   "source": "202401-BA00 台車/HSGNS65-12-R/CASTER-BODY_MISUMI_HSGNS65-12-R_NEW.SLDPRT"
+  },
+  "b7c86bd7c63922a5": {
+   "up": "z",
+   "from": "總裝引用 4/8",
+   "source": "202401-BA00 台車/202401-BD20.SLDPRT"
+  },
+  "23c9e944a029ab4e": {
+   "up": "-z",
+   "from": "總裝引用 2/2",
+   "source": "202401-BA00 台車/202401-BD03.SLDPRT"
+  },
+  "2d9ee06d9a0a251e": {
+   "up": "y",
+   "from": "總裝引用 4/4",
+   "source": "202401-BA00 台車/202401-BD04.SLDPRT"
+  },
+  "b623f26460b8d5b7": {
+   "up": "-x",
+   "from": "總裝引用 40/40",
+   "source": "202401-BA00 台車/202401-BD05.SLDPRT"
+  },
+  "b2d35edeb694c51e": {
+   "up": "-z",
+   "from": "總裝引用 2/2",
+   "source": "202401-BA00 台車/202401-BD06.SLDPRT"
+  },
+  "ff8cdd29a7e28c8a": {
+   "up": "-z",
+   "from": "總裝引用 2/4",
+   "source": "202401-BA00 台車/202401-BD09.SLDPRT"
+  },
+  "0c307736a844b981": {
+   "up": "y",
+   "from": "總裝引用 4/4",
+   "source": "202401-BA00 台車/202401-BD10.SLDPRT"
+  },
+  "3f08248f18d54a86": {
+   "up": "y",
+   "from": "總裝引用 20/20",
+   "source": "202401-BA00 台車/ATBEM10-R/MISUMI_ATBEM10-R_NEW.SLDASM"
+  },
+  "8aa1357b530e24e3": {
+   "up": "y",
+   "from": "總裝引用 20/20",
+   "source": "202401-BA00 台車/ATBEM10-R/BODY_MISUMI_ATBEM10-R_NEW.SLDPRT"
+  },
+  "49bec6cfde87f618": {
+   "up": "y",
+   "from": "總裝引用 20/20",
+   "source": "202401-BA00 台車/ATBEM10-R/PIN_MISUMI_ATBEM10-R_NEW.SLDPRT"
+  },
+  "3c8ece9a13e40489": {
+   "up": "y",
+   "from": "總裝引用 20/20",
+   "source": "202401-BA00 台車/ATBEM10-R/TUME_MISUMI_ATBEM10-R_NEW.SLDPRT"
+  },
+  "06e9e011c32e1169": {
+   "up": "z",
+   "from": "總裝引用 2/2",
+   "source": "202401-BA00 台車/202401-BD13.SLDPRT"
+  },
+  "fa7bfda14e4b6b53": {
+   "up": "y",
+   "from": "總裝引用 2/2",
+   "source": "202401-BA00 台車/202401-BD14.SLDPRT"
+  },
+  "ddb6b222dc2aaf73": {
+   "up": "y",
+   "from": "總裝引用 2/2",
+   "source": "202401-BA00 台車/202401-BD15.SLDPRT"
+  },
+  "0a79f62bc49546ff": {
+   "up": "y",
+   "from": "總裝引用 2/2",
+   "source": "202401-BA00 台車/202401-BD16.SLDPRT"
+  },
+  "c2ac597a1d64396f": {
+   "up": "y",
+   "from": "總裝引用 2/2",
+   "source": "202401-BA00 台車/202401-BD17.SLDPRT"
+  },
+  "ca83c31f26542331": {
+   "up": "x",
+   "from": "總裝引用 1/1",
+   "source": "202401-DA00 升降/202401-DA02.SLDASM"
+  },
+  "fa928fc100f56ef2": {
+   "up": "-z",
+   "from": "總裝引用 2/2",
+   "source": "202401-DA00 升降/202401-DD01.SLDPRT"
+  },
+  "0b29bfa1c30b74bb": {
+   "up": "y",
+   "from": "總裝引用 2/2",
+   "source": "202401-DA00 升降/202401-DD02.SLDPRT"
+  },
+  "a69cff9840b419c9": {
+   "up": "-z",
+   "from": "總裝引用 6/14",
+   "source": "202401-DA00 升降/202401-DD03.SLDPRT"
+  },
+  "e89fac884d98041c": {
+   "up": "-z",
+   "from": "總裝引用 2/2",
+   "source": "202401-DA00 升降/202401-DD04.SLDPRT"
+  },
+  "d6c259e494527f82": {
+   "up": "y",
+   "from": "總裝引用 2/2",
+   "source": "202401-DA00 升降/202401-DD05.SLDPRT"
+  },
+  "b8f0b4183112533c": {
+   "up": "y",
+   "from": "總裝引用 2/2",
+   "source": "202401-DA00 升降/202401-DD07.SLDPRT"
+  },
+  "408b90e472f9ef9b": {
+   "up": "y",
+   "from": "總裝引用 8/8",
+   "source": "202401-DA00 升降/202401-DD08.SLDPRT"
+  },
+  "da3d455946f1d882": {
+   "up": "z",
+   "from": "總裝引用 3/6",
+   "source": "202401-DA00 升降/202401-DD09.SLDPRT"
+  },
+  "a68d4c10d0cd0c9d": {
+   "up": "-y",
+   "from": "總裝引用 2/2",
+   "source": "202401-DA00 升降/202401-DD10.SLDPRT"
+  },
+  "5adc57702c8c2aa8": {
+   "up": "z",
+   "from": "總裝引用 1/2",
+   "source": "202401-DA00 升降/202401-DD11.SLDPRT"
+  },
+  "1bf78ed5bb68ec6f": {
+   "up": "z",
+   "from": "總裝引用 1/2",
+   "source": "202401-DA00 升降/202401-DD12.SLDPRT"
+  },
+  "d5b4861b79e0bea7": {
+   "up": "z",
+   "from": "總裝引用 1/1",
+   "source": "202401-DA00 升降/202401-DD13.SLDPRT"
+  },
+  "e847491ba7546808": {
+   "up": "x",
+   "from": "總裝引用 4/4",
+   "source": "202401-DA00 升降/C-SX2R28-1120/MISUMI_C-SX2R28-1120_NEW.SLDASM"
+  },
+  "fa8660a892972094": {
+   "up": "x",
+   "from": "總裝引用 4/4",
+   "source": "202401-DA00 升降/C-SX2R28-1120/RAIL_MISUMI_C-SX2R28-1120_NEW.SLDPRT"
+  },
+  "9f31cb44734598d0": {
+   "up": "-x",
+   "from": "總裝引用 4/8",
+   "source": "202401-DA00 升降/C-SX2R28-1120/BLOCK_MISUMI_C-SX2R28-1120_NEW.SLDPRT"
+  },
+  "9c9278eef35aa306": {
+   "up": "z",
+   "from": "總裝引用 1/1",
+   "source": "202401-CA00 conveyorⅡ/202401-CA02.SLDASM"
+  },
+  "90d1ab12ac687d27": {
+   "up": "y",
+   "from": "總裝引用 4/4",
+   "source": "202401-CA00 conveyorⅡ/時規皮帶_T10.SLDPRT"
+  },
+  "06ac86c439074809": {
+   "up": "-x",
+   "from": "總裝引用 8/8",
+   "source": "202401-CA00 conveyorⅡ/MISUMI_LHIFCM16_NEW.SLDPRT"
+  },
+  "939256fbeb1a4af6": {
+   "up": "z",
+   "from": "總裝引用 8/8",
+   "source": "202401-CA00 conveyorⅡ/WR20-35.SLDPRT"
+  },
+  "f28ec4c52faefc81": {
+   "up": "z",
+   "from": "總裝引用 8/8",
+   "source": "202401-CA00 conveyorⅡ/MISUMI_AWSS-D-D9-V5.0-T3.0_NEW.SLDPRT"
+  },
+  "bf9467bd3f784b90": {
+   "up": "z",
+   "from": "總裝引用 2/2",
+   "source": "202401-CA00 conveyorⅡ/202401-CD16.SLDPRT"
+  },
+  "550be802dfee1fce": {
+   "up": "z",
+   "from": "總裝引用 2/2",
+   "source": "202401-CA00 conveyorⅡ/202401-CD17.SLDPRT"
+  },
+  "66fc7bffb46f08e8": {
+   "up": "y",
+   "from": "總裝引用 11/11",
+   "source": "202401-CA00 conveyorⅡ/202401-CD18.SLDPRT"
+  },
+  "fcd0db3394217e6d": {
+   "up": "y",
+   "from": "總裝引用 4/4",
+   "source": "202401-CA00 conveyorⅡ/202401-CD20.SLDPRT"
+  },
+  "d5209eae83c00fa3": {
+   "up": "-z",
+   "from": "總裝引用 2/2",
+   "source": "202401-CA00 conveyorⅡ/202401-CD23.SLDPRT"
+  },
+  "dc2239540e88085e": {
+   "up": "-y",
+   "from": "總裝引用 2/2",
+   "source": "202401-CA00 conveyorⅡ/202401-CD24.SLDPRT"
+  },
+  "514d62d8823371ed": {
+   "up": "y",
+   "from": "總裝引用 4/4",
+   "source": "202401-CA00 conveyorⅡ/202401-CD25.SLDPRT"
+  },
+  "cae24670234b0905": {
+   "up": "z",
+   "from": "總裝引用 2/2",
+   "source": "202401-CA00 conveyorⅡ/202401-CD26.SLDPRT"
+  },
+  "27b7bba5b4dc4f33": {
+   "up": "y",
+   "from": "總裝引用 39/39",
+   "source": "202401-CA00 conveyorⅡ/202401-CD29.SLDPRT"
+  },
+  "d4827fdd465f4359": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-CA00 conveyorⅡ/202401-CD31.SLDPRT"
+  },
+  "0c16f7973effa207": {
+   "up": "z",
+   "from": "總裝引用 8/8",
+   "source": "202401-CA00 conveyorⅡ/202401-CD32.SLDPRT"
+  },
+  "9d0cd0a112683a64": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-CA00 conveyorⅡ/202401-CD52.SLDPRT"
+  },
+  "b3ab132e2827e32f": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-CA00 conveyorⅡ/202401-CD53.SLDPRT"
+  },
+  "29fa3e4bb8e81f2d": {
+   "up": "-y",
+   "from": "總裝引用 3/3",
+   "source": "202401-CA00 conveyorⅡ/202401-CD54.SLDPRT"
+  },
+  "a48b820c3539f356": {
+   "up": "z",
+   "from": "總裝引用 2/2",
+   "source": "202401-CA00 conveyorⅡ/202401-CD61.SLDPRT"
+  },
+  "139a2db36a0853be": {
+   "up": "z",
+   "from": "總裝引用 10/10",
+   "source": "202401-CA00 conveyorⅡ/202401-CA01(傳動模組3).SLDASM"
+  },
+  "3f59782e46fcc948": {
+   "up": "-y",
+   "from": "總裝引用 40/60",
+   "source": "202401-CA00 conveyorⅡ/MISUMI_STWN10_NEW.SLDPRT"
+  },
+  "b6761344711e83a3": {
+   "up": "z",
+   "from": "總裝引用 40/40",
+   "source": "202401-CA00 conveyorⅡ/MISUMI_WSSB20-15-2.5_NEW.SLDPRT"
+  },
+  "592e933534939d68": {
+   "up": "z",
+   "from": "總裝引用 40/40",
+   "source": "202401-CA00 conveyorⅡ/MISUMI_AJSTR5-50_NEW.SLDPRT"
+  },
+  "b84db343b3ab6d82": {
+   "up": "y",
+   "from": "總裝引用 20/20",
+   "source": "202401-CA00 conveyorⅡ/202401-CD03.SLDPRT"
+  },
+  "b9973462b7e173c2": {
+   "up": "y",
+   "from": "總裝引用 20/20",
+   "source": "202401-CA00 conveyorⅡ/202401-CD04.SLDPRT"
+  },
+  "cd44fe1a18ee61b7": {
+   "up": "z",
+   "from": "總裝引用 20/20",
+   "source": "202401-CA00 conveyorⅡ/202401-CD05.SLDPRT"
+  },
+  "85432d55567ae415": {
+   "up": "-z",
+   "from": "總裝引用 40/40",
+   "source": "202401-CA00 conveyorⅡ/202401-CD07.SLDPRT"
+  },
+  "e7b9bfb049ffdd36": {
+   "up": "y",
+   "from": "總裝引用 20/20",
+   "source": "202401-CA00 conveyorⅡ/202401-CD09.SLDPRT"
+  },
+  "f733ebf82d061323": {
+   "up": "x",
+   "from": "總裝引用 20/40",
+   "source": "202401-CA00 conveyorⅡ/202401-CD12.SLDPRT"
+  },
+  "49d5e87a33e3169c": {
+   "up": "z",
+   "from": "總裝引用 10/10",
+   "source": "202401-CA00 conveyorⅡ/202401-CA01(傳動模組4).SLDASM"
+  },
+  "810192b6dd8e0951": {
+   "up": "z",
+   "from": "總裝引用 20/20",
+   "source": "202401-CA00 conveyorⅡ/202401-CD06.SLDPRT"
+  },
+  "ce6c7b3cdacaeca5": {
+   "up": "z",
+   "from": "總裝引用 1/1",
+   "source": "202401-CA00 conveyorⅡ/202401-CA01(傳動模組7).SLDASM"
+  },
+  "3d37049e417c9254": {
+   "up": "z",
+   "from": "總裝引用 10/10",
+   "source": "202401-CA00 conveyorⅡ/MISUMI_TWSSB20-15-3.5_NEW.SLDPRT"
+  },
+  "e5e8de473e512f60": {
+   "up": "y",
+   "from": "總裝引用 20/20",
+   "source": "202401-CA00 conveyorⅡ/202401-CD01.SLDPRT"
+  },
+  "5a12d301da9f6e2c": {
+   "up": "y",
+   "from": "總裝引用 20/20",
+   "source": "202401-CA00 conveyorⅡ/202401-CD02.SLDPRT"
+  },
+  "148dc171b7b8509c": {
+   "up": "-z",
+   "from": "總裝引用 10/10",
+   "source": "202401-CA00 conveyorⅡ/202401-CD08.SLDPRT"
+  },
+  "36f55aaf6cdbe78b": {
+   "up": "y",
+   "from": "總裝引用 4/4",
+   "source": "202401-CA00 conveyorⅡ/202401-CD14.SLDPRT"
+  },
+  "619bb09dba7f8988": {
+   "up": "z",
+   "from": "總裝引用 1/1",
+   "source": "202401-CA00 conveyorⅡ/202401-CA01(傳動模組8).SLDASM"
+  },
+  "28dc0339f1552ceb": {
+   "up": "-z",
+   "from": "總裝引用 20/20",
+   "source": "202401-CA00 conveyorⅡ/MISUMI_C-B6800ZZ_NEW.SLDPRT"
+  },
+  "c768f5449d0c824a": {
+   "up": "z",
+   "from": "總裝引用 1/1",
+   "source": "202401-CA00 conveyorⅡ/202401-CA05.SLDASM"
+  },
+  "2b2cf6439bb63c29": {
+   "up": "y",
+   "from": "總裝引用 4/4",
+   "source": "202401-CA00 conveyorⅡ/202401-CD34.SLDPRT"
+  },
+  "abd146c9350dfe18": {
+   "up": "y",
+   "from": "總裝引用 4/4",
+   "source": "202401-CA00 conveyorⅡ/時規皮帶_T10(C305).SLDPRT"
+  },
+  "df73b74f45157a4d": {
+   "up": "z",
+   "from": "總裝引用 6/6",
+   "source": "202401-CA00 conveyorⅡ/202401-CA01(傳動模組5).SLDASM"
+  },
+  "39c1980def63da4a": {
+   "up": "y",
+   "from": "總裝引用 6/6",
+   "source": "202401-CA00 conveyorⅡ/202401-CD38.SLDPRT"
+  },
+  "c8ac954ab48de693": {
+   "up": "z",
+   "from": "總裝引用 6/6",
+   "source": "202401-CA00 conveyorⅡ/202401-CA01(傳動模組6).SLDASM"
+  },
+  "f290245559fd0cb8": {
+   "up": "y",
+   "from": "總裝引用 3/3",
+   "source": "202401-CA00 conveyorⅡ/202401-CD45.SLDPRT"
+  },
+  "dc5355147bc41d47": {
+   "up": "-z",
+   "from": "總裝引用 1/2",
+   "source": "202401-CA00 conveyorⅡ/202401-CD66.SLDPRT"
+  },
+  "11a02e20f51c1c8b": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-CA00 conveyorⅡ/202401-CD72.SLDPRT"
+  },
+  "7a2204e4dc83f4ea": {
+   "up": "z",
+   "from": "總裝引用 1/1",
+   "source": "202401-CA00 conveyorⅡ/202401-CD73.SLDPRT"
+  },
+  "9b28717e335412b8": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-CA00 conveyorⅡ/202401-CD74.SLDPRT"
+  },
+  "3278bd60d03b0d29": {
+   "up": "x",
+   "from": "總裝引用 2/2",
+   "source": "202401-CA00 conveyorⅡ/202401-CD75.SLDPRT"
+  },
+  "5171b3b49a984c81": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-CA00 conveyorⅡ/202401-CD76.SLDPRT"
+  },
+  "b9412f5cc15738cd": {
+   "up": "z",
+   "from": "總裝引用 1/1",
+   "source": "202401-CA00 conveyorⅡ/202401-CA06.SLDASM"
+  },
+  "cc5a4b36b6117f66": {
+   "up": "y",
+   "from": "總裝引用 4/4",
+   "source": "202401-CA00 conveyorⅡ/時規皮帶_T10(C 835).SLDPRT"
+  },
+  "35380bdf8c282bb7": {
+   "up": "x",
+   "from": "總裝引用 6/6",
+   "source": "202401-CA00 conveyorⅡ/FJRHA14-1.5/MISUMI_FJRHA14-1.5_NEW.SLDASM"
+  },
+  "1cdeeb60c4cc4d91": {
+   "up": "x",
+   "from": "總裝引用 6/6",
+   "source": "202401-CA00 conveyorⅡ/FJRHA14-1.5/Cylinder Connector_MISUMI_FJRHA14-1.5_NEW.SLDPRT"
+  },
+  "b4d2b9d0057fbd93": {
+   "up": "-z",
+   "from": "總裝引用 6/6",
+   "source": "202401-CA00 conveyorⅡ/FJRHA14-1.5/Holder_MISUMI_FJRHA14-1.5_NEW.SLDPRT"
+  },
+  "f94969f4d2534f74": {
+   "up": "z",
+   "from": "總裝引用 24/24",
+   "source": "202401-CA00 conveyorⅡ/MISUMI_導柱-E-PSFJT20-150-M5.SLDPRT"
+  },
+  "a66cd1073ab4f663": {
+   "up": "z",
+   "from": "總裝引用 3/3",
+   "source": "202401-CA00 conveyorⅡ/202401-CA01(傳動模組1).SLDASM"
+  },
+  "c115a02ca76a7cda": {
+   "up": "z",
+   "from": "總裝引用 3/3",
+   "source": "202401-CA00 conveyorⅡ/202401-CA01(傳動模組2).SLDASM"
+  },
+  "5cdc45ce73497bd9": {
+   "up": "y",
+   "from": "總裝引用 2/2",
+   "source": "202401-CA00 conveyorⅡ/202401-CD28.SLDPRT"
+  },
+  "93d4207257723961": {
+   "up": "y",
+   "from": "總裝引用 8/8",
+   "source": "202401-CA00 conveyorⅡ/202401-CD33.SLDPRT"
+  },
+  "41855bbcc5dc20a8": {
+   "up": "y",
+   "from": "總裝引用 8/8",
+   "source": "202401-CA00 conveyorⅡ/202401-CD40.SLDPRT"
+  },
+  "14da0ae455d0c054": {
+   "up": "y",
+   "from": "總裝引用 4/4",
+   "source": "202401-CA00 conveyorⅡ/202401-CD41.SLDPRT"
+  },
+  "807991b96c55c5c2": {
+   "up": "z",
+   "from": "總裝引用 2/2",
+   "source": "202401-CA00 conveyorⅡ/202401-CD42.SLDPRT"
+  },
+  "2b4bde49ec9f22b7": {
+   "up": "z",
+   "from": "總裝引用 2/2",
+   "source": "202401-CA00 conveyorⅡ/202401-CD46.SLDPRT"
+  },
+  "12896ac611b46e2e": {
+   "up": "y",
+   "from": "總裝引用 2/2",
+   "source": "202401-CA00 conveyorⅡ/202401-CD47.SLDPRT"
+  },
+  "ad8de5e4324f2113": {
+   "up": "y",
+   "from": "總裝引用 6/6",
+   "source": "202401-CA00 conveyorⅡ/202401-CD48.SLDPRT"
+  },
+  "c0477e0557cd3b8d": {
+   "up": "y",
+   "from": "總裝引用 2/2",
+   "source": "202401-CA00 conveyorⅡ/202401-CD49.SLDPRT"
+  },
+  "1e4d5c0ce794564d": {
+   "up": "y",
+   "from": "總裝引用 4/4",
+   "source": "202401-CA00 conveyorⅡ/202401-CD50.SLDPRT"
+  },
+  "c0f642954732c157": {
+   "up": "z",
+   "from": "總裝引用 2/2",
+   "source": "202401-CA00 conveyorⅡ/202401-CD62.SLDPRT"
+  },
+  "8c0977c7001b2a66": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-HA00 NG排除/202401-HA00.SLDASM"
+  },
+  "321562295631b7a2": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-HA00 NG排除/C-SX2R28-820/MISUMI_C-SX2R28-820_NEW.SLDASM"
+  },
+  "dcc10bd7573efea4": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-HA00 NG排除/C-SX2R28-820/RAIL_MISUMI_C-SX2R28-820_NEW.SLDPRT"
+  },
+  "dbbfc56b08ce83c8": {
+   "up": "y",
+   "from": "總裝引用 2/2",
+   "source": "202401-HA00 NG排除/C-SX2R28-820/BLOCK_MISUMI_C-SX2R28-820_NEW.SLDPRT"
+  },
+  "b1a1d57691b15b20": {
+   "up": "x",
+   "from": "總裝引用 2/2",
+   "source": "202401-HA00 NG排除/MISUMI_RQDW50-100_NEW.SLDPRT"
+  },
+  "88175fab8d7c0b07": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-HA00 NG排除/吸嘴模組.SLDASM"
+  },
+  "83af6dee5871cd34": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-HA00 NG排除/202401-HD09.SLDPRT"
+  },
+  "d430e0eff7e9c64a": {
+   "up": "-z",
+   "from": "總裝引用 1/1",
+   "source": "202401-HA00 NG排除/202401-HD10.SLDPRT"
+  },
+  "b13c3c7f4362a803": {
+   "up": "z",
+   "from": "總裝引用 1/1",
+   "source": "202401-HA00 NG排除/202401-HD11.SLDPRT"
+  },
+  "6245af6fb132cf15": {
+   "up": "z",
+   "from": "總裝引用 1/1",
+   "source": "202401-HA00 NG排除/202401-HD19.SLDPRT"
+  },
+  "ef19fc29546ea080": {
+   "up": "z",
+   "from": "總裝引用 1/1",
+   "source": "202401-HA00 NG排除/202401-HD20.SLDPRT"
+  },
+  "9dc3125af2c7d375": {
+   "up": "x",
+   "from": "總裝引用 1/1",
+   "source": "202401-HA00 NG排除/SSEB13-70/MISUMI_SSEB13-70_NEW.SLDASM"
+  },
+  "f130fb552ab35af6": {
+   "up": "x",
+   "from": "總裝引用 1/1",
+   "source": "202401-HA00 NG排除/SSEB13-70/Rail_MISUMI_SSEB13-70_NEW.SLDPRT"
+  },
+  "ded857c4227c69e4": {
+   "up": "x",
+   "from": "總裝引用 1/1",
+   "source": "202401-HA00 NG排除/SSEB13-70/Block_MISUMI_SSEB13-70_NEW.SLDPRT"
+  },
+  "2f036684d84bb328": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-HA00 NG排除/MISUMI_NKOST6-16_NEW.SLDPRT"
+  },
+  "aab0d75b2dc0ffce": {
+   "up": "-z",
+   "from": "總裝引用 2/2",
+   "source": "202401-HA00 NG排除/MISUMI_彈簧-C-UL6-35.SLDPRT"
+  },
+  "d43233153a0bc6b3": {
+   "up": "y",
+   "from": "總裝引用 2/2",
+   "source": "202401-HA00 NG排除/202401-HD26.SLDPRT"
+  },
+  "1ee58e9b24cb3eec": {
+   "up": "-z",
+   "from": "總裝引用 1/1",
+   "source": "202401-HA00 NG排除/202401-HD01.SLDPRT"
+  },
+  "64ef7a6a502cf76c": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-HA00 NG排除/202401-HD07.SLDPRT"
+  },
+  "c39ae46e9280391c": {
+   "up": "-z",
+   "from": "總裝引用 1/1",
+   "source": "202401-HA00 NG排除/202401-HD08.SLDPRT"
+  },
+  "f4babdb3ed817cb7": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-HA00 NG排除/202401-HD12.SLDPRT"
+  },
+  "35ef4c721d2d6cbc": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-HA00 NG排除/202401-HD13.SLDPRT"
+  },
+  "28247509c9e1c437": {
+   "up": "-y",
+   "from": "總裝引用 1/1",
+   "source": "202401-HA00 NG排除/202401-HD14.SLDPRT"
+  },
+  "f1ac856918dcba5a": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-HA00 NG排除/202401-HD15.SLDPRT"
+  },
+  "c9aa923a040d8aea": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-HA00 NG排除/202401-HD16.SLDPRT"
+  },
+  "56e2833f283bd572": {
+   "up": "-y",
+   "from": "總裝引用 1/1",
+   "source": "202401-HA00 NG排除/202401-HD17.SLDPRT"
+  },
+  "e2bc10f3981899d6": {
+   "up": "y",
+   "from": "總裝引用 1/2",
+   "source": "202401-HA00 NG排除/202401-HD21.SLDPRT"
+  },
+  "ab91476ba79e9bb4": {
+   "up": "-z",
+   "from": "總裝引用 1/1",
+   "source": "202401-HA00 NG排除/202401-HD22.SLDPRT"
+  },
+  "4db5c2a59f64909d": {
+   "up": "y",
+   "from": "總裝引用 1/2",
+   "source": "202401-HA00 NG排除/202401-HD23.SLDPRT"
+  },
+  "833796214a07f048": {
+   "up": "-z",
+   "from": "總裝引用 1/2",
+   "source": "202401-HA00 NG排除/MISUMI_導桿-E-PSFJ15-150.SLDPRT"
+  },
+  "8d3875a283a0ac4e": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-HA00 NG排除/202401-HD25.SLDPRT"
+  },
+  "4fe115c63ef562d2": {
+   "up": "z",
+   "from": "總裝引用 1/1",
+   "source": "202401-HA00 NG排除/202401-HA01.SLDASM"
+  },
+  "6d60864ccc8b5b95": {
+   "up": "z",
+   "from": "總裝引用 1/1",
+   "source": "202401-HA00 NG排除/202401-HD02.SLDPRT"
+  },
+  "a646485fc732b285": {
+   "up": "z",
+   "from": "總裝引用 1/1",
+   "source": "202401-HA00 NG排除/202401-HD03.SLDPRT"
+  },
+  "0b118e2f9c2b4f2c": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-HA00 NG排除/202401-HD05.SLDPRT"
+  },
+  "8f68f6ba8f1b715c": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-HA00 NG排除/202401-HD06.SLDPRT"
+  },
+  "1a96404d78b1da9a": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-HA00 NG排除/WGHB-30-20-12.SLDPRT"
+  },
+  "a2fc4c61e6994074": {
+   "up": "z",
+   "from": "總裝引用 4/4",
+   "source": "202401-HA00 NG排除/WGLB-40-20-12.SLDPRT"
+  },
+  "ecd0e83d7048ebd5": {
+   "up": "x",
+   "from": "總裝引用 1/1",
+   "source": "Load machine.SLDASM"
+  },
+  "5d6a26a6f23b5cca": {
+   "up": "-z",
+   "from": "總裝引用 1/1",
+   "source": "202401-AA00 機架外罩/202401-AA01.SLDASM"
+  },
+  "536146354bcb198d": {
+   "up": "-z",
+   "from": "總裝引用 1/1",
+   "source": "202401-AA00 機架外罩/202401-AD01.SLDASM"
+  },
+  "3482e73754f35f60": {
+   "up": "-z",
+   "from": "總裝引用 1/1",
+   "source": "202401-AA00 機架外罩/202401-AD01.SLDPRT"
+  },
+  "436a4530e7b2c318": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-AA00 機架外罩/202401-AD02.SLDASM"
+  },
+  "d2be4b18b540fb0e": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-AA00 機架外罩/202401-AD02.SLDPRT"
+  },
+  "99c7abe09f899993": {
+   "up": "z",
+   "from": "總裝引用 1/1",
+   "source": "202401-AA00 機架外罩/202401-AD31.SLDPRT"
+  },
+  "3cfb5cd26bfbc914": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-AA00 機架外罩/202401-AD14.SLDPRT"
+  },
+  "f820f1ee516da61f": {
+   "up": "z",
+   "from": "總裝引用 1/1",
+   "source": "202401-CA00 conveyorⅡ/202401-CA01.SLDASM"
+  },
+  "710bc9fe8df7cf45": {
+   "up": "-y",
+   "from": "總裝引用 1/1",
+   "source": "202401-CA00 conveyorⅡ/SZ045F-16-028-29/MISUMI_SZ045F-16-028-29_NEW.SLDASM"
+  },
+  "cde672eb8b74434a": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-CA00 conveyorⅡ/SZ045F-16-028-29/BRACKET FE_MISUMI_SZ045F-16-028-29_NEW.SLDPRT"
+  },
+  "97b55b88bd53157d": {
+   "up": "y",
+   "from": "總裝引用 17/25",
+   "source": "202401-CA00 conveyorⅡ/SZ045F-16-028-29/LINK_MISUMI_SZ045F-16-028-29_NEW.SLDPRT"
+  },
+  "f0d04e83996b9526": {
+   "up": "-y",
+   "from": "總裝引用 1/1",
+   "source": "202401-CA00 conveyorⅡ/SZ045F-16-028-29/BRACKET ME_MISUMI_SZ045F-16-028-29_NEW.SLDPRT"
+  },
+  "3805369ed0e9d781": {
+   "up": "-y",
+   "from": "總裝引用 1/1",
+   "source": "202401-CA00 conveyorⅡ/202401-CD13.SLDPRT"
+  },
+  "0b3d701efa322583": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-CA00 conveyorⅡ/202401-CD15.SLDPRT"
+  },
+  "103aeb87e1583deb": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-CA00 conveyorⅡ/202401-CD22.SLDPRT"
+  },
+  "077d13f981dd4d8f": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-CA00 conveyorⅡ/202401-CD27.SLDPRT"
+  },
+  "230fe792edd39490": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-CA00 conveyorⅡ/202401-CD30.SLDPRT"
+  },
+  "91cd073f999bd2c8": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-CA00 conveyorⅡ/202401-CD39.SLDPRT"
+  },
+  "e4ca63062b9a2337": {
+   "up": "z",
+   "from": "總裝引用 1/1",
+   "source": "202401-CA00 conveyorⅡ/202401-CA03.SLDASM"
+  },
+  "376d77bdb54c71d2": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-CA00 conveyorⅡ/202401-CD71.SLDPRT"
+  },
+  "f076d184948b7a36": {
+   "up": "z",
+   "from": "總裝引用 1/1",
+   "source": "202401-CA00 conveyorⅡ/202401-CA04.SLDASM"
+  },
+  "6527cdf158e622bf": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-CA00 conveyorⅡ/202401-CD51.SLDPRT"
+  },
+  "e16400eb0295ed96": {
+   "up": "x",
+   "from": "總裝引用 1/1",
+   "source": "202401-DA00 升降/202401-DA01.SLDASM"
+  },
+  "84475b93d53ed67b": {
+   "up": "z",
+   "from": "總裝引用 1/1",
+   "source": "202401-DA00 升降/202401-DD06.SLDPRT"
+  },
+  "25c556cd0718da6a": {
+   "up": "-z",
+   "from": "總裝引用 1/1",
+   "source": "202401-DA00 升降/202401-DD14.SLDPRT"
+  },
+  "424b3be3fe5348b4": {
+   "up": "z",
+   "from": "總裝引用 1/1",
+   "source": "202401-DA00 升降/202401-DD15.SLDPRT"
+  },
+  "65a784fe62d52253": {
+   "up": "x",
+   "from": "總裝引用 1/1",
+   "source": "202401-JA00_掃描/202401-JA00.SLDASM"
+  },
+  "0439441a841feaff": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-JA00_掃描/202401-JD01.SLDPRT"
+  },
+  "25644182fcef57fc": {
+   "up": "z",
+   "from": "總裝引用 1/1",
+   "source": "202401-JA00_掃描/202401-JD02.SLDPRT"
+  },
+  "6cf70e2fbf38ce2e": {
+   "up": "z",
+   "from": "總裝引用 1/1",
+   "source": "202401-JA00_掃描/202401-JD03.SLDPRT"
+  },
+  "74c57ae54967e88e": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-JA00_掃描/202401-JD04.SLDPRT"
+  },
+  "d5dc3fd0daa066a6": {
+   "up": "y",
+   "from": "總裝引用 2/2",
+   "source": "202401-JA00_掃描/202401-JD05.SLDPRT"
+  },
+  "d1da34b41b0472f9": {
+   "up": "-y",
+   "from": "總裝引用 1/1",
+   "source": "202401-JA00_掃描/202401-JD06.SLDPRT"
+  },
+  "13a909b21d93fb3a": {
+   "up": "-z",
+   "from": "總裝引用 2/2",
+   "source": "202401-AA00 機架外罩/202401-AA03.SLDASM"
+  },
+  "f024785c8327a259": {
+   "up": "-z",
+   "from": "總裝引用 2/2",
+   "source": "202401-AA00 機架外罩/202401-AD21.SLDASM"
+  },
+  "e291599b2a8eae74": {
+   "up": "-z",
+   "from": "總裝引用 2/2",
+   "source": "202401-AA00 機架外罩/202401-AD21.SLDPRT"
+  },
+  "939107dda032682d": {
+   "up": "y",
+   "from": "總裝引用 2/2",
+   "source": "202401-AA00 機架外罩/202401-AD21.1.SLDPRT"
+  },
+  "c7fda3acd572b4cb": {
+   "up": "-x",
+   "from": "總裝引用 4/4",
+   "source": "202401-AA00 機架外罩/202401-AD21.2.SLDPRT"
+  },
+  "40f3c24c2f4374f3": {
+   "up": "y",
+   "from": "總裝引用 4/4",
+   "source": "202401-AA00 機架外罩/202401-AD21.3.SLDPRT"
+  },
+  "302f98fc9c7dec20": {
+   "up": "y",
+   "from": "總裝引用 4/4",
+   "source": "202401-AA00 機架外罩/202401-AD22.SLDASM"
+  },
+  "21c1ba00672b7030": {
+   "up": "y",
+   "from": "總裝引用 4/4",
+   "source": "202401-AA00 機架外罩/202401-AD22.SLDPRT"
+  },
+  "b16cfe1fa0c7d158": {
+   "up": "-z",
+   "from": "總裝引用 2/2",
+   "source": "202401-AA00 機架外罩/202401-AD30.SLDPRT"
+  },
+  "a804921ac604c928": {
+   "up": "-x",
+   "from": "總裝引用 2/4",
+   "source": "202401-IA00 水下移載/MISUMO_鋼管-SSUTP15A-W-100-SC50.SLDPRT"
+  },
+  "0c79c1caa8791d12": {
+   "up": "-y",
+   "from": "總裝引用 2/4",
+   "source": "202401-AA00 機架外罩/MISUMI_鞍型夾環-RSDLNS15A.SLDPRT"
+  },
+  "b0b07cb307ddd105": {
+   "up": "-y",
+   "from": "總裝引用 2/2",
+   "source": "202401-AA00 機架外罩/202401-AD32.SLDPRT"
+  },
+  "f1578b516da49bc9": {
+   "up": "-y",
+   "from": "總裝引用 2/2",
+   "source": "202401-AA00 機架外罩/202401-AD33.SLDPRT"
+  },
+  "b1164696f8bb11fb": {
+   "up": "z",
+   "from": "總裝引用 2/2",
+   "source": "202401-CA00 conveyorⅡ/202401-CA08.SLDASM"
+  },
+  "2b91fe8d636b545c": {
+   "up": "y",
+   "from": "總裝引用 12/12",
+   "source": "202401-CA00 conveyorⅡ/202401-CD35.SLDPRT"
+  },
+  "2f18fcd2da501474": {
+   "up": "y",
+   "from": "總裝引用 20/20",
+   "source": "202401-CA00 conveyorⅡ/202401-CD36.SLDPRT"
+  },
+  "431c415b15131944": {
+   "up": "y",
+   "from": "總裝引用 8/8",
+   "source": "202401-CA00 conveyorⅡ/202401-CD55.SLDPRT"
+  },
+  "92d65d86bb2aa4ae": {
+   "up": "z",
+   "from": "總裝引用 4/4",
+   "source": "202401-CA00 conveyorⅡ/202401-CD56.SLDPRT"
+  },
+  "1d43458b52677ec7": {
+   "up": "y",
+   "from": "總裝引用 4/4",
+   "source": "202401-CA00 conveyorⅡ/202401-CD57.SLDPRT"
+  },
+  "eb5006ae3be8d606": {
+   "up": "z",
+   "from": "總裝引用 4/4",
+   "source": "202401-CA00 conveyorⅡ/202401-CD58.SLDPRT"
+  },
+  "fe8c9ddd5d8824d5": {
+   "up": "x",
+   "from": "總裝引用 8/8",
+   "source": "202401-CA00 conveyorⅡ/202401-CD59.SLDPRT"
+  },
+  "090adbe413e9834b": {
+   "up": "z",
+   "from": "總裝引用 2/2",
+   "source": "202401-CA00 conveyorⅡ/202401-CD60.SLDPRT"
+  },
+  "7624725dc77e89b1": {
+   "up": "z",
+   "from": "總裝引用 2/2",
+   "source": "202401-CA00 conveyorⅡ/202401-CD64.SLDPRT"
+  },
+  "c438df526d82a6b1": {
+   "up": "-x",
+   "from": "總裝引用 4/4",
+   "source": "202401-CA00 conveyorⅡ/202401-CD67.SLDPRT"
+  },
+  "0b5c279482125484": {
+   "up": "y",
+   "from": "總裝引用 4/4",
+   "source": "202401-CA00 conveyorⅡ/202401-CD68.SLDPRT"
+  },
+  "04e6fbcd1496c2d1": {
+   "up": "y",
+   "from": "總裝引用 4/4",
+   "source": "202401-CA00 conveyorⅡ/202401-CD69.SLDPRT"
+  },
+  "e30a8391f7568aa9": {
+   "up": "y",
+   "from": "總裝引用 4/4",
+   "source": "202401-CA00 conveyorⅡ/時規皮帶_T10(C 905).SLDPRT"
+  },
+  "d11c220aac3074e6": {
+   "up": "-x",
+   "from": "總裝引用 16/16",
+   "source": "202401-CA00 conveyorⅡ/MISUMI_SLHIFRS20G_NEW.SLDPRT"
+  },
+  "3aa56de6e35f971c": {
+   "up": "y",
+   "from": "總裝引用 2/2",
+   "source": "202401-CA00 conveyorⅡ/202401-CD77.SLDPRT"
+  },
+  "9a4e65cb6ae9fe60": {
+   "up": "y",
+   "from": "總裝引用 2/2",
+   "source": "202401-CA00 conveyorⅡ/202401-CD78.SLDPRT"
+  },
+  "f89207143834dc16": {
+   "up": "y",
+   "from": "總裝引用 2/2",
+   "source": "202401-CA00 conveyorⅡ/202401-CD80.SLDPRT"
+  },
+  "0e2567d019a308a8": {
+   "up": "z",
+   "from": "總裝引用 2/2",
+   "source": "202401-CA00 conveyorⅡ/202401-CD81.SLDPRT"
+  },
+  "6acb52e31e56bd5b": {
+   "up": "y",
+   "from": "總裝引用 3/6",
+   "source": "202401-GA00 烘乾/風刀-PEN300.SLDPRT"
+  },
+  "0251c10e4bb8ae13": {
+   "up": "z",
+   "from": "總裝引用 3/6",
+   "source": "202401-GA00 烘乾/熱風槍-SH22(1200-1.2K).SLDPRT"
+  },
+  "dfe9606b88901f33": {
+   "up": "-z",
+   "from": "總裝引用 6/6",
+   "source": "202401-GA00 烘乾/SSCSM20-10/MISUMI_SSCSM20-10_NEW.SLDASM"
+  },
+  "5cc01a41fa7a5137": {
+   "up": "-z",
+   "from": "總裝引用 6/6",
+   "source": "202401-GA00 烘乾/SSCSM20-10/Shaft Collar_MISUMI_SSCSM20-10_NEW.SLDPRT"
+  },
+  "e23188bdbef4ce96": {
+   "up": "z",
+   "from": "總裝引用 6/6",
+   "source": "202401-GA00 烘乾/SSCSM20-10/Bolt-1_MISUMI_SSCSM20-10_NEW.SLDPRT"
+  },
+  "296b9c44860c975b": {
+   "up": "-z",
+   "from": "總裝引用 3/6",
+   "source": "202401-GA00 烘乾/SSCSW20-10/MISUMI_SSCSW20-10_NEW.SLDASM"
+  },
+  "112c49117f6a9194": {
+   "up": "-z",
+   "from": "總裝引用 3/6",
+   "source": "202401-GA00 烘乾/SSCSW20-10/Shaft Collar_MISUMI_SSCSW20-10_NEW.SLDPRT"
+  },
+  "74286f8d692d21f2": {
+   "up": "z",
+   "from": "總裝引用 3/6",
+   "source": "202401-GA00 烘乾/SSCSW20-10/Bolt-1_MISUMI_SSCSW20-10_NEW.SLDPRT"
+  },
+  "26fa537586e58a64": {
+   "up": "-z",
+   "from": "總裝引用 12/12",
+   "source": "202401-GA00 烘乾/MISUMI_導桿-E-PSFJ20-130.SLDPRT"
+  },
+  "2637482f2a05fc92": {
+   "up": "z",
+   "from": "總裝引用 9/9",
+   "source": "202401-GA00 烘乾/MISUMI_導桿-E-PSFJ20-330.SLDPRT"
+  },
+  "46977271dfb8babd": {
+   "up": "-y",
+   "from": "總裝引用 51/51",
+   "source": "202401-GA00 烘乾/MISUMI_CLBTS15-7.0_NEW.SLDPRT"
+  },
+  "ab8a507bf7b82cae": {
+   "up": "y",
+   "from": "總裝引用 12/12",
+   "source": "202401-GA00 烘乾/DBGOMP25180/MISUMI_DBGOMP25180_NEW.SLDASM"
+  },
+  "88b5139bffb4e2ac": {
+   "up": "y",
+   "from": "總裝引用 12/12",
+   "source": "202401-GA00 烘乾/DBGOMP25180/BASE_MISUMI_DBGOMP25180_NEW.SLDPRT"
+  },
+  "c13cf64f6464fcf2": {
+   "up": "-x",
+   "from": "總裝引用 12/12",
+   "source": "202401-GA00 烘乾/DBGOMP25180/BZGN-M6_MISUMI_DBGOMP25180_NEW.SLDPRT"
+  },
+  "b42605faa99851b9": {
+   "up": "-x",
+   "from": "總裝引用 12/12",
+   "source": "202401-GA00 烘乾/DBGOMP25180/NAT-M6_MISUMI_DBGOMP25180_NEW.SLDPRT"
+  },
+  "b193d2a9df40a6ce": {
+   "up": "-y",
+   "from": "總裝引用 9/12",
+   "source": "202401-GA00 烘乾/202401-GD16.SLDASM"
+  },
+  "a2af70d7552041f0": {
+   "up": "-y",
+   "from": "總裝引用 9/12",
+   "source": "202401-GA00 烘乾/奇豪_風刀-300mm(空壓機供氣).SLDPRT"
+  },
+  "e0e45d8fa965e356": {
+   "up": "-y",
+   "from": "總裝引用 9/12",
+   "source": "202401-GA00 烘乾/MISUMI_不鏽鋼管用接頭-SKTGLK12-3.SLDPRT"
+  },
+  "e5db08d483683eac": {
+   "up": "-y",
+   "from": "總裝引用 9/12",
+   "source": "202401-GA00 烘乾/MISUMI_不鏽鋼管用接頭-SKUTM12-3.SLDPRT"
+  },
+  "372110296c81a467": {
+   "up": "-y",
+   "from": "總裝引用 9/12",
+   "source": "202401-GA00 烘乾/4分管-1.SLDPRT"
+  },
+  "75ee3fa9dc07528f": {
+   "up": "y",
+   "from": "總裝引用 3/3",
+   "source": "202401-GA00 烘乾/中一五金_多翼式風機-JSD-40S.SLDPRT"
+  },
+  "c6efeb9c14e10ee5": {
+   "up": "y",
+   "from": "總裝引用 3/3",
+   "source": "202401-GA00 烘乾/202401-GD01.SLDPRT"
+  },
+  "64a9aa82e9df2e95": {
+   "up": "z",
+   "from": "總裝引用 6/6",
+   "source": "202401-GA00 烘乾/202401-GD03.SLDPRT"
+  },
+  "b7d2349c06286ddf": {
+   "up": "y",
+   "from": "總裝引用 3/3",
+   "source": "202401-GA00 烘乾/202401-GD04.SLDPRT"
+  },
+  "ae8fb2821e1010a1": {
+   "up": "z",
+   "from": "總裝引用 3/3",
+   "source": "202401-GA00 烘乾/202401-GD05.SLDPRT"
+  },
+  "4f30d50b6f1b032b": {
+   "up": "y",
+   "from": "總裝引用 3/3",
+   "source": "202401-GA00 烘乾/202401-GD06.SLDPRT"
+  },
+  "f3ad7a5738985494": {
+   "up": "z",
+   "from": "總裝引用 3/6",
+   "source": "202401-GA00 烘乾/202401-GD07.SLDPRT"
+  },
+  "340eb4e7febe0c99": {
+   "up": "x",
+   "from": "總裝引用 3/3",
+   "source": "202401-GA00 烘乾/202401-GD08.SLDPRT"
+  },
+  "3fe3c20940dd6957": {
+   "up": "-z",
+   "from": "總裝引用 3/3",
+   "source": "202401-GA00 烘乾/202401-GD09.SLDPRT"
+  },
+  "362d5e164cc22326": {
+   "up": "z",
+   "from": "總裝引用 3/6",
+   "source": "202401-GA00 烘乾/202401-GD10.SLDPRT"
+  },
+  "59fe7505634f334b": {
+   "up": "z",
+   "from": "總裝引用 3/6",
+   "source": "202401-GA00 烘乾/202401-GD11.SLDPRT"
+  },
+  "51843b680ffd93cb": {
+   "up": "y",
+   "from": "總裝引用 3/3",
+   "source": "202401-GA00 烘乾/202401-GD12.SLDPRT"
+  },
+  "2ec3837cc346bdc1": {
+   "up": "y",
+   "from": "總裝引用 6/6",
+   "source": "202401-GA00 烘乾/202401-GD13.SLDPRT"
+  },
+  "8eb8f50ff584092e": {
+   "up": "y",
+   "from": "總裝引用 3/3",
+   "source": "202401-GA00 烘乾/202401-GD14.SLDPRT"
+  },
+  "1f00a90f65cfb5e5": {
+   "up": "y",
+   "from": "總裝引用 3/3",
+   "source": "202401-GA00 烘乾/202401-GD15.SLDPRT"
+  },
+  "2b061ebbbc2eb175": {
+   "up": "z",
+   "from": "總裝引用 2/2",
+   "source": "202401-CA00 conveyorⅡ/202401-CA07.SLDASM"
+  },
+  "5d9306910d651f65": {
+   "up": "y",
+   "from": "總裝引用 4/4",
+   "source": "202401-CA00 conveyorⅡ/202401-CD37.SLDPRT"
+  },
+  "76c96bb0c543152d": {
+   "up": "z",
+   "from": "總裝引用 2/2",
+   "source": "202401-CA00 conveyorⅡ/202401-CD63.SLDPRT"
+  },
+  "5c006422fe937d90": {
+   "up": "y",
+   "from": "總裝引用 2/2",
+   "source": "202401-CA00 conveyorⅡ/202401-CD79.SLDPRT"
+  },
+  "8b854e16b13dfe0b": {
+   "up": "y",
+   "from": "總裝引用 4/4",
+   "source": "202401-CA00 conveyorⅡ/時規皮帶_T10(C 455).SLDPRT"
+  },
+  "c16fa43720430303": {
+   "up": "y",
+   "from": "總裝引用 3/3",
+   "source": "202401-IA00 水下移載/202401-IA01.SLDASM"
+  },
+  "d74b49e1468e00cb": {
+   "up": "y",
+   "from": "總裝引用 3/3",
+   "source": "202401-IA00 水下移載/202401-ID11.SLDPRT"
+  },
+  "50d218c4120332bc": {
+   "up": "z",
+   "from": "總裝引用 3/3",
+   "source": "202401-IA00 水下移載/202401-ID13.SLDPRT"
+  },
+  "0a84bf196bbf233a": {
+   "up": "-z",
+   "from": "總裝引用 3/3",
+   "source": "202401-IA00 水下移載/202401-ID15.SLDPRT"
+  },
+  "d944de9c73a75e8b": {
+   "up": "y",
+   "from": "總裝引用 3/3",
+   "source": "202401-IA00 水下移載/202401-ID16.SLDPRT"
+  },
+  "8fd3e5fba4111c06": {
+   "up": "z",
+   "from": "總裝引用 3/3",
+   "source": "202401-IA00 水下移載/202401-ID17.SLDPRT"
+  },
+  "72e17337d6fc6844": {
+   "up": "-z",
+   "from": "總裝引用 6/6",
+   "source": "202401-IA00 水下移載/202401-ID29.SLDPRT"
+  },
+  "7a51f683f2f34540": {
+   "up": "z",
+   "from": "總裝引用 12/12",
+   "source": "202401-IA00 水下移載/202401-ID30.SLDPRT"
+  },
+  "6be12a7e879546d3": {
+   "up": "-z",
+   "from": "總裝引用 12/12",
+   "source": "202401-IA00 水下移載/202401-ID31.SLDPRT"
+  },
+  "703edc6d958df18d": {
+   "up": "-x",
+   "from": "總裝引用 6/6",
+   "source": "202401-IA00 水下移載/202401-ID32.SLDPRT"
+  },
+  "411832645110a0d6": {
+   "up": "x",
+   "from": "總裝引用 6/6",
+   "source": "202401-IA00 水下移載/202401-ID33.SLDPRT"
+  },
+  "577f9872bbe735a5": {
+   "up": "y",
+   "from": "總裝引用 6/6",
+   "source": "202401-IA00 水下移載/202401-IA02.SLDASM"
+  },
+  "c5307172bdfb75e3": {
+   "up": "y",
+   "from": "總裝引用 90/90",
+   "source": "202401-IA00 水下移載/IGUS_直線軸承-RJ260UM-02-20.SLDPRT"
+  },
+  "86f34cdd07ad51c1": {
+   "up": "y",
+   "from": "總裝引用 30/30",
+   "source": "202401-IA00 水下移載/202401-ID18.SLDPRT"
+  },
+  "005c2fc0845ca1e6": {
+   "up": "y",
+   "from": "總裝引用 6/6",
+   "source": "202401-IA00 水下移載/202401-ID19.SLDPRT"
+  },
+  "c6e49aa58bd09e8d": {
+   "up": "y",
+   "from": "總裝引用 60/60",
+   "source": "202401-IA00 水下移載/202401-ID20.SLDPRT"
+  },
+  "9e1114d3c1991c89": {
+   "up": "y",
+   "from": "總裝引用 60/60",
+   "source": "202401-IA00 水下移載/202401-ID21.SLDPRT"
+  },
+  "cbc73716af2d5933": {
+   "up": "-z",
+   "from": "總裝引用 60/60",
+   "source": "202401-IA00 水下移載/202401-ID22.SLDPRT"
+  },
+  "0babbc93173c6c49": {
+   "up": "z",
+   "from": "總裝引用 120/120",
+   "source": "202401-IA00 水下移載/202401-ID23.SLDPRT"
+  },
+  "1d78e8dee492c6c4": {
+   "up": "y",
+   "from": "總裝引用 12/12",
+   "source": "202401-IA00 水下移載/202401-ID24.SLDPRT"
+  },
+  "2cc52e49fdd6c920": {
+   "up": "y",
+   "from": "總裝引用 12/12",
+   "source": "202401-IA00 水下移載/202401-ID25.SLDPRT"
+  },
+  "14244a67495c1465": {
+   "up": "-y",
+   "from": "總裝引用 12/12",
+   "source": "202401-IA00 水下移載/202401-ID26.SLDPRT"
+  },
+  "01270fd82e59fd65": {
+   "up": "z",
+   "from": "總裝引用 6/6",
+   "source": "202401-IA00 水下移載/202401-ID44.SLDPRT"
+  },
+  "ae628661be22fe1b": {
+   "up": "-z",
+   "from": "總裝引用 6/6",
+   "source": "202401-IA00 水下移載/晶片-D.SLDPRT"
+  },
+  "4d02d7b4d147cf3d": {
+   "up": "z",
+   "from": "總裝引用 6/6",
+   "source": "202401-IA00 水下移載/202401-ID72.SLDPRT"
+  },
+  "df77c988389cbae9": {
+   "up": "y",
+   "from": "總裝引用 3/3",
+   "source": "202401-IA00 水下移載/MISUMI_DNR274-100_NEW.SLDPRT"
+  },
+  "01b42319356c39ab": {
+   "up": "-z",
+   "from": "總裝引用 3/3",
+   "source": "202401-IA00 水下移載/上泰_水阻計探頭-8-11-3.SLDPRT"
+  },
+  "a329ed50ad05f3b8": {
+   "up": "z",
+   "from": "總裝引用 3/3",
+   "source": "202401-IA00 水下移載/202401-ID41.SLDPRT"
+  },
+  "90973d8e3afbbee2": {
+   "up": "-z",
+   "from": "總裝引用 3/3",
+   "source": "202401-IA00 水下移載/202401-ID42.SLDPRT"
+  },
+  "34fbbaae5701bbab": {
+   "up": "x",
+   "from": "總裝引用 6/6",
+   "source": "202401-IA00 水下移載/202401-ID45.SLDPRT"
+  },
+  "905fafd2ca0132b4": {
+   "up": "-x",
+   "from": "總裝引用 3/3",
+   "source": "202401-IA00 水下移載/202401-ID48.SLDPRT"
+  },
+  "7792c0fc092a85e5": {
+   "up": "y",
+   "from": "總裝引用 3/3",
+   "source": "202401-IA00 水下移載/202401-ID64.SLDPRT"
+  },
+  "1a856eaeca565d53": {
+   "up": "y",
+   "from": "總裝引用 6/6",
+   "source": "202401-IA00 水下移載/202401-ID65.SLDPRT"
+  },
+  "6d87a585a9fe786b": {
+   "up": "z",
+   "from": "總裝引用 3/3",
+   "source": "202401-IA00 水下移載/202401-ID66.SLDPRT"
+  },
+  "c17530450a81cfd5": {
+   "up": "y",
+   "from": "總裝引用 3/3",
+   "source": "202401-IA00 水下移載/202401-ID67.SLDASM"
+  },
+  "ae7c684bf809b3d1": {
+   "up": "y",
+   "from": "總裝引用 3/3",
+   "source": "202401-IA00 水下移載/202401-ID67.SLDPRT"
+  },
+  "98defd00fe1c3c80": {
+   "up": "x",
+   "from": "總裝引用 6/6",
+   "source": "202401-IA00 水下移載/AJPD12-100E/MISUMI_AJPD12-100E_NEW.SLDASM"
+  },
+  "fb2d1103863d659a": {
+   "up": "x",
+   "from": "總裝引用 6/6",
+   "source": "202401-IA00 水下移載/AJPD12-100E/PAD_MISUMI_AJPD12-100E_NEW.SLDPRT"
+  },
+  "4df97e692ed283bb": {
+   "up": "x",
+   "from": "總裝引用 6/6",
+   "source": "202401-IA00 水下移載/AJPD12-100E/SHAFT_MISUMI_AJPD12-100E_NEW.SLDPRT"
+  },
+  "b84a4f5a07aa42f3": {
+   "up": "x",
+   "from": "總裝引用 6/6",
+   "source": "202401-IA00 水下移載/AJPD12-100E/NAT-M10-1_MISUMI_AJPD12-100E_NEW.SLDPRT"
+  },
+  "3c6e682f6249c429": {
+   "up": "x",
+   "from": "總裝引用 6/6",
+   "source": "202401-IA00 水下移載/AJPD12-100E/NAT-M10-2_MISUMI_AJPD12-100E_NEW.SLDPRT"
+  },
+  "adf860395f04d0df": {
+   "up": "-x",
+   "from": "總裝引用 9/18",
+   "source": "202401-IA00 水下移載/NBLTD8/MISUMI_NBLTD8_NEW.SLDASM"
+  },
+  "47e7dd4bc776ea12": {
+   "up": "-x",
+   "from": "總裝引用 9/18",
+   "source": "202401-IA00 水下移載/NBLTD8/BRACKET_MISUMI_NBLTD8_NEW.SLDPRT"
+  },
+  "425db479d843a247": {
+   "up": "y",
+   "from": "總裝引用 3/3",
+   "source": "202401-IA00 水下移載/202401-ID70.SLDPRT"
+  },
+  "b9e538b6b6358597": {
+   "up": "-z",
+   "from": "總裝引用 3/3",
+   "source": "202401-IA00 水下移載/202401-ID71.SLDPRT"
+  },
+  "6454d2d66a10ef40": {
+   "up": "-y",
+   "from": "總裝引用 3/3",
+   "source": "202401-IA00 水下移載/新政_浮球-LS-TV.SLDPRT"
+  },
+  "4bf67b518ed06bbf": {
+   "up": "y",
+   "from": "總裝引用 3/3",
+   "source": "202401-IA00 水下移載/202401-ID73.SLDPRT"
+  },
+  "f09c27ed7beb94b2": {
+   "up": "-z",
+   "from": "總裝引用 3/3",
+   "source": "202401-IA00 水下移載/202401-ID74.SLDPRT"
+  },
+  "db06f46749bfc513": {
+   "up": "-z",
+   "from": "總裝引用 3/3",
+   "source": "202401-IA00 水下移載/202401-ID75.SLDPRT"
+  },
+  "7d4112c41d26bb45": {
+   "up": "-z",
+   "from": "總裝引用 3/3",
+   "source": "202401-IA00 水下移載/MISUMI_導柱-PSSFG10-100.SLDPRT"
+  },
+  "a9512384bb74fe3c": {
+   "up": "y",
+   "from": "總裝引用 3/6",
+   "source": "202401-IA00 水下移載/202401-ID76.SLDPRT"
+  },
+  "67e52d97a89087be": {
+   "up": "y",
+   "from": "總裝引用 3/3",
+   "source": "202401-IA00 水下移載/202401-ID77.SLDPRT"
+  },
+  "b46231d6bf33f292": {
+   "up": "y",
+   "from": "總裝引用 3/3",
+   "source": "202401-EA00 入水除泡/C-SX2R28-760/MISUMI_C-SX2R28-760_NEW.SLDASM"
+  },
+  "04a4e9c364d8ecda": {
+   "up": "y",
+   "from": "總裝引用 3/3",
+   "source": "202401-EA00 入水除泡/C-SX2R28-760/RAIL_MISUMI_C-SX2R28-760_NEW.SLDPRT"
+  },
+  "24cb889d93d411ad": {
+   "up": "y",
+   "from": "總裝引用 6/6",
+   "source": "202401-EA00 入水除泡/C-SX2R28-760/BLOCK_MISUMI_C-SX2R28-760_NEW.SLDPRT"
+  },
+  "fff78a06e93582f8": {
+   "up": "y",
+   "from": "總裝引用 3/3",
+   "source": "202401-EA00 入水除泡/MISUMI_FLCF14-1.5_NEW.SLDPRT"
+  },
+  "79fb35b56c0e0546": {
+   "up": "-x",
+   "from": "總裝引用 9/9",
+   "source": "202401-EA00 入水除泡/MISUMI_SLHIFRS25G_NEW.SLDPRT"
+  },
+  "34ac2d6943616715": {
+   "up": "-z",
+   "from": "總裝引用 12/12",
+   "source": "202401-EA00 入水除泡/MISUMI_導柱-E-PSFJT25-260-M6.SLDPRT"
+  },
+  "7430fcf04f4e8478": {
+   "up": "x",
+   "from": "總裝引用 15/15",
+   "source": "202401-EA00 入水除泡/202401-ED01.SLDPRT"
+  },
+  "92731b0dc2a83f5c": {
+   "up": "y",
+   "from": "總裝引用 15/15",
+   "source": "202401-EA00 入水除泡/202401-ED02.SLDPRT"
+  },
+  "a6da1499a40e7585": {
+   "up": "y",
+   "from": "總裝引用 3/3",
+   "source": "202401-EA00 入水除泡/202401-ED03.SLDPRT"
+  },
+  "64a51afa53749b32": {
+   "up": "-z",
+   "from": "總裝引用 3/3",
+   "source": "202401-EA00 入水除泡/202401-ED04.SLDPRT"
+  },
+  "6a1c7b4787757836": {
+   "up": "-z",
+   "from": "總裝引用 3/3",
+   "source": "202401-EA00 入水除泡/202401-ED05.SLDPRT"
+  },
+  "661fa66d61cc31d8": {
+   "up": "y",
+   "from": "總裝引用 6/6",
+   "source": "202401-EA00 入水除泡/202401-ED06.SLDPRT"
+  },
+  "228d3eb81201f567": {
+   "up": "z",
+   "from": "總裝引用 6/6",
+   "source": "202401-EA00 入水除泡/202401-ED07.SLDPRT"
+  },
+  "94a2b27bdc02fcc2": {
+   "up": "-y",
+   "from": "總裝引用 6/6",
+   "source": "202401-EA00 入水除泡/202401-ED08.SLDPRT"
+  },
+  "a2a8fdfd4f698a01": {
+   "up": "y",
+   "from": "總裝引用 3/3",
+   "source": "202401-EA00 入水除泡/202401-ED09.SLDPRT"
+  },
+  "3878955d22b79e41": {
+   "up": "y",
+   "from": "總裝引用 3/3",
+   "source": "202401-EA00 入水除泡/202401-ED10.SLDPRT"
+  },
+  "7f441130aab05d97": {
+   "up": "y",
+   "from": "總裝引用 3/3",
+   "source": "202401-EA00 入水除泡/202401-ED11.SLDPRT"
+  },
+  "32419d44d6822470": {
+   "up": "-z",
+   "from": "總裝引用 3/3",
+   "source": "202401-EA00 入水除泡/202401-ED12.SLDPRT"
+  },
+  "892c6cdcf7994207": {
+   "up": "y",
+   "from": "總裝引用 3/3",
+   "source": "202401-EA00 入水除泡/202401-ED13.SLDPRT"
+  },
+  "e9c002a688aecf3e": {
+   "up": "z",
+   "from": "總裝引用 15/15",
+   "source": "202401-EA00 入水除泡/202401-ED14.SLDPRT"
+  },
+  "f520ceae0e333bf7": {
+   "up": "z",
+   "from": "總裝引用 6/6",
+   "source": "202401-EA00 入水除泡/202401-ED30.SLDPRT"
+  },
+  "afe6043778dde15c": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-IA00 水下移載/202401-ID01.SLDPRT"
+  },
+  "434b38ba7506b2f1": {
+   "up": "-x",
+   "from": "總裝引用 4/4",
+   "source": "202401-IA00 水下移載/202401-ID02.SLDPRT"
+  },
+  "fbf2b6b4109ae507": {
+   "up": "-x",
+   "from": "總裝引用 2/4",
+   "source": "202401-IA00 水下移載/202401-ID03.SLDPRT"
+  },
+  "30ce1ebb0583c96e": {
+   "up": "-x",
+   "from": "總裝引用 1/1",
+   "source": "202401-IA00 水下移載/202401-ID04.SLDPRT"
+  },
+  "e1d2fd072d019213": {
+   "up": "x",
+   "from": "總裝引用 1/1",
+   "source": "202401-IA00 水下移載/軸棒1.SLDPRT"
+  },
+  "8383a97936f9714e": {
+   "up": "-x",
+   "from": "總裝引用 4/4",
+   "source": "202401-IA00 水下移載/IGUS_直線軸承-OJUJP-06-30TW.SLDPRT"
+  },
+  "3f623be55af2dc34": {
+   "up": "-z",
+   "from": "總裝引用 2/2",
+   "source": "202401-IA00 水下移載/時規皮帶_T10(水下驅動).SLDPRT"
+  },
+  "6049e139f45ffda8": {
+   "up": "-x",
+   "from": "總裝引用 1/1",
+   "source": "202401-IA00 水下移載/202401-ID05.SLDPRT"
+  },
+  "ae6d1e8144372269": {
+   "up": "-z",
+   "from": "總裝引用 4/8",
+   "source": "202401-IA00 水下移載/202401-ID06.SLDPRT"
+  },
+  "b4068b6a392f806e": {
+   "up": "-z",
+   "from": "總裝引用 1/1",
+   "source": "202401-IA00 水下移載/202401-ID07.SLDPRT"
+  },
+  "e93f0b47b5295973": {
+   "up": "y",
+   "from": "總裝引用 1/1",
+   "source": "202401-IA00 水下移載/202401-ID08.SLDPRT"
+  },
+  "4f81c448378c257b": {
+   "up": "-z",
+   "from": "子件反推 32/38",
+   "source": "202401-AA00 機架外罩/202401-AD21(後上罩鈑金).SLDASM"
+  },
+  "cf949835047f2368": {
+   "up": "-z",
+   "from": "子件反推 10/12",
+   "source": "202401-AA00 機架外罩/202401-AD23.SLDASM"
+  },
+  "37803b3fc695e169": {
+   "up": "z",
+   "from": "子件反推 2/6",
+   "source": "202401-EA00 入水除泡/202401-EA01.SLDASM"
+  },
+  "b35f2aaccb52ef17": {
+   "up": "y",
+   "from": "子件反推 1/2",
+   "source": "202401-GA00 烘乾/air hot gun.SLDASM"
+  },
+  "a0f5608e348455ec": {
+   "up": "z",
+   "from": "子件反推 1/1",
+   "source": "Tray盤/Tray盤組件-V2.SLDASM"
+  },
+  "6c0fe005ec24c08b": {
+   "up": "-z",
+   "from": "比照同名原生檔 202401-AA00 機架外罩/202401-AD01.SLDASM",
+   "source": "202401-AA00 機架外罩/202401-AD01.STEP"
+  },
+  "c0dca0797cdab889": {
+   "up": "y",
+   "from": "比照同名原生檔 202401-AA00 機架外罩/202401-AD02.SLDASM",
+   "source": "202401-AA00 機架外罩/202401-AD02.STEP"
+  },
+  "705941e24f462c8a": {
+   "up": "-z",
+   "from": "比照同名原生檔 202401-AA00 機架外罩/202401-AD11.SLDASM",
+   "source": "202401-AA00 機架外罩/202401-AD11.STEP"
+  },
+  "9195206b03ac22cb": {
+   "up": "y",
+   "from": "比照同名原生檔 202401-AA00 機架外罩/202401-AD12.SLDASM",
+   "source": "202401-AA00 機架外罩/202401-AD12.STEP"
+  },
+  "c7a61c93c2b4367b": {
+   "up": "-z",
+   "from": "比照同名原生檔 202401-AA00 機架外罩/202401-AD21.SLDASM",
+   "source": "202401-AA00 機架外罩/202401-AD21.STEP"
+  },
+  "d9890f5fab1bf092": {
+   "up": "y",
+   "from": "比照同名原生檔 202401-BA00 台車/202401-BD02.SLDASM",
+   "source": "202401-BA00 台車/202401-BD02.STEP"
+  },
+  "35e04226a985eea5": {
+   "up": "z",
+   "from": "比照同名原生檔 202401-CA00 conveyorⅡ/202401-CD05.SLDPRT",
+   "source": "202401-CA00 conveyorⅡ/202401-CD05.STEP"
+  },
+  "e3f9330d23c5074a": {
+   "up": "z",
+   "from": "比照同名原生檔 202401-CA00 conveyorⅡ/202401-CD06.SLDPRT",
+   "source": "202401-CA00 conveyorⅡ/202401-CD06.STEP"
+  },
+  "573df56edfc24091": {
+   "up": "y",
+   "from": "比照同名原生檔 202401-CA00 conveyorⅡ/202401-CD20.SLDPRT",
+   "source": "202401-CA00 conveyorⅡ/202401-CD20.STEP"
+  },
+  "596f239504642593": {
+   "up": "y",
+   "from": "比照同名原生檔 202401-CA00 conveyorⅡ/202401-CD33.SLDPRT",
+   "source": "202401-CA00 conveyorⅡ/202401-CD33.STEP"
+  },
+  "01e225f043a8d0a7": {
+   "up": "y",
+   "from": "比照同名原生檔 202401-CA00 conveyorⅡ/202401-CD34.SLDPRT",
+   "source": "202401-CA00 conveyorⅡ/202401-CD34.STEP"
+  },
+  "b4a36dee99ca03c6": {
+   "up": "y",
+   "from": "比照同名原生檔 202401-CA00 conveyorⅡ/202401-CD35.SLDPRT",
+   "source": "202401-CA00 conveyorⅡ/202401-CD35.STEP"
+  },
+  "9c17396fc6e05f5d": {
+   "up": "y",
+   "from": "比照同名原生檔 202401-CA00 conveyorⅡ/202401-CD37.SLDPRT",
+   "source": "202401-CA00 conveyorⅡ/202401-CD37.STEP"
+  },
+  "1f00069a7d7feed7": {
+   "up": "z",
+   "from": "比照同名原生檔 202401-CA00 conveyorⅡ/202401-CD60.SLDPRT",
+   "source": "202401-CA00 conveyorⅡ/202401-CD60.STEP"
+  },
+  "dcddde2b15175f76": {
+   "up": "-x",
+   "from": "比照同名原生檔 202401-CA00 conveyorⅡ/202401-CD67.SLDPRT",
+   "source": "202401-CA00 conveyorⅡ/202401-CD67.STEP"
+  },
+  "f7e70f20e0c68c92": {
+   "up": "y",
+   "from": "比照同名原生檔 202401-CA00 conveyorⅡ/202401-CD68.SLDPRT",
+   "source": "202401-CA00 conveyorⅡ/202401-CD68.STEP"
+  },
+  "d60b25eda24d6221": {
+   "up": "y",
+   "from": "比照同名原生檔 202401-CA00 conveyorⅡ/202401-CD69.SLDPRT",
+   "source": "202401-CA00 conveyorⅡ/202401-CD69.STEP"
+  },
+  "310d123348b2351e": {
+   "up": "z",
+   "from": "比照同名原生檔 202401-CA00 conveyorⅡ/202401-CD73.SLDPRT",
+   "source": "202401-CA00 conveyorⅡ/202401-CD73.STEP"
+  },
+  "03ed03c6a70a310b": {
+   "up": "y",
+   "from": "比照同名原生檔 202401-CA00 conveyorⅡ/202401-CD74.SLDPRT",
+   "source": "202401-CA00 conveyorⅡ/202401-CD74.STEP"
+  },
+  "2c44a8b2a1bde289": {
+   "up": "y",
+   "from": "比照同名原生檔 202401-CA00 conveyorⅡ/202401-CD80.SLDPRT",
+   "source": "202401-CA00 conveyorⅡ/202401-CD80.STEP"
+  },
+  "5d08c74f701bc4ce": {
+   "up": "y",
+   "from": "比照同名原生檔 202401-GA00 烘乾/202401-GD01.SLDPRT",
+   "source": "202401-GA00 烘乾/202401-GD01.STEP"
+  },
+  "4e672c974cbf5ccc": {
+   "up": "z",
+   "from": "比照同名原生檔 202401-HA00 NG排除/202401-HD02.SLDPRT",
+   "source": "202401-HA00 NG排除/202401-HD02.STEP"
+  },
+  "bb504e1a3e534553": {
+   "up": "y",
+   "from": "比照同名原生檔 202401-IA00 水下移載/202401-ID18.SLDPRT",
+   "source": "202401-IA00 水下移載/202401-ID18.STEP"
+  },
+  "5a58c19ec4ad764e": {
+   "up": "y",
+   "from": "比照同名原生檔 202401-IA00 水下移載/202401-ID24.SLDPRT",
+   "source": "202401-IA00 水下移載/202401-ID24.STEP"
+  },
+  "7b1f04c598a3ec4a": {
+   "up": "y",
+   "from": "比照同名原生檔 202401-IA00 水下移載/202401-ID25.SLDPRT",
+   "source": "202401-IA00 水下移載/202401-ID25.STEP"
+  },
+  "c6f3e998009be1b2": {
+   "up": "-y",
+   "from": "比照同名原生檔 202401-IA00 水下移載/202401-ID26.SLDPRT",
+   "source": "202401-IA00 水下移載/202401-ID26.STEP"
+  },
+  "f1cb9da1b34facca": {
+   "up": "-z",
+   "from": "比照同名原生檔 202401-IA00 水下移載/202401-ID31.SLDPRT",
+   "source": "202401-IA00 水下移載/202401-ID31.STEP"
+  },
+  "957ec1f93f4ac91c": {
+   "up": "x",
+   "from": "比照同名原生檔 202401-EA00 入水除泡/202401-ED01.SLDPRT",
+   "source": "2D/202401-ED01.STEP"
+  },
+  "643ba3370b5e0d76": {
+   "up": "y",
+   "from": "比照同名原生檔 202401-EA00 入水除泡/202401-ED02.SLDPRT",
+   "source": "2D/202401-ED02.STEP"
+  },
+  "dc85b51b5e3ac808": {
+   "up": "z",
+   "from": "比照同名原生檔 Tray盤/202401-BD01-V1.SLDPRT",
+   "source": "Tray盤/202401-BD01-V1.STEP"
+  },
+  "68d5b16769a5ad95": {
+   "up": "z",
+   "from": "比照同名原生檔 晶片3D_250312/JM0004-AMS-3-01-250312.SLDPRT",
+   "source": "晶片3D_250312/JM0004-AMS-3-01-250312.STEP"
+  },
+  "01658a461d1aea87": {
+   "up": "z",
+   "from": "比照同名原生檔 晶片3D_250312/JM0004-POS-3-01-250312.SLDPRT",
+   "source": "晶片3D_250312/JM0004-POS-3-01-250312.STEP"
+  },
+  "fe17654aeb3e4d96-202401-AA00": {
+   "up": "y",
+   "from": "沿用整機 STEP",
+   "source": "Load machine_240608.STEP"
+  },
+  "fe17654aeb3e4d96-202401-BA00": {
+   "up": "y",
+   "from": "沿用整機 STEP",
+   "source": "Load machine_240608.STEP"
+  },
+  "fe17654aeb3e4d96-202401-CA00": {
+   "up": "y",
+   "from": "沿用整機 STEP",
+   "source": "Load machine_240608.STEP"
+  },
+  "fe17654aeb3e4d96-202401-DA00": {
+   "up": "y",
+   "from": "沿用整機 STEP",
+   "source": "Load machine_240608.STEP"
+  },
+  "9f33ecc4997ff6dc-202401-BA00": {
+   "up": "y",
+   "from": "沿用整機 STEP",
+   "source": "UnLoad machine_240608.STEP"
+  },
+  "9f33ecc4997ff6dc-202401-AA00": {
+   "up": "y",
+   "from": "沿用整機 STEP",
+   "source": "UnLoad machine_240608.STEP"
+  },
+  "9f33ecc4997ff6dc-202401-DA00": {
+   "up": "y",
+   "from": "沿用整機 STEP",
+   "source": "UnLoad machine_240608.STEP"
+  },
+  "9f33ecc4997ff6dc-202401-CA00": {
+   "up": "y",
+   "from": "沿用整機 STEP",
+   "source": "UnLoad machine_240608.STEP"
+  },
+  "9f33ecc4997ff6dc-202401-HA00": {
+   "up": "y",
+   "from": "沿用整機 STEP",
+   "source": "UnLoad machine_240608.STEP"
+  }
+ }
+}

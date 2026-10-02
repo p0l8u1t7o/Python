@@ -1436,3 +1436,16 @@ dialog .eyebrow {
   font-size: 11px;
   color: var(--text-muted, #5f727e);
 }
+
+/* 座標軸：Z 朝上 */
+.axis-gizmo {
+  position: absolute;
+  right: 12px;
+  bottom: 10px;
+  width: 96px;
+  height: 96px;
+  pointer-events: none;
+}
+.canvas-wrap .axis-widget {
+  display: none;
+}

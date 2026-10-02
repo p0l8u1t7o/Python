@@ -1,5 +1,5 @@
 {
- "plannerVersion": 2,
+ "plannerVersion": 3,
  "assets": {
   "6f9a499bfbeeca04": {
    "steps": 39,
@@ -7,8 +7,8 @@
    "parts": 153
   },
   "4c566f17b1d87118": {
-   "steps": 169,
-   "forced": 11,
+   "steps": 158,
+   "forced": 7,
    "parts": 280
   },
   "c0ed5e66385aba0c": {
@@ -47,8 +47,8 @@
    "parts": 904
   },
   "877d78ae26925422": {
-   "steps": 545,
-   "forced": 50,
+   "steps": 521,
+   "forced": 47,
    "parts": 802
   },
   "5a8b8d585d136e53": {
@@ -57,8 +57,8 @@
    "parts": 1
   },
   "58fe07a480fbe9a1": {
-   "steps": 1571,
-   "forced": 188,
+   "steps": 1485,
+   "forced": 177,
    "parts": 2283
   },
   "fe17654aeb3e4d96-202401-AA00": {

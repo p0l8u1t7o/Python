@@ -6,7 +6,13 @@ import { MATERIAL_PRESETS } from "./materials.js";
 import { createEquipmentOverview } from "./equipment-overview.js";
 import * as THREE from "three";
 import { AssemblyViewer } from "./viewer.js";
-import { loadSample, importModel, describeParts, formats } from "./importer.js";
+import {
+  loadSample,
+  importModel,
+  describeParts,
+  formats,
+  orientRoot,
+} from "./importer.js";
 import {
   uid,
   flatAssembly,
@@ -40,7 +46,7 @@ const icons = {
 $("#app").innerHTML = `
 <header class="header"><a class="brand" href="/" aria-label="Assembly Studio 首頁"><span class="brand-mark">A<span>◧</span></span><span>ASSEMBLY<span class="brand-sub">STUDIO / 組裝工作台</span></span></a><div class="project-title"><span class="eyebrow">PROJECT / 專案</span><select id="projects" aria-label="切換專案"></select></div><div class="header-actions"><span id="save-status" class="save-status">本機工作區</span><button id="new-project" class="button ghost">＋ 新專案</button><button id="save" class="button ghost">${icons.save} 儲存專案</button><button id="import" class="button primary">${icons.import} 匯入 CAD</button></div></header>
 <div class="workspace"><aside class="station-panel"><div class="panel-heading"><div><span class="eyebrow">ASSEMBLY TREE</span><h2>設備站別</h2></div><span id="station-count" class="count"></span></div><div class="search-box"><span>⌕</span><input id="station-search" placeholder="搜尋站別或料號" aria-label="搜尋站別"></div><nav id="stations" aria-label="設備站別"></nav><button id="add-station" class="button add-button">＋ 新增站別</button><div class="source-card"><span class="eyebrow">SOURCE LIBRARY</span><strong id="source-count">原始設計資料</strong><p>依原始資料夾建立站別，保留來源與模型範圍。</p><button id="library" class="text-button">瀏覽 CAD 資料庫 ↗</button></div><footer class="sidebar-foot"><i></i> 模型在本機處理<span>v1.0</span></footer></aside>
-<main class="main"><div class="main-heading"><div><div class="breadcrumb">專案 <span>/</span> <span id="breadcrumb"></span></div><h1 id="station-title"></h1></div><span class="status-badge" id="scope"></span></div><div class="viewer-shell"><div class="viewer-toolbar"><div class="segmented"><button id="mode-solid" class="active">組合視圖</button><button id="mode-explode">爆炸圖</button><button id="mode-assemble">組裝流程</button></div><label class="explode-control">展開程度 <input id="explode" type="range" min="0" max="100" value="65" aria-label="展開程度"><output id="explode-value">65%</output></label><div class="toolbar-right"><button id="wire" title="切換邊線" aria-label="切換邊線">▱</button><button id="labels" title="零件標籤（100 件以下顯示全部）" aria-label="零件標籤">Aa</button><button id="fit" title="重設視角" aria-label="重設視角">⛶</button><button id="capture" title="下載視角圖片" aria-label="下載視角圖片">▣</button></div></div><div class="canvas-wrap"><div id="viewport"></div><div class="viewport-caption"><span class="eyebrow">3D ASSEMBLY VIEW</span><span id="model-info"></span></div><div id="empty-state" class="empty-state" hidden><span>◇</span><h3>此站尚未有可顯示的模型</h3><p>匯入 STEP / GLB 組合件，或透過 SolidWorks 轉換原生檔。</p><button id="empty-import" class="button primary">匯入本站模型</button></div><div id="loading" class="loading" hidden><span class="spinner"></span><p>讀取模型中…</p></div><div id="recording" class="recording" hidden><i></i><span id="recording-text">錄影中</span><button id="recording-cancel" class="button ghost">停止</button></div><div id="step-caption" class="step-caption" hidden><span id="step-caption-index"></span><strong id="step-caption-name"></strong><p id="step-caption-text"></p></div><div class="view-buttons"><button data-view="iso" class="active">等角</button><button data-view="front">正面</button><button data-view="top">俯視</button><button data-view="side">側面</button></div><div class="axis-widget"><span class="axis-y">Y</span><span class="axis-z">Z</span><span class="axis-x">X</span></div><div class="canvas-help">拖曳旋轉 · 滾輪縮放 · 右鍵平移 · 點選零件</div></div><div class="model-footer"><span><i class="dot"></i> <span id="part-summary"></span></span><span id="source-name"></span></div></div>
+<main class="main"><div class="main-heading"><div><div class="breadcrumb">專案 <span>/</span> <span id="breadcrumb"></span></div><h1 id="station-title"></h1></div><span class="status-badge" id="scope"></span></div><div class="viewer-shell"><div class="viewer-toolbar"><div class="segmented"><button id="mode-solid" class="active">組合視圖</button><button id="mode-explode">爆炸圖</button><button id="mode-assemble">組裝流程</button></div><label class="explode-control">展開程度 <input id="explode" type="range" min="0" max="100" value="65" aria-label="展開程度"><output id="explode-value">65%</output></label><div class="toolbar-right"><button id="wire" title="切換邊線" aria-label="切換邊線">▱</button><button id="labels" title="零件標籤（100 件以下顯示全部）" aria-label="零件標籤">Aa</button><button id="fit" title="重設視角" aria-label="重設視角">⛶</button><button id="capture" title="下載視角圖片" aria-label="下載視角圖片">▣</button></div></div><div class="canvas-wrap"><div id="viewport"></div><div class="viewport-caption"><span class="eyebrow">3D ASSEMBLY VIEW</span><span id="model-info"></span></div><div id="empty-state" class="empty-state" hidden><span>◇</span><h3>此站尚未有可顯示的模型</h3><p>匯入 STEP / GLB 組合件，或透過 SolidWorks 轉換原生檔。</p><button id="empty-import" class="button primary">匯入本站模型</button></div><div id="loading" class="loading" hidden><span class="spinner"></span><p>讀取模型中…</p></div><div id="recording" class="recording" hidden><i></i><span id="recording-text">錄影中</span><button id="recording-cancel" class="button ghost">停止</button></div><div id="step-caption" class="step-caption" hidden><span id="step-caption-index"></span><strong id="step-caption-name"></strong><p id="step-caption-text"></p></div><div class="view-buttons"><button data-view="iso" class="active">等角</button><button data-view="front">正面</button><button data-view="top">俯視</button><button data-view="side">側面</button></div><canvas class="axis-gizmo" width="96" height="96" aria-label="座標軸：Z 朝上，XY 為水平面"></canvas><div class="canvas-help">拖曳旋轉 · 滾輪縮放 · 右鍵平移 · 點選零件</div></div><div class="model-footer"><span><i class="dot"></i> <span id="part-summary"></span></span><span id="source-name"></span></div></div>
 <section class="timeline"><div class="timeline-title"><div><span class="eyebrow">ASSEMBLY SEQUENCE</span><h2>逐步組裝</h2></div><span id="step-counter">00 / 00</span><div class="timeline-options"><label>速度 <select id="speed" aria-label="播放速度"><option value=".5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select></label><label>未裝零件 <select id="future" aria-label="尚未安裝的零件"><option value="ghost" selected>淡影</option><option value="hide">隱藏</option><option value="show">展開</option></select></label><label class="check-inline"><input id="pause-steps" type="checkbox" checked> 每步暫停</label><label class="check-inline"><input id="follow" type="checkbox" checked> 鏡頭跟隨</label></div></div><div class="timeline-controls"><button id="previous" class="round" aria-label="上一步">‹</button><button id="play" class="play-button" aria-label="播放組裝動畫">▶</button><button id="next" class="round" aria-label="下一步">›</button><div class="scrub-wrap"><input id="scrub" type="range" min="0" max="1" step=".01" value="0" aria-label="組裝進度"><div id="scrub-marks"></div></div><button id="restart" class="button ghost">↺ 重播</button><button id="export-sop" class="button ghost" title="每步截圖＋說明＋零件清單，可列印成 PDF">⇩ 作業指導書</button><button id="export-video" class="button ghost" title="錄製含步驟字卡的 WebM 影片">● 錄影</button></div><p id="sequence-note" class="sequence-note">自動順序為草稿，請依實際裝配工法審核。</p></section></main>
 <aside class="instruction-panel"><div class="panel-heading"><div><span class="eyebrow">WORK INSTRUCTIONS</span><h2>組裝步驟</h2></div><div class="panel-actions"><button id="auto-plan" class="text-button" title="依幾何干涉與 CAD 階層重新推論組裝順序">自動推論</button><button id="edit-plan" class="text-button">編輯</button></div></div><div id="steps" class="steps"></div><section id="part-detail" class="part-detail"><span class="eyebrow">COMPONENT INSPECTOR</span><h3>零件檢視</h3><p>點選模型或搜尋零件，檢視裝配群組。</p></section><div class="parts-search"><input id="part-search" placeholder="搜尋零件名稱…" aria-label="搜尋零件"><div id="part-list"></div></div><div class="instruction-foot">步驟指引可保存並跨專案重用。<br>正式裝配前需完成工程審核。</div></aside></div>
 <dialog id="modal"><div id="modal-body"></div></dialog><div id="toast" role="status" hidden></div>`;
@@ -106,6 +112,17 @@ function modal(content) {
   $("#modal .modal-close").onclick = () => $("#modal").close();
   if (!$("#modal").open) $("#modal").showModal();
 }
+// 朝上軸：站別自訂 > 資料庫設定 > Y
+const upFor = (s) => s?.up || manifest?.[s?.sample]?.upAxis || "y";
+// 指 CAD 原檔自身的座標軸（與畫面顯示的 Z 朝上座標不同）
+const UP_LABELS = {
+  y: "CAD Y 軸朝上",
+  z: "CAD Z 軸朝上",
+  x: "CAD X 軸朝上",
+  "-y": "CAD −Y 軸朝上",
+  "-z": "CAD −Z 軸朝上",
+  "-x": "CAD −X 軸朝上",
+};
 function currentStep() {
   if (!station?.plan.length) return -1;
   return Math.min(Math.floor(progress), station.plan.length - 1);
@@ -173,8 +190,12 @@ function sync() {
 }
 /** 自動草稿未經編輯時，改用預先推論或即時推論的組裝順序。 */
 async function ensurePlan(target, model, version) {
+  const up = upFor(target);
+  // 推論方向以當時的朝上軸為準；朝上軸改變且流程未編輯時重新推論
+  if (target.planSource === "geometry" && (target.planUp || "y") !== up)
+    flatAssembly(target);
   if (!isUntouchedDraft(target) || !target.parts.length) return;
-  let planned = await loadPrecomputedPlan(target.sample, model);
+  let planned = await loadPrecomputedPlan(target.sample, model, up);
   if (!planned && target.parts.length <= AUTO_PLAN_LIMIT) {
     try {
       planned = await runPlanner(model, {
@@ -190,6 +211,7 @@ async function ensurePlan(target, model, version) {
   if (!planned || version !== loadVersion) return;
   try {
     applyPlannerResult(target, planned.result, planned.partIds);
+    target.planUp = up;
     validateStationAssembly(target);
   } catch (e) {
     flatAssembly(target);
@@ -207,7 +229,7 @@ async function autoPlan() {
     busyState(true, "推論組裝順序…");
     try {
       const planned =
-        (await loadPrecomputedPlan(station.sample, root)) ||
+        (await loadPrecomputedPlan(station.sample, root, upFor(station))) ||
         (await runPlanner(root, {
           onProgress: ({ done, total, label }) =>
             ($("#loading p").textContent =
@@ -215,6 +237,7 @@ async function autoPlan() {
         }));
       if (version !== loadVersion) return;
       applyPlannerResult(station, planned.result, planned.partIds);
+      station.planUp = upFor(station);
       validateStationAssembly(station);
       viewer.setAssembly(station);
       progress = 0;
@@ -399,13 +422,14 @@ async function selectStation(id) {
       root = await new THREE.ObjectLoader().parseAsync(station.model);
     if (!root && station.sample && manifest[station.sample]?.url) {
       const m = manifest[station.sample];
-      root = await loadSample("/" + m.url, m.upAxis);
+      root = await loadSample("/" + m.url, upFor(station));
       describeParts(root, station.id);
       station.source = m.source;
       station.scope = m.scope;
     }
     if (version !== loadVersion) return;
     if (root) {
+      orientRoot(root, upFor(station));
       roots.set(`${project.id}:${station.id}`, root);
       if (!station.parts.length) {
         station.parts = describeParts(root, station.id);
@@ -430,6 +454,8 @@ async function selectStation(id) {
     $("#model-info").textContent = root
       ? `${manifest[station.sample]?.geometrySource === "saved-display" ? "原生顯示快取" : "CAD 精細網格"} · ${Math.round(viewer.triangles).toLocaleString()} 三角面`
       : "無幾何資料";
+    $("#up-axis").value = upFor(station);
+    $("#up-axis").disabled = !root;
     selectPart(null);
     renderSteps();
     viewer.fit();
@@ -715,7 +741,7 @@ async function exportProject() {
       if (!r && s.sample && manifest[s.sample]?.url) {
         r = await loadSample(
           "/" + manifest[s.sample].url,
-          manifest[s.sample].upAxis,
+          upFor(s),
         );
         const parts = describeParts(r, s.id);
         if (!s.parts.length) {
@@ -746,15 +772,16 @@ function editPlan() {
   const index = assemblyIndex(station);
   let active = 0,
     error = "";
+  // 顯示座標：Z 朝上、XY 為水平面（內部 Y 為上方，內部 −Z 為顯示 +Y）
   const AXIS_OPTIONS = [
     ["auto", "推論方向"],
     ["radial", "徑向自動"],
+    ["y", "+Z（由上方）"],
+    ["-y", "−Z（由下方）"],
     ["x", "+X"],
     ["-x", "−X"],
-    ["y", "+Y"],
-    ["-y", "−Y"],
-    ["z", "+Z"],
-    ["-z", "−Z"],
+    ["-z", "+Y"],
+    ["z", "−Y"],
   ];
   const draw = () => {
     const s = draft[active];
@@ -889,7 +916,7 @@ function movePartDialog(id) {
       if (!dest && manifest[target.sample]?.url) {
         dest = await loadSample(
           "/" + manifest[target.sample].url,
-          manifest[target.sample].upAxis,
+          upFor(target),
         );
         target.parts = describeParts(dest, target.id);
         flatAssembly(target);
@@ -941,6 +968,8 @@ async function openCatalogAsset(asset) {
         plan: target.plan,
         nodes: target.nodes,
         planSource: target.planSource,
+        planUp: target.planUp,
+        up: target.up,
       };
     else if (target.parts.length) {
       const existingRoot = roots.get(`${project.id}:${target.id}`);
@@ -960,6 +989,8 @@ async function openCatalogAsset(asset) {
       plan: target.variants[asset.id]?.plan || [],
       nodes: target.variants[asset.id]?.nodes,
       planSource: target.variants[asset.id]?.planSource,
+      planUp: target.variants[asset.id]?.planUp,
+      up: target.variants[asset.id]?.up,
     });
     delete target.model;
     roots.delete(`${project.id}:${target.id}`);
@@ -1178,6 +1209,22 @@ async function record(from, to, speed) {
   download(`${station.name}-組裝動畫${range}.webm`, new Blob(chunks, { type: "video/webm" }), "video/webm");
   toast("已輸出組裝影片（WebM）。");
 }
+async function changeUp(up) {
+  if (!station || busy) return;
+  const keep = !isUntouchedDraft(station) && station.planSource !== "geometry";
+  station.up = up;
+  // 已編輯的流程保留（方向需重新確認）；未編輯的依新朝上軸重新推論
+  if (!keep) flatAssembly(station);
+  changed();
+  progress = 0;
+  lastFocus = null;
+  await selectStation(station.id);
+  toast(
+    keep
+      ? `已改為${UP_LABELS[up]}；流程含手動編輯，未重新推論，請確認各步驟方向。`
+      : `已改為${UP_LABELS[up]}，並依新的朝上方向重新推論組裝順序。`,
+  );
+}
 function libraryDialog() {
   catalogUI.library();
 }
@@ -1356,12 +1403,14 @@ requestAnimationFrame(animate);
 async function init() {
   try {
     viewer = new AssemblyViewer($("#viewport"), selectPart);
+    viewer.attachAxisGizmo($(".axis-gizmo"));
     $(".toolbar-right").insertAdjacentHTML(
       "afterbegin",
-      '<select id="render-quality" aria-label="渲染品質" title="精緻渲染包含接觸陰影；流暢操作降低陰影負擔"><option value="detailed">精緻渲染</option><option value="smooth">流暢操作</option></select>',
+      `<select id="up-axis" aria-label="朝上軸" title="模型哪一個軸朝上；底面朝下才正確">${Object.entries(UP_LABELS).map(([v, n]) => `<option value="${v}">${n}</option>`).join("")}</select><select id="render-quality" aria-label="渲染品質" title="精緻渲染包含接觸陰影；流暢操作降低陰影負擔"><option value="detailed">精緻渲染</option><option value="smooth">流暢操作</option></select>`,
     );
     $("#render-quality").onchange = (event) =>
       viewer.setQuality(event.target.value);
+    $("#up-axis").onchange = (event) => changeUp(event.target.value);
     initializeTheme((theme) => viewer.setTheme(theme));
     [inventory, manifest, catalog] = await Promise.all([
       fetch("/data/source-inventory.json").then((r) => r.json()),
@@ -1375,6 +1424,12 @@ async function init() {
       manifest,
       Object.fromEntries(catalogAssets(catalog).map((a) => [a.id, a])),
     );
+    // 逐一檢查後確認的朝上軸（CAD 以 Z 軸朝上建模者）
+    const orientation = await fetch("/data/orientation.json")
+      .then((r) => (r.ok ? r.json() : { assets: {} }))
+      .catch(() => ({ assets: {} }));
+    for (const [id, up] of Object.entries(orientation.assets || {}))
+      if (manifest[id]) manifest[id].upAxis = up;
     $(".search-box").insertAdjacentHTML(
       "beforebegin",
       '<button id="equipment-overview-open" class="button primary equipment-entry">▦ 全部設備 · 組合圖／成品圖</button>',
@@ -1384,16 +1439,19 @@ async function init() {
       manifest,
       async getModel(s) {
         const cached = roots.get(`${project.id}:${s.id}`);
-        if (cached) return { root: cached, owned: false };
+        if (cached) return { root: orientRoot(cached, upFor(s)), owned: false };
         if (s.model)
           return {
-            root: await new THREE.ObjectLoader().parseAsync(s.model),
+            root: orientRoot(
+              await new THREE.ObjectLoader().parseAsync(s.model),
+              upFor(s),
+            ),
             owned: true,
           };
         const asset = manifest[s.sample];
         return {
           root: asset?.url
-            ? await loadSample("/" + asset.url, asset.upAxis)
+            ? await loadSample("/" + asset.url, upFor(s))
             : null,
           owned: true,
         };

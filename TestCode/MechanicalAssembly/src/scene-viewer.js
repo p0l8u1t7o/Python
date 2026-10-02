@@ -171,6 +171,7 @@ export class AssemblyViewer {
       this.controls.update();
       this.pipeline.render();
       this.labelRenderer.render(this.scene, this.camera);
+      this.drawAxisGizmo();
     };
     this.setActive(true);
   }
@@ -636,6 +637,58 @@ export class AssemblyViewer {
   screenshot(type = "image/png", quality) {
     this.pipeline.render();
     return this.renderer.domElement.toDataURL(type, quality);
+  }
+  /** 右下角座標軸：隨視角轉動，Z 朝上、XY 為水平面（內部 Y 為上方）。 */
+  attachAxisGizmo(canvas) {
+    this.gizmo = canvas;
+  }
+  drawAxisGizmo() {
+    const canvas = this.gizmo;
+    if (!canvas?.isConnected) return;
+    const ratio = Math.min(devicePixelRatio || 1, 2);
+    const size = canvas.clientWidth || 96;
+    if (canvas.width !== Math.round(size * ratio)) {
+      canvas.width = canvas.height = Math.round(size * ratio);
+    }
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    ctx.clearRect(0, 0, size, size);
+    const c = size / 2,
+      r = size * 0.34;
+    const inverse = this.camera.quaternion.clone().invert();
+    const dark = this.theme === "dark";
+    const axes = [
+      ["X", new THREE.Vector3(1, 0, 0), "#e5484d"],
+      ["Y", new THREE.Vector3(0, 0, -1), "#30a46c"],
+      ["Z", new THREE.Vector3(0, 1, 0), "#3e7bfa"],
+    ]
+      .map(([label, v, color]) => [label, v.applyQuaternion(inverse), color])
+      .sort((a, b) => a[1].z - b[1].z);
+    for (const [label, v, color] of axes) {
+      const x = c + v.x * r,
+        y = c - v.y * r;
+      ctx.globalAlpha = v.z < -0.2 ? 0.45 : 1;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(c, c);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x, y, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.font = "700 9px Consolas, monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(label, x, y + 0.5);
+    }
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = dark ? "#91a5b3" : "#7a8b96";
+    ctx.beginPath();
+    ctx.arc(c, c, 2.2, 0, Math.PI * 2);
+    ctx.fill();
   }
   /** 輸出時暫時提高算圖解析度；scale = null 恢復螢幕設定。 */
   setOutputScale(scale) {

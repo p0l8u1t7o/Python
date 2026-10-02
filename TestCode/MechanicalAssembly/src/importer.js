@@ -101,11 +101,27 @@ export async function importModel(file) {
     );
   return repairNames(root);
 }
+// 模型哪一個軸朝上：CAD 常見 Y 朝上（SolidWorks 預設）或 Z 朝上（以上視基準面建模）
+export const UP_AXES = ["y", "z", "x", "-y", "-z", "-x"];
+const UP_ROTATION = {
+  y: [0, 0, 0],
+  "-y": [Math.PI, 0, 0],
+  z: [-Math.PI / 2, 0, 0],
+  "-z": [Math.PI / 2, 0, 0],
+  x: [0, 0, Math.PI / 2],
+  "-x": [0, 0, -Math.PI / 2],
+};
+/** 旋轉根節點，讓指定的模型軸朝上（+Y）。設定絕對旋轉，重複呼叫不會累加。 */
+export function orientRoot(root, up = "y") {
+  const axis = UP_ROTATION[up] ? up : "y";
+  root.rotation.set(...UP_ROTATION[axis]);
+  root.userData.up = axis;
+  root.updateMatrixWorld(true);
+  return root;
+}
 export async function loadSample(url, upAxis = "z") {
   const gltf = await new GLTFLoader().loadAsync(url);
-  const scene = normalizeGltf(gltf);
-  if (upAxis === "z") scene.rotation.x = -Math.PI / 2;
-  return scene;
+  return orientRoot(normalizeGltf(gltf), upAxis);
 }
 export function describeParts(root, stationId) {
   const parts = [];
