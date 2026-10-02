@@ -1,0 +1,104 @@
+// 沖洗站（PP 隔間、伸縮沖洗噴槍、集液漏斗、集液槽）與廢液回收系統（清水槽、回收沖洗水槽、廢液槽、泵、配管）。
+import * as THREE from 'three';
+import { BOOTH, WASTE, ROOM } from './layout.js';
+import { MAT, box, boxAt, cyl, pipe, plate, flowTexture } from './parts.js';
+
+export function createWashing(scene) {
+  const group = new THREE.Group(); group.name = 'washing'; scene.add(group);
+  const b = BOOTH, H = b.h, [ox0, ox1, oy0, oy1] = b.opening;
+  // ---- 沖洗隔間：PP 板（半透明）＋不鏽鋼框 ----
+  const walls = new THREE.Group(); group.add(walls);
+  boxAt(walls, [b.x0, 0, b.z0], [b.x0 + 20, H, b.z1], MAT.pp);
+  boxAt(walls, [b.x1 - 20, 0, b.z0], [b.x1, H, b.z1], MAT.pp);
+  boxAt(walls, [b.x0, 0, b.z1 - 20], [b.x1, H, b.z1], MAT.pp);
+  boxAt(walls, [b.x0, H - 20, b.z0], [b.x1, H, b.z1], MAT.pp);
+  boxAt(walls, [b.x0, 0, b.z0], [ox0, H, b.z0 + 20], MAT.pp);
+  boxAt(walls, [ox1, 0, b.z0], [b.x1, H, b.z0 + 20], MAT.pp);
+  boxAt(walls, [ox0, oy1, b.z0], [ox1, H, b.z0 + 20], MAT.pp);
+  boxAt(walls, [ox0, 0, b.z0], [ox1, oy0, b.z0 + 20], MAT.pp);
+  for (const [x, z] of [[b.x0, b.z0], [b.x1, b.z0], [b.x0, b.z1], [b.x1, b.z1], [ox0, b.z0], [ox1, b.z0]]) box(group, 60, H, 60, MAT.steel, x, H / 2, z);
+  for (const z of [b.z0, b.z1]) box(group, b.x1 - b.x0, 60, 60, MAT.steel, (b.x0 + b.x1) / 2, H, z);
+  box(group, ox1 - ox0, 50, 50, MAT.steel, (ox0 + ox1) / 2, oy1, b.z0);
+  // 開口上方的防濺簾（條狀 PVC）
+  for (let x = ox0 + 60; x < ox1; x += 120) box(group, 100, 220, 4, MAT.pp, x, oy1 - 110, b.z0 + 40);
+  plate(group, ['沖洗站 · 酸鹼殘液'], 900, 160, [(b.x0 + b.x1) / 2, H + 140, b.z0 - 5], Math.PI, { w: 640, h: 110 });
+  const lamp = new THREE.PointLight(0xdfefff, 0, 4000, 1); lamp.position.set(9400, 2300, 14700); group.add(lamp);
+
+  // ---- 集液漏斗＋集液槽 ----
+  const f = b.funnel, fw = f.x1 - f.x0, fd = f.z1 - f.z0, fx = (f.x0 + f.x1) / 2, fz = (f.z0 + f.z1) / 2;
+  // 方錐漏斗：4 段圓錐轉 45° 成正方，再以群組縮放成長方開口
+  const hopperG = new THREE.Group(); hopperG.position.set(fx, f.y - 200, fz); hopperG.scale.set(fw, 1, fd); group.add(hopperG);
+  const hopper = new THREE.Mesh(new THREE.CylinderGeometry(Math.SQRT1_2, .1, 400, 4, 1, true), MAT.ppSolid.clone());
+  hopper.material.side = THREE.DoubleSide; hopper.rotation.y = Math.PI / 4; hopper.receiveShadow = true; hopperG.add(hopper);
+  for (const [x, z] of [[f.x0, f.z0], [f.x1, f.z0], [f.x0, f.z1], [f.x1, f.z1]]) box(group, 50, f.y, 50, MAT.steel, x, f.y / 2, z);
+  box(group, 600, 240, 600, MAT.ppDark, fx, 120, fz);                                   // 集液槽 SUMP（漏斗正下方）
+  const sumpLevel = box(group, 560, 1, 560, MAT.waste, fx, 10, fz);
+  const pool = new THREE.Mesh(new THREE.PlaneGeometry(fw * .55, fd * .55), MAT.water); pool.rotation.x = -Math.PI / 2; pool.position.set(fx, f.y - 230, fz); pool.visible = false; group.add(pool);
+
+  // ---- 沖洗噴槍：屋頂氣缸推出，旋轉噴頭伸入 2" 桶口 ----
+  const [lx, lz] = b.lance;
+  cyl(group, 55, 340, MAT.steel, lx, H + 150, lz);
+  const lance = new THREE.Group(); group.add(lance);
+  cyl(lance, 14, 900, MAT.steel, 0, 450, 0, 'y', 12);
+  const nozzle = cyl(lance, 22, 60, MAT.steelDark, 0, 20, 0, 'y', 12);
+  const spray = new THREE.Mesh(new THREE.ConeGeometry(240, 420, 24, 1, true), MAT.water.clone());
+  spray.material.opacity = .35; spray.material.side = THREE.DoubleSide; spray.position.y = 210; spray.visible = false; lance.add(spray);
+  const lanceY = ext => b.lanceUp + (b.lanceDown - b.lanceUp) * ext;   // 噴頭高度
+
+  // ---- 倒液水柱（每幀由桶口位置更新）----
+  const streamTex = flowTexture(0x7fcfff); streamTex.repeat.set(1, 6); streamTex.wrapT = THREE.RepeatWrapping;
+  const streamMat = new THREE.MeshStandardMaterial({ color: 0x9fdcff, map: streamTex, transparent: true, opacity: .75, emissive: 0x1d5f8f, emissiveIntensity: .5, depthWrite: false });
+  const stream = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 12, 1, true), streamMat); stream.visible = false; group.add(stream);
+
+  // ---- 廢液回收（圍籬外西南側）：防溢堤＋三槽 ----
+  const [bx0, bz0, bx1, bz1] = WASTE.bund;
+  box(group, bx1 - bx0, 40, bz1 - bz0, MAT.ppDark, (bx0 + bx1) / 2, 20, (bz0 + bz1) / 2);
+  for (const [w, d, x, z] of [[bx1 - bx0, 80, (bx0 + bx1) / 2, bz0 + 40], [bx1 - bx0, 80, (bx0 + bx1) / 2, bz1 - 40], [80, bz1 - bz0, bx0 + 40, (bz0 + bz1) / 2], [80, bz1 - bz0, bx1 - 40, (bz0 + bz1) / 2]]) box(group, w, 300, d, MAT.steelOrange, x, 150, z);
+  const tanks = {};
+  for (const [k, t] of Object.entries(WASTE.tanks)) {
+    const shell = cyl(group, t.r, t.h, MAT.tankW, t.x, 40 + t.h / 2, t.z, 'y', 36); shell.castShadow = false;
+    cyl(group, t.r + 5, 30, MAT.ppSolid, t.x, 40 + t.h + 15, t.z, 'y', 36);
+    const liquid = cyl(group, t.r - 25, 1, k === 'W' ? MAT.tankWaste : k === 'R' ? MAT.tankClean : MAT.tankFresh, t.x, 50, t.z, 'y', 32);
+    plate(group, [t.name, `${t.cap} L`], Math.max(700, t.r * 1.8), 230, [t.x, t.h + 330, t.z - t.r - 10], Math.PI, { w: 640, h: 210 });
+    tanks[k] = { t, liquid };
+  }
+  // 泵：P-1 沖洗泵（多段離心，PVDF 接液）、P-2 氣動隔膜泵（集液槽送出）
+  const [p1x, p1z] = WASTE.pumpRinse, [p2x, p2z] = WASTE.pumpDrain;
+  box(group, 250, 120, 500, MAT.steelDark, p1x, 60, p1z); cyl(group, 100, 300, MAT.steelBlue, p1x, 300, p1z + 60, 'z', 20); cyl(group, 110, 120, MAT.ppSolid, p1x, 300, p1z - 160, 'z', 20);
+  box(group, 250, 420, 360, MAT.ppDark, p2x, 210, p2z); cyl(group, 140, 50, MAT.ppSolid, p2x, 260, p2z - 200, 'z', 20); cyl(group, 140, 50, MAT.ppSolid, p2x, 260, p2z + 200, 'z', 20);
+  plate(group, ['P-1 沖洗泵'], 420, 110, [p1x + 130, 560, p1z], Math.PI / 2, { w: 512, h: 130 });
+  plate(group, ['P-2 隔膜泵'], 420, 110, [p2x + 130, 560, p2z], Math.PI / 2, { w: 512, h: 130 });
+  const tW = WASTE.tanks.W, tR = WASTE.tanks.R, tF = WASTE.tanks.F;
+  const pipes = {
+    fromF: pipe(group, [[tF.x + tF.r, 150, tF.z], [p1x - 180, 150, tF.z], [p1x - 180, 150, p1z - 160], [p1x - 60, 300, p1z - 160]], 30, 0x8fd3ff),
+    fromR: pipe(group, [[tR.x + tR.r, 150, tR.z], [p1x - 60, 150, tR.z], [p1x - 60, 300, p1z - 160]], 30, 0x58b6f2),
+    supply: pipe(group, [[p1x, 420, p1z - 160], [p1x, 2800, p1z - 160], [lx, 2800, p1z - 160], [lx, 2800, lz], [lx, H + 320, lz]], 30, 0x4aa8ff),
+    sump: pipe(group, [[fx - 300, 120, fz], [b.x0 - 150, 120, fz], [b.x0 - 150, 120, p2z], [p2x + 125, 120, p2z]], 36, 0xd88a3c),
+    toW: pipe(group, [[p2x, 420, p2z], [p2x, 2100, p2z], [tW.x, 2100, p2z], [tW.x, 2100, tW.z], [tW.x, 40 + tW.h, tW.z]], 34, 0xd88a3c),
+    toR: pipe(group, [[p2x, 2100, p2z], [p2x, 2100, tR.z], [tR.x, 2100, tR.z], [tR.x, 40 + tR.h, tR.z]], 34, 0x3dd68c),
+    city: pipe(group, [[tF.x, 2400, ROOM.D], [tF.x, 2400, tF.z], [tF.x, 40 + tF.h, tF.z]], 26, 0x8fd3ff),
+    out: pipe(group, [[tW.x, 150, tW.z + tW.r], [tW.x, 150, ROOM.D - 60], [tW.x, 900, ROOM.D - 60]], 34, 0xd88a3c),
+  };
+  box(group, 180, 180, 180, MAT.steelOrange, p2x, 2100, p2z);                         // V-3 三通切換閥
+  box(group, 260, 160, 120, MAT.steelOrange, tW.x, 900, ROOM.D - 70);                   // 委外清運接頭  // 排氣
+  cyl(group, 140, ROOM.H - H - 100, MAT.ppSolid, 9000, H + (ROOM.H - H - 100) / 2, 15150, 'y', 20);
+  plate(group, ['排氣 → 廠務洗滌塔'], 900, 140, [9000, 3700, 14990], Math.PI, { w: 640, h: 100 });
+
+  const _a = new THREE.Vector3(), _b = new THREE.Vector3();
+  return {
+    group, walls, lanceTip: () => new THREE.Vector3(lx, lanceY(lance.userData.ext || 0), lz),
+    set({ lance: ext = 0, spray: sp = false, pour = null, pool: pl = 0, sump = 0, tanks: lv = null, flows = {} }) {
+      lance.position.set(lx, lanceY(ext), lz); lance.userData.ext = ext;
+      spray.visible = sp; lamp.intensity = 500;
+      if (pour) {
+        _a.copy(pour); _b.set(pour.x, f.y - 120, pour.z);
+        const L = _a.y - _b.y; stream.visible = L > 10; stream.position.set(_a.x, (_a.y + _b.y) / 2, _a.z); stream.scale.set(22, L, 22);
+      } else stream.visible = false;
+      pool.visible = pl > 0; pool.scale.setScalar(Math.max(.2, pl));
+      sumpLevel.scale.y = Math.max(1, sump * 200); sumpLevel.position.y = 10 + sumpLevel.scale.y / 2;
+      if (lv) for (const k of ['W', 'R', 'F']) { const { t, liquid } = tanks[k], h = Math.max(1, (lv[k] / t.cap) * (t.h - 40)); liquid.scale.y = h; liquid.position.y = 50 + h / 2; }
+      for (const [k, p] of Object.entries(pipes)) p.setFlow(!!flows[k]);
+    },
+    tick(dt) { for (const p of Object.values(pipes)) p.tick(dt); streamTex.offset.y -= dt * 3; },
+  };
+}

@@ -1,0 +1,224 @@
+// 主程式：場景、依絕對時間套用各設備狀態、側欄面板、視角與相機子畫面。
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { RACK, COLUMN, UPRIGHT, DECAP, BOOTH, WASTE, layoutChecks, ROBOT, OUT, LABEL, LYING, PALLET_STATION } from './layout.js';
+import { MAT, D2R, smooth } from './parts.js';
+import { createBuilding } from './building.js';
+import { createStorage } from './storage.js';
+import { createAgv } from './agv.js';
+import { createLine } from './line.js';
+import { createRobot } from './robot.js';
+import { createWashing } from './washing.js';
+import { createDrum, BIG_CAP, SMALL_CAP } from './drum.js';
+import { createSequence, drumWorld, palletWorld, STATIONS, DRUM_IDS } from './sequence.js';
+
+const qp = new URLSearchParams(location.search);
+// ---------------------------------------------------------------- 場景
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = qp.get('shadow') !== '0'; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.outputColorSpace = THREE.SRGBColorSpace;
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0d1117);
+const pmrem = new THREE.PMREMGenerator(renderer), room = new RoomEnvironment(renderer);
+scene.environment = pmrem.fromScene(room, .04).texture; room.dispose(); pmrem.dispose();
+scene.environmentIntensity = .55;
+const camera = new THREE.PerspectiveCamera(40, 1, 50, 150000);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true; controls.dampingFactor = .08; controls.maxPolarAngle = Math.PI * .495; controls.minDistance = 400; controls.maxDistance = 70000;
+scene.add(new THREE.HemisphereLight(0xcfe0ff, 0x30363d, .9));
+const sun = new THREE.DirectionalLight(0xffffff, 1.7); sun.position.set(-3000, 17000, 4000); sun.target.position.set(5000, 0, 8000);
+sun.castShadow = renderer.shadowMap.enabled; sun.shadow.mapSize.set(4096, 4096);
+Object.assign(sun.shadow.camera, { left: -11000, right: 11000, top: 11000, bottom: -11000, near: 2000, far: 40000 });
+sun.shadow.bias = -.0003; sun.shadow.normalBias = 20; scene.add(sun, sun.target);
+const fill = new THREE.DirectionalLight(0x9fb8ff, .45); fill.position.set(16000, 9000, 22000); scene.add(fill);
+
+// ---------------------------------------------------------------- 物件
+const building = createBuilding(scene);
+const storage = createStorage(scene, id => createDrum(id));
+const agv = createAgv(scene);
+const line = createLine(scene);
+const robot = createRobot(); scene.add(robot.root);
+const washing = createWashing(scene);
+const drums = DRUM_IDS.map(id => { const d = createDrum(id); scene.add(d.root); return d; });
+const held = { big: new THREE.Mesh(BIG_CAP, MAT.cap), small: new THREE.Mesh(SMALL_CAP, MAT.cap) };
+for (const k of ['big', 'small']) { held[k].position.y = 8; line.socket(k).add(held[k]); }
+const seq = createSequence({ robot });
+const demoPallet = storage.demo[0].group;
+
+// 相機取像事件（子畫面用）
+const shots = [];
+for (const [key, cam, title] of [['labeler', line.labelCam, '讀碼相機 · 標籤檢查（模擬影像）'], ['decap', line.decapCam, '頂視相機 · 桶塞定位（模擬影像）']])
+  for (const s of seq.tracks[key].steps) if (s.end.flash && !s.initial.flash) shots.push({ start: s.start, cam, title, result: s.sub });
+shots.sort((a, b) => a.start - b.start);
+
+// ---------------------------------------------------------------- 套用狀態
+let S = null;
+function applyState(sm) {
+  S = sm; const st = sm.st;
+  agv.set({ ...st.agv, moving: st.agv.moving && playing });
+  storage.setDemo([null, st.pal1, st.pal2, st.pal3], st.shuttle);
+  const pw = palletWorld(st.pallet, st.agv); demoPallet.position.copy(pw.pos); demoPallet.rotation.y = pw.yaw * D2R;
+  line.setGantry(st.gantry); line.setLabeler(st.labeler); line.setUpender(st.upender); line.setDecap(st.decap);
+  held.big.visible = st.decap.heldBig; held.small.visible = st.decap.heldSmall;
+  robot.setJaw(st.grip.jaw); robot.root.updateMatrixWorld(true);
+  drums.forEach((d, k) => {
+    const s = st['drum' + k], w = drumWorld(k, st, robot.tcp.matrixWorld);
+    d.root.position.copy(w.pos); d.root.quaternion.copy(w.q); d.root.updateMatrixWorld(true);
+    d.setCaps(s.capBig, s.capSmall); d.setLabel(s.label, s.labelAng * D2R); d.setWater(s.water);
+  });
+  const b = st.booth, sp = st.sump;
+  washing.set({
+    lance: b.lance, spray: b.spray, pool: b.pool, sump: sp.level, tanks: st.tanks,
+    pour: b.pour !== '' ? drums[+b.pour].bungWorld('big') : null,
+    flows: { supply: b.spray, fromF: b.spray && b.src === 'F', fromR: b.spray && b.src === 'R', sump: sp.pump, toW: sp.pump && sp.dest === 'W', toR: sp.pump && sp.dest === 'R', city: st.makeup.on },
+  });
+  line.setTower(playing ? 'run' : 'wait');
+}
+
+// ---------------------------------------------------------------- UI
+const ui = Object.fromEntries(['playBtn', 'restartBtn', 'speed', 'speedVal', 'stepSelect', 'previous', 'next', 'timeline', 'clock', 'cycleTime', 'phase', 'equip', 'drums', 'tanks', 'checks', 'chkCount', 'showDims', 'showFence', 'showLabels', 'showCeiling', 'xray', 'showPip', 'pip', 'pipTitle', 'pipResult', 'stations'].map(id => [id, document.getElementById(id)]));
+const SPEEDS = [.25, .5, 1, 2, 4, 8];
+let T = 0, playing = !qp.has('pause'), speed = 1, selectedView = 'iso', camAnim = null;
+const total = seq.total;
+ui.timeline.max = total; ui.cycleTime.textContent = `本棧板 4 桶共 ${Math.round(total)} s（模擬時間）`;
+// 手臂節拍：相鄰兩桶放上出料輸送的間隔
+const placed = seq.events.filter(e => e.label.endsWith('放上出料輸送')).map(e => e.time), cycle = placed.at(-1) - placed.at(-2);
+document.getElementById('cycleNote').textContent = `一個棧板（4 桶）走完全線。手臂一桶約 ${cycle.toFixed(0)} s，是整線瓶頸（約 ${Math.floor(3600 / cycle)} 桶／h；200 桶約 ${(200 * cycle / 3600).toFixed(1)} h）。`;
+seq.events.forEach((e, i) => { const o = document.createElement('option'); o.value = i; const st = STATIONS.find(s => s.id === e.station); o.textContent = `${fmt(e.time)}  ${st.short} ${st.name} · ${e.label}`; ui.stepSelect.appendChild(o); });
+const VIEW_OF = { agv: 'storage', gantry: 'gantry', label: 'label', upender: 'upender', decap: 'decap', robot: 'robot', waste: 'waste' };
+for (const s of STATIONS) {
+  const b = document.createElement('button'); b.className = 'st'; b.dataset.st = s.id; b.innerHTML = `<span class="idx">${s.short}</span>${s.name}`;
+  b.onclick = () => { seekTo(seq.stationStart[s.id]); setView(VIEW_OF[s.id]); }; ui.stations.appendChild(b);
+}
+const EQUIP = [['agv', 'AGV'], ['shuttle', '穿梭車'], ['gantry', '龍門'], ['labeler', '貼標讀碼'], ['upender', '翻桶機'], ['decap', '開蓋站'], ['robot', '清洗手臂'], ['booth', '沖洗站'], ['sump', '集液／泵']];
+ui.equip.innerHTML = EQUIP.map(([k, n]) => `<div class="row" data-k="${k}"><span class="name"><i></i>${n}</span><span class="act"></span></div>`).join('');
+ui.drums.innerHTML = DRUM_IDS.map((id, k) => `<div class="d" data-k="${k}"><span class="id">${id}</span><span class="state"></span><span class="tags"></span></div>`).join('');
+const TANKS = [['W', '#c77b34'], ['R', '#58b6f2'], ['F', '#8fd3ff']];
+ui.tanks.innerHTML = TANKS.map(([k, c]) => `<div class="tank" data-k="${k}"><span>${WASTE.tanks[k].name}</span><span class="bar"><i style="background:${c}"></i></span><span class="v"></span></div>`).join('');
+const checks = layoutChecks();
+ui.checks.innerHTML = checks.map(c => `<li class="${c.ok ? '' : 'ng'}"><span class="mk">${c.ok ? '✓' : '!'}</span><span><b>${c.group}｜${c.name}</b><small>${c.value}</small></span></li>`).join('');
+ui.chkCount.textContent = `${checks.filter(c => c.ok).length} / ${checks.length} 通過`;
+
+function fmt(t) { return `${String(Math.floor(t / 60)).padStart(2, '0')}:${(t % 60).toFixed(1).padStart(4, '0')}`; }
+function seekTo(t) { T = THREE.MathUtils.clamp(Number.isFinite(t) ? t : 0, 0, total); applyState(seq.sample(T)); }
+ui.playBtn.onclick = () => { if (T >= total) seekTo(0); playing = !playing; };
+ui.restartBtn.onclick = () => { seekTo(0); playing = true; };
+ui.speed.oninput = () => { speed = SPEEDS[+ui.speed.value]; ui.speedVal.textContent = speed + '×'; };
+ui.timeline.oninput = () => { playing = false; seekTo(+ui.timeline.value); };
+ui.stepSelect.onchange = () => { playing = false; seekTo(seq.events[+ui.stepSelect.value].time); };
+const eventIndex = () => { let i = 0; seq.events.forEach((e, k) => { if (e.time <= T + 1e-6) i = k; }); return i; };
+ui.previous.onclick = () => { playing = false; const i = eventIndex(); seekTo(seq.events[Math.max(0, seq.events[i].time < T - .5 ? i : i - 1)].time); };
+ui.next.onclick = () => { playing = false; seekTo(seq.events[Math.min(seq.events.length - 1, eventIndex() + 1)].time); };
+ui.showDims.onchange = () => { building.dims.visible = ui.showDims.checked; };
+ui.showFence.onchange = () => { line.fences.visible = ui.showFence.checked; };
+ui.showCeiling.onchange = () => { building.ceiling.visible = ui.showCeiling.checked; };
+ui.xray.onchange = () => drums.forEach(d => d.setXray(ui.xray.checked));
+
+// ---------------------------------------------------------------- 視角
+const VIEWS = {
+  iso: [[-3500, 14500, 24000], [5600, 0, 8200]], top: [[5040, 28000, 7790], [5040, 0, 7760]],
+  storage: [[2300, 4300, 8600], [6300, 1500, 3800]], gantry: [[1200, 4300, 13800], [4700, 1100, 9700]],
+  label: [[6000, 2900, 7300], [7500, 900, 9800]], upender: [[8400, 3600, 7400], [10900, 1000, 10100]],
+  decap: [[9700, 3300, 8900], [11290, 1350, 11000]], robot: [[6200, 5600, 10200], [9900, 1100, 13400]],
+  booth: [[7300, 2300, 15000], [9400, 1150, 14550]], waste: [[2600, 3400, 15300], [5900, 900, 14300]],
+};
+function setView(name, instant = false) {
+  selectedView = name;
+  document.querySelectorAll('.views button').forEach(b => b.classList.toggle('selected', b.dataset.view === name));
+  if (name === 'follow') { const p = drums[0].root.position; camAnim = { p0: camera.position.clone(), t0: controls.target.clone(), p: p.clone().add(new THREE.Vector3(-2600, 2200, 2600)), t: p.clone(), u: 0 }; return; }
+  const [p, t] = VIEWS[name].map(a => new THREE.Vector3(...a));
+  if (instant) { camAnim = null; camera.position.copy(p); controls.target.copy(t); controls.update(); }
+  else camAnim = { p0: camera.position.clone(), t0: controls.target.clone(), p, t, u: 0 };
+}
+document.querySelectorAll('.views button').forEach(b => b.onclick = () => setView(b.dataset.view));
+controls.addEventListener('start', () => { camAnim = null; });
+
+// 3D 標籤
+const labels = [];
+function addLabel(html, getPos, cls = '') { const el = document.createElement('div'); el.className = 'label3d ' + cls; el.innerHTML = html; document.getElementById('app').appendChild(el); labels.push({ el, getPos, dim: cls === 'dim' }); }
+const P = (x, y, z) => () => new THREE.Vector3(x, y, z);
+addLabel('<b>倉儲</b> 穿梭車密集架 5 道×4 深×3 層', P(5000, 4000, 2700));
+addLabel('<b>AGV</b> 平衡重式堆高', () => agv.root.position.clone().add(new THREE.Vector3(0, 2500, 0)));
+addLabel('<b>S2</b> 棧板站＋龍門翻轉夾爪', P(4800, 3600, 9050));
+addLabel('<b>S3</b> 貼標＋讀碼', P(LABEL.x, 2350, LYING.z + 500));
+addLabel('<b>S4</b> 90° 翻桶機', P(10500, 1700, 9500));
+addLabel('<b>S5</b> 自動開蓋站', P(UPRIGHT.x, 2900, DECAP.z));
+addLabel('<b>S6</b> FANUC R-2000iC/165F', P(ROBOT.x, 2700, ROBOT.z - 300));
+addLabel('<b>S6</b> 沖洗站', P(9500, 2950, BOOTH.z0 + 200));
+addLabel('<b>S7</b> 廢液回收', P(5700, 2500, 14300));
+addLabel('出料 → 裝填區', P(5600, 1450, OUT.z));
+addLabel('結構柱', P(COLUMN.x, 2600, COLUMN.z));
+for (const d of building.dimLabels) addLabel(d.text, () => d.pos, 'dim');
+
+// ---------------------------------------------------------------- 面板更新
+function drawHud() {
+  const st = S.st, act = seq.activity(T);
+  ui.phase.textContent = T >= total - 2 ? 'COMPLETE · 本棧板 4 桶完成' : playing ? `AUTO · 執行中 ${speed}×` : 'HOLD · 暫停';
+  for (const row of ui.equip.children) {
+    const s = act[row.dataset.k]; row.classList.toggle('on', !!s);
+    row.querySelector('.act').innerHTML = s ? `${s.action}${s.sub ? `<small>${s.sub}</small>` : ''}` : '<span style="color:#6f8190">待命</span>';
+  }
+  for (const row of ui.drums.children) {
+    const s = st['drum' + row.dataset.k];
+    row.querySelector('.state').textContent = s.state;
+    row.querySelector('.tags').innerHTML = [
+      [s.label ? (s.read ? '標籤讀碼 OK' : '已貼標') : '未貼標', s.read],
+      [s.capBig || s.capSmall ? '桶蓋未開' : '桶口已開', !s.capBig && !s.capSmall],
+      [`沖洗 ${s.rinse}/3`, s.rinse === 3 && s.mode !== 'robot' || s.mode === 'out'],
+      [`桶內水 ${s.water.toFixed(0)} L`, false],
+    ].map(([t, ok]) => `<span class="tag ${ok ? 'ok' : ''}">${t}</span>`).join('');
+  }
+  for (const row of ui.tanks.children) { const k = row.dataset.k, v = st.tanks[k], cap = WASTE.tanks[k].cap; row.querySelector('i').style.width = (v / cap * 100).toFixed(1) + '%'; row.querySelector('.v').textContent = `${v.toFixed(0)} L`; }
+  document.querySelectorAll('#stations .st').forEach(b => { const a = act[b.dataset.st === 'label' ? 'labeler' : b.dataset.st === 'waste' ? 'sump' : b.dataset.st]; b.classList.toggle('active', !!a); });
+  ui.timeline.value = T; ui.clock.textContent = fmt(T); ui.stepSelect.value = eventIndex();
+  ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放';
+  const rect = canvas.getBoundingClientRect();
+  for (const l of labels) {
+    const visible = l.dim ? ui.showDims.checked : ui.showLabels.checked;
+    const p = l.getPos().clone().project(camera), on = visible && p.z < 1 && Math.abs(p.x) < .97 && Math.abs(p.y) < .95;
+    l.el.style.display = on ? 'block' : 'none';
+    if (on) { l.el.style.left = rect.left + (p.x * .5 + .5) * rect.width + 'px'; l.el.style.top = rect.top + (-p.y * .5 + .5) * rect.height + 'px'; }
+  }
+  document.getElementById('diagnostics').textContent = JSON.stringify({ T, total, playing, view: selectedView, agv: st.agv, gantry: st.gantry, drums: DRUM_IDS.map((_, k) => st['drum' + k].state), robot: S.robot.err || null });
+}
+
+// ---------------------------------------------------------------- 繪製
+function resize() { const w = canvas.clientWidth, h = canvas.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+addEventListener('resize', resize);
+function render(dt) {
+  drawHud();
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  renderer.setScissorTest(false); renderer.setViewport(0, 0, w, h); renderer.render(scene, camera);
+  // 相機子畫面：最近 4 秒內有取像才顯示
+  const shot = shots.filter(s => s.start <= T && T - s.start < 4).at(-1);
+  const show = ui.showPip.checked && !!shot && innerWidth > 760;
+  ui.pip.hidden = !show;
+  if (show) {
+    const r = ui.pip.getBoundingClientRect(), c = canvas.getBoundingClientRect();
+    const x = r.left - c.left, y = c.bottom - r.bottom, pw = r.width, ph = r.height;
+    shot.cam.aspect = pw / ph; shot.cam.updateProjectionMatrix();
+    renderer.setScissorTest(true); renderer.setScissor(x, y, pw, ph); renderer.setViewport(x, y, pw, ph);
+    const fenceVis = line.fences.visible; line.fences.visible = false;
+    renderer.render(scene, shot.cam); line.fences.visible = fenceVis; renderer.setScissorTest(false);
+    ui.pipTitle.textContent = shot.title; ui.pipResult.textContent = shot.result;
+  }
+  washing.tick(dt);
+}
+const clock = new THREE.Clock();
+function frame() {
+  requestAnimationFrame(frame);
+  const dt = Math.min(clock.getDelta(), .05);
+  if (playing) { T = Math.min(total, T + dt * speed); if (T >= total) playing = false; applyState(seq.sample(T)); }
+  if (camAnim) { camAnim.u = Math.min(1, camAnim.u + dt * 1.3); const e = smooth(camAnim.u); camera.position.lerpVectors(camAnim.p0, camAnim.p, e); controls.target.lerpVectors(camAnim.t0, camAnim.t, e); if (camAnim.u === 1) camAnim = null; }
+  else if (selectedView === 'follow') { const p = drums[0].root.position, off = camera.position.clone().sub(controls.target); controls.target.lerp(p, .08); camera.position.copy(controls.target).add(off); }
+  controls.update(); render(dt);
+}
+
+resize(); seekTo(+(qp.get('t') || 0)); setView(qp.get('view') && VIEWS[qp.get('view')] ? qp.get('view') : 'iso', true);
+if (qp.has('dims')) { ui.showDims.checked = true; building.dims.visible = true; }
+if (qp.has('cam')) { const a = qp.get('cam').split(',').map(Number); if (a.length === 6) { camera.position.set(...a.slice(0, 3)); controls.target.set(...a.slice(3)); controls.update(); } }
+document.getElementById('loading').classList.add('hide');
+frame();
+window.sim = { seekTo, setView, play() { playing = true; }, pause() { playing = false; }, get T() { return T; }, seq, get state() { return S; }, robot, total };

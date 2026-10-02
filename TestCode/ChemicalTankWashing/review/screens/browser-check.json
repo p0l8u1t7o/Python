@@ -1,0 +1,27 @@
+{
+  "url": "http://127.0.0.1:8775/",
+  "ready": true,
+  "shots": [
+    "01-overview",
+    "02-plan-dims",
+    "03-agv-rack",
+    "04-gantry-tilt",
+    "05-label-read",
+    "06-upender",
+    "07-decap",
+    "08-robot-pick",
+    "09-booth-spray",
+    "10-booth-pour",
+    "11-waste",
+    "12-finish"
+  ],
+  "checks": {
+    "samples": [],
+    "pipShown": true,
+    "layoutChecks": "16 / 16 通過",
+    "equipRows": 9
+  },
+  "total": 466.94626203956705,
+  "errors": [],
+  "logs": []
+}
