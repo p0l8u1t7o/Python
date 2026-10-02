@@ -102,12 +102,19 @@ node ../core/tools/serve.mjs RobotArmPressSSD --no-open
 | `web/js/robot.js` | VS-068、共用末端工具（快拆壓頭、斜視相機）、關節規劃；IK 用 `core/robot/kinematics.js` |
 | `web/js/sequence.js` | 由配方產生流程、拍攝分組、接頭狀態與力值計算 |
 | `web/js/station.js` | 組裝整站並套用狀態（畫面與驗證共用） |
-| `web/js/main.js` | 場景、配方選單、接頭狀態、相機子畫面、紀錄匯出 |
+| `web/js/project.js` | 專案介面 `createProject`：依配方／壓墊建整站、ROI 框與流程；`apply(t)` 把流程狀態、手臂姿態、燈號與 ROI 放到時間 t。`main.js` 與 core 統一檢查共用 |
+| `web/js/main.js` | 場景、配方選單、接頭狀態、相機子畫面、紀錄匯出（物件與時間狀態取自 `project.js`） |
 | `tools/verify.mjs` | 全配方驗證 |
 
 ## 驗證
 
-需要 Node.js 22 以上，不需 npm 套件：
+需要 Node.js 22 以上，不需 npm 套件。統一檢查（import 路徑、倒序一致、空間檢核、全場干涉與重合面，加上 `project.json` 列的本專案驗證）：
+
+```powershell
+node ../core/tools/check.mjs RobotArmPressSSD      # 在專案資料夾；在 TestCode 則是 node core/tools/check.mjs RobotArm
+```
+
+全場檢查結果寫在 `review/scene-verification.txt`。單獨執行本專案驗證：
 
 ```powershell
 node --import ../core/tools/register.mjs tools/verify.mjs

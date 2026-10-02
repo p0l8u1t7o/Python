@@ -37,14 +37,21 @@ export function verifyScene(project, scene, {
   const local0 = new Map(objs.map(o => [o, o.matrix.clone()])), joints = new Set();
   const probes = Array.from({ length: nProbes }, (_, i) => total * (i + .5) / nProbes);
   for (const t of probes) { sample(t); for (const o of objs) if (!joints.has(o) && !o.matrix.equals(local0.get(o))) joints.add(o); }
-  // 只在原地自轉的軸對稱零件（滾輪、輪轂）：世界中心不變，視為固定
+  // 只在原地自轉的軸對稱零件（滾輪、輪轂）：世界中心與軸向都不變，視為固定。
+  // 軸向也要比：繞別的軸公轉的關節殼（例如中心剛好在 J1 軸上的 J2 殼）中心不動但軸向會轉，它屬於上游剛體。
   const AXI = new Set(['CylinderGeometry', 'LatheGeometry', 'SphereGeometry', 'TorusGeometry']);
-  const moved = new Set(), stretch = new Set(), c0 = new Map();
-  sample(0); for (const m of meshes) c0.set(m, new THREE.Box3().setFromObject(m).getCenter(new THREE.Vector3()));
+  const AXIS_COL = { CylinderGeometry: 1, LatheGeometry: 1, TorusGeometry: 2 };
+  const axisOf = m => AXIS_COL[m.geometry.type] == null ? null : new THREE.Vector3().setFromMatrixColumn(m.matrixWorld, AXIS_COL[m.geometry.type]).normalize();
+  const moved = new Set(), stretch = new Set(), c0 = new Map(), a0 = new Map();
+  sample(0); for (const m of meshes) { c0.set(m, new THREE.Box3().setFromObject(m).getCenter(new THREE.Vector3())); if (AXI.has(m.geometry.type)) a0.set(m, axisOf(m)); }
   const s0 = new Map(objs.map(o => [o, o.scale.clone()]));
   for (const t of probes) {
     sample(t);
-    for (const m of meshes) if (AXI.has(m.geometry.type) && !moved.has(m) && new THREE.Box3().setFromObject(m).getCenter(new THREE.Vector3()).distanceTo(c0.get(m)) > .5) moved.add(m);
+    for (const m of meshes) {
+      if (!AXI.has(m.geometry.type) || moved.has(m)) continue;
+      const a = a0.get(m), turned = a && Math.abs(axisOf(m).dot(a)) < .9999;
+      if (turned || new THREE.Box3().setFromObject(m).getCenter(new THREE.Vector3()).distanceTo(c0.get(m)) > .5) moved.add(m);
+    }
     for (const o of objs) if (!o.scale.equals(s0.get(o))) stretch.add(o);
   }
   const spinner = new Set(meshes.filter(m => AXI.has(m.geometry.type) && !moved.has(m)));

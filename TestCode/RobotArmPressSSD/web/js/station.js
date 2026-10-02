@@ -38,5 +38,5 @@ export function createStation(scene, recipe, insert = recipe.insert) {
     }
     return boxes.map(b => b.expandByScalar(margin));
   }
-  return { cell, robot, product, apply, opts, productBoxes, place, get state() { return last; } };
+  return { cell, robot, product, prev, next, apply, opts, productBoxes, place, get state() { return last; } };
 }

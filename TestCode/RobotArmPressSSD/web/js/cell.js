@@ -56,7 +56,7 @@ export function createCell(scene, recipe) {
       const rail = block(g, [len, 50, 20], [cx, top - 13, z.rail], matAlu);
       const lip = block(g, [len, 3, 6], [cx, top + LAYOUT.liftStroke + 7.5, z.lip], matAlu);
       for(let x=x0+65;x<x1-25;x+=130) screw(g,[x,top+12.3,z.rail],3.2);
-      block(g,[len-4,1.4,.3],[cx,top-7,z.rail+(side==='front'?10.05:-10.05)],matDark);
+      block(g,[len-4,1.4,1],[cx,top-7,z.rail+(side==='front'?10.5:-10.5)],matDark);   // 外側面距軌面 1 mm，避免重合面閃爍
       block(g, [len - 30, 2, 8], [cx, top - 1, z.belt], matBelt);
       for (const x of [x0 + 15, x1 - 15]) cylinder(g, 14, 10, [x, top - 15, z.belt], matDark, 'z');
       if (station) { ko(rail, side === 'rear' ? '後軌' : '前軌'); ko(lip, side === 'rear' ? '後軌壓邊' : '前軌壓邊'); }
@@ -66,7 +66,7 @@ export function createCell(scene, recipe) {
     block(g, [120, 90, 80], [x1 - 120, top - 95, rearInner - 70], matBlue);            // 皮帶驅動
     const marks = new THREE.Group(); g.add(marks); beltMarks.push(marks);
     for (let x = x0 + 30; x < x1 - 30; x += 60) for (const side of ['rear', 'front']) block(marks, [3, 0.6, 7], [x, top + 0.3, railZ[side].belt], matAlu);
-    decal(g, 150, 22, [cx, top - 20, frontInner + 20.5], [0, 0, 0], si === 0 ? '上游 · 前站放置 USB' : si === 1 ? 'USB 壓合＋檢查站' : '下游 · 迴焊爐', { bg: '#122d3c', color: '#9fd8ff', center: true });
+    decal(g, 150, 22, [cx, top - 20, frontInner + 21.2], [0, 0, 0], si === 0 ? '上游 · 前站放置 USB' : si === 1 ? 'USB 壓合＋檢查站' : '下游 · 迴焊爐', { bg: '#122d3c', color: '#9fd8ff', center: true });
   });
   // 寬度調整：伺服＋滾珠螺桿（依配方自動調寬）
   for (const x of [-450, 450]) { cylinder(g, 8, frontInner - rearInner + 80, [x, top - 55, (rearInner + frontInner) / 2 + 10], matPin, 'z', 12); block(g, [50, 50, 60], [x, top - 55, frontInner + 70], matBlue); }
@@ -77,7 +77,7 @@ export function createCell(scene, recipe) {
   const stopPin = new THREE.Group(); g.add(stopPin);
   ko(cylinder(stopPin, 6, 26, [LAYOUT.stopFace + 6, top - 1, place.z], matPin, 'y', 16), '止擋');
   const lift = new THREE.Group(); g.add(lift);
-  block(lift, [240, 8, 160], [10, top - 8, rearInner + 85], matAlu);                 // 支撐板：取最小載盤可涵蓋的範圍
+  block(lift, [240, 8, 155], [10, top - 8, rearInner + 87.5], matAlu);               // 支撐板：取最小載盤可涵蓋的範圍；後緣離後皮帶 2 mm，頂升時不穿過皮帶
   for (const x of [-80, 100]) block(g, [40, 60, 40], [x, top - 50, rearInner + 85], matDark);  // 頂升氣缸
   const sensors = [];
   for (const [x, name] of [[LAYOUT.entrySensorX, '入口'], [LAYOUT.posSensorX, '到位']]) {
@@ -98,7 +98,7 @@ export function createCell(scene, recipe) {
     const z=e.z+cabZ;entryGland(g,'CTRL / roof gland '+i,{at:[e.x,cabTop,z],hole:e.hole,wire:e.wire,thickness:20});
     panelFeed(g,'CTRL / roof to terminal '+i,[[e.x,e.sourceY,z],[e.x,cabTop-50,z],[e.x,650,z0+90],[panel.ports[i*3][0],650,z0+90],panel.ports[i*3]],{radius:e.wire,color:i?CABLE.signal:CABLE.power});
   }
-  block(g, [300, 20, 300], [rx, ry - 10, rz], matDark);
+  block(g, [300, 20, 280], [rx, ry - 10, rz - 10], matDark);   // 手臂座：前緣退到 z=-300，讓出底櫃頂的感測器線材格蘭頭（z=-280）
   decal(g,520,90,[0,560,-238],[0,0,0],['RC8A 手臂控制器 · KV-X PLC · 視覺 IPC','SIMULATION'],{bg:'#102635',color:'#65d7b8'}).userData.electricalCover=true;
 
   // ---- 固定全局相機：20MP＋20 mm 鏡頭，距輸送面約 800 mm，視野約 530 × 355 mm ----

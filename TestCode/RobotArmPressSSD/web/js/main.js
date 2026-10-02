@@ -10,16 +10,15 @@ import { ssdResults } from './vision-results.js';
 const vision = createVisionOverlay();
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { createStation } from './station.js';
-import { createSequence, smooth, STATIONS, SPEC } from './sequence.js';
-import { RECIPES, DEFAULT_RECIPE } from './recipes.js';
+import { createProject, resolveRecipe } from './project.js';
+import { smooth, STATIONS, SPEC } from './sequence.js';
+import { RECIPES } from './recipes.js';
 import { LAYOUT } from './cell.js';
 import { cameraSource, stationPreviewTime, SENSOR_ASPECT } from './camera-view.js';
 
 const qp = new URLSearchParams(location.search);
-const RECIPE_KEY = RECIPES[qp.get('recipe')] ? qp.get('recipe') : DEFAULT_RECIPE, recipe = RECIPES[RECIPE_KEY];
-// 壓墊預設取配方的標準；有整排接頭的機種可切換單點逐顆作比較
-const INSERT = qp.get('insert') === 'single' ? 'single' : qp.get('insert') === 'bar' && recipe.multiPad ? 'bar' : recipe.insert;
+// 配方與壓墊的預設規則在 project.js（檢查用同一規則）
+const { key: RECIPE_KEY, recipe, insert: INSERT } = resolveRecipe(qp.get('recipe'), qp.get('insert'));
 
 // ---------------------------------------------------------------- 場景
 const canvas = document.getElementById('c');
@@ -56,11 +55,11 @@ Object.assign(taskLight.shadow.camera,{left:-190,right:190,top:180,bottom:-180,n
 taskLight.shadow.bias=-.000015; taskLight.shadow.normalBias=.025;
 scene.add(taskLight,taskLight.target);
 
-// ---------------------------------------------------------------- 物件
-const st = createStation(scene, recipe, INSERT);
-const { cell, robot, product } = st;
-const ui = Object.fromEntries(['action', 'substep', 'forceBar', 'forceVal', 'forceLim', 'zoneDot', 'zoneTxt', 'checklist', 'chkCount', 'playBtn', 'restartBtn', 'speed', 'speedVal', 'showPath', 'progBar', 'clock', 'timeline', 'stepSelect', 'previous', 'next', 'signals', 'poseError', 'phase', 'result', 'exportBtn', 'showGuards', 'showLabels', 'showPip', 'cycleTime', 'units', 'okCount', 'pipFrame', 'pipResult', 'pipTitle', 'stations', 'recipe', 'insert', 'recipeNote'].map(id => [id, document.getElementById(id)]));
-st.opts.ngHold = qp.get('result') === 'NG'; ui.result.value = st.opts.ngHold ? 'NG' : 'OK';
+// ---------------------------------------------------------------- 物件（與 core 統一檢查共用 project.js：整站、ROI 框、流程）
+const project = createProject({ scene, recipe: RECIPE_KEY, insert: INSERT, ngHold: qp.get('result') === 'NG' });
+const st = project.station, { cell, robot, product, sequence } = project;
+const ui =Object.fromEntries(['action', 'substep', 'forceBar', 'forceVal', 'forceLim', 'zoneDot', 'zoneTxt', 'checklist', 'chkCount', 'playBtn', 'restartBtn', 'speed', 'speedVal', 'showPath', 'progBar', 'clock', 'timeline', 'stepSelect', 'previous', 'next', 'signals', 'poseError', 'phase', 'result', 'exportBtn', 'showGuards', 'showLabels', 'showPip', 'cycleTime', 'units', 'okCount', 'pipFrame', 'pipResult', 'pipTitle', 'stations', 'recipe', 'insert', 'recipeNote'].map(id => [id, document.getElementById(id)]));
+ui.result.value = st.opts.ngHold ? 'NG' : 'OK';
 
 // 配方與壓墊選擇（換機種只換配方；治具共用）
 for (const [key, r] of Object.entries(RECIPES)) { const o = document.createElement('option'); o.value = key; o.textContent = r.name; ui.recipe.appendChild(o); }
@@ -71,14 +70,6 @@ ui.recipe.onchange = reload; ui.insert.onchange = reload;
 ui.recipeNote.textContent = `${recipe.name}：${recipe.source}。壓合力、允收間隙與翹起角為示意值，待實機量測校正。`;
 document.getElementById('forceHint').textContent = INSERT === 'bar' ? 'ATI Axia80 · 整排合力對高度' : 'ATI Axia80 · 每顆記錄力對高度';
 ui.forceLim.textContent = INSERT === 'bar' ? `整排 ${recipe.press.bar} N・上限 ${SPEC.forceLimit} N` : `每顆 ${recipe.press.single} N・上限 ${SPEC.forceLimit} N`;
-
-// ROI 框（取像、全局辨識）
-const roiMats = [], roiBoxes = [];
-for (let k = 0; k < product.ids.length; k++) { const m = new THREE.LineBasicMaterial({ color: 0x3dd68c, transparent: true, opacity: 0.95 }); const b = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)), m); b.visible = false; scene.add(b); roiMats.push(m); roiBoxes.push(b); }
-function showROI(k, id, color) {
-  const b = new THREE.Box3().setFromObject(product.conns[id].pivot);
-  roiBoxes[k].position.copy(b.getCenter(new THREE.Vector3())); roiBoxes[k].scale.copy(b.getSize(new THREE.Vector3()).addScalar(2.5)); roiMats[k].color.setHex(color); roiBoxes[k].visible = true;
-}
 
 // 手臂 TCP 軌跡
 const trailN = 800, trailPos = new Float32Array(trailN * 3); let trailCount = 0;
@@ -104,8 +95,8 @@ STATIONS.forEach((name, i) => { const b = document.createElement('button'); b.cl
 
 // ---------------------------------------------------------------- 時間軸
 let S, playing = !qp.has('pause'), T = 0, speed = 1, current, waiting = 0, fault = '', curStation = -1;
-function applyState(s) { S = s; st.apply(s); }
-const sequence = createSequence({ robot, product, apply: applyState, recipe, insert: INSERT });
+// 流程取樣（不移動手臂關節）；跳播用 project.apply（取樣＋手臂直接到位）
+function sample(t) { current = project.sample(t); S = current.state; return current; }
 const total = sequence.total, stationStart = sequence.stationStart, shots = sequence.shots;
 ui.timeline.max = total;
 ui.cycleTime.textContent = `規劃 ${total.toFixed(1)} s／盤（含一次補壓）＋到位等待 · ${product.ids.length} 顆 · 拍 ${shots.length} 張`;
@@ -152,8 +143,9 @@ function setView(name, instant = false) {
 }
 document.querySelectorAll('.views button').forEach(b => b.onclick = () => setView(b.dataset.view));
 function seekTo(sec, snap = true) {
-  T = Number.isFinite(sec) ? THREE.MathUtils.clamp(sec, 0, total) : 0; current = sequence.sample(T);
-  if (snap) robot.snap(); waiting = 0; fault = ''; trailCount = 0; trailGeo.setDrawRange(0, 0);
+  T = Number.isFinite(sec) ? THREE.MathUtils.clamp(sec, 0, total) : 0;
+  if (snap) { current = project.apply(T); S = current.state; } else sample(T);
+  waiting = 0; fault = ''; trailCount = 0; trailGeo.setDrawRange(0, 0);
   ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放'; render();
 }
 ui.playBtn.onclick = () => { if (T >= total || fault) seekTo(fault ? T : 0); playing = !playing; fault = ''; waiting = 0; ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放'; };
@@ -182,7 +174,7 @@ function unitStatus(id) {
   if (S.seated[id]) return ['pressed', '已壓合'];
   return [gap > recipe.gapLimit ? 'lift' : '', '待壓合'];
 }
-function shotIds() { if (!S.shot) return []; return S.shot === 'R' ? [stub] : shots[+S.shot].map(c => c.id); }
+const shotIds = () => project.shotIds(S);
 
 function exportReport() {
   const units = product.ids.map(id => ({ id, simulatedGapMm: +st.state.gap[id].toFixed(3), status: unitStatus(id)[1] }));
@@ -194,7 +186,7 @@ function exportReport() {
 }
 ui.exportBtn.onclick = exportReport;
 
-const arrived = () => { const e = robot.error(); return e.position < (current.step.contact ? 1 : 2) && e.angle < 2; };
+const arrived = () => project.arrived(current);
 const signals = [['載盤到位', () => S.located], ['止擋伸出', () => S.stop > .99], ['頂升定位', () => S.lift > .99], ['全局辨識完成', () => S.detected > 0],
   ['壓頭接觸', () => st.state.force > .5], ['工具到位', arrived], ['下游可收板', () => S.station === 5 || S.station === 0]];
 signals.forEach(([name]) => { const row = document.createElement('div'); row.innerHTML = `<i></i><span>${name}</span>`; ui.signals.appendChild(row); });
@@ -202,18 +194,15 @@ const useGlobalView = () => cameraSource(S, current.step, arrived()) === 'global
 
 function drawHud() {
   const e = robot.error(), ps = st.state, force = ps.force;
-  robot.setFlash(S.flashTool > 0 && arrived()); robot.setForceColor(force);
+  // 取像閃光、力值顏色、ROI 框、三色燈（與 project.apply 同一份）
+  project.show(current, { time: T, playing, fault });
   const ids = S.flashTool > 0 ? shotIds() : [];
-  roiBoxes.forEach(b => { b.visible = false; });
-  if (S.station === 1 && S.detected > 0) product.ids.forEach((id, k) => showROI(k, id, 0x4aa8ff));
-  else ids.forEach((id, k) => showROI(k, id, ps.gap[id] <= recipe.gapLimit ? 0x3dd68c : 0xff4d4d));
   const last = shotIds();
   const globalView = useGlobalView();
   ui.pipTitle.textContent = globalView ? '全局相機 · 載盤預覽（模擬）' : '手臂相機 · USB 貼合檢查（模擬）';
   ui.pipTitle.title = globalView ? '20MP · 20 mm · 距離約 800 mm' : '20MP · 25 mm · 45° 斜視 · WD 175 mm';
   ui.pipResult.innerHTML = globalView ? (S.station === 1 ? (S.detected > 0 ? `<span class="ok">${recipe.pallet.code}・找到 ${product.ids.length} 顆</span>` : '<span>全局取像中…</span>') : !S.located ? '<span>等待載盤到站</span>' : '<span>手臂未在取像位 · 顯示整盤 USB</span>')
     : last.length ? (S.flashTool > 0 ? '取像中　' : '最近取像　') + last.map(id => { const g = ps.gap[id], ok = g <= recipe.gapLimit; return `<span class="${ok ? 'ok' : 'ng'}">${id} ${g.toFixed(2)} mm ${ok ? 'OK' : 'NG'}</span>`; }).join('　') : '<span>—</span>';
-  cell.tower.set(fault ? 'red' : T >= total - 1e-6 ? 'green' : S.station === 4 && !current.completed.has('recheck') ? 'yellow' : playing ? 'green' : 'yellow');
   cell.occluders.visible = ui.showGuards.checked; trail.visible = ui.showPath.checked;
   ui.action.textContent = S.action; ui.substep.textContent = S.sub;
   ui.phase.textContent = fault || (T >= total ? 'COMPLETE · 本盤完成' : waiting > 0 ? '等待手臂到位' : playing ? 'AUTO · 執行中' : 'HOLD · 暫停'); ui.phase.classList.toggle('fault', !!fault);
@@ -243,7 +232,7 @@ window.addEventListener('resize', resize);
 function render() {
   drawHud(); workspace.follow();electrical.update({time:T,playing,action:S.action,motion:true,vision:!!(S.flashTool||S.flashTop||S.flashUp||S.flashDown||S.flashSn)});
   renderer.setScissorTest(false); renderer.setViewport(0,0,canvas.clientWidth,canvas.clientHeight); workspace.renderOverview(renderer,scene);
-  const hidden=[cell.occluders,trail,...roiBoxes],visible=hidden.map(o=>o.visible); hidden.forEach(o=>o.visible=false);
+  const hidden=[cell.occluders,trail,...project.roiBoxes],visible=hidden.map(o=>o.visible); hidden.forEach(o=>o.visible=false);
   const exposure=renderer.toneMappingExposure;renderer.toneMappingExposure=.88;
   const global=useGlobalView(),shotReady=S.flashTool>0&&arrived();
   workspace.renderCamera({renderer,scene,camera:global?cell.globalCam:robot.pipCam,vision,aspect:SENSOR_ASPECT,
@@ -266,7 +255,7 @@ function tick(dt) {
   else {
     waiting = 0;
     if (T >= total - 1e-7) { playing = false; ui.playBtn.textContent = '▶ 播放'; }
-    else { T = T >= end - 1e-7 ? Math.min(total, end + 1e-6) : Math.min(end, T + dt); current = sequence.sample(T >= end - 1e-7 && T <= end ? Math.max(s.start, end - 1e-8) : T); }
+    else { T = T >= end - 1e-7 ? Math.min(total, end + 1e-6) : Math.min(end, T + dt); sample(T >= end - 1e-7 && T <= end ? Math.max(s.start, end - 1e-8) : T); }
   }
   robot.update(dt);
 }
@@ -283,8 +272,8 @@ function frame() {
   if (camAnim) { camAnim.u = Math.min(1, camAnim.u + dt * 1.4); camera.position.lerpVectors(camAnim.p0, camAnim.p, smooth(camAnim.u)); controls.target.lerpVectors(camAnim.t0, camAnim.t, smooth(camAnim.u)); if (camAnim.u === 1) camAnim = null; }
   controls.update(); render();
 }
-current = sequence.sample(0); robot.snap(); setView('iso', true); resize(); ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放';
-window.sim = { seekTo, pause() { playing = false; ui.playBtn.textContent = '▶ 播放'; }, play() { playing = true; ui.playBtn.textContent = '⏸ 暫停'; }, get state() { return S; }, robot, total, stationStart, steps: sequence.steps, setView, recipe: RECIPE_KEY, insert: INSERT };
+current = project.apply(0); S = current.state; setView('iso', true); resize(); ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放';
+window.sim = { seekTo, views: Object.keys(views), project, pause() { playing = false; ui.playBtn.textContent = '▶ 播放'; }, play() { playing = true; ui.playBtn.textContent = '⏸ 暫停'; }, get state() { return S; }, robot, total, stationStart, steps: sequence.steps, setView, recipe: RECIPE_KEY, insert: INSERT };
 if (qp.has('st')) { playing = false; const station = THREE.MathUtils.clamp(+qp.get('st') || 0, 0, STATIONS.length - 1); seekTo(qp.has('t') ? stationStart[station] + (+qp.get('t') || 0) : stationPreviewTime(sequence, station)); }
 if (qp.has('step')) { playing = false; seekTo(sequence.steps[THREE.MathUtils.clamp(+qp.get('step') || 0, 0, sequence.steps.length - 1)].start + (+qp.get('t') || 0)); }
 if (qp.has('view')) setView(qp.get('view'), true);

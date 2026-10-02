@@ -31,7 +31,7 @@ export function createRobot() {
   const L = { base: 200, shoulderY: 145, shoulderX: 0, upper: 340, fore: 340, foreOffset: 0, wrist1: 120, wrist2: 70, flange: 10 };
   const j = {};
   const base = cyl(88, 100, L.base, matArm); base.position.y = L.base / 2; root.add(base);
-  const baseRing = cyl(92, 92, 10, matJoint); baseRing.position.y = L.base - 5; root.add(baseRing);
+  const baseRing = cyl(92, 92, 10, matJoint); baseRing.position.y = L.base - 4; root.add(baseRing);   // 頂面高出基座 1 mm，避免重合面閃爍
   decal(root, 90, 22, [0, 70, 101], [0, 0, 0], 'DENSO', { color: '#c8102e', center: true, bold: true });
 
   j.j1 = new THREE.Group(); j.j1.position.y = L.base; root.add(j.j1);                               // J1 繞 Y
@@ -70,7 +70,7 @@ export function createRobot() {
   block(tool, [90, 90, 8], [0, 0, 29], matTool);                                        // 工具本體板
   block(tool, [52, 52, 10], [0, 0, 38], matAnod);                                       // 快拆介面（定位銷＋識別碼）
   for(const x of [-35,35]) for(const y of [-35,35]) screw(tool,[x,y,33.3],3.2,'z');
-  decal(tool,29,10,[0,-30,33.1],[0,0,0],'AXIA / F-T',{color:'#222d36',center:true});
+  decal(tool,29,10,[0,-30,33.7],[0,0,0],'AXIA / F-T',{color:'#222d36',center:true});   // 離板面 0.7 mm，避免閃爍
   for (const s of [-1, 1]) cylinder(tool, 2, 4, [s * 18, 18, 44], matTool, 'z', 8);
   // 單點彈簧壓頭（快拆，只有單顆接頭的機種用）：PU 壓墊 8×4 mm，在工具軸心
   const single = new THREE.Group(); tool.add(single);
@@ -108,12 +108,12 @@ export function createRobot() {
   camMount.name = 'wrist-camera';
   const cameraBody = box(44, 34, 47, matArmD); cameraBody.name = 'camera-body'; camMount.add(cameraBody);
   const lens = cyl(16, 16, 40, matJoint); lens.rotation.x = Math.PI / 2; lens.position.z = 23.5 + 20; camMount.add(lens);
-  const lensGlass = cyl(12, 12, 1, matGlass); lensGlass.rotation.x = Math.PI / 2; lensGlass.position.z = TOOL.camReach + 0.1; camMount.add(lensGlass);
+  const lensGlass = cyl(12, 12, 1, matGlass); lensGlass.rotation.x = Math.PI / 2; lensGlass.position.z = TOOL.camReach + 0.4; camMount.add(lensGlass);   // 前面離鏡筒端面 0.9 mm
   for(const z of [28,34,49,56,62]) {
     const ring = new THREE.Mesh(new THREE.TorusGeometry(16,.7,6,40),matTool); ring.position.z=z; camMount.add(ring);
   }
   for(const x of [-18,18]) for(const y of [-12,12]) screw(camMount,[x,y,23.5],1.5,'z');
-  decal(camMount,25,12,[0,17.05,-3],[-Math.PI/2,0,0],['VISION','20 MP'],{color:'#c5d0d8',center:true});
+  decal(camMount,25,12,[0,17.7,-3],[-Math.PI/2,0,0],['VISION','20 MP'],{color:'#c5d0d8',center:true});
   // Route along the outside of the mounting plate, on the tool side of the
   // flange; the previous rearward loop entered the rotating wrist envelope.
   const cameraCable = tube(tool,[[35,42,20],[38,78,20],[36,118,24],[22,150,10]],2.1,matJoint);

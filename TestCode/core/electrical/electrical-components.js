@@ -68,14 +68,14 @@ export function electricalDevice(parent,spec,at){
   }else{
     if(spec.kind==='valve')for(let i=0;i<6;i++)box(g,'solenoid coil / '+(i+1),[17,18,4],[-w/2+13+i*23,7,d+2],black);
     for(let i=0;i<5;i++)box(g,'vent slot',[w*.65,1.5,1],[0,h*.23-i*4,d+.5],black);
-    if(['plc','safety','drive','light'].includes(spec.kind))box(g,'status display',[w*.55,h*.18,1],[0,h*.03,d+1],mat(0x123a47));
+    if(['plc','safety','drive','light'].includes(spec.kind))box(g,'status display',[w*.55,h*.18,1],[0,h*.03,d+1.3],mat(0x123a47));   // 比通風槽前凸 0.8 mm，不共面
     if(['psu','ipc','drive'].includes(spec.kind))for(let i=0;i<5;i++)box(g,'heat sink fin',[2,h*.68,5],[-w*.4+i*w*.2,0,d+2.5],metal);
     if(['switch','ipc','robot','gateway'].includes(spec.kind))for(let i=0;i<Math.max(2,Math.min(5,Math.floor(w/22)));i++){
       const x=-w*.35+i*16;box(g,'RJ45 / service socket',[12,9,2],[x,-h*.15,d+1],metal);box(g,'socket aperture',[9,6,1],[x,-h*.15,d+2.1],black);
     }
   }
   for(const x of [-w*.28,w*.28]){
-    box(g,'terminal plug',[Math.min(12,w*.25),8,12],[x,-h/2+4,d*.65],green);
+    box(g,'terminal plug',[Math.min(12,w*.25),8,12],[x,-h/2+4.8,d*.65],green);   // 底面高於機身底面 0.8 mm
     const ferrule=new THREE.Mesh(new THREE.CylinderGeometry(1.8,1.8,4,8),metal);ferrule.position.set(x,-h/2-1,d*.65);g.add(ferrule);
   }
   const ledMaterial=new THREE.MeshStandardMaterial({color:0x297f60,emissive:0x35e2a1,emissiveIntensity:.12});
