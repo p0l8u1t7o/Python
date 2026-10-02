@@ -59,6 +59,7 @@ export function createLiquid(parent,r,bottom) {
   const ripple=new THREE.Group();parent.add(ripple);
   const rippleMat=new THREE.MeshBasicMaterial({color:0xe5f4ee,transparent:true,opacity:.28,depthWrite:false,side:THREE.DoubleSide});
   for(const f of [.42,.76]){const m=new THREE.Mesh(new THREE.RingGeometry(r*f,r*f+.25,64),rippleMat);m.rotation.x=-Math.PI/2;ripple.add(m);}
+  body.userData.fx=surface.userData.fx=ripple.userData.fx=true; // 液體：效果，不做干涉檢查
   const base=surface.geometry.attributes.position.array.slice();
   let lastKey='';
   function set(volume,time=0,stir=false){
@@ -85,7 +86,7 @@ export function screw(parent,x,y,z,material) {
   const socket=new THREE.Mesh(new THREE.CylinderGeometry(1.1,1.1,.12,6),new THREE.MeshStandardMaterial({color:0x33383b,roughness:.7}));socket.position.set(x,y+.65,z);parent.add(socket);
 }
 export function flowLine(parent,radius,material=liquidMaterial) {
-  const m=new THREE.Mesh(new THREE.CylinderGeometry(radius,radius,1,12),material);m.visible=false;m.renderOrder=2;parent.add(m);
+  const m=new THREE.Mesh(new THREE.CylinderGeometry(radius,radius,1,12),material);m.visible=false;m.renderOrder=2;m.userData.fx=true;parent.add(m);
   const up=new THREE.Vector3(0,1,0),delta=new THREE.Vector3();
   return {mesh:m,set(a,b,on){delta.subVectors(b,a);m.visible=!!on&&delta.length()>.05;if(!m.visible)return;m.position.copy(a).add(b).multiplyScalar(.5);m.scale.y=delta.length();m.quaternion.setFromUnitVectors(up,delta.normalize());}};
 }

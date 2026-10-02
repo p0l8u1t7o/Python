@@ -48,7 +48,7 @@ function ring(parent, rIn, rOut, h, pos, material) {
   const shape = new THREE.Shape(); shape.absarc(0, 0, rOut, 0, Math.PI * 2);
   const hole = new THREE.Path(); hole.absarc(0, 0, rIn, 0, Math.PI * 2, true); shape.holes.push(hole);
   const geo = new THREE.ExtrudeGeometry(shape, { depth: h, bevelEnabled: false, curveSegments: 36 }); geo.rotateX(-Math.PI / 2);
-  const m = new THREE.Mesh(geo, material); m.position.set(...pos); m.castShadow = m.receiveShadow = true; parent.add(m); return m;
+  const m = new THREE.Mesh(geo, material); m.position.set(...pos); m.castShadow = m.receiveShadow = true; m.userData.bore = rIn; parent.add(m); return m;   // bore：內孔半徑（全場檢查判斷零件是否在孔內）
 }
 // 動態文字貼圖（天平讀值、螢幕）：Node 驗證環境沒有真正的 canvas，只建立空殼
 function liveText(w, h, pxW = 512, pxH = 160) {
@@ -118,7 +118,7 @@ export function createLab(scene) {
 
   // ---------------------------------------------------------------- 樣品瓶座＋開蓋區（氣動自定心 V 型夾座）
   const C = ST.clamp, clamp = new THREE.Group(); clamp.position.set(C.x, Y0, C.z); root.add(clamp);
-  K('clamp', block(clamp, [230, C.base, 190], [0, C.base / 2, 0], M.steel));
+  K('clamp', block(clamp, [180, C.base, 190], [0, C.base / 2, 0], M.steel));                    // 寬 180：不伸入瓶蓋暫放座與滴定杯座
   const jaws = [];
   for (const s of [-1, 1]) {
     const jg = new THREE.Group(); clamp.add(jg);
@@ -126,14 +126,16 @@ export function createLab(scene) {
     block(jg, [60, 30, 40], [0, C.base + 22, s * 34], M.steel);
     jg.userData.side = s; jaws.push(jg);
   }
-  for (const s of [-1, 1]) K('clamp', block(clamp, [70, 44, 50], [0, C.base + 22, s * 88], M.grey));   // 氣缸
+  // 氣缸：每側兩支夾在夾爪兩旁（夾爪與滑座在中間滑動，開到 150 mm 也不穿過缸體）
+  for (const s of [-1, 1]) for (const x of [-73, 73]) K('clamp', block(clamp, [22, 44, 50], [x, C.base + 22, s * 88], M.grey));
   decal(clamp, 110, 20, [0, C.base + 0.6, 80], [-Math.PI / 2, 0, 0], '樣品瓶座 / 開蓋', { color: '#20242a', center: true, bold: true });
   const capRest = new THREE.Group(); capRest.position.set(ST.capRest.x, Y0, ST.capRest.z); root.add(capRest);
-  K('caprest', cylinder(capRest, 38, ST.capRest.base, [0, ST.capRest.base / 2, 0], M.pom, 'y', 32));
-  ring(capRest, 28, 34, 6, [0, ST.capRest.base, 0], M.pom);
+  // 底座＋比瓶蓋細的承台：夾爪指尖低於瓶蓋底面，承台外側要讓出手指的空間
+  K('caprest', cylinder(capRest, 38, 10, [0, 5, 0], M.pom, 'y', 32));
+  K('caprest', cylinder(capRest, 22, ST.capRest.base - 10, [0, 10 + (ST.capRest.base - 10) / 2, 0], M.pom, 'y', 32));
   const holder = new THREE.Group(); holder.position.set(ST.holder.x, Y0, ST.holder.z); root.add(holder);
   K('holder', cylinder(holder, 55, 6, [0, 3, 0], M.steel, 'y', 36));
-  ring(holder, BEAKER.d / 2 + 2, BEAKER.d / 2 + 10, ST.holder.base + 12, [0, 0, 0], M.pom);
+  ring(holder, BEAKER.d / 2 + 2, BEAKER.d / 2 + 10, ST.holder.base + 6, [0, 6, 0], M.pom);       // 從底盤頂面起，底面不與底盤重合
   decal(holder, 80, 16, [0, 6.6, 45], [-Math.PI / 2, 0, 0], '滴定杯座', { color: '#20242a', center: true, bold: true });
 
   // ---------------------------------------------------------------- 移液區：廢液漏斗、吸頭廢料口、吸頭架、移液模組停放座
@@ -143,7 +145,7 @@ export function createLab(scene) {
   ring(root,10,60,10,[F.x,Y0,F.z],M.steel);
   const S = ST.tipChute, strip = new THREE.Group(); strip.position.set(S.x, Y0, S.z); root.add(strip);
   // 局部 +Z 朝手臂：支柱在遠端，叉口開向手臂
-  ring(strip, 34, 44, 5, [0, 0, 0], M.dark); // 真正落料孔，不以實心黑片封住
+  ring(strip, 34, 44, 5, [0, -1, 0], M.dark); // 真正落料孔，不以實心黑片封住（下沉 1 mm，底面不與外環重合）
   K('chute', ring(strip, 44, 48, 12, [0, 0, 0], M.steel));
   decal(strip, 70, 16, [0, 1, 62], [-Math.PI / 2, 0, 0], '吸頭廢料口', { color: '#e6edf3', center: true, bold: true });
   const TR = ST.tipRack, tipRack = new THREE.Group(); root.add(tipRack);
@@ -155,7 +157,7 @@ export function createLab(scene) {
   const D = ST.dock, dock = new THREE.Group(); dock.position.set(D.x, Y0, D.z); root.add(dock);
   const ddir = new THREE.Vector3(D.x, 0, D.z).normalize();
   ring(dock,22,26,4,[0,0,0],M.dark); // 吸頭可穿過桌面孔
-  K('dock', block(dock, [30, D.collar - 6, 30], [ddir.x * 55, (D.collar - 6) / 2, ddir.z * 55], M.steel));
+  K('dock', block(dock, [30, D.collar - 17, 30], [ddir.x * 55, (D.collar - 17) / 2, ddir.z * 55], M.steel));   // 頂端低於叉口 2 mm：夾爪下到夾持環時手指不撞柱頂
   const fork = ring(dock, 21, 34, 8, [0, D.collar - 23, 0], M.pom); K('dock', fork);
   decal(dock, 70, 16, [ddir.x * 55 - ddir.z * 16, 120, ddir.z * 55 + ddir.x * 16], [0, Math.atan2(-ddir.z, ddir.x), 0], '移液模組座', { color: '#e6edf3', center: true, bold: true });
 
@@ -166,6 +168,7 @@ export function createLab(scene) {
   const beam = new THREE.Mesh(new THREE.PlaneGeometry(70, 100), M.laser); beam.rotation.x = -Math.PI / 2; beam.position.set(0, SC.h, 85); beam.visible = false; scanner.add(beam);
   const beamPlane = new THREE.Mesh(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 35), new THREE.Vector3(-40, 0, 125), new THREE.Vector3(40, 0, 125)]), M.laser);
   beamPlane.geometry.setIndex([0, 1, 2]); beamPlane.position.y = SC.h - 20; beamPlane.material.side = THREE.DoubleSide; beamPlane.visible = false; scanner.add(beamPlane);
+  beam.userData.fx = beamPlane.userData.fx = true;                                   // 讀碼光束：效果，不是實體
 
   // ---------------------------------------------------------------- 料架：待處理杯區、待驗樣品瓶區、完成樣品瓶區、完成滴定杯區
   const rackPlate = (name, cols, rows, base, pitchX, pitchZ, hole) => {
@@ -228,7 +231,7 @@ export function createLab(scene) {
   const P = ST.pc, pc = new THREE.Group(); pc.position.set(P.x, Y0, P.z); root.add(pc);
   block(pc, [160, 10, 120], [0, 5, -20], M.dark); block(pc, [30, 280, 20], [0, 150, -40], M.dark);
   K('pc', block(pc, [400, 250, 24], [0, 300, -30], M.dark));
-  const screen = liveText(384, 234, 1000, 610); screen.mesh.position.set(0, 300, -17.5); pc.add(screen.mesh);
+  const screen = liveText(384, 234, 1000, 610); screen.mesh.position.set(0, 300, -16.8); pc.add(screen.mesh);
   block(pc, [300, 12, 90], [-20, 6, 45], M.dark);
   for(let row=0;row<4;row++) for(let col=0;col<14;col++) block(pc,[16,1.2,14],[-153+col*20,12.5,15+row*19],M.grey);
   // 安全雷射掃描器（地面）＋減速區／停止區
@@ -254,7 +257,7 @@ export function createLab(scene) {
   function capMesh(i) {
     const g = new THREE.Group(); root.add(g);
     const c = cylinder(g, CAP.d / 2, CAP.h, [0, CAP.h / 2, 0], i < 3 ? M.cap : M.capRed, 'y', 28);
-    for (let k = 0; k < 18; k++) { const a = k / 18 * Math.PI * 2; block(g, [2, CAP.h - 4, 3], [Math.cos(a) * CAP.d / 2, CAP.h / 2, Math.sin(a) * CAP.d / 2], c.material).rotation.y = -a; }
+    for (let k = 0; k < 18; k++) { const a = k / 18 * Math.PI * 2; block(g, [1.5, CAP.h - 4, 3], [Math.cos(a) * (CAP.d / 2 + .5), CAP.h / 2, Math.sin(a) * (CAP.d / 2 + .5)], c.material).rotation.y = -a; }   // 止滑紋：內外面都不與夾爪指墊同面
     g.userData = { kind: 'cap', i }; return g;
   }
   function beakerMesh(k) {
@@ -283,7 +286,7 @@ export function createLab(scene) {
     const g = new THREE.Group(); root.add(g); const p = PIPETTE;
     const cone = new THREE.Mesh(new THREE.CylinderGeometry(p.tipR - 1, 1.2, p.tipLen - 20, 20, 1, true), M.tip); cone.position.y = -20 - (p.tipLen - 20) / 2; g.add(cone);
     const collar = new THREE.Mesh(new THREE.CylinderGeometry(p.tipR, p.tipR - 1, 20, 20, 1, true), M.tip); collar.position.y = -10; g.add(collar);
-    const liquid = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 14), M.liquid); liquid.visible = false; g.add(liquid);
+    const liquid = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 14), M.liquid); liquid.visible = false; liquid.userData.fx = true; g.add(liquid);
     cone.renderOrder=collar.renderOrder=3;liquid.renderOrder=2;
     g.userData = { kind: 'tip', i, liquid, unitVertices: liquid.geometry.attributes.position.array.slice() }; return g;
   }
@@ -292,7 +295,7 @@ export function createLab(scene) {
   for (let k = 0; k < 12; k++) items[`beaker${k}`] = beakerMesh(k);
   items.pip = pipetteMesh();
   const pipFlow=flowLine(root,.6),waterFlow=flowLine(root,.8);
-  const doseDrop=new THREE.Mesh(new THREE.SphereGeometry(.85,16,12),liquidMaterial);doseDrop.renderOrder=2;root.add(doseDrop);
+  const doseDrop=new THREE.Mesh(new THREE.SphereGeometry(.85,16,12),liquidMaterial);doseDrop.renderOrder=2;doseDrop.userData.fx=true;root.add(doseDrop);
   const sprayLines=Array.from({length:3},()=>flowLine(root,.25));
   const headHarness=carrier(root,'SAMPLER / electrode and fluid service',{origin:[towerX+50,Y0+headDown+330,SP.z+100],axis:[0,1,0],rise:[1,0,0],fixed:248,min:0,max:190,radius:40,width:32,pitch:16,colors:[0xd5e7ef,0xf0e7c6,CABLE.signal]});
   support(root,'SAMPLER / fixed guide bracket',[towerX,Y0+690,SP.z+36],[towerX+39,Y0+700,SP.z+100],6);
@@ -363,5 +366,7 @@ export function createLab(scene) {
     beam.visible = beamPlane.visible = !!ctx.scanning;
     panel.draw(s.balText, (g, w, h) => { g.fillStyle = '#0a1a10'; g.fillRect(0, 0, w, h); g.fillStyle = s.balStable ? '#6dff9c' : '#c9f7d5'; g.font = 'bold 64px Consolas, monospace'; g.textAlign = 'right'; g.fillText(s.balText, w - 16, 92); g.font = '28px Arial'; g.textAlign = 'left'; g.fillText(s.balStable ? '穩定' : '', 14, 138); });
   }
-  return { root, items, keepout, setState, worldOf, screen, tscreen, slotPos, headX, head, prop, pipFlow, waterFlow, doseDrop, sprayLines, balanceDoor: door, jaws, zones: [zoneW, zoneS] };
+  // 各設備群組（全場檢查分工位：不同設備的固定件互相穿插視為架設相撞）
+  const stations = { balance, clamp, capRest, holder, chute: strip, tipRack, dock, scanner, sampler, titrator: titr, pc, safetyScanner: scan };
+  return { root, items, keepout, setState, worldOf, screen, tscreen, slotPos, headX, head, prop, pipFlow, waterFlow, doseDrop, sprayLines, balanceDoor: door, jaws, zones: [zoneW, zoneS], floor, stations };
 }

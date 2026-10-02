@@ -60,12 +60,19 @@ node ../core/tools/serve.mjs AutomaticAcid-BaseTitration --no-open
 | `web/js/lab.js` | 實驗桌、天平、樣品瓶座、移液區（廢液漏斗、吸頭廢料口、吸頭架、移液模組座）、讀碼器、料架、Metrohm 進樣器與滴定儀、電腦、安全掃描器、器皿 |
 | `web/js/plan.js` | 手臂動作序列（逐步計算 PTP 與直線移動時間）、轉盤與滴定排程、樣品表與通訊紀錄 |
 | `web/js/sim.js` | 把排程在任一時間的狀態套到場景（畫面與驗證共用） |
-| `web/js/main.js` | 場景、時間軸、樣品表、滴定曲線、交握訊號、通訊紀錄、匯出 |
+| `web/js/project.js` | 專案介面 `createProject({ scene })`：建立場景、`apply(t)` 套到時間 t，並提供 core 全場檢查的設定（非實體物件、設備分工位、逐條說明的允許接觸）；`main.js` 與 core 檢查共用同一份場景 |
+| `web/js/main.js` | 燈光、相機、時間軸、樣品表、滴定曲線、交握訊號、通訊紀錄、匯出；場景物件取自 `project.js` |
 | `tools/verify.mjs` | 排程與幾何驗證 |
 
 ## 驗證
 
-需要 Node.js 22 以上，不需 npm 套件：
+需要 Node.js 22 以上，不需 npm 套件。一次跑完 core 共用檢查（import 路徑、倒序一致、全場干涉與重合面閃爍）與本專案 `tools/verify*.mjs`：
+
+```powershell
+node ../core/tools/check.mjs AutomaticAcid-BaseTitration          # 在本資料夾；在 TestCode 則為 node core/tools/check.mjs AutomaticAcid
+```
+
+全場檢查結果在 `review/scene-verification.txt`。只跑排程與幾何驗證：
 
 ```powershell
 node --import ../core/tools/register.mjs tools/verify.mjs

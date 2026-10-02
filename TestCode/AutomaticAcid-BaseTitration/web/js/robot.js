@@ -35,7 +35,8 @@ export function createRobot() {
   // 基座到 J2 高 290、上臂 450、前臂 450、J5 到法蘭 110 為示意值，需以 DENSO CAD 核對。
   const L = { base: 160, shoulderY: 130, shoulderX: 0, upper: 450, fore: 450, foreOffset: 0, wrist1: 120, wrist2: 100, flange: 10 };
   const j = {};
-  const base = cyl(95, 110, L.base, matArm); base.position.y = L.base / 2; root.add(base);
+  // 基座從底座盤頂面（14）起算，底面不與底座盤底面重合（避免閃爍）；錐度與原本 0～160 相同
+  const base = cyl(95, 110 - 15 * 14 / L.base, L.base - 14, matArm); base.position.y = 14 + (L.base - 14) / 2; root.add(base);
   const foot = cyl(125, 125, 14, matJoint); foot.position.y = 7; root.add(foot);
   const ledBase = cyl(97, 97, 6, matLed); ledBase.position.y = L.base - 12; root.add(ledBase);
   decal(root, 110, 26, [0, 60, 111], [0, 0, 0], 'DENSO', { color: '#c8102e', center: true, bold: true });
@@ -72,7 +73,7 @@ export function createRobot() {
   cylinder(tool, 32, 10, [0, 0, 5], matAnod, 'z', 28);                                       // 快換轉接盤
   const [bw, bt, bh] = TOOL.body;
   block(tool, [bw, bt, bh], [0, 0, TOOL.bodyZ + bh / 2], matTool);
-  block(tool, [bw - 20, bt + 4, 8], [0, 0, TOOL.bodyZ + bh - 4], matAnod);                    // 導軌
+  block(tool, [bw - 20, bt + 4, 8], [0, 0, TOOL.bodyZ + bh - 5], matAnod);                    // 導軌（底面內縮 1 mm，不與本體底面重合）
   decal(tool, 90, 22, [0, -bt / 2 - 0.5, TOOL.bodyZ + 30], [Math.PI / 2, Math.PI, 0], 'GRIPPER', { color: '#20242a', center: true, bold: true });
   const fingers = [];
   for (const s of [-1, 1]) {
@@ -80,7 +81,7 @@ export function createRobot() {
     const [ft, fw, fl] = TOOL.finger;
     block(f, [ft, fw + 6, 16], [0, 0, TOOL.fingerZ + 8], matAnod);                            // 滑座
     block(f, [ft, fw, fl - 16], [0, 0, TOOL.fingerZ + 16 + (fl - 16) / 2], matTool);
-    block(f, [3, fw - 4, 34], [-s * (ft / 2 + 1.5), 0, TOOL.tcp], matPad);                  // V 槽指墊
+    block(f, [3, fw - 4, 30], [-s * (ft / 2 + 1.5), 0, TOOL.tcp], matPad);                  // V 槽指墊（下緣與指尖齊平）
     f.userData.side = s; fingers.push(f);
   }
 
@@ -91,7 +92,8 @@ export function createRobot() {
   /** 夾爪開口（兩指墊內側距離，mm） */
   function setGripper(w) {
     width = THREE.MathUtils.clamp(w, 0, TOOL.maxWidth);
-    for (const f of fingers) f.position.x = f.userData.side * (width / 2 + TOOL.finger[0] / 2 + 1.5);
+    // 指墊厚 3 mm、貼在手指內側：width 為兩指墊內側面距離（全閉時兩指墊剛好相貼）
+    for (const f of fingers) f.position.x = f.userData.side * (width / 2 + TOOL.finger[0] / 2 + 3);
   }
   setGripper(width);
   const toolParts = [];

@@ -11,7 +11,7 @@ const vision = createVisionOverlay();
 const fullProcessVision = createVisionOverlay();
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { createSim } from './sim.js';
+import { createProject } from './project.js';
 import { ST, Y0, SAMPLES, TITRANT, ANALYTE, smooth } from './layout.js';
 
 const qp = new URLSearchParams(location.search);
@@ -36,7 +36,8 @@ cupLight.castShadow=renderer.shadowMap.enabled;cupLight.shadow.mapSize.set(1024,
 Object.assign(cupLight.shadow.camera,{left:-130,right:130,top:180,bottom:-180,near:50,far:1000});
 cupLight.shadow.normalBias=.025;cupLight.shadow.bias=-.00001;scene.add(cupLight,cupLight.target);
 
-const sim = createSim(scene), plan = sim.plan, lab = sim.lab, total = plan.total;
+// 場景物件與時間狀態由 project.js 建立與套用（core 統一檢查用同一份，檢查的就是畫面上的幾何）
+const project = createProject({ scene }), plan = project.plan, lab = project.lab, total = project.total;
 const $ = id => document.getElementById(id);
 const ui = Object.fromEntries(['phase', 'act', 'stepLabel', 'tbody', 'log', 'modeHint', 'tableHint', 'curve', 'titrPhase', 'titrInfo', 'titrRes', 'balance', 'sigs', 'showLabels', 'showZones', 'exportBtn',
   'playBtn', 'restartBtn', 'speed', 'autoSpeed', 'previous', 'next', 'stepSelect', 'cycleTime', 'timeline', 'progBar', 'clock', 'stations', 'mode', 'subtitle'].map(id => [id, $(id)]));
@@ -84,7 +85,7 @@ function setView(name, instant = false) {
   document.querySelectorAll('.views button').forEach(b => b.classList.toggle('selected', b.dataset.view === name));
   if (follow) return;
   if(name==='meniscus'){
-    info=sim.apply(T);liquidTrack=liquidFocus();camAnim=null;
+    info=project.apply(T);liquidTrack=liquidFocus();camAnim=null;
     controls.target.copy(liquidTrack);camera.position.copy(liquidTrack).add(new THREE.Vector3(-75,115,90));controls.update();return;
   }
   if (!views[name]) return; const [p, t] = views[name].map(a => new THREE.Vector3(...a));
@@ -92,7 +93,7 @@ function setView(name, instant = false) {
 }
 document.querySelectorAll('.views button').forEach(b => b.onclick = () => setView(b.dataset.view));
 const _tcp = new THREE.Vector3();
-function followCam(dt) { sim.robot.getTcpWorld('grip', _tcp); const k = 1 - Math.exp(-dt * 3); controls.target.lerp(_tcp, k); camera.position.lerp(_tcp.clone().add(new THREE.Vector3(260, 420, 620)), k); }
+function followCam(dt) { project.robot.getTcpWorld('grip', _tcp); const k = 1 - Math.exp(-dt * 3); controls.target.lerp(_tcp, k); camera.position.lerp(_tcp.clone().add(new THREE.Vector3(260, 420, 620)), k); }
 
 // ---------------------------------------------------------------- 3D 標籤
 const labels = [];
@@ -164,7 +165,8 @@ function drawScreens(info, T) {
 let T = 0, playing = !qp.has('pause'), lastLog = '', info = null;
 const pause = () => { playing = false; ui.playBtn.textContent = '▶ 播放'; };
 function seekTo(t) { T = THREE.MathUtils.clamp(t, 0, total); render(); }
-ui.playBtn.onclick = () => { if (T >= total) T = 0; playing = !playing; ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放'; };
+const play = () => { if (T >= total) T = 0; playing = true; ui.playBtn.textContent = '⏸ 暫停'; };
+ui.playBtn.onclick = () => playing ? pause() : play();
 ui.restartBtn.onclick = () => seekTo(0);
 const closeShots={
   dose:{view:'titration',time:()=>plan.jobs[0].start+90},
@@ -179,7 +181,7 @@ ui.previous.onclick = () => jumpMs(-1); ui.next.onclick = () => jumpMs(1);
 ui.stepSelect.onchange = () => { pause(); seekTo(plan.events[+ui.stepSelect.value].t); };
 ui.showZones.onchange = () => { for (const z of lab.zones) z.visible = ui.showZones.checked; };
 ui.exportBtn.onclick = () => {
-  const end = sim.apply(total);
+  const end = project.apply(total);
   const report = {
     mode: 'SIMULATION', integration: MODES[mode].label, batchSec: +total.toFixed(1), robotPrepSec: +plan.stats.prepEnd.toFixed(1), titrant: `${TITRANT.name} ${TITRANT.c} mol/L`, resultBasis: `${ANALYTE.name}（示意）`,
     samples: SAMPLES.map(s => ({ id: s.id + 1, barcode: s.barcode, bottleMl: s.size, simulatedConcMolL: +s.conc.toFixed(5) })),
@@ -192,7 +194,7 @@ ui.exportBtn.onclick = () => {
 };
 
 function drawHud() {
-  info = sim.apply(T);
+  info = project.apply(T);
   if(liquidTrack){const p=liquidFocus(),delta=p.clone().sub(liquidTrack);camera.position.add(delta);controls.target.add(delta);liquidTrack=p;camera.lookAt(controls.target);}
   const f = info, s = f.state, smp = f.sampler;
   ui.act.textContent = s.act; ui.stepLabel.textContent = `${f.step.label}${f.step.idle ? '' : `（${f.step.dur.toFixed(1)} s）`}`;
@@ -267,6 +269,6 @@ function frame() {
 setView(qp.get('view') || 'iso', true); resize(); ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放';
 if (qp.has('speed')) ui.speed.value = qp.get('speed');
 if (qp.has('t')) { pause(); T = +qp.get('t') || 0; }
-if (qp.get('view') === 'follow') { sim.apply(T); sim.robot.getTcpWorld('grip', _tcp); controls.target.copy(_tcp); camera.position.copy(_tcp).add(new THREE.Vector3(260, 420, 620)); }
-window.sim = { plan, seekTo, get T() { return T; }, setView };
+if (qp.get('view') === 'follow') { project.apply(T); project.robot.getTcpWorld('grip', _tcp); controls.target.copy(_tcp); camera.position.copy(_tcp).add(new THREE.Vector3(260, 420, 620)); }
+window.sim = { plan, seekTo, get T() { return T; }, setView, views: [...Object.keys(views), 'meniscus', 'follow'], total, play, pause };
 $('loading').classList.add('hide'); render(); frame();
