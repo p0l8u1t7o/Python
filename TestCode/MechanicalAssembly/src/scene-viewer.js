@@ -107,6 +107,18 @@ export class AssemblyViewer {
     this.grid.material.depthWrite = false;
     this.scene.add(this.grid);
     this.group = new THREE.Group();
+    // 裝入方向箭頭：一律畫在最上層，不被零件遮住
+    this.arrows = new THREE.Group();
+    this.arrows.renderOrder = 10;
+    this.arrowMaterial = new THREE.MeshBasicMaterial({
+      color: "#e8930c",
+      transparent: true,
+      opacity: 0.92,
+      depthTest: false,
+      depthWrite: false,
+    });
+    this.arrowStep = null;
+    this.scene.add(this.arrows);
     this.scene.add(this.group);
     this.pipeline = new RenderPipeline(this.renderer, this.scene, this.camera);
     this.camera.position.set(7, 5, 7);
@@ -175,6 +187,7 @@ export class AssemblyViewer {
     this.labelRenderer.setSize(w, h);
   }
   clear() {
+    this.showArrows(-1);
     this.assembly = null;
     this.tween = null;
     for (const m of this.meshes) {
@@ -299,6 +312,7 @@ export class AssemblyViewer {
   }
   /** 依站別的組裝節點樹計算每個節點的展開向量（正規化後的場景座標）。 */
   setAssembly(station) {
+    this.showArrows(-1);
     this.assembly = null;
     for (const mesh of this.meshes) mesh.userData.chain = [];
     if (!station?.nodes?.length || !this.meshes.length) return;
@@ -406,6 +420,7 @@ export class AssemblyViewer {
           (this.labelsOn && this.meshes.length <= 100));
       if (visible || mesh.userData.label) this.label(mesh).visible = visible;
     }
+    this.showArrows(mode === "assemble" && options.arrows !== false ? current : -1);
     if (Number.isFinite(floorY)) {
       this.ground.position.y = floorY - 0.025;
       this.grid.position.y = floorY - 0.023;
@@ -454,8 +469,56 @@ export class AssemblyViewer {
     }
     return box.isEmpty() ? null : box;
   }
-  /** 平滑移動鏡頭到指定範圍，保留目前的觀看方向。 */
-  focusBox(box, minRadius = 0.7) {
+  /** 第 step 步每個移動節點一支箭頭：由展開位置指向完成位置。 */
+  showArrows(step) {
+    if (this.arrowStep === step) return;
+    this.arrowStep = step;
+    for (const child of [...this.arrows.children]) {
+      child.traverse((o) => o.geometry?.dispose());
+      this.arrows.remove(child);
+    }
+    if (step < 0 || !this.assembly) return;
+    const { meshesOf, plan } = this.assembly;
+    const at = (p) => (link) => installAmount(link.step, p);
+    const offset = new THREE.Vector3();
+    for (const id of plan[step].nodeIds.slice(0, 24)) {
+      const meshes = meshesOf.get(id) || [];
+      if (!meshes.length) continue;
+      const box = new THREE.Box3();
+      meshes.forEach((m) => box.union(m.userData.bounds));
+      const center = box.getCenter(new THREE.Vector3());
+      const from = center.clone().add(this.offsetAt(meshes[0], at(step), offset));
+      const to = center.clone().add(this.offsetAt(meshes[0], at(step + 1), offset));
+      const length = from.distanceTo(to);
+      if (length < 0.05) continue;
+      const radius = THREE.MathUtils.clamp(length * 0.02, 0.006, 0.03);
+      const head = Math.min(radius * 5, length * 0.35);
+      const arrow = new THREE.Group();
+      const shaft = new THREE.Mesh(
+        new THREE.CylinderGeometry(radius, radius, length - head, 12),
+        this.arrowMaterial,
+      );
+      shaft.position.y = (length - head) / 2;
+      const tip = new THREE.Mesh(
+        new THREE.ConeGeometry(radius * 2.6, head, 16),
+        this.arrowMaterial,
+      );
+      tip.position.y = length - head / 2;
+      for (const m of [shaft, tip]) {
+        m.renderOrder = 10;
+        m.raycast = () => {};
+        arrow.add(m);
+      }
+      arrow.position.copy(from);
+      arrow.quaternion.setFromUnitVectors(
+        new THREE.Vector3(0, 1, 0),
+        to.clone().sub(from).normalize(),
+      );
+      this.arrows.add(arrow);
+    }
+  }
+  /** 平滑移動鏡頭到指定範圍，保留目前的觀看方向；immediate 時直接到位（輸出圖片用）。 */
+  focusBox(box, minRadius = 0.7, immediate = false) {
     if (!box) return;
     const center = box.getCenter(new THREE.Vector3());
     const radius = Math.max(
@@ -479,6 +542,10 @@ export class AssemblyViewer {
     this.camera.near = Math.max(0.001, distance / 1000);
     this.camera.far = Math.max(100, distance * 10);
     this.camera.updateProjectionMatrix();
+    if (immediate) {
+      this.stepTween(this.tween.start + 1e6);
+      this.controls.update();
+    }
   }
   stepTween(now) {
     const t = this.tween;
@@ -551,9 +618,19 @@ export class AssemblyViewer {
         mesh.userData.edge.visible = value && !mesh.userData.ghost;
     }
   }
-  screenshot() {
+  screenshot(type = "image/png", quality) {
     this.pipeline.render();
-    return this.renderer.domElement.toDataURL("image/png");
+    return this.renderer.domElement.toDataURL(type, quality);
+  }
+  /** 輸出時暫時提高算圖解析度；scale = null 恢復螢幕設定。 */
+  setOutputScale(scale) {
+    this.renderer.setPixelRatio(scale ?? Math.min(devicePixelRatio, 2));
+    this.resize();
+  }
+  /** 立即算圖一次（錄影時讓畫面與進度同步）。 */
+  renderNow() {
+    this.controls.update();
+    this.pipeline.render();
   }
   setActive(active) {
     this.renderer.setAnimationLoop(active ? this.renderFrame : null);
@@ -566,6 +643,7 @@ export class AssemblyViewer {
     this.pipeline.dispose();
     this.environment.dispose();
     this.ghostMaterial.dispose();
+    this.arrowMaterial.dispose();
     this.ground.geometry.dispose();
     this.ground.material.dispose();
     this.grid.geometry.dispose();

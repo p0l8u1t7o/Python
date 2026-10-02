@@ -20,9 +20,11 @@ import {
   removePart,
   appendPart,
   SCHEMA_VERSION,
+  STEP_TIMING,
   escapeHTML as h,
 } from "./core.js";
 import { runPlanner, loadPrecomputedPlan } from "./planner-client.js";
+import { sopHtml, drawCaption, countNames, baseName } from "./exporters.js";
 import { saveProject, listProjects, getProject } from "./storage.js";
 const $ = (s) => document.querySelector(s);
 const icons = {
@@ -38,8 +40,8 @@ const icons = {
 $("#app").innerHTML = `
 <header class="header"><a class="brand" href="/" aria-label="Assembly Studio 首頁"><span class="brand-mark">A<span>◧</span></span><span>ASSEMBLY<span class="brand-sub">STUDIO / 組裝工作台</span></span></a><div class="project-title"><span class="eyebrow">PROJECT / 專案</span><select id="projects" aria-label="切換專案"></select></div><div class="header-actions"><span id="save-status" class="save-status">本機工作區</span><button id="new-project" class="button ghost">＋ 新專案</button><button id="save" class="button ghost">${icons.save} 儲存專案</button><button id="import" class="button primary">${icons.import} 匯入 CAD</button></div></header>
 <div class="workspace"><aside class="station-panel"><div class="panel-heading"><div><span class="eyebrow">ASSEMBLY TREE</span><h2>設備站別</h2></div><span id="station-count" class="count"></span></div><div class="search-box"><span>⌕</span><input id="station-search" placeholder="搜尋站別或料號" aria-label="搜尋站別"></div><nav id="stations" aria-label="設備站別"></nav><button id="add-station" class="button add-button">＋ 新增站別</button><div class="source-card"><span class="eyebrow">SOURCE LIBRARY</span><strong id="source-count">原始設計資料</strong><p>依原始資料夾建立站別，保留來源與模型範圍。</p><button id="library" class="text-button">瀏覽 CAD 資料庫 ↗</button></div><footer class="sidebar-foot"><i></i> 模型在本機處理<span>v1.0</span></footer></aside>
-<main class="main"><div class="main-heading"><div><div class="breadcrumb">專案 <span>/</span> <span id="breadcrumb"></span></div><h1 id="station-title"></h1></div><span class="status-badge" id="scope"></span></div><div class="viewer-shell"><div class="viewer-toolbar"><div class="segmented"><button id="mode-solid" class="active">組合視圖</button><button id="mode-explode">爆炸圖</button><button id="mode-assemble">組裝流程</button></div><label class="explode-control">展開程度 <input id="explode" type="range" min="0" max="100" value="65" aria-label="展開程度"><output id="explode-value">65%</output></label><div class="toolbar-right"><button id="wire" title="切換邊線" aria-label="切換邊線">▱</button><button id="labels" title="零件標籤（100 件以下顯示全部）" aria-label="零件標籤">Aa</button><button id="fit" title="重設視角" aria-label="重設視角">⛶</button><button id="capture" title="下載視角圖片" aria-label="下載視角圖片">▣</button></div></div><div class="canvas-wrap"><div id="viewport"></div><div class="viewport-caption"><span class="eyebrow">3D ASSEMBLY VIEW</span><span id="model-info"></span></div><div id="empty-state" class="empty-state" hidden><span>◇</span><h3>此站尚未有可顯示的模型</h3><p>匯入 STEP / GLB 組合件，或透過 SolidWorks 轉換原生檔。</p><button id="empty-import" class="button primary">匯入本站模型</button></div><div id="loading" class="loading" hidden><span class="spinner"></span><p>讀取模型中…</p></div><div id="step-caption" class="step-caption" hidden><span id="step-caption-index"></span><strong id="step-caption-name"></strong><p id="step-caption-text"></p></div><div class="view-buttons"><button data-view="iso" class="active">等角</button><button data-view="front">正面</button><button data-view="top">俯視</button><button data-view="side">側面</button></div><div class="axis-widget"><span class="axis-y">Y</span><span class="axis-z">Z</span><span class="axis-x">X</span></div><div class="canvas-help">拖曳旋轉 · 滾輪縮放 · 右鍵平移 · 點選零件</div></div><div class="model-footer"><span><i class="dot"></i> <span id="part-summary"></span></span><span id="source-name"></span></div></div>
-<section class="timeline"><div class="timeline-title"><div><span class="eyebrow">ASSEMBLY SEQUENCE</span><h2>逐步組裝</h2></div><span id="step-counter">00 / 00</span><div class="timeline-options"><label>速度 <select id="speed" aria-label="播放速度"><option value=".5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select></label><label>未裝零件 <select id="future" aria-label="尚未安裝的零件"><option value="ghost" selected>淡影</option><option value="hide">隱藏</option><option value="show">展開</option></select></label><label class="check-inline"><input id="pause-steps" type="checkbox" checked> 每步暫停</label><label class="check-inline"><input id="follow" type="checkbox" checked> 鏡頭跟隨</label></div></div><div class="timeline-controls"><button id="previous" class="round" aria-label="上一步">‹</button><button id="play" class="play-button" aria-label="播放組裝動畫">▶</button><button id="next" class="round" aria-label="下一步">›</button><div class="scrub-wrap"><input id="scrub" type="range" min="0" max="1" step=".01" value="0" aria-label="組裝進度"><div id="scrub-marks"></div></div><button id="restart" class="button ghost">↺ 重播</button></div><p id="sequence-note" class="sequence-note">自動順序為草稿，請依實際裝配工法審核。</p></section></main>
+<main class="main"><div class="main-heading"><div><div class="breadcrumb">專案 <span>/</span> <span id="breadcrumb"></span></div><h1 id="station-title"></h1></div><span class="status-badge" id="scope"></span></div><div class="viewer-shell"><div class="viewer-toolbar"><div class="segmented"><button id="mode-solid" class="active">組合視圖</button><button id="mode-explode">爆炸圖</button><button id="mode-assemble">組裝流程</button></div><label class="explode-control">展開程度 <input id="explode" type="range" min="0" max="100" value="65" aria-label="展開程度"><output id="explode-value">65%</output></label><div class="toolbar-right"><button id="wire" title="切換邊線" aria-label="切換邊線">▱</button><button id="labels" title="零件標籤（100 件以下顯示全部）" aria-label="零件標籤">Aa</button><button id="fit" title="重設視角" aria-label="重設視角">⛶</button><button id="capture" title="下載視角圖片" aria-label="下載視角圖片">▣</button></div></div><div class="canvas-wrap"><div id="viewport"></div><div class="viewport-caption"><span class="eyebrow">3D ASSEMBLY VIEW</span><span id="model-info"></span></div><div id="empty-state" class="empty-state" hidden><span>◇</span><h3>此站尚未有可顯示的模型</h3><p>匯入 STEP / GLB 組合件，或透過 SolidWorks 轉換原生檔。</p><button id="empty-import" class="button primary">匯入本站模型</button></div><div id="loading" class="loading" hidden><span class="spinner"></span><p>讀取模型中…</p></div><div id="recording" class="recording" hidden><i></i><span id="recording-text">錄影中</span><button id="recording-cancel" class="button ghost">停止</button></div><div id="step-caption" class="step-caption" hidden><span id="step-caption-index"></span><strong id="step-caption-name"></strong><p id="step-caption-text"></p></div><div class="view-buttons"><button data-view="iso" class="active">等角</button><button data-view="front">正面</button><button data-view="top">俯視</button><button data-view="side">側面</button></div><div class="axis-widget"><span class="axis-y">Y</span><span class="axis-z">Z</span><span class="axis-x">X</span></div><div class="canvas-help">拖曳旋轉 · 滾輪縮放 · 右鍵平移 · 點選零件</div></div><div class="model-footer"><span><i class="dot"></i> <span id="part-summary"></span></span><span id="source-name"></span></div></div>
+<section class="timeline"><div class="timeline-title"><div><span class="eyebrow">ASSEMBLY SEQUENCE</span><h2>逐步組裝</h2></div><span id="step-counter">00 / 00</span><div class="timeline-options"><label>速度 <select id="speed" aria-label="播放速度"><option value=".5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select></label><label>未裝零件 <select id="future" aria-label="尚未安裝的零件"><option value="ghost" selected>淡影</option><option value="hide">隱藏</option><option value="show">展開</option></select></label><label class="check-inline"><input id="pause-steps" type="checkbox" checked> 每步暫停</label><label class="check-inline"><input id="follow" type="checkbox" checked> 鏡頭跟隨</label></div></div><div class="timeline-controls"><button id="previous" class="round" aria-label="上一步">‹</button><button id="play" class="play-button" aria-label="播放組裝動畫">▶</button><button id="next" class="round" aria-label="下一步">›</button><div class="scrub-wrap"><input id="scrub" type="range" min="0" max="1" step=".01" value="0" aria-label="組裝進度"><div id="scrub-marks"></div></div><button id="restart" class="button ghost">↺ 重播</button><button id="export-sop" class="button ghost" title="每步截圖＋說明＋零件清單，可列印成 PDF">⇩ 作業指導書</button><button id="export-video" class="button ghost" title="錄製含步驟字卡的 WebM 影片">● 錄影</button></div><p id="sequence-note" class="sequence-note">自動順序為草稿，請依實際裝配工法審核。</p></section></main>
 <aside class="instruction-panel"><div class="panel-heading"><div><span class="eyebrow">WORK INSTRUCTIONS</span><h2>組裝步驟</h2></div><div class="panel-actions"><button id="auto-plan" class="text-button" title="依幾何干涉與 CAD 階層重新推論組裝順序">自動推論</button><button id="edit-plan" class="text-button">編輯</button></div></div><div id="steps" class="steps"></div><section id="part-detail" class="part-detail"><span class="eyebrow">COMPONENT INSPECTOR</span><h3>零件檢視</h3><p>點選模型或搜尋零件，檢視裝配群組。</p></section><div class="parts-search"><input id="part-search" placeholder="搜尋零件名稱…" aria-label="搜尋零件"><div id="part-list"></div></div><div class="instruction-foot">步驟指引可保存並跨專案重用。<br>正式裝配前需完成工程審核。</div></aside></div>
 <dialog id="modal"><div id="modal-body"></div></dialog><div id="toast" role="status" hidden></div>`;
 let catalog,
@@ -88,6 +90,8 @@ function busyState(value, message = "讀取模型中…") {
     "projects",
     "edit-plan",
     "auto-plan",
+    "export-sop",
+    "export-video",
     "library",
     "equipment-overview-open",
   ])
@@ -963,6 +967,217 @@ async function openCatalogAsset(asset) {
   }
   await selectStation(target.id);
 }
+// ---- 輸出：作業指導書與組裝影片 ----
+const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
+// 同形狀的零件合併計數（未命名實體以幾何指紋判斷）
+function stepParts(step, index) {
+  const groups = new Map();
+  for (const id of step.nodeIds) {
+    const node = index.nodes.get(id);
+    const name =
+      node?.kind === "unit" ? `${baseName(node.name)}（預組件）` : baseName(node?.name || id);
+    const key = node?.geomKey ? `${node.kind}|${node.geomKey}` : name;
+    const entry = groups.get(key) || [name, 0];
+    entry[1]++;
+    groups.set(key, entry);
+  }
+  return [...groups.values()];
+}
+// 依輸出需求暫時提高解析度：高度至少約 1080 像素
+const outputScale = () =>
+  Math.min(3, Math.max(1, 1080 / Math.max(1, viewer.container.clientHeight)));
+function rangeDialog(title, extra, onRun) {
+  const total = station.plan.length;
+  if (!total || !root) {
+    toast("請先載入本站模型與組裝步驟。");
+    return;
+  }
+  const last = Math.min(total, extra.limit);
+  modal(
+    `<span class="eyebrow">EXPORT</span><h2>${title}</h2><p>${extra.note}</p><div class="field-row"><label class="field">從步驟<input id="range-from" type="number" min="1" max="${total}" value="1"></label><label class="field">到步驟<input id="range-to" type="number" min="1" max="${total}" value="${last}"></label></div>${extra.fields || ""}<p class="range-hint">本站共 ${total} 步${total > extra.limit ? `；步驟很多，預設只輸出前 ${extra.limit} 步，可分冊輸出` : ""}。</p><div class="modal-actions"><button id="range-run" class="button primary">開始</button><button id="range-cancel" class="button ghost">取消</button></div>`,
+  );
+  $("#range-cancel").onclick = () => $("#modal").close();
+  $("#range-run").onclick = () => {
+    const clamp = (v) => Math.max(1, Math.min(total, Math.round(Number(v) || 1)));
+    const from = clamp($("#range-from").value) - 1,
+      to = clamp($("#range-to").value) - 1;
+    if (to < from) {
+      toast("結束步驟不可小於起始步驟。", true);
+      return;
+    }
+    const values = extra.read?.() || {};
+    $("#modal").close();
+    onRun(from, to, values);
+  };
+}
+function saveView() {
+  return { mode, progress, playing, explode, future: $("#future").value };
+}
+function restoreView(state) {
+  ({ mode, progress, playing, explode } = state);
+  $("#future").value = state.future;
+  lastFocus = null;
+  sync();
+  viewer.fit();
+}
+function exportSop() {
+  rangeDialog(
+    "匯出作業指導書",
+    {
+      limit: 120,
+      note: "每步擷取零件在起始位置、附裝入方向箭頭的畫面，加上說明與零件清單，輸出為可列印成 PDF 的 HTML。",
+    },
+    async (from, to) => {
+      const state = saveView();
+      const index = assemblyIndex(station);
+      busyState(true, "產生作業指導書…");
+      viewer.setOutputScale(Math.min(2, outputScale()));
+      try {
+        playing = false;
+        mode = "solid";
+        sync();
+        viewer.fit();
+        await nextFrame();
+        const cover = viewer.screenshot("image/jpeg", 0.88);
+        mode = "assemble";
+        $("#future").value = "ghost";
+        const steps = [];
+        for (let k = from; k <= to; k++) {
+          // 零件在起始位置、箭頭指向完成位置
+          progress = k + STEP_TIMING.start * 0.5;
+          lastFocus = null;
+          sync();
+          viewer.focusBox(viewer.stepBounds(k), 0.7, true);
+          steps.push({
+            index: k,
+            step: station.plan[k],
+            image: viewer.screenshot("image/jpeg", 0.85),
+            parts: stepParts(station.plan[k], index),
+          });
+          $("#loading p").textContent = `產生作業指導書… ${k - from + 1} / ${to - from + 1}`;
+          if ((k - from) % 4 === 3) await nextFrame();
+        }
+        const html = sopHtml({
+          station,
+          project,
+          steps,
+          cover,
+          bom: countNames(station.parts.map((p) => p.name)),
+          generated: new Date().toLocaleString("zh-TW", { hour12: false }),
+          total: station.plan.length,
+        });
+        const range = from === 0 && to === station.plan.length - 1 ? "" : `-步驟${from + 1}-${to + 1}`;
+        download(`${station.name}-組裝作業指導書${range}.html`, html, "text/html");
+        const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+        window.open(url, "_blank");
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        toast(`已輸出 ${steps.length} 步的作業指導書；在新分頁按「列印／另存 PDF」。`);
+      } catch (e) {
+        toast("作業指導書輸出失敗：" + e.message, true);
+      } finally {
+        viewer.setOutputScale(null);
+        busyState(false);
+        restoreView(state);
+      }
+    },
+  );
+}
+let recording = null;
+function exportVideo() {
+  if (typeof MediaRecorder === "undefined") {
+    toast("此瀏覽器不支援錄影（MediaRecorder）。", true);
+    return;
+  }
+  rangeDialog(
+    "錄製組裝影片",
+    {
+      limit: 60,
+      note: "依目前視角與鏡頭跟隨即時播放並錄成 WebM，下方加上步驟字卡。錄影期間請勿切換分頁。",
+      fields:
+        '<label class="field">播放速度<select id="video-speed"><option value="1">1×（每步約 3.2 秒）</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label>',
+      read: () => ({ speed: Number($("#video-speed").value) || 1 }),
+    },
+    (from, to, { speed }) => record(from, to, speed),
+  );
+}
+async function record(from, to, speed) {
+  const state = saveView();
+  viewer.setOutputScale(outputScale());
+  const gl = viewer.renderer.domElement;
+  const scale = Math.max(1, gl.height / 720);
+  const bar = Math.round(118 * scale);
+  const canvas = document.createElement("canvas");
+  canvas.width = gl.width - (gl.width % 2);
+  canvas.height = gl.height + bar - ((gl.height + bar) % 2);
+  const ctx = canvas.getContext("2d");
+  const type = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"].find((t) =>
+    MediaRecorder.isTypeSupported(t),
+  );
+  const recorder = new MediaRecorder(canvas.captureStream(30), {
+    mimeType: type,
+    videoBitsPerSecond: 8_000_000,
+  });
+  const chunks = [];
+  recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+  const stopped = new Promise((r) => (recorder.onstop = r));
+  busy = true;
+  playing = false;
+  mode = "assemble";
+  $("#future").value = state.future === "show" ? "ghost" : state.future;
+  progress = from;
+  lastFocus = null;
+  sync();
+  $("#recording").hidden = false;
+  recording = { cancel: false };
+  recorder.start(1000);
+  const end = to + 1,
+    started = performance.now();
+  let hold = null;
+  while (!recording.cancel) {
+    await nextFrame();
+    const elapsed = (performance.now() - started) / 1000;
+    progress = Math.min(end, from + (elapsed * speed) / STEP_SECONDS);
+    sync();
+    viewer.renderNow();
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(gl, 0, 0);
+    const k = Math.min(Math.floor(progress), to);
+    const s = station.plan[k];
+    drawCaption(ctx, {
+      x: 0,
+      y: gl.height,
+      width: canvas.width,
+      height: canvas.height - gl.height,
+      index: `${station.name} · 步驟 ${String(k + 1).padStart(2, "0")} / ${String(station.plan.length).padStart(2, "0")}`,
+      name: s.name,
+      text: s.instruction,
+      ratio: (progress - from) / (end - from),
+      scale,
+    });
+    $("#recording-text").textContent = `錄影中 ${k + 1} / ${to + 1}`;
+    // 最後一步完成後多停 1 秒
+    if (progress >= end) {
+      hold ??= performance.now();
+      if (performance.now() - hold > 1000) break;
+    }
+  }
+  recorder.stop();
+  await stopped;
+  viewer.setOutputScale(null);
+  $("#recording").hidden = true;
+  const cancelled = recording.cancel;
+  recording = null;
+  busy = false;
+  restoreView(state);
+  if (cancelled) {
+    toast("已取消錄影。");
+    return;
+  }
+  const range = from === 0 && to === station.plan.length - 1 ? "" : `-步驟${from + 1}-${to + 1}`;
+  download(`${station.name}-組裝動畫${range}.webm`, new Blob(chunks, { type: "video/webm" }), "video/webm");
+  toast("已輸出組裝影片（WebM）。");
+}
 function libraryDialog() {
   catalogUI.library();
 }
@@ -972,6 +1187,9 @@ $("#import").onclick = $("#empty-import").onclick = importDialog;
 $("#library").onclick = libraryDialog;
 $("#edit-plan").onclick = editPlan;
 $("#auto-plan").onclick = () => autoPlan();
+$("#export-sop").onclick = () => exportSop();
+$("#export-video").onclick = () => exportVideo();
+$("#recording-cancel").onclick = () => recording && (recording.cancel = true);
 $("#future").onchange = () => sync();
 $("#follow").onchange = () => {
   lastFocus = null;

@@ -172,3 +172,36 @@ test("Big5 part names mis-decoded as UTF-8 are restored, others untouched", () =
   assert.equal(repairName("MISUMI_HFCL8-4040-B_NEW"), "MISUMI_HFCL8-4040-B_NEW");
   assert.equal(repairName("Café"), "Café");
 });
+
+test("parts captured by each other are grouped and installed together", () => {
+  const root = new THREE.Group();
+  root.add(housing());
+  // 兩端有凸緣的軸，中間套一個軸套：軸套拿不下來，軸也被軸套卡住，但兩者可一起往上取出
+  const rod = mergeGeometries([
+    new THREE.CylinderGeometry(3, 3, 40, 24).translate(0, 32, 0),
+    new THREE.CylinderGeometry(6, 6, 2, 24).translate(0, 13, 0),
+    new THREE.CylinderGeometry(6, 6, 2, 24).translate(0, 51, 0),
+  ]);
+  root.add(mesh("Rod", rod));
+  const bushing = new THREE.LatheGeometry(
+    [
+      new THREE.Vector2(4, 0),
+      new THREE.Vector2(8, 0),
+      new THREE.Vector2(8, 5),
+      new THREE.Vector2(4, 5),
+      new THREE.Vector2(4, 0),
+    ],
+    32,
+  ).translate(0, 30, 0);
+  root.add(mesh("Bushing", bushing));
+  const { steps, station } = planScene(root);
+  const group = station.nodes.find((n) => n.virtual);
+  assert.ok(group, "應產生推論組件");
+  assert.equal(group.name, "Rod 組件");
+  const install = steps.find((s) => s.nodeIds.includes(group.id));
+  assert.match(install.name, /先組合再裝入/);
+  // 整組放入盒中不受阻擋；組件內兩端凸緣卡住軸套，仍如實標示待確認
+  assert.ok(!install.auto?.forced);
+  assert.ok(steps.findIndex((s) => s.names.includes("Bushing")) < steps.indexOf(install));
+  assert.deepEqual(install.dir.map(Math.round), [0, 1, 0]);
+});

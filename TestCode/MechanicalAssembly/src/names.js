@@ -26,6 +26,19 @@ export function repairName(name) {
   return text;
 }
 
+/** 不嚴格的還原（可能含錯字），只用於分類判斷，不顯示給使用者。 */
+export function looseName(name) {
+  if (!decoder || typeof name !== "string" || !/[-ÿ]/.test(name))
+    return name;
+  const bytes = [];
+  for (const ch of name) {
+    const code = ch.codePointAt(0);
+    if (code <= 0xff) bytes.push(code);
+    else bytes.push(...encoder.encode(ch));
+  }
+  return decoder.decode(Uint8Array.from(bytes));
+}
+
 export function repairNames(root) {
   root.traverse((o) => {
     if (!o.name) return;

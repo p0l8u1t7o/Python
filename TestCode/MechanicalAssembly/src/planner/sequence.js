@@ -2,23 +2,17 @@
 // 由外往內逐件拆下，反轉後即為組裝順序；緊固件插回它所鎖固零件之後。
 import { Vector3 } from "three";
 import { GeometryStore } from "./geometry.js";
-import { buildEntityTree, isGenericName, walkEntities } from "./hierarchy.js";
+import {
+  buildEntityTree,
+  isGenericName,
+  isFastenerName,
+  isFlexibleName,
+  walkEntities,
+} from "./hierarchy.js";
 
-export const PLANNER_VERSION = 1;
+export { isFastenerName, isFlexibleName };
 
-const FASTENER =
-  /(screw|bolt|(^|[_\s-])nut([_\s-]|$)|hexagon_nut|washer|rivet|retaining[_\s-]?ring|snap[_\s-]?ring|circlip|(^|_)pin(_|$)|dowel|螺絲|螺栓|螺帽|螺母|墊圈|華司|鉚釘|扣環|定位銷|平行銷|SET-SCREW|SHCS|BHCS|FHCS|JIS_B_1(1|2)\d\d|JIS_B_2804|DIN[ _-]?(912|933|934|125|7991|7985|985|471|472)|ISO[ _-]?(4762|4017|4032|7380|10642|7089)|(^|_)NAT-M\d|(^|_)HZGN-M\d|(^|[_\s])M\d{1,2}(\.\d)?[xX×]\d+)/i;
-
-// 可撓件：皮帶、鏈條、線材、氣管，剛體拆卸判斷不適用，於相接零件就位後再安裝
-const FLEXIBLE =
-  /(belt|chain|cable|wire|hose|tube|皮帶|鏈條|電纜|線材|配線|氣管|軟管|管線)/i;
-
-export function isFastenerName(name) {
-  return FASTENER.test(String(name || ""));
-}
-export function isFlexibleName(name) {
-  return FLEXIBLE.test(String(name || ""));
-}
+export const PLANNER_VERSION = 2;
 
 const AXES = [
   new Vector3(1, 0, 0),
@@ -47,15 +41,22 @@ export function planAssembly(data, options = {}) {
   const totalWork = units.reduce((n, u) => n + u.children.length, 0) || 1;
   let done = 0;
   const report = (label) => options.onProgress?.(done, totalWork, label);
-  const stats = { units: units.length, forced: 0, rays: 0 };
+  const stats = { units: units.length, forced: 0, rays: 0, groups: 0 };
   const unitPlans = new Map();
+  const ctx = {
+    up,
+    tol,
+    diag,
+    stats,
+    debug: options.debug,
+    cache: new Map(),
+    unitPlans,
+    serial: 0,
+  };
   // 由下往上規劃：子單元先完成
   for (const unit of [...units].reverse()) {
     report(unit.name);
-    unitPlans.set(
-      unit,
-      planUnit(unit, store, { up, tol, diag, stats, debug: options.debug }),
-    );
+    planUnit(unit, store, ctx);
     done += unit.children.length;
   }
   report("完成");
@@ -70,9 +71,11 @@ export function planAssembly(data, options = {}) {
   return result;
 }
 
-function candidateDirections(features) {
+function candidateDirections(features, fastener = false) {
   const dirs = AXES.map((v) => ({ v, feature: false }));
-  for (const extra of [features.axis, features.plate]) {
+  const extras = [features.axis, features.plate];
+  if (fastener) extras.push(features.symmetry);
+  for (const extra of extras) {
     if (!extra) continue;
     // 與座標軸幾乎平行時不重複加入，只標記為特徵方向
     for (const sign of [1, -1]) {
@@ -111,7 +114,109 @@ function maybeInPath(store, j, i, d, tol) {
   return project(bi, d)[1] > project(bj, d)[0] + tol;
 }
 
+/**
+ * 規劃一個單元；遇到互鎖時若找到「可一起移出的一群零件」（例如軸＋軸承），
+ * 把它們包成臨時預組件，先組好再整組裝入，然後重新規劃本單元。
+ */
 function planUnit(unit, store, ctx) {
+  for (;;) {
+    const result = sequenceUnit(unit, store, ctx);
+    if (!result.group) {
+      ctx.unitPlans.set(unit, result);
+      return;
+    }
+    const members = result.group.map((i) => unit.children[i]);
+    const largest = members.reduce((a, b) =>
+      store.analyze(a, ctx.tol, 360).volume >= store.analyze(b, ctx.tol, 360).volume ? a : b,
+    );
+    const virtual = {
+      id: `v${ctx.serial++}`,
+      kind: "unit",
+      virtual: true,
+      name: `${cleanName(largest.name)} 組件`,
+      meshes: members.flatMap((m) => m.meshes),
+      children: members,
+    };
+    const at = unit.children.indexOf(members[0]);
+    unit.children = unit.children.filter((c) => !members.includes(c));
+    unit.children.splice(Math.min(at, unit.children.length), 0, virtual);
+    ctx.stats.groups++;
+    planUnit(virtual, store, ctx);
+  }
+}
+
+/** j 沿 v 移出時是否會撞到 i（雙向射線），結果依實體與方向快取。 */
+function isBlocked(store, ctx, a, b, v) {
+  const key = `${a.e.id}|${b.e.id}|${v.x.toFixed(4)},${v.y.toFixed(4)},${v.z.toFixed(4)}`;
+  if (ctx.cache.has(key)) return ctx.cache.get(key);
+  const limit = (f) => Math.max(2, Math.ceil(f.points.length / 100));
+  let blocked = false;
+  if (maybeInPath(store, a.e, b.e, v, ctx.tol)) {
+    ctx.stats.rays += a.f.points.length;
+    blocked = store.enteringHits(a.f.points, v, b.e, limit(a.f)) >= limit(a.f);
+    if (!blocked) {
+      ctx.stats.rays += b.f.points.length;
+      blocked =
+        store.enteringHits(b.f.points, v.clone().negate(), a.e, limit(b.f)) >= limit(b.f);
+    }
+  }
+  ctx.cache.set(key, blocked);
+  return blocked;
+}
+
+// Tarjan 強連通分量；edges(j) 回傳 j 會撞到的節點
+function stronglyConnected(nodes, edges) {
+  let index = 0;
+  const order = new Map(),
+    low = new Map(),
+    stack = [],
+    onStack = new Set(),
+    out = [];
+  const visit = (v) => {
+    order.set(v, index);
+    low.set(v, index++);
+    stack.push(v);
+    onStack.add(v);
+    for (const w of edges(v)) {
+      if (!order.has(w)) {
+        visit(w);
+        low.set(v, Math.min(low.get(v), low.get(w)));
+      } else if (onStack.has(w)) low.set(v, Math.min(low.get(v), order.get(w)));
+    }
+    if (low.get(v) === order.get(v)) {
+      const component = [];
+      let w;
+      do {
+        w = stack.pop();
+        onStack.delete(w);
+        component.push(w);
+      } while (w !== v);
+      out.push(component);
+    }
+  };
+  for (const v of nodes) if (!order.has(v)) visit(v);
+  return out;
+}
+
+function removableGroup(info, blockers, present, base, up) {
+  let best = null;
+  AXES.forEach((axis, k) => {
+    const nodes = [...present];
+    const edges = (j) => blockers[j][k].filter((i) => present.has(i));
+    for (const component of stronglyConnected(nodes, edges)) {
+      if (component.length < 2 || component.includes(base)) continue;
+      const inside = new Set(component);
+      if (component.some((j) => edges(j).some((i) => !inside.has(i)))) continue;
+      const volume = component.reduce((n, j) => n + info[j].f.volume, 0);
+      const vertical = axis.dot(up);
+      const score = component.length * 1e12 + volume - (vertical > 0.9 ? 1 : 0);
+      if (!best || score < best.score) best = { score, component };
+    }
+  });
+  return best?.component || null;
+}
+
+function sequenceUnit(unit, store, ctx) {
   const { tol, up, stats } = ctx;
   const children = unit.children;
   const info = children.map((e) => {
@@ -131,29 +236,15 @@ function planUnit(unit, store, ctx) {
       fastener: fastener || flexible,
       flexible,
       ring,
-      dirs: candidateDirections(f),
+      dirs: candidateDirections(f, fastener || flexible),
       size: store.box(e).getSize(new Vector3()).length(),
     };
   });
-  const limit = (f) => Math.max(2, Math.ceil(f.points.length / 100));
   // blockers[j][k] = 沿第 k 個候選方向移出 j 時會撞到的兄弟索引
   const blockers = info.map((a, j) =>
-    a.dirs.map(({ v }) => {
-      const set = [];
-      info.forEach((b, i) => {
-        if (i === j || !maybeInPath(store, a.e, b.e, v, tol)) return;
-        stats.rays += a.f.points.length;
-        if (store.enteringHits(a.f.points, v, b.e, limit(a.f)) >= limit(a.f)) {
-          set.push(i);
-          return;
-        }
-        const back = v.clone().negate();
-        stats.rays += b.f.points.length;
-        if (store.enteringHits(b.f.points, back, a.e, limit(b.f)) >= limit(b.f))
-          set.push(i);
-      });
-      return set;
-    }),
+    a.dirs.map(({ v }) =>
+      info.flatMap((b, i) => (i !== j && isBlocked(store, ctx, a, b, v) ? [i] : [])),
+    ),
   );
   const preference = (a, k) => {
     const { v, feature } = a.dirs[k];
@@ -205,7 +296,12 @@ function planUnit(unit, store, ctx) {
     }
     let forced = false;
     if (pick < 0) {
-      // 互鎖或幾何干涉：取阻擋最少者，標記需工程審核
+      // 互鎖：找一群可沿同一方向一起移出的零件（方向阻擋圖中的匯點強連通分量）
+      const group = removableGroup(info, blockers, present, base, up);
+      if (group) return { group };
+    }
+    if (pick < 0) {
+      // 仍無解（封閉、干涉）：取阻擋最少者，標記需工程審核
       let fewest = Infinity;
       for (const j of present) {
         if (j === base) continue;
@@ -266,7 +362,18 @@ function planUnit(unit, store, ctx) {
     for (const g of group) {
       let k = freeDirection(g.index, installed);
       let forced = false;
-      if (k < 0) {
+      const axisDirs = info[g.index].dirs
+        .map((d, kk) => (d.feature ? kk : -1))
+        .filter((kk) => kk >= 0);
+      if (k < 0 && axisDirs.length) {
+        // 螺紋段與孔重疊是 CAD 常態：有軸向的緊固件一律沿軸向鎖入，不列為待確認
+        k = axisDirs.reduce((best, kk) =>
+          blockers[g.index][kk].filter((i) => installed.has(i)).length <
+          blockers[g.index][best].filter((i) => installed.has(i)).length
+            ? kk
+            : best,
+        );
+      } else if (k < 0) {
         k = 0;
         let fewest = Infinity;
         blockers[g.index].forEach((set, kk) => {
@@ -334,6 +441,7 @@ function emit(tree, unitPlans, data, up) {
     const node = { id, name: e.name, parentId, kind: e.kind };
     if (e._features) node.geomKey = e._features.key;
     if (e.purchased) node.purchased = true;
+    if (e.virtual) node.virtual = true;
     nodes.push(node);
     if (e.kind === "atomic") for (const m of e.meshes) partNode[m] = id;
     let unnamed = 0;
@@ -372,6 +480,12 @@ function emit(tree, unitPlans, data, up) {
       const target = targets.length ? `「${cleanName(targets[0])}」` : "相關零件";
       name = `${where}鎖固 ${label}${count}`;
       instruction = `以${count ? ` ${items.length} 支` : ""}「${label}」鎖固${target}，${directionText(dir, up)}；依圖面扭力鎖緊。`;
+    } else if (first.virtual) {
+      // 推論出的組件：CAD 沒有這一層，因互鎖必須先組合再一起裝入
+      const parts = [...new Set(first.children.map((c) => cleanName(c.name)))];
+      const list = parts.slice(0, 3).join("、") + (parts.length > 3 ? " 等" : "");
+      name = `${where}安裝 ${label}${count}（先組合再裝入）`;
+      instruction = `「${list}」彼此卡住，無法單獨裝入：請先將它們組合成「${label}」，再整組${directionText(dir, up)}。`;
     } else if (first.kind === "unit") {
       name = `${where}安裝 ${label}${count}（預組件）`;
       instruction = `將已預組完成的「${label}」${count ? `共 ${items.length} 組，` : ""}整組${directionText(dir, up)}，對準定位後固定。`;

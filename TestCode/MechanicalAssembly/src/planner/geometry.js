@@ -76,6 +76,16 @@ export function eigenSymmetric(m) {
     .sort((x, y) => y.value - x.value);
 }
 
+// 旋轉對稱使兩個特徵值幾乎相等（差 3% 內），第三個需明顯不同（差 5% 以上）
+const same = (a, b) => Math.abs(a - b) <= 0.03 * Math.max(a, b);
+const apart = (a, b) => Math.abs(a - b) > 0.05 * Math.max(a, b);
+function axisOf(l1, l2, l3, eig) {
+  if (!(l1 > 0)) return null;
+  if (same(l1, l2) && apart(l2, l3)) return eig[2].vector;
+  if (same(l2, l3) && apart(l1, l2)) return eig[0].vector;
+  return null;
+}
+
 const sig = (x) => (x === 0 ? "0" : Number(x).toPrecision(3));
 
 export class GeometryStore {
@@ -247,6 +257,8 @@ export class GeometryStore {
       eigen: eig,
       // 軸對稱件（螺絲、銷、軸）：法向量分布在一個平面上
       axis: l1 > 0 && l2 / l1 > 0.6 && l3 < 0.6 * l2 ? eig[2].vector : null,
+      // 較寬鬆的軸對稱判斷（短螺絲、螺帽、止付螺絲）：兩個特徵值相近、第三個不同
+      symmetry: axisOf(l1, l2, l3, eig),
       // 板件：大部分面積朝同一個法向
       plate: l1 > 0 && l2 / l1 < 0.25 ? eig[0].vector : null,
       key: `${triangles}|${sig(area)}|${sig(l1)}|${sig(l2)}|${sig(l3)}`,
