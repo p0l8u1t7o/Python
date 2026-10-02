@@ -2,11 +2,12 @@
 import * as THREE from 'three';
 import { AGV, FORK } from './layout.js';
 import { MAT, box, cyl, D2R } from './parts.js';
+import { bolts, housing } from './detail.js';
 
 export function createAgv(scene) {
   const root = new THREE.Group(); root.name = 'agv'; scene.add(root);
-  box(root, AGV.rear + 150, 1000, AGV.halfW * 2, MAT.agv, (-AGV.rear + 150) / 2, 650, 0);
-  box(root, 320, 940, AGV.halfW * 2 + 10, MAT.agvDark, -AGV.rear + 160, 620, 0);           // 配重
+  housing(root, AGV.rear + 150, 1000, AGV.halfW * 2, MAT.agv, (-AGV.rear + 150) / 2, 650, 0, 35);
+  housing(root, 320, 940, AGV.halfW * 2, MAT.agvDark, -AGV.rear + 160, 620, 0, 35);           // 配重
   box(root, 900, 30, 700, MAT.agvDark, -650, 1165, 0);
   const beaconMat = MAT.amber.clone(); const beacon = cyl(root, 55, 110, beaconMat, -650, 1235, 0);
   for (const s of [-1, 1]) cyl(root, 200, 160, MAT.black, 0, 200, s * 400, 'z');
@@ -30,14 +31,21 @@ export function createAgv(scene) {
   }
   // 載物點：棧板原點（底面中心）＝叉面 − 120
   const carry = new THREE.Object3D(); carry.position.set(AGV.palletX, -FORK.deck, 0); carriage.add(carry);
-  let blink = 0;
+  const hubs = [];
+  for (const s of [-1, 1]) { const hub = cyl(root, 100, 12, MAT.steel, 0, 200, s * 486, 'z', 24); hubs.push(hub); bolts(root, Array.from({length: 6}, (_, k) => [65 * Math.cos(k * Math.PI / 3), 200 + 65 * Math.sin(k * Math.PI / 3), s * 495]), 9, 'z'); }
+  for (let i = 0; i < 9; i++) box(root, 480, 9, 4, MAT.black, -900, 430 + i * 35, -502);
+  cyl(root, 62, 55, MAT.black, -1150, 1230, 0); cyl(root, 58, 20, MAT.screen, -1150, 1268, 0);
+  const liftRod = cyl(root, 27, 1, MAT.steel, 280, 400, 0);
+  cyl(root, 52, 950, MAT.black, 280, 520, 0);
   return {
     root, carry,
-    set({ x, z, yaw, fork, moving = false }) {
+    set({ x, z, yaw, fork, moving = false, time = 0 }) {
       root.position.set(x, 0, z); root.rotation.y = yaw * D2R;
       carriage.position.y = fork; inner.position.y = Math.max(0, fork - 1400);
+      for (const hub of hubs) hub.rotation.y = (x - z) / 200;
       // 警示燈以亮度脈動表示行駛中（不切換材質，避免畫面閃爍）
-      blink = moving ? blink + .12 : 0; beacon.material = beaconMat; beaconMat.emissiveIntensity = moving ? .5 + .5 * Math.sin(blink) : .05;
+      liftRod.scale.y = Math.max(1, fork + 250 - 600); liftRod.position.y = 600 + liftRod.scale.y / 2;
+      beaconMat.emissiveIntensity = moving ? .5 + .35 * Math.sin(time * 5) : .05;
     },
     // 車身與棧板的俯視多邊形（驗證用）
     footprint(loaded) {

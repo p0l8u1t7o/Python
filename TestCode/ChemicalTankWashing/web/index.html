@@ -34,10 +34,15 @@
       <button data-view="upender">翻桶</button>
       <button data-view="decap">開蓋</button>
       <button data-view="robot">清洗手臂</button>
+      <button data-view="gripper">夾具特寫</button>
       <button data-view="booth">沖洗站</button>
       <button data-view="weigh">秤重</button>
       <button data-view="waste">廢液回收</button>
       <button data-view="follow" title="鏡頭跟隨第 1 桶">跟隨 #1</button>
+    </div>
+    <div class="focusbar" aria-label="焦點控制">
+      <label class="focus-choice">焦點 <select id="focusTarget" aria-label="焦點追蹤目標"><option value="gripper">清洗夾具</option><option value="auto">目前作業桶</option><option value="drum0">第 1 桶</option><option value="drum1">第 2 桶</option><option value="drum2">第 3 桶</option><option value="drum3">第 4 桶</option><option value="agv">AGV</option><option value="gantry">龍門夾爪</option></select></label>
+      <button id="focusNow">對準焦點</button><button id="focusTrack" aria-pressed="false">追蹤焦點</button><span id="focusStatus" role="status">自由視角</span>
     </div>
   </header>
 
@@ -58,6 +63,7 @@
     <section class="card"><h3>空間檢核 <span class="hint" id="chkCount"></span></h3><ul id="checks" class="checks"></ul></section>
     <section class="card small">
       <h3>顯示</h3>
+      <label class="displayOption"><input id="cutaway" type="checkbox">剖視沖洗隔間與儲槽</label>
       <label class="displayOption"><input id="showDims" type="checkbox">尺寸、AGV 迴轉圈、手臂伸展範圍</label>
       <label class="displayOption"><input id="showFence" type="checkbox" checked>圍籬與光柵</label>
       <label class="displayOption"><input id="showLabels" type="checkbox" checked>設備標籤</label>
@@ -67,7 +73,12 @@
     </section>
   </aside>
 
-  <div id="pip" hidden><div id="pipTitle"></div><div id="pipResult"></div></div>
+  <section id="pip" aria-label="相機視野視窗" hidden>
+    <div id="pipHeader" tabindex="0" aria-label="拖曳相機視窗；方向鍵移動"><span id="pipTitle">相機視野</span><button id="pipMinimize" aria-label="收合相機視窗">−</button><button id="pipClose" aria-label="隱藏相機視窗">×</button></div>
+    <div id="pipToolbar"><select id="pipSource" aria-label="相機視窗來源"><option value="auto">自動切換</option><option value="label">貼標相機</option><option value="decap">桶口相機</option><option value="gripper">清洗夾具</option></select><button id="pipReset">重設位置</button></div>
+    <div id="pipViewport"></div><div id="pipResult"></div><button id="pipResize" aria-label="調整相機視窗大小" title="拖曳或使用方向鍵調整大小">◢</button>
+  </section>
+  <button id="pipRestore" hidden>顯示相機視窗</button>
 
   <footer id="bottombar">
     <div class="ctl">

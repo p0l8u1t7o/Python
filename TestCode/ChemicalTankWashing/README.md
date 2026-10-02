@@ -2,6 +2,8 @@
 
 依 `docs/` 的場地圖（紅框倉儲區）、手繪動線與 200L 閉口 HDPE 桶照片規劃。洗桶區 12.56 × 15.52 m、樓高 4.5 m，倉儲約 200 桶，用 AGV 搬運，清洗手臂用 FANUC。Three.js 依賴放在 `web/vendor`，可以離線執行。
 
+[線上 3D 展示](https://p0l8u1t7o.github.io/Python/ChemicalTankWashing/) · [全部自動化專案](https://p0l8u1t7o.github.io/Python/)
+
 已拍板：
 - **倉儲**：穿梭車密集架。
 - **殘液**：酸鹼水溶液，不需防爆，手臂加防護衣。
@@ -28,7 +30,7 @@
 | S6 手臂清洗 | R-2000iC/165F 從「取桶位」取下 → 經過渡點送入沖洗站 → 每道：2" 旋轉噴頭與 3/4" 直噴頭同時進水 → 搖晃 → 翻 190° 倒液（3/4" 在上方當通氣口）；共 3 道 → **末道後桶身微傾 3°，2" 噴槍長行程伸到桶底負壓抽乾積水 → 3/4" 改送 70°C 熱風、桶底持續負壓 30 s，帶走內壁附著水** → 放回同一條線的「放回位」**秤重（殘水 < 100 g 放行）**，再往南直送裝填區 | **約 150 s／桶（瓶頸）** |
 | S7 廢液回收 | 逆流沖洗：第 1 道用 TK-R 回收水，第 2、3 道用清水；第 1、2 道經 P-2 依桶號送 TK-WA（酸）或 TK-WB（鹼），第 3 道與抽出的殘水回收到 TK-R | 每道 20 L |
 
-整線約 24 桶／h，200 桶約 8.3 h（使用者決定維持，不加站）。動畫走完「散桶入庫 4 桶＋一個棧板 4 桶清洗」共 746 s，各站並行，交接時刻依站位占用推算。
+整線約 24 桶／h，200 桶約 8.4 h（使用者決定維持，不加站）。動畫走完「散桶入庫 4 桶＋一個棧板 4 桶清洗」共 750.6 s，各站並行，交接時刻依站位占用推算。
 
 **手臂節拍的組成**：
 - **進水**：雙孔進水每道 13.3 s（2" 60 L/min＋3/4" 30 L/min）；只用 2" 單孔要 20 s，雙孔每桶省約 20 s。
@@ -120,11 +122,50 @@ node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify.m
 - 交接瞬間是否跳動；
 - 倒序取樣的一致性。
 
-結果在 [review/verification.json](review/verification.json)：全數通過（總長 746 s、手臂節拍 150 s）。手臂追蹤誤差 ≤ 0.05 mm；關節速度最高為額定的 83%；手臂與設備最小淨距 172 mm。
+結果在 [review/verification.json](review/verification.json)：全數通過（總長 750.6 s、手臂節拍 151.1 s）。手臂追蹤誤差 ≤ 0.05 mm；關節速度最高為額定的 83%；手臂連桿與納入檢查之設備外框最小淨距 166 mm。桶的檢查已使用外凸滾箍半徑 298 mm、162 個表面點，並加入手臂／桶對剛性配管檢查。
 
 這是有限取樣檢查，不是連續碰撞證明。
 
+局部機構另執行：
+
+```powershell
+node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-detail.mjs
+```
+
+結果見 [review/detail-verification.json](review/detail-verification.json)。19 項檢查涵蓋貼標輥相切、翻桶托架、轉盤／固定滾輪、秤台全行程、槽體／防溢堤、PP 板穿管孔、跨圍籬配管、雙槍孔徑與桶內間隙、噴洗聯鎖、液位及入庫門開口。時間取樣包含動作邊界前後，共 15,954 點。
+
+## 實物細節與渲染更新
+
+各站補上馬達散熱片、軸承、光電、地腳螺栓、櫃門與通風孔；貨架加入斜撐與中空棧板，AGV 加入門架液壓桿和雷射頭，手臂加入倒角鑄件、關節端蓋與工具法蘭，入庫吊車加入工字樑與吊車驅動，儲槽增加外置液位視管、維修蓋與管件。
+
+使用離線程序紋理表現金屬拉絲、HDPE 微表面和地坪，搭配環境反射、ACES 色調映射及陰影。圍籬改為可透視網孔；沖洗隔間與槽體預設為實體材質，可在「顯示 → 剖視沖洗隔間與儲槽」切換。桶頂雙孔、噴槍導管、PP 穿管孔與捲門開口均有實際幾何開孔。
+
+修正項目與檢核範圍見 [docs/planning.md 第 13 節](docs/planning.md)。此次瀏覽器檢查與 13 個站位截圖在 [review/detail-screens/browser-review.json](review/detail-screens/browser-review.json)，包含倒退取樣與相機子畫面檢查。`tools/review-scenes.mjs` 可由 Browser 技能工作階段以 `runReview(cdp, tab, outputDirectory)` 重跑。
+
 瀏覽器檢查（先執行 `python serve.py --no-open`）：`node tools/browser-check.mjs`。用本機 Chrome 無頭模式收集主控台錯誤，並截下 17 張站別畫面到 `review/screens/`。
+
+## 清洗夾具與視角操作
+
+清洗手臂改用完整側進式夾具：工具法蘭、轉接座、背板、雙導軌、四滑座、雙氣缸推桿、承力側架、上下分段弧形 PU 墊及頂部 L 環防脫扣。防脫扣隨側爪一起退開；墊片避開桶身凸箍。導軌總寬 840 mm、單爪行程 30 mm，縮小墊片包覆角以避免側向接近桶身時擦入。
+
+滑座改為具有實際通槽的 U 形結構，氣缸與驅動橫桿前移避開導軌，補上連到背板的固定座、活塞桿貫穿孔、雙路供氣接頭及分配塊。框架採鋁材，接觸支架與導軌保留鋼材；背板四個檢修窗可看見缸體與推桿，固定座下方保留完整腹板。
+
+- **夾具特寫**：上方視角按鈕可直接看清接合與夾持結構。
+- **焦點**：選清洗夾具、目前作業桶、第 1–4 桶、AGV 或龍門夾爪，再按「對準焦點」或「追蹤焦點」。追蹤時仍可旋轉和縮放；按「停止追蹤」或其他預設視角退出。桶離線時保留視角並顯示提示，倒退跳轉會恢復追蹤。
+- **相機視窗**：拖曳標題列移動、拖曳右下角調整大小；「−」收合、「×」隱藏，再按「顯示相機視窗」恢復。「重設位置」恢復預設大小與位置。方向鍵可移動／調整大小，Shift 加速，Escape 隱藏。
+- **相機來源**：可選自動切換、貼標相機、桶口相機或清洗夾具。即時畫面持續可用，檢測結果只在觸發後顯示 4 秒，並標示為模擬訊號。視窗會限制在 3D 畫布內，縮窄畫面後仍能操作。
+
+暫停且視角不變時停止重繪；陰影隨設備狀態更新一次，由主視角和子視窗共用，避免雙重計算。
+
+新增驗證：
+
+```powershell
+node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify-gripper.mjs
+```
+
+[夾具檢核](review/gripper-verification.json) 包含 15,098 個時間／事件取樣、101 個開合位置、10 項結構檢查、實際零件定向包圍盒及桶輪廓邊線取樣。未檢出設備干涉、穿桶或越界；夾具至 40 mm 圍籬框的取樣最小淨距約 9.96 mm，金屬至桶身約 1.61 mm。小間隙尚須計入製造公差與桶型變異，不能視為製造驗證。`tools/review-camera.mjs` 可由 Browser 工作階段呼叫 `runCameraReview(cdp, tab, outputDirectory)`；[互動報告](review/camera/camera-review.json) 記錄 28 項追蹤及視窗操作測試，包含從全景選擇已離線目標時保留相機位置。
+
+另有 [480 × 800 視窗邊界測試](review/camera/responsive-review.json)，及實際 WebGL 畫布匯出的 [夾持特寫](review/camera/gripper-closed.png)、[張開](review/camera/gripper-open.png)、[倒置倒液](review/camera/gripper-inverted.png) 預覽。
 
 ## 檔案
 
@@ -135,10 +176,12 @@ node --no-warnings --experimental-loader ./tools/three-loader.mjs tools/verify.m
 | `web/js/inbound.js` | 散桶入庫：捲門、懸臂吊、台車、作業員 |
 | `web/js/storage.js`、`agv.js` | 穿梭車密集架、棧板、架上桶槽、AGV |
 | `web/js/line.js` | 棧板站、龍門、V 槽滾輪輸送、貼標讀碼、翻桶機、開蓋站、立放直線輸送、圍籬、控制櫃 |
-| `web/js/robot.js`、`kinematics.js` | R-2000iC/165F、夾桶夾爪、IK |
-| `web/js/washing.js` | 沖洗站、雙噴槍、真空泵、集液、三槽、泵與配管流向 |
+| `web/js/robot.js`、`gripper.js`、`kinematics.js` | R-2000iC/165F、完整清洗夾具、IK |
+| `web/js/washing.js` | 沖洗站、雙噴槍、真空泵、集液、四槽、泵與配管流向 |
+| `web/js/detail.js` | 程序材質、倒角外殼、螺栓實例、馬達／法蘭／儀表等共用細節 |
 | `web/js/drum.js` | 200L 桶 |
 | `web/js/sequence.js` | 各設備與各桶的時間軌、交接推算、狀態取樣 |
 | `web/js/main.js` | 場景、面板、視角、相機子畫面 |
+| `web/js/view-controls.js` | 焦點追蹤、相機視窗拖曳／縮放／隱藏 |
 | `tools/verify.mjs`、`browser-check.mjs` | 幾何驗證、瀏覽器檢查 |
 | `docs/planning.md` | 規劃說明（只留本機） |

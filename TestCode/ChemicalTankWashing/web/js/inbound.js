@@ -2,7 +2,8 @@
 // 懸臂吊方位 a（度）：手臂方向 (cos a, −sin a)，與 AGV 方位同一定義；r 為吊點半徑，y 為桶中心高度。
 import * as THREE from 'three';
 import { INBOUND, DRUM, ROOM } from './layout.js';
-import { MAT, box, cyl, plate, D2R } from './parts.js';
+import { MAT, box, cyl, plate, D2R, rod } from './parts.js';
+import { bolts, motor } from './detail.js';
 
 export const DOLLY_H = 120;
 // 懸臂吊吊點對應的桶中心
@@ -37,10 +38,15 @@ export function createInbound(scene) {
   cyl(group, 130, j.armY + 200, MAT.steelOrange, j.x, (j.armY + 200) / 2, j.z, 'y', 20);
   box(group, 600, 40, 600, MAT.steelDark, j.x, 20, j.z);
   const arm = new THREE.Group(); arm.position.set(j.x, j.armY, j.z); group.add(arm);
-  box(arm, j.reach, 200, 120, MAT.steelOrange, j.reach / 2, 0, 0);
+  box(arm, j.reach, 140, 35, MAT.steelOrange, j.reach / 2, 0, 0);
+  for (const y of [-85, 85]) box(arm, j.reach, 30, 180, MAT.steelOrange, j.reach / 2, y, 0);
+  rod(arm, [100, 180, 0], [1900, 100, 0], 18, MAT.steelDark);
+  bolts(group, [-1, 1].flatMap(a => [-1, 1].map(b => [j.x + a * 230, 48, j.z + b * 230])), 20);
   box(arm, 300, 160, 160, MAT.steelDark, 0, 120, 0);
   const trolley = new THREE.Group(); arm.add(trolley);
   box(trolley, 220, 120, 220, MAT.black, 0, -150, 0);
+  motor(trolley, 0, -150, 130, .55);
+  for (const s of [-1, 1]) cyl(trolley, 45, 28, MAT.steel, 0, -50, s * 85, "z");
   const chain = cyl(trolley, 10, 1, MAT.steel, 0, 0, 0, 'y', 6);
   const clamp = new THREE.Group(); trolley.add(clamp);
   box(clamp, 520, 50, 120, MAT.steelDark, 0, 25, 0);

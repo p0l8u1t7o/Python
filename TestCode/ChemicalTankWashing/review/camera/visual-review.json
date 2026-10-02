@@ -1,0 +1,22 @@
+{
+  "shots": [
+    {
+      "name": "gripper-closed",
+      "time": 137
+    },
+    {
+      "name": "gripper-open",
+      "time": 135.72
+    },
+    {
+      "name": "gripper-empty",
+      "time": 0
+    },
+    {
+      "name": "gripper-inverted",
+      "time": 167.78686514483078
+    }
+  ],
+  "capture": "WebGL 畫布匯出",
+  "logs": []
+}

@@ -8,9 +8,13 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import { layoutChecks, BOOTH, UPRIGHT, FENCE, COLUMN, rackBlocks, RACK, GANTRY, AGV, PALLET, DRUM, pointInPolygon, OUTLINE, DECAP, ROBOT, FOOTPRINTS } from '../web/js/layout.js';
 import { createRobot, LIMITS, SPEED, JOINTS } from '../web/js/robot.js';
 import { createSequence, drumWorld, DRUM_KEYS } from '../web/js/sequence.js';
+import { createWashing } from '../web/js/washing.js';
 
 const D2R = Math.PI / 180, DT = .05;
 const robot = createRobot(), seq = createSequence({ robot });
+const services = createWashing(new THREE.Scene());
+const pipeSegments = Object.entries(services.pipes).flatMap(([name,p])=>p.points.slice(1).map((b,i)=>({name,a:new THREE.Vector3(...p.points[i]),b:new THREE.Vector3(...b),r:p.radius})));
+const segmentDistance = (p,a,b) => { const d=b.clone().sub(a), u=Math.max(0,Math.min(1,p.clone().sub(a).dot(d)/d.lengthSq())); return p.distanceTo(a.clone().addScaledVector(d,u)); };
 const fails = [], notes = {};
 const fail = (kind, msg) => { if (fails.filter(f => f.kind === kind).length < 8) fails.push({ kind, msg }); notes[kind] = (notes[kind] || 0) + 1; };
 
@@ -38,10 +42,10 @@ const distToBox = (p, a) => Math.hypot(Math.max(a[0] - p.x, 0, p.x - a[3]), Math
 const insideFence = (p, r) => { if (!pointInPolygon([p.x, p.z], FENCE)) return false; for (let i = 1; i < FENCE.length; i++) { const [ax, az] = FENCE[i - 1], [bx, bz] = FENCE[i], L = Math.hypot(bx - ax, bz - az), t = Math.max(0, Math.min(1, ((p.x - ax) * (bx - ax) + (p.z - az) * (bz - az)) / (L * L))); if (Math.hypot(p.x - ax - t * (bx - ax), p.z - az - t * (bz - az)) < r) return false; } return true; };
 // 桶表面取樣點（局部）
 const drumPts = [];
-for (const y of [-DRUM.H / 2, -DRUM.H / 4, 0, DRUM.H / 4, DRUM.H / 2]) for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; drumPts.push(new THREE.Vector3(DRUM.R * Math.cos(a), y, DRUM.R * Math.sin(a))); }
+for (const y of [-DRUM.H / 2, -180, 0, 180, DRUM.H / 2]) for (let i = 0; i < 32; i++) { const a = i / 32 * Math.PI * 2; drumPts.push(new THREE.Vector3(DRUM.envelopeR * Math.cos(a), y, DRUM.envelopeR * Math.sin(a))); }
 drumPts.push(new THREE.Vector3(0, DRUM.H / 2, 0), new THREE.Vector3(0, -DRUM.H / 2, 0));
 const worldPts = w => drumPts.map(p => p.clone().applyQuaternion(w.q).add(w.pos));
-const inDrum = (p, w, margin) => { const l = p.clone().sub(w.pos).applyQuaternion(w.q.clone().invert()); return Math.abs(l.y) < DRUM.H / 2 - margin && Math.hypot(l.x, l.z) < DRUM.R - margin; };
+const inDrum = (p, w, margin) => { const l = p.clone().sub(w.pos).applyQuaternion(w.q.clone().invert()); return Math.abs(l.y) < DRUM.H / 2 - margin && Math.hypot(l.x, l.z) < DRUM.envelopeR - margin; };
 
 // ---------------------------------------------------------------- 2–6. 逐時取樣
 const maxErr = { position: 0, angle: 0 }, speedRatio = Object.fromEntries(JOINTS.map(n => [n, 0])), jump = { mm: 0, at: 0, drum: '' };
@@ -70,6 +74,7 @@ for (let t = 0; t <= seq.total + 1e-9; t += DT) {
       const p = a.clone().lerp(c, i / n);
       if (!insideFence(p, r)) fail('robot-fence', `${t.toFixed(2)} s 連桿點 (${p.x.toFixed(0)}, ${p.y.toFixed(0)}, ${p.z.toFixed(0)}) 超出圍籬`);
       for (const box of [...boothBoxes, ...conveyorBoxes]) { const d = distToBox(p, box) - r; if (d < minRobotClear) { minRobotClear = d; minRobotClearAt = `${t.toFixed(2)} s`; } if (d < 0) fail('robot-hit', `${t.toFixed(2)} s 連桿碰到 [${box.map(v => v.toFixed(0)).join(',')}]`); }
+      for (const pipe of pipeSegments) if (segmentDistance(p,pipe.a,pipe.b)<r+pipe.r) fail('robot-pipe',`${t.toFixed(2)} s 手臂碰到配管 ${pipe.name}`);
     }
   }
   // 桶：位置、互相重疊、夾持中的桶對障礙物
@@ -90,6 +95,7 @@ for (let t = 0; t <= seq.total + 1e-9; t += DT) {
       const pts = worldPts(w);
       const boxes = mode === 'robot' ? [...boothBoxes, ...conveyorBoxes, robotBase] : gantryBoxes;
       for (const box of boxes) if (pts.some(p => distToBox(p, box) < 5)) fail('drum-hit', `${t.toFixed(2)} s ${DRUM_KEYS[k]}（${mode}）碰到 [${box.map(v => v.toFixed(0)).join(',')}]`);
+      if(mode==='robot')for(const pipe of pipeSegments)if(pts.some(p=>segmentDistance(p,pipe.a,pipe.b)<pipe.r+5))fail('drum-pipe',`${t.toFixed(2)} s 桶碰到配管 ${pipe.name}`);
       if (mode === 'robot' && pts.some(p => !insideFence(p, 0))) fail('drum-fence', `${t.toFixed(2)} s ${DRUM_KEYS[k]} 超出清洗區圍籬`);
       if (mode === 'robot') robot.links().forEach(([a, c, r], li) => { if (li < 4) { const n = Math.ceil(a.distanceTo(c) / 50); for (let i = 0; i <= n; i++) if (inDrum(a.clone().lerp(c, i / n), w, -r * .6)) { fail('drum-arm', `${t.toFixed(2)} s ${DRUM_KEYS[k]} 碰到手臂連桿 ${li}`); break; } } });
     }
@@ -126,7 +132,7 @@ const result = {
   jointSpeedRatioMax: Object.fromEntries(Object.entries(speedRatio).map(([k, v]) => [k, +v.toFixed(2)])),
   minRobotClearance: { mm: +minRobotClear.toFixed(0), at: minRobotClearAt }, maxDrumStep: { mm: +jump.mm.toFixed(1), at: +jump.at.toFixed(2), drum: jump.drum }, determinismMaxDiff: +maxDiff.toFixed(4),
   failCounts: notes, failures: fails,
-  scope: '0.05 s 取樣；手臂連桿以線段＋半徑近似、桶以 62 個表面點近似；未含線纜、軟管與 AGV 與人員的動態干涉。',
+  scope: '0.05 s 取樣；手臂連桿以線段＋半徑近似、桶以含滾箍的 162 個表面點近似，納入剛性配管；未含軟管掃掠、所有緊固件與 AGV 與人員的動態干涉。',
 };
 mkdirSync(new URL('../review', import.meta.url), { recursive: true });
 writeFileSync(new URL('../review/verification.json', import.meta.url), JSON.stringify(result, null, 2));

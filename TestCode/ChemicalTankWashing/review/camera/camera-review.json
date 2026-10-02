@@ -1,0 +1,134 @@
+{
+  "ok": true,
+  "checks": [
+    {
+      "name": "全景可單次對準並拉近目標",
+      "ok": true
+    },
+    {
+      "name": "追蹤及跳轉 · agv",
+      "ok": true
+    },
+    {
+      "name": "追蹤及跳轉 · gantry",
+      "ok": true
+    },
+    {
+      "name": "追蹤及跳轉 · drum0",
+      "ok": true
+    },
+    {
+      "name": "追蹤及跳轉 · drum1",
+      "ok": true
+    },
+    {
+      "name": "追蹤及跳轉 · drum2",
+      "ok": true
+    },
+    {
+      "name": "追蹤及跳轉 · drum3",
+      "ok": true
+    },
+    {
+      "name": "追蹤及跳轉 · auto",
+      "ok": true
+    },
+    {
+      "name": "追蹤及跳轉 · gripper",
+      "ok": true
+    },
+    {
+      "name": "停止追蹤後跳轉不移動相機",
+      "ok": true
+    },
+    {
+      "name": "桶離線時保留視角並提示",
+      "ok": true
+    },
+    {
+      "name": "倒退跳轉恢復追蹤",
+      "ok": true
+    },
+    {
+      "name": "預設視角可退出追蹤",
+      "ok": true
+    },
+    {
+      "name": "對準已離線目標不改變相機位置",
+      "ok": true
+    },
+    {
+      "name": "從全景追蹤已離線目標不突然拉近",
+      "ok": true
+    },
+    {
+      "name": "標題列可拖曳且不旋轉主相機",
+      "ok": true,
+      "detail": {
+        "h": 286,
+        "minimized": false,
+        "visible": true,
+        "w": 360,
+        "x": 156,
+        "y": 72
+      }
+    },
+    {
+      "name": "拖曳右下角調整視窗大小",
+      "ok": true,
+      "detail": {
+        "h": 336,
+        "minimized": false,
+        "visible": true,
+        "w": 440,
+        "x": 156,
+        "y": 72
+      }
+    },
+    {
+      "name": "收合保留標題列",
+      "ok": true
+    },
+    {
+      "name": "展開恢復畫面",
+      "ok": true
+    },
+    {
+      "name": "隱藏與顯示設定同步",
+      "ok": true
+    },
+    {
+      "name": "一鍵恢復視窗",
+      "ok": true
+    },
+    {
+      "name": "相機來源 · gripper",
+      "ok": true
+    },
+    {
+      "name": "相機來源 · label",
+      "ok": true
+    },
+    {
+      "name": "相機來源 · decap",
+      "ok": true
+    },
+    {
+      "name": "相機來源 · auto",
+      "ok": true
+    },
+    {
+      "name": "鍵盤可移動視窗",
+      "ok": true
+    },
+    {
+      "name": "鍵盤可調整尺寸",
+      "ok": true
+    },
+    {
+      "name": "Escape 隱藏視窗",
+      "ok": true
+    }
+  ],
+  "logs": []
+}

@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { PALLET_STATION, PALLET, GANTRY, LYING, LABEL, UPENDER, UPRIGHT, DECAP, DRUM, FENCE, GANTRY_FENCE, FOOTPRINTS, ROOM, WEIGH } from './layout.js';
 import { MAT, box, boxAt, cyl, rod, plate, D2R } from './parts.js';
 import { drumJaws } from './drum.js';
+import { bolts, foot, motor, sensor, cabinetDetails } from './detail.js';
 
 export function createLine(scene) {
   const group = new THREE.Group(); group.name = 'line'; scene.add(group);
@@ -40,12 +41,12 @@ export function createLine(scene) {
 
   // ---------------------------------------------------------------- 橫躺輸送：水平沙漏形（V 槽）滾輪，滾輪軸橫跨輸送方向
   // 桶身落在 V 槽兩側斜面（半角 LYING.vee）；切點 z = R·sinα，由此反推滾輪軸高
-  const ly = LYING, va = ly.vee * D2R, r0 = 40, halfL = 260;
-  const axisY = ly.y - DRUM.R * Math.cos(va) - (DRUM.R * Math.sin(va)) * Math.tan(va) - r0;
+  const rollers = [], ly = LYING, va = ly.vee * D2R, r0 = 40, halfL = 260;
+  const axisY = ly.y - DRUM.envelopeR * Math.cos(va) - (DRUM.envelopeR * Math.sin(va)) * Math.tan(va) - r0;
   const hourglass = new THREE.LatheGeometry([[0, -halfL], [r0 + halfL * Math.tan(va), -halfL], [r0, 0], [r0 + halfL * Math.tan(va), halfL], [0, halfL]].map(([r, y]) => new THREE.Vector2(r, y)), 28);
   for (let x = ly.x0 + 165; x < ly.x1; x += 330) {
     if (Math.abs(x - LABEL.x) < 620) continue;              // 標籤站改用旋轉輥
-    const r = new THREE.Mesh(hourglass, MAT.roller); r.rotation.x = Math.PI / 2; r.position.set(x, axisY, ly.z); r.castShadow = r.receiveShadow = true; group.add(r);
+    const r = new THREE.Mesh(hourglass, MAT.roller); r.rotation.x = Math.PI / 2; r.position.set(x, axisY, ly.z); r.castShadow = r.receiveShadow = true; group.add(r); rollers.push({ mesh: r, axis: 'z', radius: 100, along: x });
     for (const s of [-1, 1]) cyl(group, 12, 60, MAT.steelDark, x, axisY, ly.z + s * (halfL + 30), 'z', 8);
   }
   for (const s of [-1, 1]) box(group, ly.x1 - ly.x0, 140, 50, MAT.steel, (ly.x0 + ly.x1) / 2, axisY, ly.z + s * (halfL + 60));
@@ -54,7 +55,7 @@ export function createLine(scene) {
   // 標籤站旋轉輥（取代該段 V 輥，兩支主動輥平行於桶軸）
   const lab = LABEL;
   const rotRollers = [];
-  for (const s of [-1, 1]) { const r = cyl(group, 70, 1100, MAT.belt, lab.x, ly.y - DRUM.R - 25, ly.z + s * 220, 'x', 20); rotRollers.push(r); }
+  for (const s of [-1, 1]) { const r = cyl(group, 70, 1100, MAT.belt, lab.x, ly.y - Math.sqrt((DRUM.envelopeR + 70) ** 2 - 220 ** 2), ly.z + s * 220, 'x', 20); rotRollers.push(r); }
   box(group, 1200, 120, 700, MAT.steelDark, lab.x, ly.y - DRUM.R - 140, ly.z);
 
   // ---------------------------------------------------------------- 貼標機（印字貼標頭，南側推出貼附）＋讀碼相機
@@ -82,17 +83,31 @@ export function createLine(scene) {
   for (const s of [-1, 1]) cyl(group, 90, 120, MAT.steelBlue, ux, uy, uz + s * 420, 'z');
   for (const s of [-1, 1]) box(group, 120, uy, 120, MAT.steelBlue, ux, uy / 2, uz + s * 420);
   const cradle = new THREE.Group(); cradle.position.set(ux, uy, uz); group.add(cradle);
-  box(cradle, 1000, 40, 640, MAT.steel, -500, -20, 0);                                   // 床面（桶身下方）
-  for (const s of [-1, 1]) box(cradle, 980, 40, 120, MAT.pu, -500, 10, s * 230);
-  box(cradle, 40, 640, 760, MAT.steel, 20, 320, 0);                                      // 桶底靠板（翻後成為承載面）
-  for (let k = 0; k < 4; k++) cyl(cradle, 30, 700, MAT.roller, -10, 80 + k * 150, 0, 'z', 12);
+  box(cradle, 1000, 40, 640, MAT.steel, -500, -27, 0);                                   // 床面（桶身下方）
+  // 兩條窄墊塊與桶外環相切，避免原寬墊塊插入桶身。
+  const supportZ = 230, supportHalf = 12;
+  const supportTop = DRUM.R - Math.sqrt(DRUM.envelopeR ** 2 - (supportZ - supportHalf) ** 2);
+  for (const s of [-1, 1]) box(cradle, 980, 30, supportHalf * 2, MAT.pu, -500, supportTop - 15, s * supportZ);
+  box(cradle, 40, 640, 760, MAT.steel, 82, 320, 0);                                      // 桶底靠板（翻後成為承載面）
+  for (let k = 0; k < 4; k++) cyl(cradle, 30, 700, MAT.roller, 30, 80 + k * 150, 0, 'z', 12);
   const upClamp = [];
   for (const s of [-1, 1]) { const c = box(cradle, 700, 160, 30, MAT.yellow, -500, DRUM.R, s * (DRUM.R + 60)); upClamp.push({ c, s }); }
-  const cyl1 = rod(group, [ux - 900, 220, uz], [ux - 600, 600, uz], 50, MAT.steel);
+  // 侧置液壓缸，活塞端隨翻轉台轉動，避開桶與承載床。
+  const actuator = new THREE.Group(); group.add(actuator);
+  cyl(actuator, 46, 420, MAT.steelDark, 0, 210, 0);
+  const piston = cyl(actuator, 24, 1, MAT.steel, 0, 420, 0);
+  const anchor = new THREE.Vector3(ux - 800, 230, uz - 570);
+  cyl(group, 65, 110, MAT.steelDark, anchor.x, anchor.y, anchor.z, 'z');
 
   // ---------------------------------------------------------------- 立放輸送：一路往南，取桶位與放回位不設側導引
   const up = UPRIGHT;
-  for (let z = up.z0 + 450; z < up.z1; z += 120) cyl(group, 30, 700, MAT.roller, up.x, up.top - 32, z, 'x', 12);
+  const uprightRollers = [];
+  for (let z = up.z0 + 450; z < up.z1; z += 120) {
+    if (Math.abs(z - DECAP.z) < 370) continue;
+    const r = cyl(group, 30, 700, MAT.roller, up.x, up.top - 30, z, 'x', 20);
+    uprightRollers.push(r); rollers.push({ mesh: r, axis: 'x', radius: 30, along: z });
+    for (const s of [-1, 1]) box(group, 26, 70, 70, MAT.steelDark, up.x + s * 357, up.top - 35, z);
+  }
   for (const s of [-1, 1]) box(group, 50, 150, up.z1 - up.z0 - 450, MAT.steel, up.x + s * 380, up.top - 70, (up.z0 + 450 + up.z1) / 2);
   for (let z = up.z0 + 600; z < up.z1; z += 900) for (const s of [-1, 1]) box(group, 60, up.top - 140, 60, MAT.steelDark, up.x + s * 380, (up.top - 140) / 2, z);
   for (const [z0, z1] of [[up.z0 + 450, up.pick - 350], [up.pick + 350, up.place - 350], [up.place + 350, up.z1]])
@@ -119,10 +134,19 @@ export function createLine(scene) {
   const dc = DECAP;
   for (const [dx, dz] of [[-650, -400], [650, -400], [-650, 400], [650, 400]]) box(group, 100, 2600, 100, MAT.steelBlue, up.x + dx, 1300, dc.z + dz);
   for (const dz of [-400, 400]) box(group, 1400, 120, 100, MAT.steelBlue, up.x, 2560, dc.z + dz);
-  const turntable = cyl(group, 320, 40, MAT.steelDark, up.x, up.top - 18, dc.z, 'y', 32);
+  const turntable = new THREE.Group(); turntable.position.set(up.x, 0, dc.z); group.add(turntable);
+  cyl(turntable, 330, 30, MAT.steelDark, 0, up.top - 85, 0, 'y', 48);
+  const tableRollers = [];
+  for (let dx = -270; dx <= 270; dx += 90) for (let dz = -270; dz <= 270; dz += 90) {
+    if (Math.hypot(dx, dz) > 300) continue;
+    cyl(turntable, 29, 30, MAT.steelDark, dx, up.top - 40, dz);
+    const r = new THREE.Mesh(new THREE.SphereGeometry(24, 16, 10), MAT.roller); r.position.set(dx, up.top - 24, dz); r.castShadow = true; turntable.add(r); tableRollers.push(r);
+  }
+  cyl(group, 180, 90, MAT.steelBlue, up.x, up.top - 145, dc.z);
+  motor(group, up.x + 225, 180, dc.z, .65);
   for (const s of [-1, 1]) box(group, 40, 120, 500, MAT.yellow, up.x + s * (DRUM.R + 110), up.top + 300, dc.z);
   const dcClamp = [];
-  for (const s of [-1, 1]) { const c = box(group, 40, 160, 400, MAT.pu, up.x + s * (DRUM.R + 70), up.top + 300, dc.z); dcClamp.push({ c, s }); }
+  for (const s of [-1, 1]) { const c = cyl(group, 20, 160, MAT.pu, up.x + s * (DRUM.R + 70), up.top + 300, dc.z); dcClamp.push({ c, s }); }
   const dBridge = new THREE.Group(); group.add(dBridge);
   box(dBridge, 1400, 100, 160, MAT.alu, up.x, 2440, 0);
   const dCar = new THREE.Group(); dBridge.add(dCar);
@@ -184,7 +208,27 @@ export function createLine(scene) {
   const lamps = [MAT.red, MAT.amber, MAT.green].map((m, i) => cyl(tower, 45, 90, m.clone(), 0, 200 - i * 95, 0));
   rod(group, [FENCE[1][0] + 100, 0, FENCE[1][1] + 100], [FENCE[1][0] + 100, 1950, FENCE[1][1] + 100], 25, MAT.steel);
 
+  // 緊固、驅動、光電、櫃門、導軌與軸承細節均在既有設備範圍內。
+  for (const [x, z] of g.posts) foot(group, x, z, 200);
+  for (const [dx, dz] of [[-650, -400], [650, -400], [-650, 400], [650, 400]]) foot(group, up.x + dx, dc.z + dz, 160);
+  for (const key of ['panel', 'robotCtrl']) cabinetDetails(group, ...FOOTPRINTS[key]);
+  motor(group, ly.x0 + 380, axisY - 100, ly.z + 475, .65);
+  motor(group, up.x + 520, 220, up.z1 - 500, .7, Math.PI / 2);
+  motor(bridge, 0, g.beamY + 480, p0[1], .65);
+  for (const z of [up.decap - 410, up.pick - 260, up.place + 300, up.z1 - 300]) sensor(group, up.x + 340, up.top + 90, z, Math.PI / 2);
+  for (const x of [ly.place, ly.label, ly.buffer]) sensor(group, x, axisY + 170, ly.z + 305);
+  for (const s of [-1, 1]) { box(z1, 20, 1240, 12, MAT.steelDark, s * 85, 650, 117); box(trolley, 32, 220, 32, MAT.steel, s * 150, g.beamY + 250, 0); }
+  bolts(bridge, [-1, 1].flatMap(s => [-1, 1].map(k => [s * 90, g.beamY + 565, (p0[1] + p2[1]) / 2 + k * 600])), 14);
   return {
+    animate(time, st) {
+      // 分段滾輪只在相鄰桶輸送時轉動；角度由桶位移決定，重播完全一致。
+      for (const r of rollers) {
+        const key = r.axis === 'z' ? 'lx' : 'uz', mode = r.axis === 'z' ? 'lying' : 'upright';
+        const d = [st.drum0, st.drum1, st.drum2, st.drum3].find(d => d.mode === mode && Math.abs(d[key] - r.along) < 650);
+        r.mesh.rotation[r.axis === 'z' ? 'y' : 'x'] = d ? -d[key] / r.radius : 0;
+      }
+    },
+    mechanical: { rotRollers, uprightRollers, tableRollers, turntable, weigher, cradle, actuator, piston, upClamp, dcClamp },
     group, fences, labelCam, decapCam, gantryPivot, cradle, padLabel,
     setGantry({ x, z, y, tilt: t, jaw }) {
       bridge.position.x = x; trolley.position.z = z;
@@ -197,16 +241,20 @@ export function createLine(scene) {
     setLabeler({ pad: p, print, spin, flash }) {
       pad.position.set(0, 0, -120 - p * (lab.standZ - LYING.z - DRUM.R - 135));
       padLabel.visible = print > .5;
-      for (const r of rotRollers) r.rotation.x = spin * 4.2;
+      for (const r of rotRollers) r.rotation.x = -spin * Math.PI / 2 * DRUM.envelopeR / 70;
       labelFlash.intensity = flash ? 900 : 0; barLight.material = flash ? MAT.green : MAT.cap;
     },
-    setUpender({ tilt: t, clamp }) { cradle.rotation.z = -t * Math.PI / 2; for (const { c, s } of upClamp) c.position.z = s * (DRUM.R + 60 + (1 - clamp) * 80); },
+    setUpender({ tilt: t, clamp }) { cradle.rotation.z = -t * Math.PI / 2;
+      const end = new THREE.Vector3(-450, -85, -570).applyAxisAngle(new THREE.Vector3(0, 0, 1), -t * Math.PI / 2).add(new THREE.Vector3(ux, uy, uz));
+      const delta = end.clone().sub(anchor), length = delta.length(); actuator.position.copy(anchor);
+      actuator.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), delta.normalize()); piston.scale.y = length - 350; piston.position.y = 350 + (length - 350) / 2; for (const { c, s } of upClamp) c.position.z = s * (DRUM.envelopeR + 15 + (1 - clamp) * 110); },
     setDecap({ hx, hz, hy, spinBig, spinSmall, flash, clamp, table, caps }) {
       dBridge.position.z = DECAP.z + hz; dCar.position.x = up.x + hx; dZ.position.y = hy;
       spindles.big.rotation.y = spinBig * Math.PI * 2 * 2.5; spindles.small.rotation.y = spinSmall * Math.PI * 2 * 2.5;
       decapFlash.intensity = flash ? 900 : 0; ringLight.material = flash ? MAT.green : MAT.cap;
-      for (const { c, s } of dcClamp) c.position.x = up.x + s * (DRUM.R + 70 + (1 - clamp) * 60);
+      for (const { c, s } of dcClamp) c.position.x = up.x + s * (DRUM.envelopeR + 20 + (1 - clamp) * 110);
       turntable.rotation.y = table * D2R;
+      tableRollers.forEach(r => { r.rotation.x = 0; });
       capPile.forEach((c, i) => { c.visible = i < caps; });
     },
     setScale({ on, lift }) { scaleScreen.material = on ? MAT.green : MAT.screen; weigher.position.y = lift * WEIGH.stroke; },

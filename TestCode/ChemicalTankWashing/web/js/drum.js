@@ -2,7 +2,7 @@
 // 局部座標：原點在桶中心，+Y 為桶頂；2" 螺塞在 +X、3/4" 在 −X。
 import * as THREE from 'three';
 import { DRUM } from './layout.js';
-import { MAT, HAS_DOM } from './parts.js';
+import { MAT, HAS_DOM, box } from './parts.js';
 
 const HEAD = DRUM.H / 2 - 12.5;          // 桶頂板（凹在 L 環內）
 const NECK = 8;
@@ -10,11 +10,17 @@ const profile = [
   [0, -HEAD], [275, -HEAD], [283, -467.5], [293, -467.5], [297, -460], [297, -430], [292.5, -415],
   [292.5, -195], [298, -180], [298, -140], [292.5, -125],
   [292.5, 125], [298, 140], [298, 180], [292.5, 195],
-  [292.5, 415], [297, 430], [297, 460], [293, 467.5], [283, 467.5], [275, HEAD], [0, HEAD],
+  [292.5, 415], [297, 430], [297, 460], [293, 467.5], [283, 467.5], [275, HEAD],
 ].map(([r, y]) => new THREE.Vector2(r, y));
 export const DRUM_GEO = new THREE.LatheGeometry(profile, 44);
-const BIG_NECK = new THREE.CylinderGeometry(DRUM.big.r + 4, DRUM.big.r + 6, NECK, 24);
-const SMALL_NECK = new THREE.CylinderGeometry(DRUM.small.r + 4, DRUM.small.r + 6, NECK, 18);
+// 桶頂真的開雙孔，剖視時可見噴槍穿過開口；頸圈也保留中空。
+const headShape = new THREE.Shape(); headShape.absarc(0, 0, 275, 0, Math.PI * 2, false);
+for (const [x, r] of [[DRUM.bungR, DRUM.big.hole], [-DRUM.bungR, DRUM.small.hole]]) {
+  const hole = new THREE.Path(); hole.absarc(x, 0, r, 0, Math.PI * 2, true); headShape.holes.push(hole);
+}
+const HEAD_GEO = new THREE.ShapeGeometry(headShape, 36); HEAD_GEO.rotateX(-Math.PI / 2); HEAD_GEO.translate(0, HEAD, 0);
+const BIG_NECK = new THREE.CylinderGeometry(DRUM.big.r + 4, DRUM.big.r + 6, NECK, 24, 1, true);
+const SMALL_NECK = new THREE.CylinderGeometry(DRUM.small.r + 4, DRUM.small.r + 6, NECK, 18, 1, true);
 export const BIG_CAP = new THREE.CylinderGeometry(DRUM.big.r, DRUM.big.r, DRUM.big.h * .5, 24);
 export const SMALL_CAP = new THREE.CylinderGeometry(DRUM.small.r, DRUM.small.r, DRUM.small.h * .6, 18);
 const HOLE_BIG = new THREE.CircleGeometry(DRUM.big.hole, 20), HOLE_SMALL = new THREE.CircleGeometry(DRUM.small.hole, 16);
@@ -50,11 +56,15 @@ export function createDrum(id) {
   const root = new THREE.Group(); root.name = 'drum ' + id;
   const bodyMat = MAT.drum.clone();
   const body = new THREE.Mesh(DRUM_GEO, bodyMat); body.castShadow = body.receiveShadow = true; root.add(body);
+  const head = new THREE.Mesh(HEAD_GEO, bodyMat); head.castShadow = head.receiveShadow = true; root.add(head);
   const parts = {};
   for (const [key, neckGeo, capGeo, holeGeo, x] of [['big', BIG_NECK, BIG_CAP, HOLE_BIG, DRUM.bungR], ['small', SMALL_NECK, SMALL_CAP, HOLE_SMALL, -DRUM.bungR]]) {
     const neck = new THREE.Mesh(neckGeo, bodyMat); neck.position.set(x, HEAD + NECK / 2, 0); root.add(neck);
+    const lip = new THREE.Mesh(new THREE.RingGeometry(key === 'big' ? DRUM.big.hole : DRUM.small.hole, key === 'big' ? DRUM.big.r + 4 : DRUM.small.r + 4, 28), bodyMat);
+    lip.rotation.x = -Math.PI / 2; lip.position.set(x, CAP_Y, 0); root.add(lip);
     const hole = new THREE.Mesh(holeGeo, MAT.hole); hole.rotation.x = -Math.PI / 2; hole.position.set(x, CAP_Y + .5, 0); hole.visible = false; root.add(hole);
     const cap = new THREE.Mesh(capGeo, MAT.cap); cap.castShadow = true; cap.position.set(x, CAP_Y + capGeo.parameters.height / 2, 0); root.add(cap);
+    for (const side of [-1, 1]) box(cap, key === 'big' ? 48 : 23, 5, 5, MAT.cap, 0, capGeo.parameters.height / 2 + 2, side * (key === 'big' ? 9 : 5));
     parts[key] = { cap, hole };
   }
   const tex = labelTexture(id);
@@ -83,19 +93,21 @@ export function createDrum(id) {
 export function createDrumInstances(count) {
   const group = new THREE.Group();
   const body = new THREE.InstancedMesh(DRUM_GEO, MAT.drum, count);
+  const head = new THREE.InstancedMesh(HEAD_GEO, MAT.drum, count);
   const big = new THREE.InstancedMesh(BIG_CAP, MAT.cap, count), small = new THREE.InstancedMesh(SMALL_CAP, MAT.cap, count);
-  for (const m of [body, big, small]) { m.castShadow = true; m.receiveShadow = true; group.add(m); }
+  for (const m of [body, head, big, small]) { m.castShadow = true; m.receiveShadow = true; group.add(m); }
   const off = new THREE.Matrix4(), tmp = new THREE.Matrix4();
   let n = 0;
   return {
     group,
     add(matrix) {
       body.setMatrixAt(n, matrix);
+      head.setMatrixAt(n, matrix);
       big.setMatrixAt(n, tmp.multiplyMatrices(matrix, off.makeTranslation(DRUM.bungR, CAP_Y + DRUM.big.h * .25, 0)));
       small.setMatrixAt(n, tmp.multiplyMatrices(matrix, off.makeTranslation(-DRUM.bungR, CAP_Y + DRUM.small.h * .3, 0)));
       n++;
     },
-    done() { for (const m of [body, big, small]) { m.count = n; m.instanceMatrix.needsUpdate = true; m.computeBoundingSphere(); } },
+    done() { for (const m of [body, head, big, small]) { m.count = n; m.instanceMatrix.needsUpdate = true; m.computeBoundingSphere(); } },
   };
 }
 

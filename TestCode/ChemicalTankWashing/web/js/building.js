@@ -40,8 +40,14 @@ export function createBuilding(scene) {
     if (pointInPolygon([mx + nx * 20, mz + nz * 20])) { nx = -nx; nz = -nz; }
     const yaw = Math.atan2(-dz, dx);
     for (const [h, mat, y] of [[ROOM.H, MAT.wall, ROOM.H / 2], [160, MAT.wallBase, 80]]) {
-      const w = new THREE.Mesh(new THREE.BoxGeometry(L + ROOM.wall, h, ROOM.wall), mat);
-      w.position.set(mx + nx * ROOM.wall / 2, y, mz + nz * ROOM.wall / 2); w.rotation.y = yaw; w.receiveShadow = true; group.add(w);
+      if (ax === 0 && bx === 0 && Math.min(az, bz) < INBOUND.door[0] && Math.max(az, bz) > INBOUND.door[1]) {
+        const low = Math.min(az, bz), high = Math.max(az, bz), [d0, d1] = INBOUND.door;
+        for (const [za, zb] of [[low, d0], [d1, high]]) box(group, ROOM.wall, h, zb - za, mat, nx * ROOM.wall / 2, y, (za + zb) / 2);
+        if (h === ROOM.H) box(group, ROOM.wall, ROOM.H - 2600, d1 - d0, mat, nx * ROOM.wall / 2, (ROOM.H + 2600) / 2, (d0 + d1) / 2);
+      } else {
+        const w = new THREE.Mesh(new THREE.BoxGeometry(L + ROOM.wall, h, ROOM.wall), mat);
+        w.position.set(mx + nx * ROOM.wall / 2, y, mz + nz * ROOM.wall / 2); w.rotation.y = yaw; w.receiveShadow = true; group.add(w);
+      }
     }
   }
   // 更衣室西牆與南牆（輪廓以外）

@@ -4,8 +4,9 @@
 import * as THREE from 'three';
 import { createIK } from './kinematics.js';
 import { MAT, box, cyl, D2R } from './parts.js';
-import { drumJaws } from './drum.js';
-import { ROBOT, DRUM } from './layout.js';
+import { createWashGripper } from './gripper.js';
+import { ROBOT } from './layout.js';
+import { bolts, housing } from './detail.js';
 
 export const K = { j2h: 670, j1x: 312, upper: 1075, foreOff: 225, fore: 1280, wrist: 175, flange: 40 };
 // 模型座標的關節範圍：j2 = −J2（FANUC J2 −60～+76）；j3 為相對上臂，連動限位尚未建模
@@ -24,14 +25,14 @@ export function createRobot() {
   cyl(j.j1, 150, 240, MAT.fanucDark, K.j1x, K.j2h, -400, 'z', 20);
   box(j.j1, 420, 300, 380, MAT.fanuc, 60, 560, 0);
   j.j2 = new THREE.Group(); j.j2.position.set(K.j1x, K.j2h, 0); j.j1.add(j.j2);
-  box(j.j2, 320, K.upper - 200, 300, MAT.fanuc, 0, K.upper / 2, 120);
+  housing(j.j2, 320, K.upper - 200, 300, MAT.fanuc, 0, K.upper / 2, 120, 28);
   cyl(j.j2, 230, 280, MAT.fanuc, 0, 0, 160, 'z', 28);
   cyl(j.j2, 210, 380, MAT.fanuc, 0, K.upper, 100, 'z', 28);
   box(j.j2, 140, 700, 120, MAT.fanucDark, -170, 450, 260);                                  // 平衡器
   j.j3 = new THREE.Group(); j.j3.position.set(0, K.upper, 0); j.j2.add(j.j3);
-  box(j.j3, 620, 440, 360, MAT.fanuc, -120, 150, -60);
+  housing(j.j3, 620, 440, 360, MAT.fanuc, -120, 150, -60, 30);
   for (const [y, z] of [[90, -150], [250, -150], [170, 40]]) cyl(j.j3, 85, 220, MAT.fanucDark, -500, y, z, 'x', 18);
-  box(j.j3, K.fore - 300 - 180, 250, 250, MAT.fanuc, (180 + K.fore - 300) / 2, K.foreOff, 0);
+  housing(j.j3, K.fore - 300 - 180, 250, 250, MAT.fanuc, (180 + K.fore - 300) / 2, K.foreOff, 0, 22);
   j.j4 = new THREE.Group(); j.j4.position.set(K.fore - 300, K.foreOff, 0); j.j3.add(j.j4);
   cyl(j.j4, 150, 200, MAT.fanuc, 100, 0, 0, 'x', 28);
   for (const s of [-1, 1]) box(j.j4, 160, 160, 40, MAT.fanuc, 230, 0, s * 115);
@@ -43,15 +44,18 @@ export function createRobot() {
 
   // ---- 夾桶夾爪：工具 +Z 指向桶軸，桶軸為工具 +Y，桶中心在工具 Z = ROBOT.grip ----
   const tool = new THREE.Group(); tool.position.x = K.flange; tool.rotation.y = Math.PI / 2; j.j6.add(tool);
-  cyl(tool, 125, 30, MAT.steelDark, 0, 0, 15, 'z', 24);
-  box(tool, 420, 560, 200, MAT.alu, 0, 0, 130);
-  for (const s of [-1, 1]) { const p = box(tool, 170, 440, 30, MAT.pu, s * 95, 0, ROBOT.grip - DRUM.R - 12); p.rotation.y = -s * .32; }
-  box(tool, 220, 24, 150, MAT.steel, 0, DRUM.H / 2 + 22, 285);                              // 上 L 環扣爪
-  box(tool, 220, 60, 20, MAT.steel, 0, DRUM.H / 2 - 5, 352);
-  box(tool, 40, 40, 330, MAT.steelDark, 0, DRUM.H / 2 + 20, 120);
-  const jawFrame = new THREE.Group(); jawFrame.position.z = ROBOT.grip; tool.add(jawFrame);
-  const jaws = drumJaws(jawFrame, -(ROBOT.grip - 230));
+  const gripper = createWashGripper(tool);
   const tcp = new THREE.Object3D(); tcp.position.z = ROBOT.grip; tool.add(tcp);
+
+  // 鑄件端蓋、基座錨栓、檢修蓋與氣缸接頭，跟隨各自關節。
+  bolts(root, [-1, 1].flatMap(x => [-1, 1].map(z => [x * 420, 68, z * 420])), 24);
+  for (const [parent, x, y, z, radius] of [[j.j2, 0, 0, 310, 155], [j.j2, 0, K.upper, 300, 140], [j.j5, 0, 0, 102, 80]]) {
+    cyl(parent, radius, 12, MAT.steelDark, x, y, z, 'z');
+    bolts(parent, Array.from({length: 8}, (_, k) => [x + Math.cos(k * Math.PI / 4) * radius * .78, y + Math.sin(k * Math.PI / 4) * radius * .78, z + 12]), 9, 'z');
+  }
+  box(j.j2, 170, 460, 5, MAT.fanucDark, 0, K.upper / 2, 274);
+  for (let i = 0; i < 6; i++) box(j.j3, 6, 120, 3, MAT.black, -340 + i * 40, 180, -242);
+
 
   const q = { j1: 0, j2: 0, j3: 0, j4: 0, j5: 0, j6: 0 };
   function apply() {
@@ -137,5 +141,5 @@ export function createRobot() {
     const toolEnd = tool.localToWorld(new THREE.Vector3(0, 0, 230)), elbowOff = j.j3.localToWorld(new THREE.Vector3(0, K.foreOff, 0));
     return [[pts[0], pts[1], 200], [pts[1], elbowOff, 220], [elbowOff, pts[2], 150], [pts[2], pts[3], 150], [pts[3], pts[4], 120], [pts[4], toolEnd, 300]];
   }
-  return { root, q, j, tool, tcp, apply, poseDrum, solve, track, setJoints, setJaw: v => jaws.set(v), links, error };
+  return { root, q, j, tool, tcp, apply, poseDrum, solve, track, setJoints, gripper, setJaw: v => gripper.set(v), links, error };
 }

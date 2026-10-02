@@ -23,7 +23,7 @@ export const COLUMN = { x: 8300, z: 5200, size: 800 };
 export const columnRect = () => [COLUMN.x - COLUMN.size / 2, COLUMN.z - COLUMN.size / 2, COLUMN.x + COLUMN.size / 2, COLUMN.z + COLUMN.size / 2];
 
 // 200 L 閉口 HDPE 桶（雙 L 環），2" 與 3/4" 螺塞在桶頂同一直徑兩端
-export const DRUM = { R: 292.5, H: 935, bungR: 200, big: { r: 36, h: 24, hole: 27 }, small: { r: 18, h: 18, hole: 12 }, kg: 8.5 };
+export const DRUM = { R: 292.5, envelopeR: 298, H: 935, bungR: 200, big: { r: 36, h: 24, hole: 27 }, small: { r: 18, h: 18, hole: 12 }, kg: 8.5 };
 export const PALLET = {
   W: 1200, H: 150,
   // 2×2 擺放（棧板局部座標）。棧板在棧板站轉了 180°，此順序對應世界座標先取東側兩桶，西側兩桶取料時不必越過其他桶
@@ -152,7 +152,7 @@ export const GANTRY_FENCE = [[2900, 8950], [6700, 8950], [6700, 10450], [2900, 1
 // 廢液回收：放在清洗區圍籬外西南側（控制櫃南面）的防溢堤內，避開手臂迴轉範圍。
 // 酸、鹼殘液依讀到的桶號分流到兩個廢液槽，避免混合後發熱或產生氣體；防溢堤往西延伸到預留區
 export const WASTE = {
-  bund: [3300, 13950, 7000, 15420],
+  bund: [3300, 13950, 7000, 15420], wall: 30,
   tanks: {
     WA: { x: 3950, z: 14690, r: 550, h: 1800, cap: 1600, init: 520, name: 'TK-WA 酸性廢液槽' },
     WB: { x: 5150, z: 14690, r: 550, h: 1800, cap: 1600, init: 380, name: 'TK-WB 鹼性廢液槽' },

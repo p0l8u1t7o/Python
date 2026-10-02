@@ -35,6 +35,7 @@ jobs:
 
           projects = {
               "AutomaticAcid-BaseTitration": "自動酸鹼滴定系統",
+              "ChemicalTankWashing": "200L 化學桶自動清洗線",
               "MilitaryGradePC": "軍規電腦檢測系統",
               "PCB-CopperAssembly": "PCB 銅箔基板散熱板組裝",
               "RobotArmPressSSD": "SSD USB 接頭壓合站",

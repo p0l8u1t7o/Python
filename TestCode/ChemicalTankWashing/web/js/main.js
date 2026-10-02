@@ -13,6 +13,8 @@ import { createWashing } from './washing.js';
 import { createDrum, BIG_CAP, SMALL_CAP } from './drum.js';
 import { createSequence, drumWorld, palletWorld, STATIONS, DRUM_IDS, IN_IDS, DRUM_KEYS, SPRAY_S, SPRAY_SINGLE_S } from './sequence.js';
 import { createInbound } from './inbound.js';
+import { finishMaterials } from './detail.js';
+import { createFocusTracking, createCameraWindow } from './view-controls.js';
 
 const qp = new URLSearchParams(location.search);
 // ---------------------------------------------------------------- 場景
@@ -21,19 +23,22 @@ const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', logarithmicDepthBuffer: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = qp.get('shadow') !== '0'; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.autoUpdate = false;
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMappingExposure = .86;
+finishMaterials(renderer);
 const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0d1117);
 const pmrem = new THREE.PMREMGenerator(renderer), room = new RoomEnvironment(renderer);
 scene.environment = pmrem.fromScene(room, .04).texture; room.dispose(); pmrem.dispose();
-scene.environmentIntensity = .55;
+// r160 的環境反射強度設在材質 envMapIntensity（finishMaterials）。
 const camera = new THREE.PerspectiveCamera(40, 1, 100, 150000);
 const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true; controls.dampingFactor = .08; controls.maxPolarAngle = Math.PI * .495; controls.minDistance = 400; controls.maxDistance = 70000;
-scene.add(new THREE.HemisphereLight(0xcfe0ff, 0x30363d, .9));
+scene.add(new THREE.HemisphereLight(0xcfe0ff, 0x30363d, .55));
 const sun = new THREE.DirectionalLight(0xffffff, 1.7); sun.position.set(-3000, 17000, 4000); sun.target.position.set(5000, 0, 8000);
 sun.castShadow = renderer.shadowMap.enabled; sun.shadow.mapSize.set(4096, 4096);
 Object.assign(sun.shadow.camera, { left: -11000, right: 11000, top: 11000, bottom: -11000, near: 2000, far: 40000 });
-sun.shadow.bias = -.0003; sun.shadow.normalBias = 20; scene.add(sun, sun.target);
+sun.shadow.bias = -.0003; sun.shadow.normalBias = 3; scene.add(sun, sun.target);
 const fill = new THREE.DirectionalLight(0x9fb8ff, .45); fill.position.set(16000, 9000, 22000); scene.add(fill);
 
 // ---------------------------------------------------------------- 物件
@@ -59,8 +64,9 @@ shots.sort((a, b) => a.start - b.start);
 // ---------------------------------------------------------------- 套用狀態
 let S = null;
 function applyState(sm) {
+  needsFrame = true; renderer.shadowMap.needsUpdate = true;
   S = sm; const st = sm.st;
-  agv.set({ ...st.agv, moving: st.agv.moving && playing });
+  agv.set({ ...st.agv, time: sm.time });
   storage.setDemo([null, st.pal1, st.pal2, st.pal3], st.shuttle);
   const pw = palletWorld(st.pallet, st.agv); demoPallet.position.copy(pw.pos); demoPallet.rotation.y = pw.yaw * D2R;
   line.setGantry(st.gantry); line.setLabeler(st.labeler); line.setUpender(st.upender); line.setDecap(st.decap);
@@ -86,7 +92,31 @@ function applyState(sm) {
 // ---------------------------------------------------------------- UI
 const ui = Object.fromEntries(['payload', 'playBtn', 'restartBtn', 'speed', 'speedVal', 'stepSelect', 'previous', 'next', 'timeline', 'clock', 'cycleTime', 'phase', 'equip', 'drums', 'tanks', 'checks', 'chkCount', 'showDims', 'showFence', 'showLabels', 'showCeiling', 'xray', 'showPip', 'pip', 'pipTitle', 'pipResult', 'stations'].map(id => [id, document.getElementById(id)]));
 const SPEEDS = [.25, .5, 1, 2, 4, 8];
-let T = 0, playing = !qp.has('pause'), speed = 1, selectedView = 'iso', camAnim = null;
+let T = 0, playing = !qp.has('pause'), speed = 1, selectedView = 'iso', camAnim = null, needsFrame = true;
+function focusPosition(key) {
+  if (key === 'gripper') return robot.tool.localToWorld(new THREE.Vector3(0, 80, ROBOT.grip * .65));
+  if (key === 'agv') return agv.root.position.clone().add(new THREE.Vector3(0, 750, 0));
+  if (key === 'gantry') return line.gantryPivot.getWorldPosition(new THREE.Vector3());
+  if (key === 'auto') {
+    key = ['robot', 'gantry', 'upender', 'upright', 'lying', 'jib', 'dolly', 'pallet'].map(mode => DRUM_KEYS.find(k => S.st[k].mode === mode)).find(Boolean);
+  }
+  const i = DRUM_KEYS.indexOf(key);
+  return i >= 0 && drums[i].root.visible ? drums[i].root.position.clone() : null;
+}
+function gripperOffset() {
+  const forward = new THREE.Vector3().setFromMatrixColumn(robot.tool.matrixWorld, 2); forward.y = 0; forward.normalize();
+  const side = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), forward);
+  const p = robot.tcp.getWorldPosition(new THREE.Vector3());
+  if (p.z > BOOTH.z0 - 150 && p.x < BOOTH.x1) return forward.multiplyScalar(-1850).addScaledVector(side, -350).add(new THREE.Vector3(0, 800, 0));
+  return forward.multiplyScalar(-1320).addScaledVector(side, -1140).add(new THREE.Vector3(0, 960, 0));
+}
+const focus = createFocusTracking({camera, controls, getTarget: focusPosition,
+  getOffset: key => key === 'gripper' ? gripperOffset() : new THREE.Vector3(-2200, 1800, 2400), onFocus() {
+  camAnim = null; selectedView = 'focus';
+  document.querySelectorAll('.views button[data-view]').forEach(b => b.classList.remove('selected'));
+}});
+const cameraWindow = createCameraWindow(canvas, ui.showPip);
+const gripperCam = new THREE.PerspectiveCamera(42, 1, 30, 25000);
 const total = seq.total;
 ui.timeline.max = total; ui.cycleTime.textContent = `本棧板 4 桶共 ${Math.round(total)} s（模擬時間）`;
 // 手臂節拍：相鄰兩桶放回輸送線的間隔
@@ -109,7 +139,7 @@ ui.checks.innerHTML = checks.map(c => `<li class="${c.ok ? '' : 'ng'}"><span cla
 ui.chkCount.textContent = `${checks.filter(c => c.ok).length} / ${checks.length} 通過`;
 
 function fmt(t) { return `${String(Math.floor(t / 60)).padStart(2, '0')}:${(t % 60).toFixed(1).padStart(4, '0')}`; }
-function seekTo(t) { T = THREE.MathUtils.clamp(Number.isFinite(t) ? t : 0, 0, total); applyState(seq.sample(T)); }
+function seekTo(t) { T = THREE.MathUtils.clamp(Number.isFinite(t) ? t : 0, 0, total); applyState(seq.sample(T)); focus.snap(); }
 ui.playBtn.onclick = () => { if (T >= total) seekTo(0); playing = !playing; };
 ui.restartBtn.onclick = () => { seekTo(0); playing = true; };
 ui.speed.oninput = () => { speed = SPEEDS[+ui.speed.value]; ui.speedVal.textContent = speed + '×'; };
@@ -121,6 +151,9 @@ ui.next.onclick = () => { playing = false; seekTo(seq.events[Math.min(seq.events
 ui.showDims.onchange = () => { building.dims.visible = ui.showDims.checked; };
 ui.showFence.onchange = () => { line.fences.visible = ui.showFence.checked; };
 ui.showCeiling.onchange = () => { building.ceiling.visible = ui.showCeiling.checked; };
+document.getElementById('cutaway').onchange = e => {
+  for (const m of [MAT.pp, MAT.tankW]) { m.transparent = e.target.checked; m.opacity = e.target.checked ? .2 : 1; m.depthWrite = !e.target.checked; m.needsUpdate = true; }
+};
 ui.xray.onchange = () => drums.forEach(d => d.setXray(ui.xray.checked));
 
 // ---------------------------------------------------------------- 視角
@@ -129,19 +162,28 @@ const VIEWS = {
   storage: [[2300, 4300, 8600], [6300, 1500, 3800]], gantry: [[1200, 4300, 13800], [4700, 1100, 9700]],
   label: [[6000, 2900, 7300], [7500, 900, 9800]], upender: [[8400, 3600, 7400], [10900, 1000, 10100]],
   decap: [[9700, 3300, 8900], [11290, 1350, 11000]], robot: [[6200, 5600, 10200], [9900, 1100, 13400]],
-  booth: [[7300, 2300, 15000], [9400, 1150, 14550]], waste: [[1500, 4300, 11600], [5000, 800, 14600]],
+  booth: [[7600, 2800, 12000], [9400, 1350, 14700]], waste: [[1500, 4300, 11600], [5000, 800, 14600]],
   inbound: [[-900, 3900, 7400], [2300, 900, 2900]], weigh: [[10150, 1500, 12650], [11292, 650, 13400]],
 };
 function setView(name, instant = false) {
+  if (!VIEWS[name] && name !== 'follow' && name !== 'gripper') return;
+  focus.stop();
   selectedView = name;
-  document.querySelectorAll('.views button').forEach(b => b.classList.toggle('selected', b.dataset.view === name));
-  if (name === 'follow') { const p = drums[0].root.position; camAnim = { p0: camera.position.clone(), t0: controls.target.clone(), p: p.clone().add(new THREE.Vector3(-2600, 2200, 2600)), t: p.clone(), u: 0 }; return; }
-  const [p, t] = VIEWS[name].map(a => new THREE.Vector3(...a));
+  document.querySelectorAll('.views button[data-view]').forEach(b => b.classList.toggle('selected', b.dataset.view === name));
+  if (name === 'follow') {
+    const p = focusPosition('drum0');
+    if (p) { controls.target.copy(p); camera.position.copy(p).add(new THREE.Vector3(-2600, 2200, 2600)); }
+    focus.start('drum0'); return;
+  }
+  const t = name === 'gripper' ? focusPosition('gripper') : new THREE.Vector3(...VIEWS[name][1]);
+  const p = name === 'gripper' ? t.clone().add(gripperOffset()) : new THREE.Vector3(...VIEWS[name][0]);
   if (instant) { camAnim = null; camera.position.copy(p); controls.target.copy(t); controls.update(); }
   else camAnim = { p0: camera.position.clone(), t0: controls.target.clone(), p, t, u: 0 };
 }
-document.querySelectorAll('.views button').forEach(b => b.onclick = () => setView(b.dataset.view));
+document.querySelectorAll('.views button[data-view]').forEach(b => b.onclick = () => setView(b.dataset.view));
 controls.addEventListener('start', () => { camAnim = null; });
+controls.addEventListener('change', () => { needsFrame = true; });
+for (const type of ['input', 'change', 'click', 'pointermove', 'keydown']) document.getElementById('app').addEventListener(type, () => { needsFrame = true; if (type === 'change') renderer.shadowMap.needsUpdate = true; });
 
 // 3D 標籤
 const labels = [];
@@ -202,26 +244,32 @@ function drawHud() {
 }
 
 // ---------------------------------------------------------------- 繪製
-function resize() { const w = canvas.clientWidth, h = canvas.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+function resize() { const w = canvas.clientWidth, h = canvas.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); needsFrame = true; }
 addEventListener('resize', resize);
 function render(dt) {
+  washing.tick(T); line.animate(T, S.st);
   drawHud();
   const w = canvas.clientWidth, h = canvas.clientHeight;
   renderer.setScissorTest(false); renderer.setViewport(0, 0, w, h); renderer.render(scene, camera);
   // 相機子畫面：最近 4 秒內有取像才顯示
-  const shot = shots.filter(s => s.start <= T && T - s.start < 4).at(-1);
-  const show = ui.showPip.checked && !!shot && innerWidth > 760;
-  ui.pip.hidden = !show;
-  if (show) {
-    const r = ui.pip.getBoundingClientRect(), c = canvas.getBoundingClientRect();
+  const source = cameraWindow.source;
+  const shot = shots.filter(s => s.start <= T).at(-1);
+  const inspectionCam = source === 'decap' ? line.decapCam : source === 'label' ? line.labelCam : shot?.cam || line.labelCam;
+  const pipCam = source === 'gripper' ? gripperCam : inspectionCam;
+  if (source === 'gripper') {
+    const target = focusPosition('gripper');
+    gripperCam.position.copy(target).add(gripperOffset()); gripperCam.lookAt(target);
+  }
+  if (cameraWindow.visible) {
+    ui.pipTitle.textContent = source === 'gripper' ? '清洗夾具 · 即時視野' : pipCam === line.decapCam ? '桶口相機 · 即時視野' : '貼標相機 · 即時視野';
+    ui.pipResult.textContent = source === 'gripper' ? `夾爪閉合 ${(S.st.grip.jaw * 100).toFixed(0)}% · 防脫扣隨爪同步開合` : shot && shot.cam === pipCam && T - shot.start < 4 ? shot.result : '即時畫面 · 等待檢測觸發（模擬訊號）';
+    const r = cameraWindow.viewport, c = canvas.getBoundingClientRect();
     const x = r.left - c.left, y = c.bottom - r.bottom, pw = r.width, ph = r.height;
-    shot.cam.aspect = pw / ph; shot.cam.updateProjectionMatrix();
+    pipCam.aspect = pw / ph; pipCam.updateProjectionMatrix();
     renderer.setScissorTest(true); renderer.setScissor(x, y, pw, ph); renderer.setViewport(x, y, pw, ph);
     const fenceVis = line.fences.visible; line.fences.visible = false;
-    renderer.render(scene, shot.cam); line.fences.visible = fenceVis; renderer.setScissorTest(false);
-    ui.pipTitle.textContent = shot.title; ui.pipResult.textContent = shot.result;
+    renderer.render(scene, pipCam); line.fences.visible = fenceVis; renderer.setScissorTest(false);
   }
-  washing.tick(dt);
 }
 const clock = new THREE.Clock();
 function frame() {
@@ -229,13 +277,14 @@ function frame() {
   const dt = Math.min(clock.getDelta(), .05);
   if (playing) { T = Math.min(total, T + dt * speed); if (T >= total) playing = false; applyState(seq.sample(T)); }
   if (camAnim) { camAnim.u = Math.min(1, camAnim.u + dt * 1.3); const e = smooth(camAnim.u); camera.position.lerpVectors(camAnim.p0, camAnim.p, e); controls.target.lerpVectors(camAnim.t0, camAnim.t, e); if (camAnim.u === 1) camAnim = null; }
-  else if (selectedView === 'follow') { const p = drums[0].root.position, off = camera.position.clone().sub(controls.target); controls.target.lerp(p, .08); camera.position.copy(controls.target).add(off); }
-  controls.update(); render(dt);
+  else focus.update(dt);
+  controls.update();
+  if (needsFrame || playing) { render(dt); needsFrame = false; }
 }
 
-resize(); seekTo(+(qp.get('t') || 0)); setView(qp.get('view') && VIEWS[qp.get('view')] ? qp.get('view') : 'iso', true);
+resize(); seekTo(+(qp.get('t') || 0)); setView(qp.get('view') || 'iso', true);
 if (qp.has('dims')) { ui.showDims.checked = true; building.dims.visible = true; }
 if (qp.has('cam')) { const a = qp.get('cam').split(',').map(Number); if (a.length === 6) { camera.position.set(...a.slice(0, 3)); controls.target.set(...a.slice(3)); controls.update(); } }
 document.getElementById('loading').classList.add('hide');
 frame();
-window.sim = { seekTo, setView, play() { playing = true; }, pause() { playing = false; }, get T() { return T; }, seq, get state() { return S; }, robot, total };
+window.sim = { seekTo, setView, play() { playing = true; }, pause() { playing = false; }, get T() { return T; }, seq, get state() { return S; }, robot, total, focus, cameraWindow, camera, controls, focusPosition };
