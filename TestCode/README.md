@@ -11,7 +11,6 @@
 | [RobotArmPressSSD](RobotArmPressSSD/) | SSD USB 銀腳壓合 |
 | [shutter assembly](shutter%20assembly/) | 快門葉片與上蓋組裝 |
 | [WorkpieceMeasurement](WorkpieceMeasurement/) | 杯體加工件 AOI 與共焦量測 |
-| [MonocularDepthEstimation](MonocularDepthEstimation/) | 單目深度估測工具 |
 
 - 各 3D 專案：`web/` 為可獨立部署的網站、`tools/` 為專案驗證、`review/` 為該專案檢查結果、`docs/` 為本機參考資料。
 - [tools](tools/)：共用模型工具、同步與驗證腳本；`tools/docs/` 是跨專案操作及研究文件，`tools/review/` 是共用工具的彙總結果。
