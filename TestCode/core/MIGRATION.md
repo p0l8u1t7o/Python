@@ -24,12 +24,12 @@ Node 端由 `core/tools/loader.mjs` 解析相同的三種名稱，檢查程式�
 |---|---|---|
 | P0 基準 | 遷移前各專案原有檢查紀錄＋各視角截圖，作為逐一比對的依據 | 完成 |
 | P1 骨架 | `core/vendor`、`loader.mjs`、統一伺服器 `serve.mjs`、`project.json`、importmap、移除 7 份 vendor／three-loader／serve.py、Pages 建置改用 `build-site.mjs` | 完成 d1392707 |
-| P2 共用模組 | 根目錄 `tools/` 共用檔與手動複製檔移入 core；`detail.js`（A／A+／B）、`kinematics.js`（A／B）合併；移除 sync 腳本與無用檔 | 完成 |
-| P3 標準介面＋統一檢查 | 各專案 `web/js/project.js` 提供 `createProject()`；`window.sim` 標準化；core 檢查：全場干涉、重合面閃爍、倒序一致、瀏覽器載入與截圖；`core/tools/check.mjs` 依 `project.json` 一併執行專案自有檢查 | |
+| P2 共用模組 | 根目錄 `tools/` 共用檔與手動複製檔移入 core；`detail.js`（A／A+／B）、`kinematics.js`（A／B）合併；移除 sync 腳本與無用檔 | 完成 03b6af01 |
+| P3 標準介面＋統一檢查 | 各專案 `web/js/project.js` 提供 `createProject()`；`window.sim` 標準化；core 檢查：全場干涉、重合面閃爍、倒序一致、瀏覽器載入與截圖；`core/tools/check.mjs` 依 `project.json` 一併執行專案自有檢查 | core 與化學桶完成 95578342；其餘 6 專案進行中 |
 | P4 修正發現 | 各專案依新檢查修正閃爍與干涉 | |
-| P5 渲染與 UI 共用 | `core/ui/stage.js`（renderer、對數深度、陰影、環境光、縮放、3D 標籤）；影片匯出改用掛鉤，不再字串修補 `main.js` | |
-| P6 模型庫 | 手臂（FANUC R-2000iC、DENSO VS-068／VM-60B1／COBOTTA PRO 900／HSR065）、AGV、桶、圍籬、電控櫃、輸送、相機等移入 `core/models`；目錄頁 | |
-| P7 新專案範本與文件 | `core/template` ＋ `new-project.mjs`；README | |
+| P5 渲染與 UI 共用 | `core/ui/stage.js`（renderer、對數深度、陰影、環境光、縮放、3D 標籤）；影片匯出改用掛鉤，不再字串修補 `main.js` | `stage.js`／`player.js`／`track.js` 完成 2595b72f；既有專案套用待 P3 後 |
+| P6 模型庫 | 手臂（FANUC R-2000iC、DENSO VS-068／VM-60B1／COBOTTA PRO 900／HSR065）、AGV、桶、圍籬、電控櫃、輸送、相機等移入 `core/models`；目錄頁 | 架構＋輸送線／龍門／標準件＋目錄頁＋models 檢查完成 73d5d9f9；手臂等待抽出 |
+| P7 新專案範本與文件 | `core/template` ＋ `new-project.mjs`；README | 範本與 new-project 完成 2595b72f／73d5d9f9 |
 
 ## 比對方式
 
@@ -43,3 +43,5 @@ Node 端由 `core/tools/loader.mjs` 解析相同的三種名稱，檢查程式�
 - 2026-10-03 P2：`core/electrical`（線材、電盤、元件、檢視器）、`core/ui`（viewer-workspace、vision-overlay、view-controls）、`core/geom`（primitives＝原 detail A+、parts／hardware＝原化學桶 parts／detail、finish、surfaces、perforated）、`core/robot/kinematics.js`（合併 A／B，B 的參數改由化學桶 robot.js 傳入）。刪除根目錄 tools 的 7 個正本與 3 支 sync 腳本、3 份未使用的 camera-panel.js。截圖差異 0、檢查 33/33＋根目錄 4 支、review 結果相同。
   - 原 detail A 的專案（滴定、軍規、PCB）改用 A+，`tube()` 多了陰影；截圖差異在門檻內。
   - 兩套基本形狀並存：`primitives.js`（block／cylinder／decal…）與 `parts.js`（MAT／box／cyl／plate…）。統一留到 P6 模型庫時決定。
+- 2026-10-03 P3（95578342）：`core/verify/{scene,determinism,run,dom-stub}.mjs`；化學桶改用 `project.js`，舊的 `tools/verify-scene.mjs` 退役。dom-stub 讓瀏覽器才有的文字牌也進檢查，抓到「取桶位／放回位」牌在夾爪路徑上（已移到輸送架下方）。其餘 6 專案由平行代理各自完成 project.js、main.js 接上、修正 scene 發現。
+- 2026-10-03 P5／P6／P7 先行（2595b72f、73d5d9f9、27b9886a）：stage／player／track、範本與 new-project、模型庫（輸送線、龍門、標準件）＋目錄頁＋models 檢查；Pages 不再發布 verify 與 review。範本產生的專案通過全部 core 檢查；檢查也抓到範本初稿的 2 組重合面與龍門原點超出行程。
