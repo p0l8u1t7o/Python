@@ -9,7 +9,7 @@ import { createVisionOverlay } from '@core/ui/vision-overlay.js';
 import { createStage, exposeSim } from '@core/ui/stage.js';
 import { createPlayer } from '@core/ui/player.js';
 import { copperResults } from './vision-results.js';
-import { trackAt } from './plan.js';
+import { actionOf } from './plan.js';
 import { LAYOUT, PRODUCT, RECIPES } from './layout.js';
 routingLegend();
 const vision = createVisionOverlay();
@@ -32,7 +32,7 @@ const { renderer, scene, camera, controls } = stage;
 
 const project = createProject({ scene, recipe: qp.get('recipe') }), sim = project.sim, plan = project.plan, M = project.machine;
 const ui = Object.fromEntries(['phase', 'cycleHint', 'pA', 'pB', 'pT', 'nA', 'nB', 'nT', 'errBar', 'errVal', 'errLim', 'stationStatus', 'showPip', 'showGuards', 'showLabels', 'exportBtn', 'pipFrame', 'pipTitle', 'pipResult', 'pipSel',
-  'loop', 'cycleTime', 'progBar', 'stations'].map(id => [id, document.getElementById(id)]));
+  'cycleTime', 'progBar', 'stations'].map(id => [id, document.getElementById(id)]));
 const total = project.total, nA = plan.heads.A.trips.flat().length, nB = plan.heads.B.trips.flat().length, N = plan.holes.length;
 // 機種選單：換配方即重建頁面（實機：切換配方、供料盤清料換料、吸嘴快換）
 for (const [key, r] of Object.entries(RECIPES)) { const o = document.createElement('option'); o.value = key; o.textContent = `機種：${r.name}`; document.getElementById('recipe').appendChild(o); }
@@ -77,7 +77,7 @@ const views = {
   load: [[X[0] - 300, 1500, 1350], [X[0], 950, 280]], unload: [[X[4] + 300, 1500, 1350], [X[4], 950, 280]], top: [[0, 3800, 300], [0, 950, 0]],
 };
 const TWEEN = .9;
-// 基板近看／孔位細節：視角跟著輸送中的基板平移。轉場中舞台每格重設相機，所以加上累計位移；轉場後逐格加增量
+// 基板近看／孔位細節：視角跟著輸送中的基板平移（stage.shiftView 連同進行中的轉場起訖點一起移，轉場中與轉場後都只加每格增量）
 let follow = null;
 function setView(name, instant = false) {
   workspace.stopFollowing(); setElectricalCutaway(scene, name === 'electrical');
@@ -85,15 +85,12 @@ function setView(name, instant = false) {
   camera.near = name === 'hole' ? .2 : 5; camera.updateProjectionMatrix();
   const [p, t] = typeof views[name] === 'function' ? views[name]() : views[name];
   stage.goTo(p, t, instant, TWEEN);
-  follow = ['board', 'hole'].includes(name) ? { hole: name === 'hole', last: focusPoint(name === 'hole'), shift: new THREE.Vector3(), tween: instant ? 0 : TWEEN } : null;
+  follow = ['board', 'hole'].includes(name) ? { hole: name === 'hole', last: focusPoint(name === 'hole') } : null;
   document.querySelectorAll('.views button').forEach(b => b.classList.toggle('selected', b.dataset.view === name));
 }
-function followBoard(dt) {
+function followBoard() {
   if (!follow) return;
-  const now = focusPoint(follow.hole), delta = now.clone().sub(follow.last); follow.last = now; follow.shift.add(delta);
-  if (dt > 0 && follow.tween > 0) { follow.tween -= dt; camera.position.add(follow.shift); controls.target.add(follow.shift); }
-  else { camera.position.add(delta); controls.target.add(delta); }
-  camera.lookAt(controls.target);
+  const now = focusPoint(follow.hole); stage.shiftView(now.clone().sub(follow.last)); follow.last = now;
 }
 document.querySelectorAll('.views button').forEach(b => b.onclick = () => setView(b.dataset.view));
 holeSelect.onchange = () => setView('hole');
@@ -113,11 +110,6 @@ STNAMES.forEach((n, i) => label(`<b>S${i}</b> ${n}`, [X[i], 1480, -120]));
 label('柔性供料 A', [LAYOUT.feeder.A.x, 1010, LAYOUT.feeder.A.z]); label('柔性供料 B', [LAYOUT.feeder.B.x, 1010, LAYOUT.feeder.B.z]);
 label('仰視相機 A', [LAYOUT.upCam.A.x, 890, LAYOUT.upCam.A.z]); label('仰視相機 B', [LAYOUT.upCam.B.x, 890, LAYOUT.upCam.B.z]);
 label('龍門 A（4 吸嘴）', [0, 1350, 360]); label('龍門 B（4 吸嘴）', [0, 1350, -360]);
-function updateLabels() {
-  stage.updateLabels(ui.showLabels.checked);
-  // 舞台以畫布左上角為原點；畫布在 #app 內有偏移（上方標題列），標籤一起移過去
-  for (const l of stage.labels) { l.el.style.left = canvas.offsetLeft + 'px'; l.el.style.top = canvas.offsetTop + 'px'; }
-}
 
 // ---------------------------------------------------------------- 相機子畫面
 let T = 0, info = null, player = null;
@@ -126,7 +118,7 @@ function pipSource() {
   const a = plan.heads.A.tr.active(T), b = plan.heads.B.tr.active(T);
   if (a?.flyby) return 'upA';
   if (b?.flyby) return 'upB';
-  const s1 = trackAt(plan.s1.tr, T).label; if (s1.startsWith('拍攝') || s1.startsWith('移至第')) return 's1';
+  const s1 = actionOf(plan.s1.tr.at(T)); if (s1.startsWith('拍攝') || s1.startsWith('移至第')) return 's1';
   if (a?.flash) return 'downA';
   if (b?.flash) return 'downB';
   if (plan.s3.tr.active(T)?.flash) return 's3';
@@ -155,8 +147,8 @@ ui.exportBtn.onclick = () => {
 };
 
 // ---------------------------------------------------------------- 面板（每格更新；場景狀態由 player 經 applyAt 套用）
-function drawHud(dt = 0) {
-  followBoard(dt);
+function drawHud() {
+  followBoard();
   const h = selectedHole(), playing = player.playing;
   document.getElementById('holeState').textContent = `#${h.id + 1} · ${T >= h.placeT ? '已放入' : '待放入'} · 名義單邊間隙 ${((PRODUCT.hole.w - PRODUCT.coin.w) / 2).toFixed(2)} mm`;
   const pl = info.placed, tot = pl.A + pl.B;
@@ -169,7 +161,7 @@ function drawHud(dt = 0) {
   M.occluders.visible = ui.showGuards.checked;
   ui.progBar.style.width = T / total * 100 + '%';
   const src = pipSource(), [title, res] = pipInfo(src); ui.pipTitle.textContent = title; ui.pipResult.innerHTML = res;
-  updateLabels();
+  stage.updateLabels(ui.showLabels.checked);   // 畫布在 #app 內的偏移由舞台處理
   document.getElementById('diagnostics').textContent = JSON.stringify({ T, total, placed: pl, maxErr: info.maxErr, mapped: info.mapped, inspected: info.inspected });
   return src;
 }
@@ -177,9 +169,9 @@ function drawHud(dt = 0) {
 // 舞台迴圈在 tick 之後自己呼叫 renderer.render(scene, camera)，所以 tick 只做前兩段，並把場景留在「總覽」狀態；
 // render() 則一次畫完整格（跳轉、孔位檢視、錄影用）。
 const setMarks = on => Object.values(sim.boards).forEach(b => b.setAnnotations(on));
-function prepareFrame(dt = 0) {
-  const src = drawHud(dt); workspace.follow();
-  electrical.update({ time: T, playing: player.playing, action: 'S0–S4 多站同步 · ' + (T < plan.s2End ? '雙頭放置' : '換站'), motion: T < plan.s2End, vision: !!trackAt(plan.s3.tr, T).step?.flash });
+function prepareFrame() {
+  const src = drawHud(); workspace.follow();
+  electrical.update({ time: T, playing: player.playing, action: 'S0–S4 多站同步 · ' + (T < plan.s2End ? '雙頭放置' : '換站'), motion: T < plan.s2End, vision: !!plan.s3.tr.at(T).step?.flash });
   const marks = document.getElementById('showMarks').checked; setMarks(marks);
   return { src, marks };
 }
@@ -197,21 +189,20 @@ function render() {
 const workspace = createViewerWorkspace({ camera, controls, canvas, resize: stage.resize, focusOccluders: [M.occluders], getFocus: () => focusPoint(false),
   focusOffset: [0, 190, 440], onFocus: () => {
     setElectricalCutaway(scene, false); follow = null;
-    stage.goTo(camera.position.toArray(), controls.target.toArray(), true);   // 停掉進行中的視角轉場，交給產品焦點追隨
+    stage.cancelTween();   // 停掉進行中的視角轉場，交給產品焦點追隨
     document.querySelectorAll('.views button').forEach(b => b.classList.remove('selected'));
   } });
 const electrical = createElectricalInspector({ scene, camera, controls, canvas, onEnter: () => setView('electrical', true), onExit: () => setView('iso', true), title: 'PCB-CopperAssembly' });
 
 // ---------------------------------------------------------------- 播放（core/ui/player.js）：時間只由 player 推進，畫面狀態一律經 applyAt(T)
+// 循環播放：player 自動綁定 #loop 勾選框（播到結尾從頭再播）
 const applyAt = t => { T = t; info = project.apply(T, { playing: player ? player.playing : false }); return info; };
 player = createPlayer({ total, apply: applyAt, events: plan.events, qp });
 if (qp.has('t')) player.pause();
 const seekTo = t => { player.seekTo(t); render(); };
 function tick(dt) {
-  const was = player.playing;
   if (!player.update(dt)) applyAt(player.T);                                     // 暫停時照樣套用（三色燈隨播放狀態）
-  else if (was && !player.playing && ui.loop.checked) { player.seekTo(0); player.play(); }   // 循環播放
-  renderPip(prepareFrame(dt));
+  renderPip(prepareFrame());
   // 舞台接著畫總覽：等同 workspace.renderOverview（跟隨焦點時隱藏護罩；drawHud 每格會依勾選還原）
   mainViewport(); if (workspace.following) M.occluders.visible = false;
 }

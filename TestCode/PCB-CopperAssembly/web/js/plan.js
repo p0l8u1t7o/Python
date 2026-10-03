@@ -16,13 +16,8 @@ function move(tr, dur, to, label, { linear: lin, ...extra } = {}) {
 const wait = (tr, dur, label, extra) => move(tr, dur, {}, label, extra);
 /** 停留到時間 t（留下一個停留步驟，狀態面板顯示 label） */
 const until = (tr, t, label = '待命') => { if (t > tr.t + 1e-9) wait(tr, t - tr.t, label); };
-
-/** 軌在時間 T 的姿勢與所在步驟：step＝最後一個已開始的步驟（結束後仍保留），active＝正在進行的步驟，label＝狀態文字 */
-export function trackAt(tr, T) {
-  const i = tr.find(T), step = i < 0 ? null : tr.steps[i];
-  return { pose: tr.sample(T), step, active: step && T < step.start + step.dur ? step : null, label: step ? step.action : '待命' };
-}
-const stepEnd = s => s.start + s.dur;
+/** 狀態面板文字：core Track.at(T) 的 step（最後一個已開始的步驟）的動作說明；還沒有步驟時為「待命」 */
+export const actionOf = ({ step }) => step ? step.action : '待命';
 
 export function buildPlan(seed = 20260911) {
   // log：取放、仰視取像、基準點的逐顆紀錄 { t, type, H, k, … }；milestones：各站與每一趟的節點（轉成 events）
@@ -177,7 +172,7 @@ export function buildPlan(seed = 20260911) {
   log.sort((a, b) => a.t - b.t);
 
   // ---- 標準事件介面（與 core/anim/sequence.js 相同：events、stationStart、total）----
-  // 同一時刻的節點併成一筆（例如 S1、S3 同時開始），上一步／下一步才不會停在同一時間
+  // 同一時刻的節點併成一筆（例如 S1、S3 同時開始）：選單一個時間只列一項，比並列多筆清楚
   const STATION = { S0: 0, S1: 1, S2: 2, S2A: 2, S2B: 2, S3: 3, S4: 4 };
   const events = [];
   for (const m of milestones) {
@@ -189,8 +184,6 @@ export function buildPlan(seed = 20260911) {
   // 各站開始作業的時間（第一個不是待命／等待的步驟）
   const firstWork = (...trs) => Math.min(...trs.map(tr => tr.steps.find(s => s.action && !/^(待命|等待)/.test(s.action))?.start ?? cycle));
   const stationStart = [firstWork(s0), firstWork(s1.tr), firstWork(heads.A.tr, heads.B.tr), firstWork(s3.tr), firstWork(s4)];
-  // 根目錄 tools/verify-cables.mjs 仍以 segs（t0／t1）取各步驟邊界：唯讀別名，排程本身只用 core Track 的 steps
-  for (const tr of Object.values(tl.tracks)) Object.defineProperty(tr, 'segs', { get: () => tr.steps.map(s => ({ t0: s.start, t1: stepEnd(s) })) });
 
   const errs = holes.map(h => h.err);
   return { seed, cycle, total: cycle, timeline: tl, events, stationStart, log, s2End, holes, heads, feeders, conveyor, s0, s1, s3, s4, place,

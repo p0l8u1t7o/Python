@@ -24,7 +24,7 @@ if(project==='PCB-CopperAssembly') {
   const {createSim}=await imp('sim'),{RECIPES,setRecipe}=await imp('layout');
   for(const key of Object.keys(RECIPES)) {setRecipe(key);const s=scene(),sim=createSim(s),m=sim.machine;
     const times=new Set(sampleTimes(0,sim.plan.cycle,interval));
-    for(const tr of [sim.plan.s0,sim.plan.s4,sim.plan.s1.tr,sim.plan.s3.tr,...Object.values(sim.plan.heads).map(h=>h.tr)])for(const seg of tr.segs){times.add(seg.t0);times.add(seg.t1);}
+    for(const tr of [sim.plan.s0,sim.plan.s4,sim.plan.s1.tr,sim.plan.s3.tr,...Object.values(sim.plan.heads).map(h=>h.tr)])for(const s of tr.steps){times.add(s.start);times.add(s.start+s.dur);}
     scenarios.push({name:key,scene:s,apply:t=>sim.apply(t),times:[...times].sort((a,b)=>a-b),obstacles:[...m.keepout,...meshList(m.occluders),...Object.values(m.heads).flatMap(h=>meshList(h.beam)),...Object.values(m.loaders).flatMap(h=>meshList(h.car)),...Object.values(m.scanners).flatMap(h=>meshList(h.beam)),...Object.values(m.feeders).flatMap(h=>meshList(h.cam.group))]});
   }
 } else if(project==='AutomaticAcid-BaseTitration') {

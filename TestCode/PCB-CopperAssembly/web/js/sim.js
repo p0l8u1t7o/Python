@@ -1,7 +1,7 @@
 // 把排程在時間 T 的狀態套到整台機台（主程式與驗證共用）
 import * as THREE from 'three';
 import { LAYOUT, PRODUCT, BOARD_TOP } from './layout.js';
-import { buildPlan, trackAt } from './plan.js';
+import { buildPlan, actionOf } from './plan.js';
 import { createMachine } from './machine.js';
 import { createBoard } from './board.js';
 
@@ -30,18 +30,18 @@ export function createSim(scene) {
 
   /** 上下料機構：回傳吸盤底高度與是否夾持 */
   function loaderPose(key, T) {
-    const s = trackAt(plan[key === 'S0' ? 's0' : 's4'], T), p = s.pose, L = m.loaders[key];
+    const s = plan[key === 'S0' ? 's0' : 's4'].at(T), p = s.state, L = m.loaders[key];
     const stackTop = key === 'S0' ? STACK.base + (STACK.in - 1) * PITCH + THICK : STACK.base + STACK.out * PITCH + (p.grip ? THICK : 0);
     const surface = p.z > LAYOUT.stackZ / 2 ? stackTop : BOARD_TOP;
     const cupY = surface + (1180 - surface) * p.y;
     L.car.position.z = p.z; L.zAxis.position.y = cupY;
-    status[key] = s.label;
+    status[key] = actionOf(s);
     return { cupY, z: p.z, grip: p.grip > 0.5, x: key === 'S0' ? ST[0] : ST[4] };
   }
 
   function apply(T) {
-    const conv = trackAt(plan.conveyor, T), cv = conv.pose, shift = cv.shift, k = shift / 700;
-    status.conveyor = conv.label;
+    const conv = plan.conveyor.at(T), cv = conv.state, shift = cv.shift, k = shift / 700;
+    status.conveyor = actionOf(conv);
     m.lifts.forEach(l => { l.position.y = (cv.lift - 1) * 6; }); m.stops.forEach(s => { s.position.y = (cv.lift - 1) * 24; });
     m.beltMarks.position.x = shift % 60;
     // 基板：S0→S1（掃描）、S1→S2（放置）、S2→S3（檢查）、S3→S4（下料）
@@ -58,14 +58,14 @@ export function createSim(scene) {
     else if (T < grip0.release) boards.fresh.group.position.set(ST[0], ld.cupY - THICK, ld.z);
     else boards.fresh.group.position.set(ST[0], y0, 0);
     boards.fresh.setMapped(0); boards.fresh.setCoins(0);
-    // S1／S3 相機龍門
+    // S1／S3 相機龍門（Track.at：state＝姿勢，step＝最後一個已開始的步驟，active＝該步驟仍在進行）
     for (const [key, tr] of [['S1', plan.s1.tr], ['S3', plan.s3.tr]]) {
-      const s = trackAt(tr, T), sc = m.scanners[key];
-      sc.beam.position.z = s.pose.z; sc.car.position.x = sc.x0 + s.pose.x; sc.cam.flash(!!s.active?.flash); status[key] = s.label;
+      const s = tr.at(T), sc = m.scanners[key];
+      sc.beam.position.z = s.state.z; sc.car.position.x = sc.x0 + s.state.x; sc.cam.flash(s.active && !!s.step.flash); status[key] = actionOf(s);
     }
     // S2 龍門與吸嘴
     for (const H of ['A', 'B']) {
-      const h = plan.heads[H], s = trackAt(h.tr, T), p = s.pose, hd = m.heads[H];
+      const h = plan.heads[H], s = h.tr.at(T), p = s.state, hd = m.heads[H];
       hd.beam.position.z = p.nz + hd.side * G.overhang; hd.head.position.x = p.x;
       hd.nozzles.forEach((nz, i) => {
         nz.spindle.position.y = p[`y${i}`]; nz.spindle.rotation.y = p[`t${i}`] * Math.PI / 180;
@@ -73,10 +73,10 @@ export function createSim(scene) {
         nz.coin.visible = !!hold;
         if (hold) { const o = hold.coin.pickOffset; nz.coin.position.set(o.dx, -PRODUCT.coin.t, o.dz); nz.coin.rotation.y = o.dt * Math.PI / 180; }
       });
-      hd.downCam.flash(!!s.active?.flash); status['S2' + H] = s.label;
+      hd.downCam.flash(s.active && !!s.step.flash); status['S2' + H] = actionOf(s);
       m.upCams[H].flash(near(upcamEv[H], T));
       // 供料盤
-      const f = plan.feeders[H], fm = m.feeders[H], fs = trackAt(f.tr, T);
+      const f = plan.feeders[H], fm = m.feeders[H], fs = f.tr.at(T);
       let gi = 0, bi = 0;
       for (const c of f.coins) {
         if (!(c.t0 <= T && T < c.t1)) continue;
@@ -86,7 +86,7 @@ export function createSim(scene) {
       }
       for (let i = gi; i < fm.coins.length; i++) fm.coins[i].visible = false;
       for (let i = bi; i < fm.backs.length; i++) fm.backs[i].visible = false;
-      fm.cam.flash(!!fs.active?.flash); status['feeder' + H] = fs.label;
+      fm.cam.flash(fs.active && !!fs.step.flash); status['feeder' + H] = actionOf(fs);
     }
     m.updateRouting();
     scene.updateMatrixWorld(true);

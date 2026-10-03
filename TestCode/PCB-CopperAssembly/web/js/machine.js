@@ -3,26 +3,24 @@
 import * as THREE from 'three';
 import {cabinetShell,controlPanel,entryGland,panelFeed} from '@core/electrical/electrical-cabinet.js';
 import { cable, cableTray, carrier, support, CABLE } from '@core/electrical/cable-routing.js';
-import { finish } from '@core/geom/finish.js';
 import { perforated } from '@core/geom/perforated.js';
 import { block, cylinder, decal } from '@core/geom/shapes.js';
-import { MAT } from '@core/geom/materials.js';
+import { MAT, finished } from '@core/geom/materials.js';
 import { LAYOUT, PRODUCT, HOLES, BOARD_TOP } from './layout.js';
 import { createCoin } from './board.js';
 
-// 常見材質取自共用材質表 MAT（鋁、黑件、烤漆、藍色烤漆鋼、黃色件）；鋁件與底座烤漆另加本機細紋，所以複製一份再 finish，不改動共用材質。
-// 本機專屬的外觀留在這裡：鋁擠型框（中灰陽極）、花崗岩台、綠色皮帶、PC 透明外罩、背光供料盤。
-const matFrame = new THREE.MeshStandardMaterial({ color: 0x6b7480, roughness: 0.5, metalness: 0.6 });
-const matAlu = finish(MAT.alu.clone(), 'metal', .008);
+// 常見材質取自共用材質表 MAT（鋁擠型框、鋁、黑件、烤漆、藍色烤漆鋼、黃色件）；框、鋁件與底座烤漆用 finished() 的帶細紋快取複本，不改動共用材質。
+// 本機專屬的外觀留在這裡：花崗岩台、綠色皮帶、PC 透明外罩、背光供料盤。
+const matFrame = finished(MAT.frame, 'metal', .012);
+const matAlu = finished(MAT.alu, 'metal', .008);
 const matDark = MAT.black;
-const matBase = finish(MAT.cabinet.clone(), 'polymer', .025);
+const matBase = finished(MAT.cabinet, 'polymer', .025);
 const matGranite = new THREE.MeshStandardMaterial({ color: 0x2a2d31, roughness: 0.85 });
 const matBlue = MAT.steelBlue;
 const matBelt = new THREE.MeshStandardMaterial({ color: 0x2e7d56, roughness: 0.75 });
 const matYellow = MAT.yellow;
 const matPC = new THREE.MeshPhysicalMaterial({ color: 0xcfe3ff, roughness: 0.1, transmission: 0.3, transparent: true, opacity: 0.1, depthWrite: false, side: THREE.DoubleSide });
 const matFeeder = new THREE.MeshStandardMaterial({ color: 0xe8eef2, roughness: 0.7, emissive: 0x9fb8c8, emissiveIntensity: 0.25 });
-finish(matFrame,'metal',.012);
 const glow = () => new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.05 });
 const top = LAYOUT.conveyorTop, ST = LAYOUT.stations, G = LAYOUT.gantry;
 function annulus(parent, outer, inner, y, material) {

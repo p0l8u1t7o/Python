@@ -56,12 +56,12 @@ node ../core/tools/serve.mjs PCB-CopperAssembly --no-open
 | 檔案 | 用途 |
 |---|---|
 | `web/js/layout.js` | 機種配方、產品與機台尺寸、運動參數、誤差模型 |
-| `web/js/plan.js` | 一個節拍的完整排程：每個機構是 core 時間軸（`createTimeline`）上的一條軌，並行排程；`log` 是逐顆取放／取像紀錄，`events`／`stationStart`／`total` 是統一的事件介面；誤差抽樣 |
+| `web/js/plan.js` | 一個節拍的完整排程：每個機構是 core 時間軸（`createTimeline`）上的一條軌，並行排程，任一時刻用 core 的 `Track.at(T)` 取姿勢與所在步驟；`log` 是逐顆取放／取像紀錄，`events`／`stationStart`／`total` 是統一的事件介面；誤差抽樣 |
 | `web/js/board.js` | 基板（依配方的長圓孔或圓孔＋黏紙）、銅片、量測與檢查標記 |
-| `web/js/machine.js` | 輸送線、料倉與上下料、相機龍門、雙龍門與吸嘴頭、供料盤、仰視相機、外罩 |
+| `web/js/machine.js` | 輸送線、料倉與上下料、相機龍門、雙龍門與吸嘴頭、供料盤、仰視相機、外罩；鋁擠型框、鋁件、底座烤漆用 core 的 `MAT.frame`／`finished(MAT.alu, 'metal')`／`finished(MAT.cabinet, 'polymer')` |
 | `web/js/sim.js` | 把排程在任一時間的狀態套到機台（畫面與驗證共用） |
 | `web/js/project.js` | 專案介面 `createProject({ scene, recipe })`：建立機台、基板與排程，`apply(t)` 把整個場景放到時間 t；網頁與 core 統一檢查共用同一份（含 `layoutChecks` 與全場檢查設定） |
-| `web/js/main.js` | UI、視角、相機子畫面、紀錄匯出（場景物件與逐時狀態都取自 `project.js`）；舞台 `core/ui/stage.js`（不開對數深度；3D 標籤 `addLabel`、視角轉場 `goTo`），播放列 `core/ui/player.js`（事件選單用排程的 `events`，另加循環播放），`?movie` 時改由 `core/movie/movie.js` 驅動 |
+| `web/js/main.js` | UI、視角、相機子畫面、紀錄匯出（場景物件與逐時狀態都取自 `project.js`）；舞台 `core/ui/stage.js`（不開對數深度；3D 標籤 `addLabel`、視角轉場 `goTo`，基板近看／孔位細節以 `shiftView` 跟著輸送中的基板），播放列 `core/ui/player.js`（事件選單用排程的 `events`，循環播放綁定標準 `#loop` 勾選框），`?movie` 時改由 `core/movie/movie.js` 驅動 |
 | `tools/verify.mjs` | 排程與幾何驗證 |
 
 ## 驗證
