@@ -11,7 +11,7 @@
 //   narrowFit  畫布比 aspect 窄時，goTo 的相機距離乘上 (aspect / 畫布寬高比)^power（上限 max），保住水平方向的取景；
 //              旋轉螢幕或改變視窗時依新比例調整目前距離（含使用者自己轉過的視角）與 maxDistance；
 //              個別視角可用 goTo(…, { fit: false 或 (倍數, 偏移) => 新偏移 }) 自訂
-//   declutter  'narrow'（預設：畫布寬度 < 1100 px 時，與精簡版面一致）、true（一律）或 false：標籤互相重疊時隱藏優先度低的
+//   declutter  'narrow'（預設：精簡版面時，或畫布寬度 < 900 px）、true（一律）、false 或函式（每格判斷）：標籤互相重疊時隱藏優先度低的
 //              （addLabel 的 priority 大者優先，同優先度先加入者優先）
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -108,7 +108,7 @@ function buildStage({
     const pos = typeof getPos === 'function' ? getPos : () => getPos;
     const item = { el, pos, anchor, priority, order: labels.length }; labels.push(item); return item;
   }
-  const declutterOn = () => qp.has('declutter') ? qp.get('declutter') !== '0' : declutter === 'narrow' ? canvas.clientWidth < 1100 : !!declutter;
+  const declutterOn = () => qp.has('declutter') ? qp.get('declutter') !== '0' : declutter === 'narrow' ? document.body.classList.contains('viewer-compact') || canvas.clientWidth < 900 : typeof declutter === 'function' ? declutter() : !!declutter;
   function updateLabels(show = true) {
     const w = canvas.clientWidth, h = canvas.clientHeight, cr = canvas.getBoundingClientRect(), hr = host.getBoundingClientRect();
     const ox = cr.left - hr.left + host.scrollLeft - host.clientLeft, oy = cr.top - hr.top + host.scrollTop - host.clientTop;

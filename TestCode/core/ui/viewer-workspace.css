@@ -65,6 +65,8 @@ body.capture .viewer-tools,body.capture #pipFrame{display:none!important}
 .viewer-compact #electrical-inspector header{position:sticky;top:-12px;background:#10232f;z-index:2;padding:8px 0}
 .viewer-compact #electrical-inspector button,.viewer-compact #electrical-inspector select{min-height:44px;font-size:14px}
 .viewer-compact #electrical-inspector select{font-size:16px}
+/* 手機直向：電控面板只留機櫃模式、元件選單與說明，次要資訊收起，讓上方的電盤看得到 */
+@media(orientation:portrait){.viewer-workspace.viewer-compact #electrical-inspector{max-height:34dvh!important}.viewer-compact #electrical-inspector :is(.ep-summary,.ep-state,details,[data-export]){display:none}}
 .viewer-workspace.viewer-compact #app #pipFrame{width:min(300px,calc(100vw - 24px),max(160px,calc((100dvh - 230px)*var(--sensor-aspect,1))));max-height:calc(100dvh - 140px);overflow:auto}
 .viewer-workspace.viewer-compact #app #pipFrame.expanded{width:min(480px,calc(100vw - 24px),max(160px,calc((100dvh - 230px)*var(--sensor-aspect,1))))}
 .viewer-compact .camera-actions button{min-width:40px;height:40px;font-size:20px}
