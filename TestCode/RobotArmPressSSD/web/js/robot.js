@@ -1,13 +1,13 @@
-// DENSO VS-068 六軸手臂＋共用末端工具（快拆壓頭介面＋20MP 斜視相機）
+// DENSO VS-068 六軸手臂（共用模型 @core/models/robots/denso-vs068.js）＋本站共用末端工具（快拆壓頭介面＋20MP 斜視相機）
 // 工具本地座標：+Z 為工具前進方向（朝下壓）、X 沿壓墊長邊、Y 橫向（相機所在側為 +Y）。單位 mm。
+// 本檔只放本站的末端工具、TCP 與關節規劃（逆解選解、PTP、位姿快取）；手臂本體、限位、速度與 IK 在共用模型。
 import * as THREE from 'three';
-import { cable, armDress, CABLE } from '@core/electrical/cable-routing.js';
-import { createIK } from '@core/robot/kinematics.js';
+import { createVS068, VS068_MAT, JOINTS, JOINT_SPEED } from '@core/models/robots/denso-vs068.js';
+import { cable, CABLE } from '@core/electrical/cable-routing.js';
 import { block, cylinder, decal, bevelBox, screw, tube } from '@core/geom/primitives.js';
 
-const matArm   = new THREE.MeshStandardMaterial({ color: 0xeceeef, roughness: 0.42, metalness: 0.12 });
-const matArmD  = new THREE.MeshStandardMaterial({ color: 0x30353b, roughness: 0.5, metalness: 0.3 });
-const matJoint = new THREE.MeshStandardMaterial({ color: 0x1c1f23, roughness: 0.4, metalness: 0.5 });
+const matArmD  = VS068_MAT.dark;
+const matJoint = VS068_MAT.joint;
 const matTool  = new THREE.MeshStandardMaterial({ color: 0x9aa3ad, roughness: 0.35, metalness: 0.75 });
 const matAnod  = new THREE.MeshStandardMaterial({ color: 0x3b4149, roughness: 0.4, metalness: 0.6 });
 const matPU    = new THREE.MeshStandardMaterial({ color: 0xd9a441, roughness: 0.9 });
@@ -25,46 +25,15 @@ export const TOOL = {
 };
 
 export function createRobot() {
-  const root = new THREE.Group(); root.name = 'robot';
-  // ---- 連桿（DENSO VS-068 型錄：臂長 340＋340、動作半徑 710）----
-  // 基座到 J2 高度 345、J5 到法蘭 80 為參考值，型錄未列，需以 DENSO CAD 核對。
-  const L = { base: 200, shoulderY: 145, shoulderX: 0, upper: 340, fore: 340, foreOffset: 0, wrist1: 120, wrist2: 70, flange: 10 };
-  const j = {};
-  const base = cyl(88, 100, L.base, matArm); base.position.y = L.base / 2; root.add(base);
-  const baseRing = cyl(92, 92, 10, matJoint); baseRing.position.y = L.base - 4; root.add(baseRing);   // 頂面高出基座 1 mm，避免重合面閃爍
-  decal(root, 90, 22, [0, 70, 101], [0, 0, 0], 'DENSO', { color: '#c8102e', center: true, bold: true });
-
-  j.j1 = new THREE.Group(); j.j1.position.y = L.base; root.add(j.j1);                               // J1 繞 Y
-  const shoulder = box(150, 150, 170, matArm); shoulder.position.y = 70; j.j1.add(shoulder);
-  j.j2 = new THREE.Group(); j.j2.position.set(L.shoulderX, L.shoulderY, 0); j.j1.add(j.j2);          // J2 繞 Z
-  const j2disc = cyl(72, 72, 190, matJoint); j2disc.rotation.x = Math.PI / 2; j.j2.add(j2disc);
-  const upper = box(100, L.upper, 110, matArm); upper.position.y = L.upper / 2; j.j2.add(upper);
-  const upperCap = cyl(58, 58, 112, matArm); upperCap.rotation.x = Math.PI / 2; upperCap.position.y = L.upper; j.j2.add(upperCap);
-  for(let k=0;k<6;k++) {
-    const a=k*Math.PI/3; screw(j.j2,[Math.cos(a)*58,Math.sin(a)*58,96],4,'z');
-  }
-  decal(j.j2, 60, 150, [0, 170, 56], [0, 0, 0], ['VS-068', 'DENSO'], { color: '#4a525b', center: true });
-
-  j.j3 = new THREE.Group(); j.j3.position.set(0, L.upper, 0); j.j2.add(j.j3);                       // J3 繞 Z
-  const j3disc = cyl(55, 55, 150, matJoint); j3disc.rotation.x = Math.PI / 2; j.j3.add(j3disc);
-  for(let k=0;k<6;k++) { const a=k*Math.PI/3; screw(j.j3,[Math.cos(a)*43,Math.sin(a)*43,76],3.5,'z'); }
-  const fore = box(L.fore - L.wrist1 + 30, 80, 90, matArm); fore.position.set((L.fore - L.wrist1 - 30) / 2, L.foreOffset, 0); j.j3.add(fore);
-  j.j4 = new THREE.Group(); j.j4.position.set(L.fore - L.wrist1, L.foreOffset, 0); j.j3.add(j.j4);   // J4 繞 X
-  const w1 = cyl(42, 42, L.wrist1, matArm); w1.rotation.z = Math.PI / 2; w1.position.x = L.wrist1 / 2; j.j4.add(w1);
-  j.j5 = new THREE.Group(); j.j5.position.set(L.wrist1, 0, 0); j.j4.add(j.j5);                      // J5 繞 Z
-  const w2 = cyl(38, 38, 96, matJoint); w2.rotation.x = Math.PI / 2; j.j5.add(w2);
-  const w2b = box(L.wrist2, 62, 62, matArm); w2b.position.x = L.wrist2 / 2; j.j5.add(w2b);
-  j.j6 = new THREE.Group(); j.j6.position.set(L.wrist2, 0, 0); j.j5.add(j.j6);                      // J6 繞 X
-  const flange = cyl(32, 32, L.flange, matJoint); flange.rotation.z = Math.PI / 2; flange.position.x = L.flange / 2; j.j6.add(flange);
-
+  // ---- 手臂本體（共用模型）：起始姿態 J1 −90°（朝向工作台）----
+  const arm = createVS068({ q: { j1: -90, j2: -10, j3: 40, j4: 0, j5: -70, j6: 0 } });
+  const { root, L, q, limits, apply, ik } = arm;
   // Keep the arm and camera geometry separate for self-clearance regression checks.
-  const armParts = [base, baseRing, shoulder, j2disc, upper, upperCap, j3disc, fore, w1, w2, w2b, flange];
-  ['base', 'base-ring', 'shoulder', 'J2', 'upper-arm', 'elbow-cap', 'J3', 'forearm', 'J4', 'J5', 'wrist', 'flange']
-    .forEach((name, i) => { armParts[i].name = name; });
+  const armParts = arm.parts;
 
-  // ---- 末端工具（所有機種共用）----
-  const tool = new THREE.Group(); tool.position.x = L.flange; tool.rotation.y = Math.PI / 2; j.j6.add(tool);
-  const ft = cyl(41, 41, 25, matAnod); ft.rotation.x = Math.PI / 2; ft.position.z = 12.5; tool.add(ft);   // ATI Axia80
+  // ---- 末端工具（所有機種共用），裝在手臂的工具安裝座（法蘭面，+Z 朝下壓）----
+  const tool = arm.tool;
+  const ft =cyl(41, 41, 25, matAnod); ft.rotation.x = Math.PI / 2; ft.position.z = 12.5; tool.add(ft);   // ATI Axia80
   const ftRing = new THREE.Mesh(new THREE.TorusGeometry(41, 1.8, 8, 40), new THREE.MeshStandardMaterial({ color: 0x3dd68c, emissive: 0x3dd68c, emissiveIntensity: 1.2 }));
   ftRing.position.z = 12.5; tool.add(ftRing);
   block(tool, [90, 90, 8], [0, 0, 29], matTool);                                        // 工具本體板
@@ -134,28 +103,13 @@ export function createRobot() {
   const tcpCam = new THREE.Object3D(); tcpCam.position.copy(camCenter).addScaledVector(camAxis, TOOL.camReach + TOOL.camWD); tool.add(tcpCam);
   const tcps = { press: tcpPress, cam: tcpCam };
 
-  armDress(j,L,{upperDepth:56,foreDepth:46});
-  cable(root,'PWR / base inlet',[[0,0,-180],[0,32,-180],[0,70,-125],[0,80,-100]],{radius:7,color:CABLE.power});
+  // 手臂外部線材保護段與基座電源線由共用模型建立（dress）；以下是工具上的線材
   cable(tool,'FT / flange junction',[[43,0,12],[55,0,12],[55,42,20],[35,42,20]],{radius:2,color:CABLE.signal,clips:1});
   cable(camMount,'LIGHT / rear-routed lead',[[22,0,-12],[30,12,-10],[35,30,20],[35,30,44]],{radius:1.6,color:CABLE.power,clips:1});
 
-  // ---- 關節狀態 ----
-  const q = { j1: -90 * D2R, j2: -10 * D2R, j3: 40 * D2R, j4: 0, j5: -70 * D2R, j6: 0 };
-  // VS-068 型錄範圍：J1 ±170、J2 +135/−100、J3 +153/−120、J4 ±270、J5 ±120、J6 ±360。
-  // 換算到本模型座標（假設 DENSO J2 零點為上臂垂直、J3=90° 為前臂水平；正向相反）：j2 = −J2、j3 = 90° − J3。
-  const limits = { j1: [-170, 170], j2: [-135, 100], j3: [-63, 210], j4: [-270, 270], j5: [-120, 120], j6: [-360, 360] };
+  // ---- 關節狀態（q、limits、JOINT_SPEED、IK 來自共用模型）----
   const home = { ...q };
-  const JOINTS = ['j1', 'j2', 'j3', 'j4', 'j5', 'j6'];
-  // 關節速度上限（rad/s）：取 VS-068 型錄最高速度（J1 356、J2 303、J3 379、J4 475、J5 475、J6 760 °/s）的 50%
-  const JOINT_SPEED = { j1: 3.1, j2: 2.6, j3: 3.3, j4: 4.1, j5: 4.1, j6: 6.6 };
-
-  function apply() {
-    j.j1.rotation.set(0, q.j1, 0); j.j2.rotation.set(0, 0, q.j2); j.j3.rotation.set(0, 0, q.j3);
-    j.j4.rotation.set(q.j4, 0, 0); j.j5.rotation.set(0, 0, q.j5); j.j6.rotation.set(q.j6, 0, 0);
-    root.updateMatrixWorld(true);
-  }
   apply();
-  const ik = createIK({ q, j, tool, apply, limits });
 
   // ---- 目標與追蹤 ----
   const cur = { target: new THREE.Vector3(), tcp: 'press' };
@@ -182,26 +136,10 @@ export function createRobot() {
     apply(); return getTcpWorld(cur.tcp, tcpWorld);
   }
 
-  // 幾何初始解：肘部上下 × 手腕翻轉共四組，角度折回限位內；逐組求解取誤差最小者。
-  function wrapJ(name, v) { const [lo, hi] = limits[name].map(x => x * D2R); for (const k of [0, 2 * Math.PI, -2 * Math.PI]) if (v + k >= lo && v + k <= hi) return v + k; return THREE.MathUtils.clamp(v, lo, hi); }
+  // 幾何初始解（共用模型）：肘部上下 × 手腕翻轉共四組，角度折回限位內；逐組求解取誤差最小者。
   function seeds() {
-    const dir = new THREE.Vector3(0, 0, 1).applyQuaternion(goal.quaternion);
     const origin = goal.target.clone().sub(tcps[goal.tcp].position.clone().applyQuaternion(goal.quaternion));
-    const wrist = origin.addScaledVector(dir, -L.wrist2 - L.flange).sub(new THREE.Vector3(root.position.x, root.position.y + L.base + L.shoulderY, root.position.z));
-    const radial = Math.hypot(wrist.x, wrist.z) - L.shoulderX, a = L.upper, b = Math.hypot(L.fore, L.foreOffset), phi = Math.atan2(L.foreOffset, L.fore);
-    const j1 = Math.atan2(-wrist.z, wrist.x), elbow = Math.acos(THREE.MathUtils.clamp((radial * radial + wrist.y * wrist.y - a * a - b * b) / (2 * a * b), -1, 1)), out = [];
-    for (const beta of [-elbow, elbow]) {
-      const j2 = Math.atan2(wrist.y, radial) - Math.atan2(b * Math.sin(beta), a + b * Math.cos(beta)) - Math.PI / 2, j3 = beta + Math.PI / 2 - phi;
-      const shoulderQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), j1).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), j2 + j3));
-      const relative = shoulderQ.invert().multiply(goal.quaternion).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2));
-      const m = new THREE.Matrix4().makeRotationFromQuaternion(relative).elements;
-      const j5 = Math.acos(THREE.MathUtils.clamp(m[0], -1, 1));
-      let j4 = 0, j6 = Math.atan2(m[6], m[5]); if (Math.sin(j5) > 1e-5) { j4 = Math.atan2(m[2], m[1]); j6 = Math.atan2(m[8], -m[4]); }
-      for (const [w4, w5, w6] of [[j4, j5, j6], [j4 + Math.PI, -j5, j6 + Math.PI]]) {
-        const c = { j1, j2, j3, j4: w4, j5: w5, j6: w6 }; for (const name in limits) c[name] = wrapJ(name, c[name]); out.push(c);
-      }
-    }
-    return out;
+    return arm.seeds(origin, goal.quaternion);
   }
   function error() {
     const position = getTcpWorld(goal.tcp).distanceTo(goal.target);
@@ -283,6 +221,6 @@ export function createRobot() {
   for (const part of [singlePad, ...barPads]) part.traverse(o => { o.userData.contact = true; });
 
   return { root, q, home, goal, cur, update, apply, getTcpWorld, snap, error, poseFor, setPose, reach, plan, ptpTime, tool, tcps, pipCam,
-    setForceColor, setFlash, setPadCompression, setInsert, get insert() { return bar.visible ? 'bar' : 'single'; }, limits, L,
+    setForceColor, setFlash, setPadCompression, setInsert, get insert() { return bar.visible ? 'bar' : 'single'; }, limits, L, arm,
     clearanceParts: { arm: armParts, camera: cameraParts } };
 }

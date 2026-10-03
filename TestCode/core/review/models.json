@@ -1,5 +1,13 @@
 [
   {
+    "id": "denso-vs068",
+    "name": "DENSO VS-068 六軸手臂",
+    "ok": true,
+    "meshes": 65,
+    "dynamic": [],
+    "zfight": []
+  },
+  {
     "id": "conveyor",
     "name": "滾筒輸送線",
     "ok": true,
