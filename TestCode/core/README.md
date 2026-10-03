@@ -127,12 +127,12 @@ exposeSim({ seekTo, setView, views, total, play, pause, get T() { return T; } })
 
 | 項目 | 用法 |
 |---|---|
-| 形狀與材質 | `@core/geom/shapes.js`（block／cylinder／rod…，陣列參數）＋`@core/geom/materials.js` 的 `MAT`。常見材質（鋼、鋁、烤漆、黑件、指示燈）用 MAT，產品專屬外觀才在專案自建 |
-| 排程 | 單一手臂依序作業：`createStepSequence`（`@core/anim/sequence.js`）；多台設備並行：`createTimeline`（`@core/anim/track.js`）。兩者都提供 `events`、`stationStart`、`total` |
-| 播放列 | `createPlayer`（`@core/ui/player.js`）綁定標準元素 `playBtn／restartBtn／speed／speedVal／timeline／clock／stepSelect／previous／next`，事件選單用排程的 `events` |
-| 3D 標籤 | `stage.addLabel(html, getPos, cls)`，每格 `stage.updateLabels(show)` |
-| 視角 | `VIEWS = { 名稱: [位置, 注視點] 或 () => [...] }`，切換用 `stage.goTo(位置, 注視點, instant)` |
-| 相機子畫面與焦點追隨 | `createViewerWorkspace`（`@core/ui/viewer-workspace.js`） |
+| 形狀與材質 | `@core/geom/shapes.js`（block／cylinder／rod…，陣列參數）＋`@core/geom/materials.js` 的 `MAT`（含 `frame` 鋁擠型、`chrome`）與 `finished(MAT.alu, 'metal')`（帶細紋的快取複本）。常見材質用 MAT，產品專屬外觀才在專案自建 |
+| 排程 | 單一手臂依序作業：`createStepSequence`（`@core/anim/sequence.js`；`discrete`、`latch`、`nested`、步驟 `ease`／`easeKeys`、`peek`、`mark`／`rollback`、`retime`）；多台設備並行：`createTimeline`（`@core/anim/track.js`；`Track.at(T)`）。兩者都提供 `events`、`stationStart`、`total` |
+| 播放列 | `createPlayer`（`@core/ui/player.js`）綁定標準元素 `playBtn／restartBtn／speed／speedVal／timeline／clock／stepSelect／previous／next／loop`，事件選單用排程的 `events`；`apply(T, { seek })`、`advance(T, dt)`（等手臂到位、故障停住）、`loop`、`<select>` 速度選單、`speed` 預設值 |
+| 3D 標籤 | `stage.addLabel(html, getPos, cls, { anchor: 'center' 或 'above' })`，每格 `stage.updateLabels(show)`；畫布在頁面中的偏移由 stage 處理 |
+| 視角 | `VIEWS = { 名稱: [位置, 注視點] 或 () => [...] }`，切換用 `stage.goTo(位置, 注視點, instant, 秒)`；`stage.cancelTween()`、`stage.shiftView(位移)`（跟著輸送中的工件） |
+| 相機子畫面與焦點追隨 | `createViewerWorkspace`（`@core/ui/viewer-workspace.js`）：`renderCamera`（3D 相機）、`renderImage`（2D 示意影像）、`setSources`（來源選單＋自動切換）、`startFollowing`／`stopFollowing`，`focusOffset` 可為函式 |
 | window.sim | `exposeSim({ seekTo, setView, views, total, play, pause, … })` |
 
 ## 檢查

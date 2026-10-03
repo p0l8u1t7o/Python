@@ -80,19 +80,25 @@ export function createViewerWorkspace({camera, controls, canvas, resize, getFocu
   button(actions, '↗', '以獨立視窗顯示相機', detach);
   button(actions, '×', '隱藏相機視窗', () => { show.checked = false; updateVisibility(); });
   title.tabIndex = 0; title.title = '拖曳移動；方向鍵微調位置';
+  // focusOffset 可為 [x,y,z] 或 (焦點) => [x,y,z]；getFocus() 回傳 null 時（目標離線）保持目前視角
+  let savedNear = null;
   function setFollowing(on) {
     tracking = on; lastTarget = null; focusButton.setAttribute('aria-pressed', String(on));
     focusButton.title = on ? '解除產品焦點追隨' : '追隨產品焦點';
     if (on) {
       if(compact)announce('none');
-      onFocus(); const p = getFocus().clone(); camera.near = focusNear; camera.updateProjectionMatrix();
-      controls.target.copy(p); camera.position.copy(p).add(new THREE.Vector3(...focusOffset)); lastTarget = p;
+      onFocus?.(); const f = getFocus(); savedNear ??= camera.near; camera.near = focusNear; camera.updateProjectionMatrix();
+      if (f) {
+        const p = f.clone(), off = typeof focusOffset === 'function' ? focusOffset(p) : focusOffset;
+        controls.target.copy(p); camera.position.copy(p).add(new THREE.Vector3(...off)); lastTarget = p;
+      }
       controls.update();
-    }
+    } else if (savedNear != null) { camera.near = savedNear; camera.updateProjectionMatrix(); savedNear = null; }
   }
   function follow() {
     if (!tracking) return;
-    const p = getFocus().clone();
+    const f = getFocus(); if (!f) { lastTarget = null; return; }
+    const p = f.clone();
     if (lastTarget) { const delta = p.clone().sub(lastTarget); camera.position.add(delta); controls.target.add(delta); }
     lastTarget = p; camera.lookAt(controls.target);
     focusButton.dataset.target = p.toArray().join(',');
@@ -157,12 +163,12 @@ export function createViewerWorkspace({camera, controls, canvas, resize, getFocu
   const monitor = setInterval(() => { if (popup?.closed) dock(); }, 400);
   /** Render with the existing WebGL context, then copy the sensor frame. A
    * render target avoids scissor clipping when the panel crosses the main view. */
-  function renderCamera({renderer, scene, camera: sensor, vision, marks, title: label, result: detail, aspect = 1.5}) {
+  function renderCamera({renderer, scene, camera: sensor, vision = null, marks = {}, title: label, result: detail, aspect = 1.5}) {
     updateVisibility();
-    if (frame.hidden && !(popup && !popup.closed)) { vision.hide(); return; }
+    if (frame.hidden && !(popup && !popup.closed)) { vision?.hide(); return; }
     if (label !== undefined) title.textContent = label;
     if (detail !== undefined) result.textContent = detail;
-    if (attachedVision !== vision) { attachedVision = vision; image.append(vision.host); vision.host.style.position = 'absolute'; }
+    if (vision && attachedVision !== vision) { attachedVision = vision; image.append(vision.host); vision.host.style.position = 'absolute'; }
     image.style.aspectRatio = String(aspect);
     frame.style.setProperty('--sensor-aspect',String(aspect));
     const displayWidth = image.clientWidth || 480, displayHeight = displayWidth/aspect;
@@ -185,12 +191,12 @@ export function createViewerWorkspace({camera, controls, canvas, resize, getFocu
       const stride=width*4; for(let row=0;row<height;row++) imageData.data.set(pixels.subarray((height-1-row)*stride,(height-row)*stride),row*stride);
       imageContext.putImageData(imageData,0,0);
     } finally { renderer.setRenderTarget(oldTarget); renderer.setViewport(viewport); renderer.setScissor(scissor); renderer.setScissorTest(test); }
-    vision.draw(sensor,{left:0,top:0,width:displayWidth,height:displayHeight},marks);
+    vision?.draw(sensor,{left:0,top:0,width:displayWidth,height:displayHeight},marks);
     frame.dataset.time=String(marks.time); frame.dataset.camera=title.textContent;
     if(popup && !popup.closed) {
       if(popupCanvas.width!==width || popupCanvas.height!==height){popupCanvas.width=width;popupCanvas.height=height;}
-      popupContext.drawImage(imageCanvas,0,0); const overlay=vision.host.querySelector('canvas'); popupContext.drawImage(overlay,0,0,width,height);
-      const badge=vision.host.querySelector('.vision-summary'); popupBadge.textContent=badge.hidden?'':badge.textContent; popupBadge.hidden=badge.hidden;
+      popupContext.drawImage(imageCanvas,0,0); const overlay=vision?.host.querySelector('canvas'); if(overlay)popupContext.drawImage(overlay,0,0,width,height);
+      const badge=vision?.host.querySelector('.vision-summary'); popupBadge.textContent=!badge||badge.hidden?'':badge.textContent; popupBadge.hidden=!badge||badge.hidden;
       popup.document.querySelector('header b').textContent=title.textContent;
       popupClock.textContent=`主時間軸 ${Number(marks.time).toFixed(2)} s · ${result.textContent}`;
       popup.document.body.dataset.time=String(marks.time);
@@ -209,5 +215,40 @@ export function createViewerWorkspace({camera, controls, canvas, resize, getFocu
   window.addEventListener('beforeunload', () => { if(popup&&!popup.closed)popup.close(); target?.dispose(); hdrTarget?.dispose(); resolveMaterial.dispose(); resolveQuad.geometry.dispose(); clearInterval(monitor); observer.disconnect(); });
   sizeFrame(); updateVisibility();
   requestAnimationFrame(layout);
-  return {follow, stopFollowing, renderOverview, renderCamera, get following(){return tracking;}};
+  /** 2D 影像來源（例如模擬相機的示意圖）：draw(ctx, width, height) 畫進相機視窗，共用拖曳、放大與獨立視窗 */
+  function renderImage({draw, title: label, result: detail, aspect = 1.5, time = 0}) {
+    updateVisibility();
+    if (frame.hidden && !(popup && !popup.closed)) return;
+    if (label !== undefined) title.textContent = label;
+    if (detail !== undefined) result.textContent = detail;
+    image.style.aspectRatio = String(aspect); frame.style.setProperty('--sensor-aspect', String(aspect));
+    attachedVision?.hide?.();
+    const displayWidth = image.clientWidth || 480;
+    const width = Math.min(960, Math.max(480, Math.round((popup ? popup.innerWidth : displayWidth) * Math.min(devicePixelRatio, 2)))), height = Math.round(width / aspect);
+    if (imageCanvas.width !== width || imageCanvas.height !== height) { imageCanvas.width = width; imageCanvas.height = height; }
+    imageContext.setTransform(1, 0, 0, 1, 0, 0); imageContext.clearRect(0, 0, width, height); draw(imageContext, width, height);
+    frame.dataset.time = String(time); frame.dataset.camera = title.textContent;
+    if (popup && !popup.closed) {
+      if (popupCanvas.width !== width || popupCanvas.height !== height) { popupCanvas.width = width; popupCanvas.height = height; }
+      popupContext.drawImage(imageCanvas, 0, 0); popupBadge.hidden = true;
+      popup.document.querySelector('header b').textContent = title.textContent;
+      popupClock.textContent = `主時間軸 ${Number(time).toFixed(2)} s · ${result.textContent}`;
+    }
+  }
+  /** 相機來源選單（自動＋各相機）：sources = [{ id, label }]；回傳目前選擇（'auto' 或來源 id） */
+  let sourceSelect = null, sourceValue = 'auto';
+  function setSources(sources, { onChange = () => { }, auto = true } = {}) {
+    if (!sourceSelect) {
+      const row = document.createElement('label'); row.className = 'camera-source'; row.textContent = '來源 ';
+      sourceSelect = document.createElement('select'); sourceSelect.setAttribute('aria-label', '相機來源'); row.append(sourceSelect); title.after(row);
+      sourceSelect.addEventListener('change', () => { sourceValue = sourceSelect.value; onChangeSource(sourceValue); });
+    }
+    onChangeSource = onChange;
+    sourceSelect.innerHTML = (auto ? '<option value="auto">自動切換（依取像事件）</option>' : '') + sources.map(s => `<option value="${s.id}">${s.label}</option>`).join('');
+    if (![...sourceSelect.options].some(o => o.value === sourceValue)) sourceValue = sourceSelect.options[0]?.value ?? 'auto';
+    sourceSelect.value = sourceValue;
+  }
+  let onChangeSource = () => { };
+  return {follow, stopFollowing, startFollowing: () => setFollowing(true), renderOverview, renderCamera, renderImage, setSources,
+    get source(){return sourceValue;}, set source(v){sourceValue=v;if(sourceSelect)sourceSelect.value=v;}, get following(){return tracking;}};
 }

@@ -62,19 +62,22 @@ export function createStage({
 
   // ---------------------------------------------------------------- 3D 標籤（HTML 疊在畫布上）
   const host = canvas.parentElement, labels = [], _v = new THREE.Vector3();
-  function addLabel(html, getPos, cls = '') {
-    const el = document.createElement('div'); el.className = 'label3d' + (cls ? ' ' + cls : ''); el.innerHTML = html; host.appendChild(el);
+  // anchor：'center'（標籤中心在點上）或 'above'（標籤底邊在點上方 6 px）；位置已含畫布在頁面中的偏移，專案不必自行補正
+  function addLabel(html, getPos, cls = '', { anchor = 'center' } = {}) {
+    const el = document.createElement('div'); el.className = 'label3d' + (cls ? ' ' + cls : ''); el.innerHTML = html;
+    el.style.left = '0px'; el.style.top = '0px'; host.appendChild(el);
     const pos = typeof getPos === 'function' ? getPos : () => getPos;
-    const item = { el, pos }; labels.push(item); return item;
+    const item = { el, pos, anchor }; labels.push(item); return item;
   }
   function updateLabels(show = true) {
-    const w = canvas.clientWidth, h = canvas.clientHeight;
+    const w = canvas.clientWidth, h = canvas.clientHeight, cr = canvas.getBoundingClientRect(), hr = host.getBoundingClientRect();
+    const ox = cr.left - hr.left + host.scrollLeft - host.clientLeft, oy = cr.top - hr.top + host.scrollTop - host.clientTop;
     for (const l of labels) {
       const p = l.pos(); if (!show || !p) { l.el.style.display = 'none'; continue; }
       _v.copy(p).project(camera);
       const on = _v.z < 1 && Math.abs(_v.x) < 1.1 && Math.abs(_v.y) < 1.1;
       l.el.style.display = on ? '' : 'none';
-      if (on) l.el.style.transform = `translate(-50%,-50%) translate(${(_v.x * .5 + .5) * w}px,${(-_v.y * .5 + .5) * h}px)`;
+      if (on) l.el.style.transform = `${l.anchor === 'above' ? 'translate(-50%,calc(-100% - 6px))' : 'translate(-50%,-50%)'} translate(${ox + (_v.x * .5 + .5) * w}px,${oy + (-_v.y * .5 + .5) * h}px)`;
     }
   }
 
@@ -85,6 +88,15 @@ export function createStage({
     if (instant) { camera.position.copy(P); controls.target.copy(Tg); controls.update(); tween = null; invalidate(); return; }
     tween = { p0: camera.position.clone(), t0: controls.target.clone(), P, Tg, u: 0, duration }; invalidate();
   }
+  // 取消進行中的轉場（相機停在目前位置）
+  function cancelTween() { tween = null; }
+  // 整體平移視角：相機、注視點與進行中轉場的起訖點一起移動（跟著輸送中的工件看）
+  function shiftView(delta) {
+    camera.position.add(delta); controls.target.add(delta);
+    if (tween) { tween.p0.add(delta); tween.t0.add(delta); tween.P.add(delta); tween.Tg.add(delta); }
+    invalidate();
+  }
+  const tweening = () => !!tween;
   function stepTween(dt) {
     if (!tween) return false;
     tween.u = Math.min(1, tween.u + dt / tween.duration);
@@ -119,7 +131,7 @@ export function createStage({
   function loop(fn, opts = {}) { tick = fn; if (opts.render) draw = opts.render; resize(); if (qp.has('movie') || running) return; running = true; clock.getDelta(); frame(); }
   function stop() { running = false; }
 
-  return { renderer, scene, camera, controls, lights, qp, addLabel, updateLabels, labels, goTo, resize, render, invalidate, loop, stop, clock, useLog };
+  return { renderer, scene, camera, controls, lights, qp, addLabel, updateLabels, labels, goTo, cancelTween, shiftView, get tweening() { return tweening(); }, resize, render, invalidate, loop, stop, clock, useLog };
 }
 
 // 標準 window.sim：統一檢查與截圖工具依賴 seekTo、setView、views、total、play、pause；

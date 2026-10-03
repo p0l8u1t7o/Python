@@ -36,6 +36,8 @@ export class Track {
     return out;
   }
   active(T) { const i = this.find(T); if (i < 0) return null; const s = this.steps[i]; return T < s.start + s.dur ? s : null; }
+  // 一次取得狀態、所在步驟與是否動作中
+  at(T) { const i = this.find(T), step = i < 0 ? null : this.steps[i]; return { state: this.sample(T), step, active: !!step && T < step.start + step.dur }; }
   get end() { return this.steps.length ? Math.max(...this.steps.map(s => s.start + s.dur)) : 0; }
 }
 

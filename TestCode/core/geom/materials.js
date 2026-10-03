@@ -1,6 +1,7 @@
 // 共用材質表：所有專案與共用模型用同一份基本材質（鋼、鋁、烤漆、塑膠、指示燈…）。
 // 產品專屬的外觀（特定顏色的外殼、PCB、標籤）留在專案裡；常用的新材質請加在這裡，不要各專案各寫一份。
 import * as THREE from 'three';
+import { finish } from './finish.js';
 
 // 標準 PBR 材質：顏色、粗糙度、金屬度、其他參數
 export const std = (color, roughness = .6, metalness = .1, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness, metalness, ...extra });
@@ -11,6 +12,8 @@ export const MAT = {
   wallBase: std(0xc9ced2, .85), column: std(0xb7b2a8, .85),
   door: std(0x8e9aa6, .5, .3), window: std(0x9fc7e6, .1, 0, { transparent: true, opacity: .45 }),
   steelBlue: std(0x1f4e8c, .5, .4), steelOrange: std(0xe0781f, .5, .35), steel: std(0x9aa3ab, .4, .7),
+  frame: std(0x6b7480, .5, .6),          // 鋁擠型框架（中灰陽極）
+  chrome: std(0xd8dde2, .12, 1),          // 拋光銷、鍍鉻件
   steelDark: std(0x3a4148, .5, .5), alu: std(0xc4ccd3, .35, .6), black: std(0x1d2126, .6, .2),
   yellow: std(0xf2c230, .45, .15), fanuc: std(0xf5c400, .4, .15), fanucDark: std(0x2d3136, .5, .4),
   pallet: std(0x4a5560, .8), palletEmpty: std(0x56626e, .8),
@@ -30,3 +33,11 @@ export const MAT = {
   red: std(0xff4d4d, .4, 0, { emissive: 0xff4d4d, emissiveIntensity: .8 }),
   amber: std(0xffb020, .4, 0, { emissive: 0xffb020, emissiveIntensity: .8 }),
 };
+
+// 帶細紋的材質（拉絲金屬 'metal'、塑膠霧面 'polymer'）：回傳快取的複本，不改動共用材質
+const finishedCache = new Map();
+export function finished(material, kind = 'metal', relief = .018) {
+  const key = material.uuid + '|' + kind + '|' + relief;
+  if (!finishedCache.has(key)) finishedCache.set(key, finish(material.clone(), kind, relief));
+  return finishedCache.get(key);
+}

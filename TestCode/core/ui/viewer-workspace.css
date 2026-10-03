@@ -69,3 +69,5 @@ body.capture .viewer-tools,body.capture #pipFrame{display:none!important}
   .viewer-compact .viewer-tools{top:2px!important;left:auto;right:58px}
   .viewer-compact #topbar .brand{margin-right:300px}
 }
+
+.camera-source{display:flex;align-items:center;gap:6px;padding:4px 10px;font-size:12px;color:#9fb0c0}.camera-source select{flex:1;min-width:0;background:#1a2633;color:#e6edf3;border:1px solid #2b3a4a;border-radius:4px;padding:2px 4px}
