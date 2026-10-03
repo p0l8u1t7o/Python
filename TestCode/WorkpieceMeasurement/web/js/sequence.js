@@ -1,29 +1,34 @@
-// 動作序列：由絕對時間取樣出完整狀態（軸位置＋工件所在＋取像進度），跳站／倒退不殘留
+// 動作序列：由絕對時間取樣出完整狀態（軸位置＋工件所在＋取像進度），跳站／倒退不殘留。
+// 排程建在共用的 createStepSequence（core/anim/sequence.js）上：這裡只負責依軸限速反推每步時間、
+// 每步自己的緩動（smooth／trap），以及取樣後附加的完成項目與取像進度。
+import { createStepSequence } from '@core/anim/sequence.js';
+import { linear } from '@core/anim/track.js';
 import { SPECS, SCENARIOS, DEMO, LIMIT, X1, X2, XW, YM, YS, YT, YC, RETRACT, pocket, shuttleFor } from './spec.js';
 
 export const STATIONS = ['取料', 'ST1 外觀／尺寸', '移載', 'ST2 底部量測', '判定分料'];
-export const smooth = u => u * u * (3 - 2 * u);
+const smooth = u => u * u * (3 - 2 * u);
 const trap = u => { const k = 0.12; return u < k ? u * u / (2 * k * (1 - k)) : u > 1 - k ? 1 - (1 - u) * (1 - u) / (2 * k * (1 - k)) : (u - k / 2) / (1 - k); };
-const EASE = { smooth, trap, linear: u => u };
+const EASE = { smooth, trap, linear };
 // smoothstep 的峰值速度 1.5 d/T、峰值加速度 6 d/T²，由限速反推時間
 const dur = (d, v, a) => Math.max(0.06, 1.5 * Math.abs(d) / v, Math.sqrt(6 * Math.abs(d) / a));
+const axisDur = (k, d) => k === 'tx' ? dur(d, LIMIT.vx, LIMIT.ax) : k === 'zt' ? dur(d, LIMIT.vz, LIMIT.az) : k === 'inZ' || k === 'outZ' ? dur(d, LIMIT.vShuttle, LIMIT.aShuttle) : k === 'a' ? 0.08 : k === 'jaw' ? 0.15 : 0.06;
 const AXES = ['tx', 'zt', 'a', 'jaw', 'th1', 'th2', 'r2', 'inZ', 'outZ', 'headLift'];
 const TAU = Math.PI * 2;
 
 export function createSequence({ spec = 'B', scenario = 'OK', apply } = {}) {
-  const s = SPECS[spec], sc = SCENARIOS[scenario], steps = [];
+  const s = SPECS[spec], sc = SCENARIOS[scenario];
   const pin = pocket('IN', DEMO.k), outTray = sc.out === 'IN' ? null : sc.out, pout = outTray ? pocket(outTray, DEMO.filled[outTray]) : pin;
-  const ax = { tx: pin.x, zt: YC, a: RETRACT, jaw: 1, th1: 0, th2: 0, r2: s.scan.r0, inZ: shuttleFor('IN', DEMO.k), outZ: shuttleFor('OK', DEMO.filled.OK), headLift: 30 };
-  const dis = { loc: 'in', vac: 0, optic: null, pip: 'idle', shotB: 0, zone: 'free', scanNo: 0 };
-  let t = 0, station = 0;
+  // 軸位置在步驟中插值；工件所在、真空、取像通道等在步驟開始時切換（discrete）
+  const axes = { tx: pin.x, zt: YC, a: RETRACT, jaw: 1, th1: 0, th2: 0, r2: s.scan.r0, inZ: shuttleFor('IN', DEMO.k), outZ: shuttleFor('OK', DEMO.filled.OK), headLift: 30 };
+  const flags = { loc: 'in', vac: 0, optic: null, pip: 'idle', shotB: 0, zone: 'free', scanNo: 0 };
+  // 共用排程用線性插值，取樣時再依每步的 ease 重新插軸位置（core 的 ease 是整條序列共用）
+  const seq = createStepSequence({ base: { ...axes, ...flags }, discrete: Object.keys(flags), ease: linear, stations: STATIONS });
+  let station = 0;
+  // step(動作, 說明, { to: 軸目標, set: 狀態切換, dur: 指定秒數（省略時由軸限速反推）, ease, done, prog, exposure })
   function step(action, sub, o = {}) {
-    const to = o.to || {}, d = o.dur ?? Math.max(0.06, ...Object.entries(to).map(([k, v]) => {
-      const dd = v - ax[k];
-      return k === 'tx' ? dur(dd, LIMIT.vx, LIMIT.ax) : k === 'zt' ? dur(dd, LIMIT.vz, LIMIT.az) : k === 'inZ' || k === 'outZ' ? dur(dd, LIMIT.vShuttle, LIMIT.aShuttle) : k === 'a' ? 0.08 : k === 'jaw' ? 0.15 : 0.06;
-    }));
-    Object.assign(dis, o.set);
-    const st = { index: steps.length, station, action, sub, start: t, dur: d, from: { ...ax }, to: { ...ax, ...to }, dis: { ...dis }, ease: o.ease || 'smooth', done: o.done, prog: o.prog, exposure: o.exposure };
-    Object.assign(ax, to); t += d; steps.push(st); return st;
+    const to = o.to || {}, now = seq.state;
+    const d = o.dur ?? Math.max(0.06, ...Object.entries(to).map(([k, v]) => axisDur(k, v - now[k])));
+    return seq.add(station, d, action, sub, { ...to, ...o.set }, { index: seq.steps.length, ease: o.ease || 'smooth', done: o.done, prog: o.prog, exposure: o.exposure });
   }
   const xMove = (x, action, sub, o = {}) => step(action, sub, { ...o, to: { ...(o.to || {}), tx: x } });
   // 吸附：前進貼靠 → 建立真空（工件所在於步驟交界切換，位置連續）
@@ -81,7 +86,7 @@ export function createSequence({ spec = 'B', scenario = 'OK', apply } = {}) {
   }
   // ------------------------------------------------ S4 判定分料
   station = 4;
-  const outZ = outTray ? shuttleFor(outTray, DEMO.filled[outTray]) : ax.outZ;
+  const outZ = outTray ? shuttleFor(outTray, DEMO.filled[outTray]) : seq.state.outZ;
   step('判定＋資料寫入', outTray ? `分流到 ${outTray} 托盤第 ${pout.row + 1} 列第 ${pout.col + 1} 穴` : '重測仍異常：退回入料原穴，通知人工處理', { dur: 0.4, to: { outZ }, set: { pip: 'result' }, done: 'judge' });
   grab('seat', '');
   step('Z 上升', '', { to: { zt: YS + 3 }, set: { zone: 'free' } });
@@ -92,19 +97,18 @@ export function createSequence({ spec = 'B', scenario = 'OK', apply } = {}) {
   release(outTray ? 'out:' + outTray : 'back', 'out');
   step('Z 上升回待命位', '下一件由入料托盤取料', { to: { zt: YC }, done: 'home' });
 
-  const total = t, stationStart = STATIONS.map((_, i) => (steps.find(x => x.station === i) || steps[0]).start);
+  const { steps, total, stationStart, events } = seq;
   function sample(T) {
-    T = Math.min(Math.max(T, 0), total);
-    let i = steps.findIndex(x => T < x.start + x.dur); if (i < 0) i = steps.length - 1;
-    const st = steps[i], u = st.dur > 0 ? Math.min(1, Math.max(0, (T - st.start) / st.dur)) : 1, e = EASE[st.ease](u);
-    const S = { ...st.dis, station: st.station, action: st.action, sub: st.sub, u, step: i, time: T };
-    for (const k of AXES) S[k] = st.from[k] + (st.to[k] - st.from[k]) * e;
-    const completed = new Set(); for (const x of steps) if (x.done && (x.index < i || (x.index === i && T >= total - 1e-9))) completed.add(x.done);
+    const { state, step: st, index: i, u, time } = seq.sample(T), e = EASE[st.ease](u);
+    const S = { ...Object.fromEntries(Object.keys(flags).map(k => [k, state[k]])), station: st.station, action: st.action, sub: st.sub, u, step: i, time };
+    for (const k of AXES) S[k] = st.initial[k] + (st.end[k] - st.initial[k]) * e;
+    const completed = new Set(); for (const x of steps) if (x.done && (x.index < i || (x.index === i && time >= total - 1e-9))) completed.add(x.done);
     const prog = id => { const x = steps.find(y => y.prog === id); return !x ? 0 : x.index < i ? 1 : x.index === i ? u : 0; };
     S.scanA = prog('scanA'); S.spiral = [prog('spiral0'), prog('spiral1')];
     S.flash = st.exposure && st.exposure !== 'A' && st.exposure !== 'CF' ? 1 : 0;
     if (apply) apply(S);
     return { state: S, step: st, index: i, completed };
   }
-  return { steps, total, stationStart, sample, spec: s, scenario: sc };
+  // events／stationStart／total 與其他專案同一介面（播放列、事件選單、錄影分鏡共用）
+  return { steps, events, total, stationStart, sample, spec: s, scenario: sc };
 }

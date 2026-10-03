@@ -4,8 +4,11 @@ import { Y0, X1, X2, YM, YA, YS, YT, DIR_A, DIR_R, TRAYS, PITCH, DEMO, fixedBodi
 import { createPart } from './product.js';
 import { applyFinishes, cabinetDoorMaterial } from './render-finishes.js';
 import { addEquipmentDetail } from './equipment-detail.js';
+import { MAT as SHARED } from '@core/geom/materials.js';
 
 const M = (color, metalness, roughness, o = {}) => new THREE.MeshStandardMaterial({ color, metalness, roughness, ...o });
+// 本機外觀材質：spec.js 的機構以鍵名指定，render-finishes.js 的 applyFinishes 會再加上拉絲／花崗岩／烤漆紋理並改色，
+// 所以留在專案內（改共用 MAT 會連帶改到其他模型）；一般黑色橡膠件等通用外觀才用 core 的 MAT（SHARED）
 const MAT = {
   granite: M(0x4b4f55, 0.05, 0.62), frame: M(0x8e98a3, 0.75, 0.42), axis: M(0x2c333c, 0.6, 0.45), plate: M(0xaab3bc, 0.8, 0.35),
   lens: M(0x15181d, 0.55, 0.38), camera: M(0x1f4f86, 0.45, 0.45), light: M(0xd8dde2, 0.4, 0.4), motor: M(0x23272d, 0.55, 0.42),
@@ -103,7 +106,7 @@ export function createMachine(scene, s) {
   const xg = new THREE.Group(), zg = new THREE.Group(), ag = new THREE.Group();
   xg.name = 'transfer X'; zg.name = 'transfer Z'; ag.name = 'transfer approach'; root.add(xg); xg.add(zg); zg.add(ag);
   for (const b of transferBodies(ref, s)) { const m = mesh(b); (b.id === 'zcol' || b.id === 'carriage' ? xg : b.id === 'zplate' ? zg : ag).add(m); tr[b.id] = m; }
-  const pad = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.5, 0.8), M(0x20242a, 0, 0.8)); pad.position.set(0, 1.85, -s.padR - 0.4); ag.add(pad);
+  const pad = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.5, 0.8), SHARED.black); pad.position.set(0, 1.85, -s.padR - 0.4); ag.add(pad);
   // X 軸拖鏈由 wiring-render.js 的 X-CHAIN（固定長度折返、逐節繪製）表示；舊的整條方塊已移除（與它重疊）
 
   // ---------------------------------------------- 工件

@@ -2,10 +2,12 @@ import * as THREE from 'three';
 import {managedWiring} from './wiring-render.js';
 import {electricalDevice, CIRCUITS} from '@core/electrical/electrical-components.js';
 import {DEVICES,PANEL} from './control-plan.js';
+import {MAT} from '@core/geom/materials.js';
 import {Y0,X1,X2,YM,YS} from './spec.js';
 const V = a => new THREE.Vector3(...a);
 const mat=(color,metalness=.35)=>new THREE.MeshStandardMaterial({color,metalness,roughness:.45});
-const steel=mat(0xaab7bf,.8),dark=mat(0x26313a),rubber=mat(0x202628,0),blue=mat(0x226b9e),brass=mat(0xa29761,.65);
+// 鋼件、深色線槽與夾具、黑色橡膠件用共用材質；端子台藍與黃銅匯流排為本專案電盤配色
+const steel=MAT.steel,dark=MAT.steelDark,rubber=MAT.black,blue=mat(0x226b9e),brass=mat(0xa29761,.65);
 function box(g,n,size,at,m=steel){const o=new THREE.Mesh(new THREE.BoxGeometry(...size),m);o.name=n;o.position.set(...at);o.castShadow=o.receiveShadow=true;g.add(o);return o;}
 function ring(g,n,ro,ri,h,at,m=steel){const geo=new THREE.LatheGeometry([[ri,-h/2],[ro,-h/2],[ro,h/2],[ri,h/2],[ri,-h/2]].map(a=>new THREE.Vector2(...a)),48);const o=new THREE.Mesh(geo,m);o.name=n;o.position.set(...at);g.add(o);return o;}
 function label(g,text,w,h,at){if(typeof document==='undefined')return;const c=document.createElement('canvas');c.width=768;c.height=128;const x=c.getContext('2d');x.fillStyle='#10212c';x.fillRect(0,0,768,128);x.fillStyle='#e4edf3';x.font='bold 36px sans-serif';x.textAlign='center';x.fillText(text,384,77,736);const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;const o=new THREE.Mesh(new THREE.PlaneGeometry(w,h),new THREE.MeshBasicMaterial({map:t}));o.position.set(...at);g.add(o);return o;}

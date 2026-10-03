@@ -1,4 +1,4 @@
-// 流程／幾何／運動驗證：node tools/verify.mjs
+// 流程／幾何／運動驗證：node ../core/tools/run.mjs WorkpieceMeasurement tools/verify.mjs（sequence.js 引用 @core/，需共用 loader）
 // 三種規格 × 五種情境：狀態一致性、工件位置連續、軸速限、移載對固定機構與托盤的最小間隙、光錐可及性。
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
