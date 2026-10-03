@@ -12,7 +12,7 @@
 //   imports      靜態 import 路徑（快速）
 //   determinism  倒序／跳播一致（快速）
 //   layout       project.layoutChecks() 空間檢核（快速）
-//   scene        全場動態／靜態干涉＋重合面閃爍（完整）
+//   scene        全場動態／靜態干涉＋重合面閃爍（快速）
 // project.json 的 "core" 可覆寫：{ "skip": ["scene"], "quick": ["scene"] }
 import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -35,7 +35,7 @@ const BUILTIN = {
   imports: { quick: true, run: async p => { const r = checkImports(p); return { ok: !r.missing.length, note: `${r.modules} 個模組`, detail: r.missing }; } },
   determinism: { quick: true, needsProject: true, run: viaRunner('determinism') },
   layout: { quick: true, needsProject: true, run: viaRunner('layout') },
-  scene: { quick: false, needsProject: true, run: viaRunner('scene') },
+  scene: { quick: true, needsProject: true, run: viaRunner('scene') },     // 干涉與閃爍也擋部署
 };
 
 const split = cmd => cmd.match(/"[^"]*"|\S+/g).map(s => s.replace(/^"|"$/g, ''));

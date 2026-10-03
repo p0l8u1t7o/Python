@@ -12,9 +12,18 @@
 | [shutter assembly](shutter%20assembly/) | 快門葉片與上蓋組裝 |
 | [WorkpieceMeasurement](WorkpieceMeasurement/) | 杯體加工件 AOI 與共焦量測 |
 
-- 各 3D 專案：`web/` 為可獨立部署的網站、`tools/` 為專案驗證、`review/` 為該專案檢查結果、`docs/` 為本機參考資料。
-- [tools](tools/)：共用模型工具、同步與驗證腳本；`tools/docs/` 是跨專案操作及研究文件，`tools/review/` 是共用工具的彙總結果。
-- [GitHub Pages 部署](tools/github-pages/README.md)：僅發布七個 `web/`，首頁自動產生。
+所有 3D 專案共用 [core](core/README.md)：three.js、基本形狀、手臂與模型庫、時間軸、渲染舞台、播放列、錄影程式、統一檢查與 Pages 建置都只有一份，各專案以 `@core/` 直接引用。
+
+```powershell
+node core/tools/serve.mjs                     # 本機首頁 http://127.0.0.1:8770/（各專案 run.bat 也是它）
+node core/tools/check.mjs                     # 全部專案完整檢查（干涉、閃爍、倒序一致、空間檢核、各專案自有檢查）
+node core/tools/new-project.mjs <名稱> "<標題>"  # 由範本建立新專案
+```
+
+- 各 3D 專案：`web/` 為網站（`web/js/project.js` 是網頁與檢查共用的場景）、`project.json` 為首頁說明與檢查清單、`tools/` 為專案自有檢查、`review/` 為檢查結果、`docs/` 為本機參考資料。
+- 共用模型目錄：本機 http://127.0.0.1:8770/core/catalog/，Pages 上為 `/core/catalog/`。
+- [tools](tools/)：跨專案的配線、電盤、干涉回歸與影片輸出工具；`tools/docs/` 是跨專案研究文件，`tools/review/` 是彙總結果。
+- [GitHub Pages 部署](tools/github-pages/README.md)：推送後先跑快速檢查，通過才發布；首頁依各專案 `project.json` 自動產生。
 - `TEMP/`、`LOGS/`（不分大小寫）、`*.log` 與快取不納入版控。影片輸出位於 `TEMP/videos/`，不隨網站發布。
 - CardServer、Bin 已退役並移出版控。本機暫存封存位於 `TEMP/retired-projects/`。
-- 根目錄不集中安裝各專案的依賴；請依子專案 README 操作。
+- 3D 專案只需 Node.js 22 以上，不需 npm 套件；其他依賴請依子專案 README。

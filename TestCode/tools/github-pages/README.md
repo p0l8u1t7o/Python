@@ -4,7 +4,7 @@
 
 流程：
 
-1. `node TestCode/core/tools/check.mjs --quick`：每個專案的靜態 import 路徑檢查，以及 `project.json` 的 `checks.quick`（目前為各專案的 `tools/verify.mjs`）。任一項失敗就不發布。
+1. `node TestCode/core/tools/check.mjs --quick`：共用模型檢查；每個專案的 import 路徑、倒序一致、空間檢核、全場干涉與閃爍（含各情境），以及 `project.json` 的 `checks.quick`（各專案的 `tools/verify.mjs`）。任一項失敗就不發布，約需數分鐘。
 2. `node TestCode/core/tools/build-site.mjs _site`：
    - 首頁 `/` 由 `core/tools/site.mjs` 產生，標題與說明取自各專案 `project.json`；
    - `/core/` 只發布一份共用模組與 three.js（不含 `core/tools`、`core/template` 與文件）；

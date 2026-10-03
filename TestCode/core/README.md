@@ -138,7 +138,7 @@ node core/tools/check.mjs --only scene     # 只跑某項
 | `imports` | ✓ | 從 index.html 走遍 import 圖，找不到的檔案（部署後才會壞的路徑） |
 | `determinism` | ✓ | 40 個時間點順序與倒序取樣，所有可見物件的世界矩陣必須相同 |
 | `layout` | ✓ | `layoutChecks()` 全數通過 |
-| `scene` | | 動態干涉、靜態架設相撞、重合面閃爍；結果寫入 `review/scene-verification.json/.txt` |
+| `scene` | ✓ | 動態干涉、靜態架設相撞、重合面閃爍；結果寫入 `review/scene-verification.json/.txt` |
 | 專案自有 | 依 `checks` | `project.json` 的 `checks.quick`／`checks.full` |
 
 ## 回歸比對（改共用模組或渲染時）
