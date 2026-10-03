@@ -1,9 +1,9 @@
 # 3D 專案 MP4 展示輸出（2026-09-29 運鏡與穩定性修正版）
 
-先在 TestCode 執行 `python tools/movie-export/prepare.py`，再執行 `python tools/movie-export/server.py`。
+先在 TestCode 執行 `python tools/movie-export/prepare.py`（以 `core/tools/build-site.mjs` 建出與 GitHub Pages 相同配置的網站副本），再執行 `python tools/movie-export/server.py`。錄影程式在 `core/movie/movie.js`；各專案在自己的 `main.js` 於網址帶 `?movie` 時呼叫 `installMovie()`，並在那裡提供本站的取樣、追焦與細節重播設定（2026-10-03 起不再以字串修改 main.js）。
 開啟 `http://127.0.0.1:8782/RobotArmPressSSD/?pause&movie&queue`，點選「輸出完整影片」會依序完成五站。
 
-- 原始網站不變；錄製副本在 `TEMP/movie-site/`，成品與抽查影格在 `TEMP/videos/`，均由 `.gitignore` 排除。
+- 錄製副本在 `TEMP/movie-site/`，成品與抽查影格在 `TEMP/videos/`，均由 `.gitignore` 排除。
 - GPU WebGL 以 3840×2160 取樣後縮至 1920×1080、30 fps，改善細線與金屬邊緣閃爍。接收器實際試編碼後優先使用 NVENC H.264；不可用時回退 libx264。使用軍規專案既有的 `tools/bin/ffmpeg.exe`。
 - 每一步依絕對時間渲染、確認影格順序後送入編碼器，不依賴螢幕更新率。保留完整製程順序，長製程展示加速，短動作延長供觀察。
 - 開場 12 秒：依設備外廓自動框入整機，先停留 3 秒，再以 9 秒緩慢拉近。拉遠製程追焦距離，以絕對時間預算並平滑焦點，避免取放對象切換時跳鏡頭。
@@ -14,11 +14,11 @@
 - 點選「檢查鏡頭與固定影格」輸出全景、推近、製程及細節抽查圖，並在固定時間重畫 10 次；`python tools/movie-export/audit.py --output TEMP/videos/revised-20260929` 產生 contact sheet 與量化差異。
 - `python tools/movie-export/verify.py --output TEMP/videos/revised-20260929` 以 FFprobe 比對總影格與時間、檢查完整製程連續性、解碼全片、檢查黑影格與單影格大面積閃光候選。另在 TEMP 產生抽查圖與驗證 JSON；這些數值不能取代目視檢查運動與局部反光。
 - 接收器不直接覆寫成品。重錄使用 `--port 8783 --output-subdir revised-20260929`，於該 port 的頁面錄製；新版通過驗證後才替換舊影片。全部影片、稽核圖與中間檔保持在忽略的 TEMP 中。
-- `node --test tools/movie-export/test-camera-path.mjs` 驗證追焦交接不瞬移、不過衝，以及開場停留和推近的連續性。
+- `node --test tools/movie-export/test-camera-path.mjs`（測 `core/movie/camera-path.mjs`）驗證追焦交接不瞬移、不過衝，以及開場停留和推近的連續性。
 
 ## WorkpieceMeasurement 單獨輸出
 
-1. `python tools/movie-export/prepare.py --project WorkpieceMeasurement`（只更新此站的 TEMP 錄製副本）。
+1. `python tools/movie-export/prepare.py`。
 2. `python tools/movie-export/server.py --port 8786 --output-subdir workpiece-20260929`。
 3. 開啟 `http://127.0.0.1:8786/WorkpieceMeasurement/?pause&movie&pip=0`，先按「檢查鏡頭與固定影格」，再按「輸出完整影片」。重新輸出需選擇尚無成品的新資料夾。
 4. `python tools/movie-export/audit.py --output TEMP/videos/workpiece-20260929`。
