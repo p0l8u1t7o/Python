@@ -10,8 +10,9 @@ import { ssdResults } from './vision-results.js';
 const vision = createVisionOverlay();
 import { createStage, exposeSim } from '@core/ui/stage.js';
 import { createPlayer } from '@core/ui/player.js';
+import { createArrivalGate } from '@core/anim/arrival.js';
 import { createProject, resolveRecipe } from './project.js';
-import { STATIONS, SPEC } from './sequence.js';
+import { STATIONS, SPEC, ARRIVAL } from './sequence.js';
 import { RECIPES } from './recipes.js';
 import { LAYOUT } from './cell.js';
 import { cameraSource, stationPreviewTime, SENSOR_ASPECT } from './camera-view.js';
@@ -79,11 +80,9 @@ addLabel('RC8A／PLC／IPC', () => new THREE.Vector3(0, 700, -240));
 STATIONS.forEach((name, i) => { const b = document.createElement('button'); b.className = 'st'; b.dataset.st = i; b.innerHTML = `<span class="idx">S${i}</span>${name}`; ui.stations.appendChild(b); });
 
 // ---------------------------------------------------------------- 時間軸（時間與播放狀態在 createPlayer，見下方）
-let S, T = 0, current, waiting = 0, fault = '', curStation = -1, player;
-// 流程取樣（不移動手臂關節）；跳播用 project.apply（取樣＋手臂直接到位）
+let S, T = 0, current, curStation = -1, player;
+// 流程取樣（不移動手臂關節；播放中由到位閘門呼叫）；跳播用 project.apply（取樣＋手臂直接到位）
 function sample(t) { current = project.sample(t); S = current.state; return current; }
-// 播放中取樣：時間停在目前步驟終點時仍取這一步（手臂未到位前不換到下一步的目標）
-function sampleHeld(t) { const s = current.step, end = s.start + s.dur; return sample(t >= end - 1e-7 && t <= end ? Math.max(s.start, end - 1e-8) : t); }
 const total = sequence.total, stationStart = sequence.stationStart, shots = sequence.shots;
 ui.cycleTime.textContent = `規劃 ${total.toFixed(1)} s／盤（含一次補壓）＋到位等待 · ${product.ids.length} 顆 · 拍 ${shots.length} 張`;
 const stub = recipe.stubborn.id, shotOf = Object.fromEntries(shots.flatMap((g, k) => g.map(c => [c.id, k])));
@@ -128,36 +127,19 @@ function setView(name, instant = false) {
 }
 document.querySelectorAll('.views button').forEach(b => b.onclick = () => setView(b.dataset.view));
 // player 的 apply：seek（播放列、站別按鈕、sim.seekTo）→ 流程取樣＋手臂直接到位，清除到位等待、故障與軌跡；
-// 連續播放 → 只取樣流程（手臂已在 advance 裡限速追蹤）
+// 連續播放 → 流程已由到位閘門取樣（手臂在 gate.advance 裡限速追蹤）
 let lastSeek = true;
 function applyTime(t, { seek }) {
   T = t; lastSeek = seek;
-  if (!seek) sampleHeld(t);
-  else { current = project.apply(T); S = current.state; waiting = 0; fault = ''; trailCount = 0; trailGeo.setDrawRange(0, 0); }
+  if (seek) { current = project.apply(T); S = current.state; gate.reset(); trailCount = 0; trailGeo.setDrawRange(0, 0); }
   return current;
 }
-// player 的 advance（dt 已乘速度）：切成 ≤ 10 ms 的子步，每步先判斷到位——手臂未到位就停在步驟終點等，
-// 等超過 8 s 判故障；示意 NG 時複檢後停線——再推進時間並讓手臂限速追蹤（與 tools/verify.mjs 的連續播放同一規則）。
-// 故障發生在本格中途時先回傳已推進的時間，下一格回傳 null 停住
-function advance(t, dt) {
-  const n = Math.max(1, Math.ceil(dt / .01)), h = dt / n;
-  for (let k = 0; k < n; k++) {
-    if (!fault && st.opts.ngHold && current.completed.has('recheck')) fault = `NG · ${stub} 補壓後仍未貼合，停線待人工確認`;
-    if (fault) return k ? t : null;
-    const e = robot.error(), s = current.step, end = s.start + s.dur;
-    if ((t >= end - 1e-7 || (s.contact && e.position > 2)) && (e.position > 1 || e.angle > 1)) {
-      waiting += h; if (waiting > 8) fault = '到位逾時 · 請檢查 TCP 姿態';
-    } else {
-      waiting = 0;
-      if (t >= total - 1e-7) return total;
-      t = t >= end - 1e-7 ? Math.min(total, end + 1e-6) : Math.min(end, t + h); sampleHeld(t);
-    }
-    robot.update(h);
-  }
-  return t;
-}
+// 到位閘門（core/anim/arrival.js）＝player 的 advance：規則 ARRIVAL 在 sequence.js（與 tools/verify.mjs 的連續播放共用）——
+// ≤ 10 ms 子步、手臂未到位就停在步驟終點等、等超過 8 s 判故障；示意 NG 時複檢後停線
+const gate = createArrivalGate({ ...ARRIVAL, total, error: () => robot.error(), step: () => current.step, sample, update: h => robot.update(h),
+  fault: () => st.opts.ngHold && current.completed.has('recheck') ? `NG · ${stub} 補壓後仍未貼合，停線待人工確認` : '' });
 // 按播放時：故障後從原處重新到位、播完則從頭（在 player 自己的處理之前執行）
-function resume() { if (fault || T >= total) player.seekTo(fault ? T : 0); fault = ''; waiting = 0; }
+function resume() { if (gate.fault || T >= total) player.seekTo(gate.fault ? T : 0); gate.reset(); }
 ui.playBtn.addEventListener('click', () => { if (!player.playing) resume(); });
 ui.result.onchange = () => { st.opts.ngHold = ui.result.value === 'NG'; player.seekTo(T); };
 ui.stations.querySelectorAll('.st').forEach(b => b.onclick = () => player.seekTo(stationPreviewTime(sequence, +b.dataset.st)));
@@ -199,7 +181,7 @@ const useGlobalView = () => cameraSource(S, current.step, arrived()) === 'global
 function drawHud() {
   const e = robot.error(), ps = st.state, force = ps.force;
   // 取像閃光、力值顏色、ROI 框、三色燈（與 project.apply 同一份）
-  project.show(current, { time: T, playing: player.playing, fault });
+  project.show(current, { time: T, playing: player.playing, fault: gate.fault });
   const ids = S.flashTool > 0 ? shotIds() : [];
   const last = shotIds();
   const globalView = useGlobalView();
@@ -209,7 +191,7 @@ function drawHud() {
     : last.length ? (S.flashTool > 0 ? '取像中　' : '最近取像　') + last.map(id => { const g = ps.gap[id], ok = g <= recipe.gapLimit; return `<span class="${ok ? 'ok' : 'ng'}">${id} ${g.toFixed(2)} mm ${ok ? 'OK' : 'NG'}</span>`; }).join('　') : '<span>—</span>';
   cell.occluders.visible = ui.showGuards.checked; trail.visible = ui.showPath.checked;
   ui.action.textContent = S.action; ui.substep.textContent = S.sub;
-  ui.phase.textContent = fault || (T >= total ? 'COMPLETE · 本盤完成' : waiting > 0 ? '等待手臂到位' : player.playing ? 'AUTO · 執行中' : 'HOLD · 暫停'); ui.phase.classList.toggle('fault', !!fault);
+  ui.phase.textContent = gate.fault || (T >= total ? 'COMPLETE · 本盤完成' : gate.waiting > 0 ? '等待手臂到位' : player.playing ? 'AUTO · 執行中' : 'HOLD · 暫停'); ui.phase.classList.toggle('fault', !!gate.fault);
   ui.forceBar.style.width = Math.min(100, force / SPEC.forceLimit * 100) + '%'; ui.forceVal.textContent = force.toFixed(1) + ' N';
   ui.zoneTxt.textContent = S.zone === 'contact' ? '接觸 · ≤ 40 mm/s・模擬力值' : S.zone === 'slow' ? '減速接近 · ≤ 120 mm/s' : '自由移動 / 工位保持';
   ui.zoneDot.className = 'dot ' + (S.zone === 'contact' ? 'contact' : S.zone === 'slow' ? 'slow' : '');
@@ -228,7 +210,7 @@ function drawHud() {
   ui.stations.querySelectorAll('.st').forEach(b => { const i = +b.dataset.st; b.classList.toggle('active', i === S.station); b.classList.toggle('done', i < S.station || T >= total); });
   ui.progBar.style.width = T / total * 100 + '%';   // 時間軸、時鐘、步驟選單由 player 更新
   stage.updateLabels(ui.showLabels.checked);
-  document.getElementById('diagnostics').textContent = JSON.stringify({ recipe: RECIPE_KEY, insert: INSERT, time: T, total, step: current.index, station: S.station, action: S.action, poseError: e, force, playing: player.playing, waiting, fault, gaps: ps.gap, lift: S.lift, stop: S.stop });
+  document.getElementById('diagnostics').textContent = JSON.stringify({ recipe: RECIPE_KEY, insert: INSERT, time: T, total, step: current.index, station: S.station, action: S.action, poseError: e, force, playing: player.playing, waiting: gate.waiting, fault: gate.fault, gaps: ps.gap, lift: S.lift, stop: S.stop });
 }
 // 主畫面以外的每格工作：面板、產品追隨、電控狀態、相機子畫面（子畫面畫進離屏目標，不動主畫布）
 function prepareFrame() {
@@ -251,7 +233,7 @@ const electrical=createElectricalInspector({scene,camera,controls,canvas,onEnter
 const lastProductPosition = product.root.position.clone();
 // stage.loop 每格：視角轉場 → frameTick(dt) → controls.update() → 主畫面 renderer.render(scene, camera)
 function frameTick(dt) {
-  player.update(dt);   // 推進時間（advance：到位等待、故障停住、手臂限速追蹤）→ apply
+  player.update(dt);   // 推進時間（gate.advance：到位等待、故障停住、手臂限速追蹤）→ apply
   // 載盤近看／銀腳特寫時視角跟著輸送中的載盤（含進行中的轉場）
   if (selectedView==='product'||selectedView==='leads') stage.shiftView(product.root.position.clone().sub(lastProductPosition));
   lastProductPosition.copy(product.root.position);
@@ -262,7 +244,7 @@ function frameTick(dt) {
 }
 // 播放列（共用 createPlayer）：時間、播放／暫停、重播、速度、時間軸、時鐘、步驟選單與上一步／下一步；
 // 跳播走 applyTime（手臂直接到位）並立即重畫一格（截圖與檢查直接呼叫 sim.seekTo）；連續播放由 frameTick 繪製
-player = createPlayer({ total, apply: applyTime, advance, events: sequence.events.map(ev => ({ ...ev, label: `S${ev.station} · ${ev.label}` })),
+player = createPlayer({ total, apply: applyTime, advance: gate.advance, events: sequence.events.map(ev => ({ ...ev, label: `S${ev.station} · ${ev.label}` })),
   onChange: () => { if (lastSeek && player) render(); } });   // 建立時的第一次跳播不重畫（最後統一 render）
 setView('iso', true); stage.resize();
 exposeSim({ seekTo: player.seekTo, views: Object.keys(views), project, pause: player.pause, play() { resume(); player.play(); }, get state() { return S; }, get T() { return T; }, get playing() { return player.playing; }, robot, total, stationStart, steps: sequence.steps, events: sequence.events, setView, recipe: RECIPE_KEY, insert: INSERT });

@@ -6,6 +6,9 @@ import { smooth } from '@core/anim/track.js';
 import { NB, DOOR_OPEN_DEG } from './notebook.js';
 import { LAYOUT } from './cell.js';
 export { smooth };   // 五次 S 曲線（起訖速度、加速度為 0）；project.js、main.js 沿用
+// 手臂到位規則（core/anim/arrival.js；main.js 播放與 tools/verify.mjs 連續播放共用）：停在步驟終點、或接觸步驟中位置誤差 > 3 mm 時，
+// 要位置 ≤ 1.5 mm、角度 ≤ 3°、第七軸 ≤ 2 mm 才前進；連續等 12 s 判到位逾時；網頁以 ≤ 25 ms 的子步推進
+export const ARRIVAL={tolerance:{position:1.5,angle:3,rail:2},contactPosition:3,timeout:12,maxStep:.025};
 // 開關量：步驟開始時切換，不插值（force 另由 forceCurve 覆寫）
 const DISCRETE=['station','flashTool','flashTop','flashSn','laserTool','seamLaser','force'];
 

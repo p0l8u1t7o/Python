@@ -3,7 +3,8 @@
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { createStation } from '../web/js/station.js';
-import { createSequence, SPEC } from '../web/js/sequence.js';
+import { createSequence, SPEC, ARRIVAL } from '../web/js/sequence.js';
+import { createArrivalGate } from '@core/anim/arrival.js';
 import { RECIPES } from '../web/js/recipes.js';
 import { cameraArmClearance } from './self-clearance.mjs';
 globalThis.document = { createElement: () => ({ width: 1024, height: 512, getContext: () => ({ fillRect() {}, fillText() {} }) }) };
@@ -54,15 +55,14 @@ for (const [key, insert, ngHold] of cases) {
   else assert.deepEqual(open, [], `${mode}: all connectors seated at end`);
   const shotSteps = seq.steps.filter(s => s.exposure && s.station === 3).length;
   report.push({ mode, steps: seq.steps.length, cycle: +seq.total.toFixed(2), shots: shotSteps, maxError: +maxError.toFixed(4), worst, maxForce: +maxForce.toFixed(1), openAtEnd: open });
-  // 連續播放：實際限速＋到位等待，每 0.25 秒做一次碰撞檢查
-  let time = 0, elapsed = 0, wait = 0, frame = seq.sample(0), maxContactError = 0, iteration = 0; robot.snap();
-  const dt = .01;
+  // 連續播放：實際限速＋到位等待（與網頁同一個到位閘門 core/anim/arrival.js 與規則 ARRIVAL），每 0.25 秒做一次碰撞檢查
+  let time = 0, elapsed = 0, frame = seq.sample(0), maxContactError = 0, iteration = 0; robot.snap();
+  const dt = .01, gate = createArrivalGate({ ...ARRIVAL, total: seq.total, error: () => robot.error(), step: () => frame.step, sample: t => { frame = seq.sample(t); }, update: h => robot.update(h) });
   while (time < seq.total && elapsed < seq.total * 4) {
-    const e = robot.error(), s = frame.step, end = s.start + s.dur;
-    const blocked = (time >= end - 1e-7 || (s.contact && e.position > 2)) && (e.position > 1 || e.angle > 1);
-    if (blocked) { wait += dt; if (wait > 8) { failures.push({ mode, continuous: true, action: s.action, time, ...e }); break; } }
-    else { wait = 0; time = time >= end - 1e-7 ? Math.min(seq.total, end + 1e-6) : Math.min(end, time + dt); frame = seq.sample(time >= end - 1e-7 && time <= end ? Math.max(s.start, end - 1e-8) : time); }
-    robot.update(dt); elapsed += dt;
+    // 子步：到位判斷、推進時間與取樣、手臂限速追蹤；逾時回傳 null
+    const e = robot.error(), s = frame.step, next = gate.step(time, dt);
+    if (next == null) { failures.push({ mode, continuous: true, action: s.action, time, ...e }); break; }
+    time = next; elapsed += dt;
     if (s.contact) maxContactError = Math.max(maxContactError, e.position);
     if (++iteration % 25 === 0) {
       const hit = collisions(s.contact || s.near); if (hit.length) failures.push({ mode, continuous: true, action: s.action, time, collision: hit });

@@ -64,12 +64,12 @@ node ../core/tools/serve.mjs MilitaryGradePC --no-open
 | `web/js/cell.js` | 載具、進出料、輸送與翻轉設備；鋁擠型結構框（`MAT.frame`）、拋光定位銷與導桿（`MAT.chrome`）、鋁、鋼、黑件、皮帶、警示黃、PU、藍色烤漆、螢幕用共用材質表 `core/geom/materials.js` 的 `MAT`，深色地面、相機外殼、穹頂擴散罩與三色燈留在本檔 |
 | `core/models/robots/denso-vm60b1.js` | DENSO VM-60B1 手臂本體（共用模型）：基座、連桿、關節 j1～j6、手臂線材保護段、法蘭工具安裝座、限位、關節速度、IK 參數與幾何初始解；模型目錄 `/core/catalog/` 可預覽 |
 | `web/js/robot.js` | 本站部分：第七軸滑軌與拖鏈、600 mm 立座、力覺末端（F/T、相機＋環形光、鉤爪／壓頭、線雷射）、TCP、逆解選解、PTP 與位姿快取；手臂本體取自共用模型 |
-| `web/js/sequence.js` | 第一階段逐步流程。通用排程（起訖快照、插值、護蓋開度的巢狀插值 `nested`、`stationStart`、`total`、`events`）用 core 的 `createStepSequence`，每步由 core 的 `apply` 套用終點狀態並算出終點位姿；本檔只加手臂位姿層（每步起訖位姿、PTP／直線、偏軸 TCP 轉向、先用 `peek` 預覽終點再決定是否低位先退離）與力值曲線 |
+| `web/js/sequence.js` | 第一階段逐步流程。通用排程（起訖快照、插值、護蓋開度的巢狀插值 `nested`、`stationStart`、`total`、`events`）用 core 的 `createStepSequence`，每步由 core 的 `apply` 套用終點狀態並算出終點位姿；本檔只加手臂位姿層（每步起訖位姿、PTP／直線、偏軸 TCP 轉向、先用 `peek` 預覽終點再決定是否低位先退離）與力值曲線；另匯出手臂到位規則 `ARRIVAL`（門檻、逾時 12 s、子步 25 ms），`main.js` 與 `tools/verify.mjs` 共用 |
 | `web/js/project.js` | 專案介面 `createProject`：建立全部設備、產品與動作序列，`apply(t)` 把場景放到時間 t；網頁與 core 統一檢查共用 |
-| `web/js/main.js` | 控制、到位等待、紀錄匯出、手臂鏡頭子畫面、`?movie` 錄影掛勾與 `?capture=1` 影片輸出（場景物件由 `project.js` 建立）。renderer、相機、軌道控制、環境光與燈光（含跟隨載具的特寫陰影光）、畫面迴圈、3D 標籤（`stage.addLabel`／`updateLabels`，畫布位移由 stage 處理）與視角轉場（`stage.goTo`／`cancelTween`）用共用舞台 `core/ui/stage.js`；播放、重播、速度、時間軸、時鐘、步驟選單與前後步用 `core/ui/player.js` 的 `createPlayer`（事件取自 `sequence.events`），本檔只提供 `advance`（步驟終點等待手臂到位、NG 停在 S4、到位逾時停止）與 `apply(T, { seek })`（跳播時手臂直接到位，連續播放時取樣並讓手臂限速追上）；`window.sim` 由 `exposeSim` 提供 |
+| `web/js/main.js` | 控制、紀錄匯出、手臂鏡頭子畫面、`?movie` 錄影掛勾與 `?capture=1` 影片輸出（場景物件由 `project.js` 建立）。renderer、相機、軌道控制、環境光與燈光（含跟隨載具的特寫陰影光）、畫面迴圈、3D 標籤（`stage.addLabel`／`updateLabels`，畫布位移由 stage 處理）與視角轉場（`stage.goTo`／`cancelTween`）用共用舞台 `core/ui/stage.js`；播放、重播、速度、時間軸、時鐘、步驟選單與前後步用 `core/ui/player.js` 的 `createPlayer`（事件取自 `sequence.events`），`advance` 交給 core 的到位閘門 `createArrivalGate`（`core/anim/arrival.js`，規則 `ARRIVAL`：子步推進、步驟終點等手臂到位、到位逾時停止），本檔只加 NG 停在 S4 的故障判斷與 `apply(T, { seek })`（跳播時手臂直接到位並清除等待與故障）；`window.sim` 由 `exposeSim` 提供 |
 | `docs/phase1-scope.md` | 文件依據與範圍映射 |
 | `docs/cost-estimate.xlsx` | 元件選型與成本估算（預算級） |
-| `tools/verify.mjs` | 狀態／幾何／運動驗證 |
+| `tools/verify.mjs` | 狀態／幾何／運動驗證（連續播放用與網頁相同的到位閘門與 `ARRIVAL`） |
 
 ## 驗證
 

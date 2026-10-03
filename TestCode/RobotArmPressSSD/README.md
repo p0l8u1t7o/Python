@@ -101,10 +101,10 @@ node ../core/tools/serve.mjs RobotArmPressSSD --no-open
 | `core/geom/surfaces.js` | 離線生成編織／金屬／PCB 材質，以及靜態網格合併（與快門站共用） |
 | `web/js/cell.js` | 輸送段（後軌基準、前軌調寬）、止擋、頂升、全局相機、底櫃、外罩。鋁擠型框架 `MAT.frame`、拋光銷 `MAT.chrome`、拉絲鋁軌與支撐板 `finished(MAT.alu, 'metal')`；綠色皮帶、PC 外罩、深色展場地面為本站外觀，留在本檔 |
 | `web/js/robot.js` | VS-068、共用末端工具（快拆壓頭、斜視相機）、關節規劃；IK 用 `core/robot/kinematics.js` |
-| `web/js/sequence.js` | 由配方產生流程、拍攝分組、接頭狀態與力值計算。步驟、快照插值、`stationStart`、`total`、`events` 用共用步驟序列 `core/anim/sequence.js` 的 `createStepSequence`；本檔只加手臂姿態層（建立每步時記下起訖姿態與 `motion`；逆解規劃後用序列的 `retime` 依關節角度差重排 PTP 步驟時間；接觸／接近限速） |
+| `web/js/sequence.js` | 由配方產生流程、拍攝分組、接頭狀態與力值計算。步驟、快照插值、`stationStart`、`total`、`events` 用共用步驟序列 `core/anim/sequence.js` 的 `createStepSequence`；本檔只加手臂姿態層（建立每步時記下起訖姿態與 `motion`；逆解規劃後用序列的 `retime` 依關節角度差重排 PTP 步驟時間；接觸／接近限速）；另匯出手臂到位規則 `ARRIVAL`（門檻、逾時 8 s、子步 10 ms），`main.js` 與 `tools/verify.mjs` 共用 |
 | `web/js/station.js` | 組裝整站並套用狀態（畫面與驗證共用） |
 | `web/js/project.js` | 專案介面 `createProject`：依配方／壓墊建整站、ROI 框與流程；`apply(t)` 把流程狀態、手臂姿態、燈號與 ROI 放到時間 t。`main.js` 與 core 統一檢查共用 |
-| `web/js/main.js` | 配方選單、接頭狀態、相機子畫面、紀錄匯出、`?movie` 錄影掛勾（物件與時間狀態取自 `project.js`）。renderer、相機、軌道控制、環境光與燈光、畫面迴圈用共用舞台 `core/ui/stage.js` 的 `createStage`；作業區局部光（含陰影）在 main.js 另建。播放列用 `core/ui/player.js` 的 `createPlayer`（時間、播放／暫停、速度、時間軸、步驟選單、上一步／下一步）：本檔只提供 `advance`（每格切成 ≤ 10 ms 子步：手臂未到位就停在步驟終點等、等超過 8 s 判故障、示意 NG 複檢後停線，手臂限速追蹤；規則與 `tools/verify.mjs` 的連續播放相同）與 `apply(T, { seek })`（跳播手臂直接到位、清除故障與軌跡；連續播放只取樣流程），以及按播放時從故障處重新到位的 `resume`。3D 標籤用 `stage.addLabel(…, { anchor: 'above' })`、視角轉場用 `stage.goTo`／`stage.cancelTween`、載盤近看跟著輸送用 `stage.shiftView`；常用材質（框架、黑件、烤漆、工具鋼、PU、鏡頭玻璃）取 `core/geom/materials.js` 的 `MAT` |
+| `web/js/main.js` | 配方選單、接頭狀態、相機子畫面、紀錄匯出、`?movie` 錄影掛勾（物件與時間狀態取自 `project.js`）。renderer、相機、軌道控制、環境光與燈光、畫面迴圈用共用舞台 `core/ui/stage.js` 的 `createStage`；作業區局部光（含陰影）在 main.js 另建。播放列用 `core/ui/player.js` 的 `createPlayer`（時間、播放／暫停、速度、時間軸、步驟選單、上一步／下一步）：`advance` 交給 core 的到位閘門 `createArrivalGate`（`core/anim/arrival.js`，規則 `ARRIVAL`：每格切成 ≤ 10 ms 子步、手臂未到位就停在步驟終點等、等超過 8 s 判故障、手臂限速追蹤；與 `tools/verify.mjs` 的連續播放用同一個閘門），本檔只加示意 NG 複檢後停線的故障判斷、`apply(T, { seek })`（跳播手臂直接到位、清除等待、故障與軌跡）與按播放時從故障處重新到位的 `resume`。3D 標籤用 `stage.addLabel(…, { anchor: 'above' })`、視角轉場用 `stage.goTo`／`stage.cancelTween`、載盤近看跟著輸送用 `stage.shiftView`；常用材質（框架、黑件、烤漆、工具鋼、PU、鏡頭玻璃）取 `core/geom/materials.js` 的 `MAT` |
 | `tools/verify.mjs` | 全配方驗證 |
 
 ## 驗證
@@ -128,7 +128,7 @@ node --import ../core/tools/register.mjs tools/verify-self-clearance.mjs
 - 任意倒退／跳站一致性。
 - 手臂對軌道、止擋、全局相機、外罩、底櫃與產品的碰撞（接觸與接近步驟只允許壓頭進入產品包絡）。
 - 結束時的接頭狀態（OK 全部貼合；NG 只剩回彈那一顆）。
-- 連續播放（實際限速＋到位等待，每 0.25 秒做一次碰撞檢查）。
+- 連續播放（實際限速＋到位等待，與網頁同一個到位閘門與 `ARRIVAL`，每 0.25 秒做一次碰撞檢查）。
 
 最近一次結果在 `review/verification.json`；模型計算誤差並非設備精度。
 

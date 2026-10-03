@@ -14,6 +14,9 @@ export const STATIONS = ['進板定位', '全局定位', '壓合', '相機檢查
 // 步驟開始時立即切換、不插值的鍵
 export const DISCRETE = ['station', 'flashTool', 'belt', 'globalShot', 'detected'];
 export const SPEC = { forceLimit: 60, fovSpan: 72 }; // 力上限 N；一張照片內接頭中心的最大跨距 mm（視野約 93 mm）
+// 手臂到位規則（core/anim/arrival.js；main.js 播放與 tools/verify.mjs 連續播放共用）：停在步驟終點、或接觸步驟中位置誤差 > 2 mm 時，
+// 要位置 ≤ 1 mm、角度 ≤ 1° 才前進；連續等 8 s 判到位逾時；網頁以 ≤ 10 ms 的子步推進
+export const ARRIVAL = { tolerance: { position: 1, angle: 1 }, contactPosition: 2, timeout: 8, maxStep: .01 };
 const PAD_K = 2.5, SEAT_F = 2.0; // 壓頭彈簧 N/mm、單顆接頭壓回所需力 N（示意）
 
 /** 由狀態算出每顆接頭的翹起角、間隙、壓頭壓縮量與力值（主程式與驗證共用） */

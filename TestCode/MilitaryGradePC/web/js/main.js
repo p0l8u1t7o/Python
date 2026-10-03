@@ -3,7 +3,7 @@ import {setElectricalCutaway} from '@core/electrical/electrical-cabinet.js';
 import { createViewerWorkspace } from '@core/ui/viewer-workspace.js';
 import { routingLegend } from '@core/electrical/cable-routing.js';
 routingLegend();
-// 主程式：舞台（core/ui/stage.js）＋播放列（core/ui/player.js）＋本站的視角、面板、到位等待與錄影
+// 主程式：舞台（core/ui/stage.js）＋播放列（core/ui/player.js）＋到位閘門（core/anim/arrival.js）＋本站的視角、面板與錄影
 import * as THREE from 'three';
 import { createVisionOverlay } from '@core/ui/vision-overlay.js';
 import { notebookResults } from './vision-results.js';
@@ -11,9 +11,11 @@ const vision = createVisionOverlay();
 const fullSensorVision = createVisionOverlay();
 import { createStage, exposeSim } from '@core/ui/stage.js';
 import { createPlayer } from '@core/ui/player.js';
+import { createArrivalGate } from '@core/anim/arrival.js';
 import { SKUS } from './notebook.js';
 import { LAYOUT } from './cell.js';
 import { createProject, DEFAULT_SKU } from './project.js';
+import { ARRIVAL } from './sequence.js';
 
 // ---------------------------------------------------------------- SKU（由網址參數或選單決定；換 SKU 重建整條時間軸）
 const qp = new URLSearchParams(location.search);
@@ -60,7 +62,7 @@ stage.addLabel('力覺末端', () => robot.getTcpWorld('cam').add(new THREE.Vect
 
 const ui=Object.fromEntries(['action','substep','forceBar','forceVal','zoneDot','zoneTxt','checklist','chkCount','playBtn','speed','showZone','showPath','progBar','sku','signals','poseError','phase','result','exportBtn','showGuards','showLabels','cycleTime'].map(id=>[id,document.getElementById(id)]));
 // T 由播放列（player）推進；S／current 為目前取樣結果
-let S,T=0,current,waiting=0,fault='',curStation=-1,ready=false,quiet=false;
+let S,T=0,current,curStation=-1,ready=false,quiet=false;
 const CAPTURE=qp.has('capture');
 // 時間 → 場景一律經由 project：apply（跳播，手臂直接到位）或 sample（播放，手臂由 robot.update 追上）
 function go(c){current=c;S=c.state;return c;}
@@ -107,7 +109,7 @@ document.querySelectorAll('.views button').forEach(b=>b.onclick=()=>{
 // 跳到時間 sec（手臂直接到位、清除到位等待與 TCP 軌跡）；播放列、站別按鈕與 window.sim 共用
 const seekTo=sec=>player.seekTo(sec);
 // 開始播放：清除故障與到位等待（播放列在終點按播放時會自己跳回起點）
-function play(){fault='';waiting=0;player.play();}
+function play(){gate.reset();player.play();}
 document.querySelectorAll('#stations .st').forEach(b=>b.onclick=()=>{seekTo(stationStart[+b.dataset.st]);if(['product','door'].includes(selectedView))setView(selectedView,true);});
 function exportReport(){
   const report={mode:'SIMULATION',workOrder:'RMK12608372',sku:SKU,sn:'DEMO-0001',time:T,plannedCycle:total,result:T>=stationStart[4]?ui.result.value:'PENDING',
@@ -123,12 +125,12 @@ signals.forEach(([name])=>{const row=document.createElement('div');row.innerHTML
 function drawHud(){
   const e=robot.error(),arrived=project.arrived(current),playing=player.playing;
   // 光源、雷射、ROI 框、接縫雷射線、力覺色環、三色燈與 apply(t) 用同一段程式
-  project.effects(current,{arrived,capture:CAPTURE,result:ui.result.value,fault});
+  project.effects(current,{arrived,capture:CAPTURE,result:ui.result.value,fault:gate.fault});
   const force=arrived?S.force:0;
   cell.occluders.visible=ui.showGuards.checked;
   zoneSlow.visible=zoneSlowE.visible=zoneKeep.visible=ui.showZone.checked;trail.visible=ui.showPath.checked;
   ui.action.textContent=S.action;ui.substep.textContent=S.sub;
-  ui.phase.textContent=fault|| (T>=total?'COMPLETE · 本台完成':waiting>0?'等待手臂到位':playing?'AUTO · 執行中':'HOLD · 暫停');ui.phase.classList.toggle('fault',!!fault);
+  ui.phase.textContent=gate.fault|| (T>=total?'COMPLETE · 本台完成':gate.waiting>0?'等待手臂到位':playing?'AUTO · 執行中':'HOLD · 暫停');ui.phase.classList.toggle('fault',!!gate.fault);
   ui.forceBar.style.width=(force/12*100)+'%';ui.forceVal.textContent=force.toFixed(1)+' N';
   ui.zoneTxt.textContent=S.zone==='contact'?'接觸動作 · 模擬力值':S.zone==='slow'?'減速接近 · ≤50 mm/s':'自由移動 / 工位保持';
   ui.zoneDot.className='dot '+(S.zone==='contact'?'contact':S.zone==='slow'?'slow':'');
@@ -141,7 +143,7 @@ function drawHud(){
   // 時間軸、時鐘、步驟選單由播放列更新；這裡只畫進度條
   ui.progBar.style.width=T/total*100+'%';
   stage.updateLabels(ui.showLabels.checked&&selectedView!=='sensor');
-  document.getElementById('diagnostics').textContent=JSON.stringify({time:T,total,step:current.index,station:S.station,action:S.action,poseError:e,force,playing,waiting,fault,doors:S.doors,flip:S.flip,lift:S.lift,clamp:S.clamp,cradleClamp:S.cradleClamp});
+  document.getElementById('diagnostics').textContent=JSON.stringify({time:T,total,step:current.index,station:S.station,action:S.action,poseError:e,force,playing,waiting:gate.waiting,fault:gate.fault,doors:S.doors,flip:S.flip,lift:S.lift,clamp:S.clamp,cradleClamp:S.cradleClamp});
 }
 // 完整一格：面板、主畫面（或手臂鏡頭全幅）、相機子畫面與疊圖（跳播、截圖、錄影直接呼叫；stage.loop 每格也用它繪製）
 function render(){
@@ -164,35 +166,24 @@ const workspace=createViewerWorkspace({camera,controls,canvas,resize:stage.resiz
   focusOffset:[-360,340,470],onFocus:()=>{setElectricalCutaway(scene,false);stage.cancelTween();selectedView='focus';controls.enabled=true;document.querySelectorAll('.views button').forEach(b=>b.classList.remove('selected'));}});
 const electrical=createElectricalInspector({scene,camera,controls,canvas,onEnter:()=>setView('electrical',true),onExit:()=>setView('iso',true),title:'MilitaryGradePC'});
 
-// ---------------------------------------------------------------- 播放列（core/ui/player.js）
-// 事件選單用排程的 events。跳播（seek）走 project.apply（手臂直接到位）；連續播放由 advance 推進時間（步驟終點等手臂到位、
-// NG 與到位逾時停住），apply 以 project.sample 取樣並讓手臂以限速追上目標。
-// maxStep：以不超過 25 ms 的子步推進，改變播放速度時各軸等比例變快
-const player=createPlayer({total,qp,maxStep:.025,
+// ---------------------------------------------------------------- 播放列（core/ui/player.js）＋到位閘門（core/anim/arrival.js）
+// 到位規則 ARRIVAL 在 sequence.js（與 tools/verify.mjs 共用）：≤ 25 ms 子步、步驟終點等手臂到位、等超過 12 s 判到位逾時；S4 判 NG 時停住
+const gate=createArrivalGate({...ARRIVAL,total,error:()=>robot.error(),step:()=>current.step,sample:t=>go(project.sample(t)),update:h=>robot.update(h),
+  fault:()=>S.station===4&&ui.result.value==='NG'?'NG · 停留 S4 等待人工覆判':''});
+// 事件選單用排程的 events。跳播（seek）走 project.apply（手臂直接到位）並清除到位等待與故障；連續播放由 gate.advance 推進時間、
+// 以 project.sample 取樣並讓手臂以限速追上目標，apply 只記下時間
+const player=createPlayer({total,qp,
   events:sequence.events.map(e=>({...e,label:`S${e.station} · ${e.label}`})),
-  advance(t,dt){
-    if(S.station===4&&ui.result.value==='NG'){fault='NG · 停留 S4 等待人工覆判';return null;}
-    const e=robot.error(),s=current.step,end=s.start+s.dur;
-    const blocked=(t>=end-1e-7||(s.contact&&e.position>3))&&(e.position>1.5||e.angle>3||e.rail>2);
-    if(blocked){waiting+=dt;if(waiting>12){fault='到位逾時 · 請檢查 TCP 姿態';return null;}return t;}
-    waiting=0;
-    // 已在步驟終點且到位：跨入下一步（最後一步則播完）；否則最多推進到步驟終點。
-    // 最後一步的終點先停在 total 前一點，等手臂到位後才結束播放
-    if(t>=end-1e-7)return Math.min(total,end+1e-6);
-    const next=Math.min(end,t+dt);
-    return next>=total-1e-9?total-1e-8:next;
-  },
-  apply(t,{seek,dt}){
+  advance:gate.advance,
+  apply(t,{seek}){
     T=t;
-    if(seek){waiting=0;fault='';trailCount=0;trailGeo.setDrawRange(0,0);return go(project.apply(t,{capture:CAPTURE}));}
-    // 連續播放：停在步驟終點時取樣終點前一點（仍屬本步驟），等手臂到位才跨入下一步；手臂以限速追上目標
-    const s=current.step,end=s.start+s.dur,at=t<total&&t>=end-1e-7&&t<=end?Math.max(s.start,end-1e-8):t;
-    const c=go(project.sample(at));robot.update(dt);return c;
+    if(seek){gate.reset();trailCount=0;trailGeo.setDrawRange(0,0);return go(project.apply(t,{capture:CAPTURE}));}
+    return current;
   },
   // 跳播後重繪（連續播放由 stage.loop 每格繪製；錄影取樣時不重繪）
   onChange(t,s,{seek}){if(ready&&!quiet&&seek)render();}});
 // 播放鍵：清除故障與到位等待（播放列自己處理播放／暫停與終點歸零）
-ui.playBtn.addEventListener('click',()=>{fault='';waiting=0;});
+ui.playBtn.addEventListener('click',()=>gate.reset());
 // stage.loop 每格：frameTick(dt) → controls.update() → render()（主畫面＋相機子畫面＋疊圖）
 function frameTick(dt){
   player.update(dt);

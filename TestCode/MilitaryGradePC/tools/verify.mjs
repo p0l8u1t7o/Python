@@ -3,7 +3,8 @@ import * as THREE from 'three';
 import {createNotebook,NB,selectSku} from '../web/js/notebook.js';
 import {createCell,LAYOUT} from '../web/js/cell.js';
 import {createRobot} from '../web/js/robot.js';
-import {createSequence} from '../web/js/sequence.js';
+import {createSequence,ARRIVAL} from '../web/js/sequence.js';
+import {createArrivalGate} from '@core/anim/arrival.js';
 import {minimumGap} from '../../tools/geometry-clearance.mjs';
 // Texture canvas is irrelevant to the geometry/kinematics verification.
 globalThis.document={createElement:()=>({width:1024,height:512,getContext:()=>({fillRect(){},fillText(){}})})};
@@ -44,13 +45,13 @@ for(const sku of ['V110-STND','V110-RF']){
   }
   report.push({sku,steps:seq.steps.length,cycle:seq.total,maxError,maxAngle,worst});
   {
-    let time=0,elapsed=0,wait=0,frame=seq.sample(0),maxContactError=0,iteration=0;robot.snap();
+    // 連續播放：與網頁同一個到位閘門（core/anim/arrival.js）與規則 ARRIVAL
+    let time=0,elapsed=0,frame=seq.sample(0),maxContactError=0,iteration=0;robot.snap();
+    const dt=sku==='V110-STND'?.025:.00625,gate=createArrivalGate({...ARRIVAL,total:seq.total,error:()=>robot.error(),step:()=>frame.step,sample:t=>{frame=seq.sample(t);},update:h=>robot.update(h)});
     while(time<seq.total&&elapsed<seq.total*4){
-      const dt=sku==='V110-STND'?.025:.00625,e=robot.error(),s=frame.step,end=s.start+s.dur;
-      const blocked=(time>=end-1e-7||(s.contact&&e.position>3))&&(e.position>1.5||e.angle>3||e.rail>2);
-      if(blocked){wait+=dt;if(wait>12){failures.push({sku,continuous:true,action:s.action,time,...e,q:robot.q});break;}}
-      else {wait=0;time=time>=end-1e-7?Math.min(seq.total,end+1e-6):Math.min(end,time+dt);frame=seq.sample(time>=end-1e-7&&time<=end?Math.max(s.start,end-1e-8):time);}
-      robot.update(dt);elapsed+=dt;
+      const e=robot.error(),s=frame.step,next=gate.step(time,dt);
+      if(next==null){failures.push({sku,continuous:true,action:s.action,time,...e,q:robot.q});break;}
+      time=next;elapsed+=dt;
       if(++iteration%Math.round(.25/dt)===0){
         const hit=collisions();if(hit.length)failures.push({sku,continuous:true,action:s.action,time,collision:hit});
         const gap=minimumGap(robot.clearanceParts.arm,robot.clearanceParts.tool);
