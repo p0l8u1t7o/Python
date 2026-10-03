@@ -8,29 +8,25 @@ import * as THREE from 'three';
 import { createVisionOverlay } from '@core/ui/vision-overlay.js';
 import { copperResults } from './vision-results.js';
 const vision = createVisionOverlay();
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { createStage, exposeSim } from '@core/ui/stage.js';
 import { LAYOUT, PRODUCT, RECIPES, smooth } from './layout.js';
 
 const qp = new URLSearchParams(location.search);
 // 場景物件與每個時間點的狀態都來自 project.js（與 core 統一檢查共用）；配方在建立時套用
 const { createProject } = await import('./project.js');
 const canvas = document.getElementById('c');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: qp.get('aa') !== '0', powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.shadowMap.enabled = qp.get('shadow') !== '0'; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05; renderer.outputColorSpace = THREE.SRGBColorSpace;
-const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0d1117); scene.fog = new THREE.Fog(0x0d1117, 6000, 13000);
-const room = new RoomEnvironment(renderer), pmrem = new THREE.PMREMGenerator(renderer);
-room.traverse(o => { if (o.isPointLight) o.intensity = 240; });
-scene.environment = pmrem.fromScene(room, .04).texture; room.dispose(); pmrem.dispose();
-const camera = new THREE.PerspectiveCamera(40, 1, .1, 30000);
-const controls = new OrbitControls(camera, canvas); controls.enableDamping = true; controls.dampingFactor = 0.08; controls.maxPolarAngle = Math.PI * 0.49; controls.minDistance = 7; controls.maxDistance = 9000;
-scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x2a2f36, 0.6));
-const sun = new THREE.DirectionalLight(0xffffff, 1.5); sun.position.set(-1500, 3500, 2200); sun.castShadow = qp.get('shadow') !== '0'; sun.shadow.mapSize.set(2048, 2048);
-Object.assign(sun.shadow.camera, { left: -2200, right: 2200, top: 2200, bottom: -2200, near: 500, far: 9000 }); sun.shadow.bias = -0.0003; scene.add(sun);
-sun.shadow.normalBias = .05;
-const fill = new THREE.DirectionalLight(0x9fb8ff, 0.5); fill.position.set(1800, 1500, -1800); scene.add(fill);
+// 共用舞台 core/ui/stage.js：只傳與預設不同的部分（霧、環境點光 240、相機範圍、太陽位置與陰影相機）
+// 不開對數深度（孔位特寫的近裁切面只有 0.2 mm）；?movie 時舞台會自動開
+const stage = createStage({
+  canvas, qp, exposure: 1.05, background: 0x0d1117, fog: [6000, 13000], logDepth: false,
+  envLight: 240, envBlur: .04,
+  camera: { fov: 40, near: .1, far: 30000 },
+  controls: { minDistance: 7, maxDistance: 9000 },
+  sun: { color: 0xffffff, intensity: 1.5, position: [-1500, 3500, 2200], target: [0, 0, 0],
+    shadow: { mapSize: 2048, camera: { left: -2200, right: 2200, top: 2200, bottom: -2200, near: 500, far: 9000 }, bias: -.0003, normalBias: .05 } },
+  fill: { color: 0x9fb8ff, intensity: .5, position: [1800, 1500, -1800] },
+});
+const { renderer, scene, camera, controls } = stage;
 
 const project = createProject({ scene, recipe: qp.get('recipe') }), sim = project.sim, plan = project.plan, M = project.machine;
 const ui = Object.fromEntries(['phase', 'cycleHint', 'pA', 'pB', 'pT', 'nA', 'nB', 'nT', 'errBar', 'errVal', 'errLim', 'stationStatus', 'showPip', 'showGuards', 'showLabels', 'exportBtn', 'pipFrame', 'pipTitle', 'pipResult', 'pipSel',
@@ -178,31 +174,66 @@ function drawHud() {
   document.getElementById('diagnostics').textContent = JSON.stringify({ T, total, placed: pl, maxErr: info.maxErr, mapped: info.mapped, inspected: info.inspected });
   return src;
 }
-function resize() { const w = canvas.clientWidth, h = canvas.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
-window.addEventListener('resize', resize);
-function render() {
+// 一格畫面分三段：狀態與 HUD → 相機子畫面（另一個 render target，畫完還原 viewport）→ 主畫面總覽。
+// 舞台迴圈在 tick 之後自己呼叫 renderer.render(scene, camera)，所以 tick 只做前兩段，並把場景留在「總覽」狀態；
+// render() 則一次畫完整格（跳轉、孔位檢視、錄影用）。
+const setMarks = on => Object.values(sim.boards).forEach(b => b.setAnnotations(on));
+function prepareFrame() {
   const src=drawHud();workspace.follow();electrical.update({time:T,playing,action:'S0–S4 多站同步 · '+(T<plan.s2End?'雙頭放置':'換站'),motion:T<plan.s2End,vision:!!(plan.s3.tr.sample(T).seg?.flash)});
-  const marks=document.getElementById('showMarks').checked;Object.values(sim.boards).forEach(b=>b.setAnnotations(marks));
-  renderer.setScissorTest(false);renderer.setViewport(0,0,canvas.clientWidth,canvas.clientHeight);workspace.renderOverview(renderer,scene);
-  const vis=M.occluders.visible;M.occluders.visible=false;Object.values(sim.boards).forEach(b=>b.setAnnotations(false));
-  workspace.renderCamera({renderer,scene,camera:pipCams[src](),vision,marks:copperResults(src,T,plan,M,sim.boards)});
-  M.occluders.visible=vis;Object.values(sim.boards).forEach(b=>b.setAnnotations(marks));
+  const marks=document.getElementById('showMarks').checked;setMarks(marks);
+  return { src, marks };
 }
-const workspace=createViewerWorkspace({camera,controls,canvas,resize,focusOccluders:[M.occluders],getFocus:()=>focusPoint(false),
+function renderPip({ src, marks }) {
+  const vis=M.occluders.visible;M.occluders.visible=false;setMarks(false);
+  workspace.renderCamera({renderer,scene,camera:pipCams[src](),vision,marks:copperResults(src,T,plan,M,sim.boards)});
+  M.occluders.visible=vis;setMarks(marks);
+}
+const mainViewport = () => { renderer.setScissorTest(false); renderer.setViewport(0, 0, canvas.clientWidth, canvas.clientHeight); };
+function render() {
+  const f = prepareFrame();
+  mainViewport(); workspace.renderOverview(renderer, scene);
+  renderPip(f);
+}
+const workspace=createViewerWorkspace({camera,controls,canvas,resize:stage.resize,focusOccluders:[M.occluders],getFocus:()=>focusPoint(false),
   focusOffset:[0,190,440],onFocus:()=>{setElectricalCutaway(scene,false);camAnim=null;lastFocus=null;currentView='focus';document.querySelectorAll('.views button').forEach(b=>b.classList.remove('selected'));}});
 const electrical=createElectricalInspector({scene,camera,controls,canvas,onEnter:()=>setView('electrical',true),onExit:()=>setView('iso',true),title:'PCB-CopperAssembly'});
-const clock = new THREE.Clock();
-function frame() {
-  requestAnimationFrame(frame); const dt = Math.min(clock.getDelta(), 0.05);
+function tick(dt) {
   if (playing) { T += dt * speed; if (T >= total) { if (ui.loop.checked) T -= total; else { T = total; playing = false; ui.playBtn.textContent = '▶ 播放'; } } }
   if (camAnim) { camAnim.u = Math.min(1, camAnim.u + dt * 1.4); camera.position.lerpVectors(camAnim.p0, camAnim.p, smooth(camAnim.u)); controls.target.lerpVectors(camAnim.t0, camAnim.t, smooth(camAnim.u)); if (camAnim.u === 1) camAnim = null; }
-  controls.update(); render();
+  renderPip(prepareFrame());
+  // 舞台接著畫總覽：等同 workspace.renderOverview（跟隨焦點時隱藏護罩；drawHud 每格會依勾選還原）
+  mainViewport(); if (workspace.following) M.occluders.visible = false;
 }
-resize(); ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放';
+stage.resize(); ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放';
 if (qp.has('t')) { playing = false; T = +qp.get('t') || 0; ui.playBtn.textContent = '▶ 播放'; }
 if (qp.has('pip')) ui.pipSel.value = qp.get('pip');
 T = THREE.MathUtils.clamp(T, 0, total); project.apply(T, { playing }); setView(qp.get('view') || 'iso', true);
 const play = () => { if (T >= total) T = 0; playing = true; ui.playBtn.textContent = '⏸ 暫停'; };
 const pause = () => { playing = false; ui.playBtn.textContent = '▶ 播放'; };
-window.sim = { plan, seekTo, get T() { return T; }, setView, views: Object.keys(views), total, play, pause, project };
-document.getElementById('loading').classList.add('hide'); render(); frame();
+exposeSim({ plan, seekTo, get T() { return T; }, setView, views: Object.keys(views), total, play, pause, project });
+document.getElementById('loading').classList.add('hide'); render(); stage.loop(tick);   // ?movie 時舞台不啟動迴圈
+
+// ---------------------------------------------------------------- 展示影片（?movie）：由 core/movie/movie.js 以絕對時間逐格驅動
+if (qp.has('movie')) {
+  pause();
+  const { installMovie } = await import('@core/movie/movie.js');
+  installMovie({
+    project: 'PCB-CopperAssembly', scene, renderer, camera, controls, render, setView, total,
+    steps: [{ start: 0, dur: total, label: '雙頭植入與五站同步' }],
+    sample(t) { T = t; info = project.apply(T, { playing }); },
+    focus: () => new THREE.Vector3(0, 1050, 0), offset: [-2150, 1350, 2650],
+    detailShots: (() => {
+      const active = tr => tr.segs.filter(s => s.label !== '待命');
+      const span = (view, label, start, end) => ({ view, label, simStart: Math.max(0, start), simDuration: Math.min(total, end) - Math.max(0, start) });
+      const load = active(plan.s0), unload = active(plan.s4);
+      const vibration = plan.feeders.A.tr.segs.find(s => s.to.vib === 1);
+      const placement = plan.events.find(e => e.type === 'place' && e.H === 'A');
+      return [span('load', 'S0 上料 · 原速流程', load[0].t0, load.at(-1).t1),
+        span('s1', 'S1 孔位定位 · 掃描細節', plan.s1.shots[0].t, plan.s1.shots[0].t + 8),
+        span('feeder', '銅片供料 · 震動翻面', vibration.t0 - 1, vibration.t1 + 2),
+        span('head', '吸嘴取放 · 對位與輕壓', placement.t - 2, placement.t + 3),
+        span('s3', 'S3 植入檢查 · 掃描細節', plan.s3.shots[0].t, plan.s3.shots[0].t + 8),
+        span('unload', 'S4 成品下料 · 原速流程', unload[0].t0, unload.at(-1).t1)];
+    })(),
+  });
+}

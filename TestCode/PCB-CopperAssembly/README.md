@@ -49,7 +49,7 @@ node ../core/tools/serve.mjs PCB-CopperAssembly --no-open
 - 右側顯示兩頭的放置進度、目前最大放置誤差（對照 ±6 mil），以及各站當下的動作。
 - 「匯出紀錄」產生 JSON：每顆的放置頭、吸嘴、趟次、時間與模擬誤差。**無實拍影像、無實測值。**
 
-網址參數：`?recipe=round-72`、`?t=14.24&view=s2&pip=upA`、`?shadow=0`；主控台：`window.sim.seekTo(sec)`、`setView(name)`、`views`、`total`、`play()`、`pause()`、`plan`。
+網址參數：`?recipe=round-72`、`?t=14.24&view=s2&pip=upA`、`?shadow=0`；`?pause&movie` 開啟展示影片模式（`installMovie`：全景開場、五站並行一個節拍，再分站重播上料、S1 掃描、供料震動、吸嘴取放、S3 檢查、下料，最後電盤與整線；可預覽、檢查鏡頭及輸出）。主控台：`window.sim.seekTo(sec)`、`setView(name)`、`views`、`total`、`play()`、`pause()`、`plan`。
 
 ## 檔案
 
@@ -61,7 +61,7 @@ node ../core/tools/serve.mjs PCB-CopperAssembly --no-open
 | `web/js/machine.js` | 輸送線、料倉與上下料、相機龍門、雙龍門與吸嘴頭、供料盤、仰視相機、外罩 |
 | `web/js/sim.js` | 把排程在任一時間的狀態套到機台（畫面與驗證共用） |
 | `web/js/project.js` | 專案介面 `createProject({ scene, recipe })`：建立機台、基板與排程，`apply(t)` 把整個場景放到時間 t；網頁與 core 統一檢查共用同一份（含 `layoutChecks` 與全場檢查設定） |
-| `web/js/main.js` | 時間軸、UI、相機子畫面、紀錄匯出（場景物件與逐時狀態都取自 `project.js`） |
+| `web/js/main.js` | 時間軸、UI、相機子畫面、紀錄匯出（場景物件與逐時狀態都取自 `project.js`）；renderer、場景、相機、燈光與畫面迴圈用共用舞台 `core/ui/stage.js`（不開對數深度），`?movie` 時改由 `core/movie/movie.js` 驅動 |
 | `tools/verify.mjs` | 排程與幾何驗證 |
 
 ## 驗證
