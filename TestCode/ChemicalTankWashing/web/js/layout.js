@@ -23,7 +23,8 @@ export const COLUMN = { x: 8300, z: 5200, size: 800 };
 export const columnRect = () => [COLUMN.x - COLUMN.size / 2, COLUMN.z - COLUMN.size / 2, COLUMN.x + COLUMN.size / 2, COLUMN.z + COLUMN.size / 2];
 
 // 200 L 閉口 HDPE 桶（雙 L 環），2" 與 3/4" 螺塞在桶頂同一直徑兩端
-export const DRUM = { R: 292.5, envelopeR: 298, H: 935, bungR: 200, big: { r: 36, h: 24, hole: 27 }, small: { r: 18, h: 18, hole: 12 }, kg: 8.5 };
+import { DRUM } from '@core/models/drum-200l.js';   // 200 L 桶規格與模型在共用模型庫
+export { DRUM };
 export const PALLET = {
   W: 1200, H: 150,
   // 2×2 擺放（棧板局部座標）。棧板在棧板站轉了 180°，此順序對應世界座標先取東側兩桶，西側兩桶取料時不必越過其他桶

@@ -3,5 +3,7 @@
 import * as conveyor from './conveyor.js';
 import * as gantry from './gantry.js';
 import { motor, sensor, foot, gauge } from './hardware.js';
+import * as agvForklift from './agv-forklift.js';
+import * as drum200l from './drum-200l.js';
 
-export const MODELS = [conveyor, gantry, motor, sensor, foot, gauge];
+export const MODELS = [conveyor, gantry, agvForklift, drum200l, motor, sensor, foot, gauge];
