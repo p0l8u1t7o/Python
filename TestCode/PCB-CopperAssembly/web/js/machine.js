@@ -6,20 +6,23 @@ import { cable, cableTray, carrier, support, CABLE } from '@core/electrical/cabl
 import { finish } from '@core/geom/finish.js';
 import { perforated } from '@core/geom/perforated.js';
 import { block, cylinder, decal } from '@core/geom/shapes.js';
+import { MAT } from '@core/geom/materials.js';
 import { LAYOUT, PRODUCT, HOLES, BOARD_TOP } from './layout.js';
 import { createCoin } from './board.js';
 
+// 常見材質取自共用材質表 MAT（鋁、黑件、烤漆、藍色烤漆鋼、黃色件）；鋁件與底座烤漆另加本機細紋，所以複製一份再 finish，不改動共用材質。
+// 本機專屬的外觀留在這裡：鋁擠型框（中灰陽極）、花崗岩台、綠色皮帶、PC 透明外罩、背光供料盤。
 const matFrame = new THREE.MeshStandardMaterial({ color: 0x6b7480, roughness: 0.5, metalness: 0.6 });
-const matAlu = new THREE.MeshStandardMaterial({ color: 0xb9c0c8, roughness: 0.35, metalness: 0.8 });
-const matDark = new THREE.MeshStandardMaterial({ color: 0x1e2226, roughness: 0.5, metalness: 0.4 });
-const matBase = new THREE.MeshStandardMaterial({ color: 0xd9dcdf, roughness: 0.6, metalness: 0.2 });
+const matAlu = finish(MAT.alu.clone(), 'metal', .008);
+const matDark = MAT.black;
+const matBase = finish(MAT.cabinet.clone(), 'polymer', .025);
 const matGranite = new THREE.MeshStandardMaterial({ color: 0x2a2d31, roughness: 0.85 });
-const matBlue = new THREE.MeshStandardMaterial({ color: 0x2f5f9e, roughness: 0.5, metalness: 0.4 });
+const matBlue = MAT.steelBlue;
 const matBelt = new THREE.MeshStandardMaterial({ color: 0x2e7d56, roughness: 0.75 });
-const matYellow = new THREE.MeshStandardMaterial({ color: 0xf2b21b, roughness: 0.6 });
+const matYellow = MAT.yellow;
 const matPC = new THREE.MeshPhysicalMaterial({ color: 0xcfe3ff, roughness: 0.1, transmission: 0.3, transparent: true, opacity: 0.1, depthWrite: false, side: THREE.DoubleSide });
 const matFeeder = new THREE.MeshStandardMaterial({ color: 0xe8eef2, roughness: 0.7, emissive: 0x9fb8c8, emissiveIntensity: 0.25 });
-finish(matAlu,'metal',.008); finish(matFrame,'metal',.012); finish(matBase,'polymer',.025);
+finish(matFrame,'metal',.012);
 const glow = () => new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.05 });
 const top = LAYOUT.conveyorTop, ST = LAYOUT.stations, G = LAYOUT.gantry;
 function annulus(parent, outer, inner, y, material) {
@@ -227,8 +230,9 @@ export function createMachine(scene) {
   block(occ, [2 * EX, H1 - 780, 2], [0, (H1 + 780) / 2, Z0], matPC);
   block(occ, [2 * EX, H1 - 1100, 2], [0, (H1 + 1100) / 2, Z1], matPC);
   const tower = new THREE.Group(); tower.position.set(EX - 100, H1 + 50, Z0 + 60); g.add(tower);
-  const lamps = {}; [['red', 0xff3b3b, 110], ['yellow', 0xffb020, 75], ['green', 0x3dd68c, 40]].forEach(([k, c, y]) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(22, 22, 34, 20), new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.08 })); m.position.y = y; tower.add(m); lamps[k] = m; });
-  block(g, [260, 170, 16], [0, 1250, Z1 + 12], new THREE.MeshStandardMaterial({ color: 0x0c1a2b, emissive: 0x1f4f8f, emissiveIntensity: 0.55 }));
+  // 三色燈：共用指示燈材質各複製一份（亮暗由 tower.set 個別控制）
+  const lamps = {}; [['red', MAT.red, 110], ['yellow', MAT.amber, 75], ['green', MAT.green, 40]].forEach(([k, mat, y]) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(22, 22, 34, 20), mat.clone()); m.material.emissiveIntensity = 0.08; m.position.y = y; tower.add(m); lamps[k] = m; });
+  block(g, [260, 170, 16], [0, 1250, Z1 + 12], MAT.screen);
   decal(g, 240, 150, [0, 1250, Z1 + 21], [0, 0, 0], ['散熱銅片植入機', `${PRODUCT.short} · ${HOLES.length} 顆／片`, 'SIMULATION'], { bg: '#102635', color: '#65d7b8' });
 
   cableTray(g,'BASE / segregated distribution',[-1650,740,-530],[1650,740,-530]);

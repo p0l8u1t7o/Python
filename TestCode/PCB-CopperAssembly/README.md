@@ -9,7 +9,7 @@
 
 換線時切換配方、供料盤清料換料、吸嘴快換（Ø2.4 ↔ Ø4）。
 
-機台採用雙龍門 XYZθ、每頭 4 吸嘴。基板定位（S1）與吸取後的拍照補償（飛越仰視相機）分開進行；模擬呈現穩態下五片基板同時在五站作業的一個節拍。所有 Three.js 依賴在 `web/vendor`，可離線執行。
+機台採用雙龍門 XYZθ、每頭 4 吸嘴。基板定位（S1）與吸取後的拍照補償（飛越仰視相機）分開進行；模擬呈現穩態下五片基板同時在五站作業的一個節拍。所有 Three.js 依賴在 `core/vendor`，可離線執行。
 
 方案說明、機構選型理由、精度預算與待確認事項見 [機台規劃](docs/machine-plan.md)。用戶提供的照片在 `docs/`。
 
@@ -38,7 +38,7 @@ node ../core/tools/serve.mjs PCB-CopperAssembly --no-open
 ## 操作
 
 - 上方選單切換**機種**（長圓孔 138／圓孔 72）。
-- 時間軸是一個節拍，預設循環播放；下拉選單列出各站與每一趟的時間節點。
+- 時間軸是一個節拍，預設循環播放；下拉選單與 ‹ › 列出各站與每一趟的時間節點（同一時刻的節點併成一筆）。
 - 視角：全景、放置站、吸嘴特寫、供料盤、基板定位、上下料、俯視；上方站別按鈕也會切換到該站。
 - **左下子畫面**是相機實際看到的畫面，可選自動或指定相機：
   - 仰視相機：吸嘴上的銅片與量到的偏移。
@@ -49,19 +49,19 @@ node ../core/tools/serve.mjs PCB-CopperAssembly --no-open
 - 右側顯示兩頭的放置進度、目前最大放置誤差（對照 ±6 mil），以及各站當下的動作。
 - 「匯出紀錄」產生 JSON：每顆的放置頭、吸嘴、趟次、時間與模擬誤差。**無實拍影像、無實測值。**
 
-網址參數：`?recipe=round-72`、`?t=14.24&view=s2&pip=upA`、`?shadow=0`；`?pause&movie` 開啟展示影片模式（`installMovie`：全景開場、五站並行一個節拍，再分站重播上料、S1 掃描、供料震動、吸嘴取放、S3 檢查、下料，最後電盤與整線；可預覽、檢查鏡頭及輸出）。主控台：`window.sim.seekTo(sec)`、`setView(name)`、`views`、`total`、`play()`、`pause()`、`plan`。
+網址參數：`?recipe=round-72`、`?t=14.24&view=s2&pip=upA`、`?shadow=0`；`?pause&movie` 開啟展示影片模式（`installMovie`：全景開場、五站並行一個節拍，再分站重播上料、S1 掃描、供料震動、吸嘴取放、S3 檢查、下料，最後電盤與整線；可預覽、檢查鏡頭及輸出）。主控台：`window.sim.seekTo(sec)`、`setView(name)`、`views`、`total`、`play()`、`pause()`、`plan`、`events`、`stationStart`、`player`。
 
 ## 檔案
 
 | 檔案 | 用途 |
 |---|---|
 | `web/js/layout.js` | 機種配方、產品與機台尺寸、運動參數、誤差模型 |
-| `web/js/plan.js` | 一個節拍的完整排程（各機構的動作軌道、取放事件、誤差抽樣） |
+| `web/js/plan.js` | 一個節拍的完整排程：每個機構是 core 時間軸（`createTimeline`）上的一條軌，並行排程；`log` 是逐顆取放／取像紀錄，`events`／`stationStart`／`total` 是統一的事件介面；誤差抽樣 |
 | `web/js/board.js` | 基板（依配方的長圓孔或圓孔＋黏紙）、銅片、量測與檢查標記 |
 | `web/js/machine.js` | 輸送線、料倉與上下料、相機龍門、雙龍門與吸嘴頭、供料盤、仰視相機、外罩 |
 | `web/js/sim.js` | 把排程在任一時間的狀態套到機台（畫面與驗證共用） |
 | `web/js/project.js` | 專案介面 `createProject({ scene, recipe })`：建立機台、基板與排程，`apply(t)` 把整個場景放到時間 t；網頁與 core 統一檢查共用同一份（含 `layoutChecks` 與全場檢查設定） |
-| `web/js/main.js` | 時間軸、UI、相機子畫面、紀錄匯出（場景物件與逐時狀態都取自 `project.js`）；renderer、場景、相機、燈光與畫面迴圈用共用舞台 `core/ui/stage.js`（不開對數深度），`?movie` 時改由 `core/movie/movie.js` 驅動 |
+| `web/js/main.js` | UI、視角、相機子畫面、紀錄匯出（場景物件與逐時狀態都取自 `project.js`）；舞台 `core/ui/stage.js`（不開對數深度；3D 標籤 `addLabel`、視角轉場 `goTo`），播放列 `core/ui/player.js`（事件選單用排程的 `events`，另加循環播放），`?movie` 時改由 `core/movie/movie.js` 驅動 |
 | `tools/verify.mjs` | 排程與幾何驗證 |
 
 ## 驗證

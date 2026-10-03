@@ -13,7 +13,8 @@ export function createProject({ scene, headless = false, recipe } = {}) {
   const floor = machine.group.children.find(o => o.isMesh && o.geometry?.type === 'PlaneGeometry' && o.geometry.parameters.width === 9000);
 
   return {
-    total: plan.cycle, sim, plan, machine, boards, headless,
+    // 標準排程介面：timeline（core createTimeline）、events（各站與每一趟的節點）、stationStart（S0–S4 開始作業時間）
+    total: plan.total, timeline: plan.timeline, events: plan.events, stationStart: plan.stationStart, sim, plan, machine, boards, headless,
     /** 整台場景放到時間 t（只依 t 決定）；playing 只影響三色燈顏色 */
     apply(t, { playing = false } = {}) {
       const info = sim.apply(t);
@@ -24,7 +25,7 @@ export function createProject({ scene, headless = false, recipe } = {}) {
       const rows = [], add = (name, ok, value, note) => rows.push({ group: PRODUCT.recipe, name, ok, value, note });
       add('節拍 ≤ 60 s', plan.cycle <= 60, +plan.cycle.toFixed(2), 's');
       add('最大放置誤差 ≤ ±6 mil', plan.stats.maxErr <= PRODUCT.spec, +plan.stats.maxErr.toFixed(4), 'mm');
-      add('孔數＝排程放置數', plan.events.filter(e => e.type === 'place').length === plan.holes.length, plan.holes.length);
+      add('孔數＝排程放置數', plan.log.filter(e => e.type === 'place').length === plan.holes.length, plan.holes.length);
       for (const H of ['A', 'B']) {
         const f = LAYOUT.feeder[H], u = LAYOUT.upCam[H];
         add(`供料盤 ${H} 在龍門 X 行程內`, Math.abs(f.x) + LAYOUT.feeder.w / 2 < G.railX - 35, f.x, 'mm');

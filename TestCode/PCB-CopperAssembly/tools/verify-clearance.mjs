@@ -18,7 +18,7 @@ for(const recipe of Object.keys(RECIPES)){
  const times=new Set([0,sim.plan.cycle]);
  for(let t=0;t<sim.plan.cycle;t+=.002)times.add(t);
  for(const tr of [sim.plan.conveyor,sim.plan.s0,sim.plan.s4,sim.plan.s1.tr,sim.plan.s3.tr,...Object.values(sim.plan.heads).map(h=>h.tr)])
-  for(const s of tr.segs){times.add(s.t0);times.add(s.t1);}
+  for(const s of tr.steps){times.add(s.start);times.add(s.start+s.dur);}
  for(const t of [...times].sort((a,b)=>a-b)){sim.apply(t);samples++;
   for(const p of [...A,...B])p.b.setFromObject(p.m).expandByScalar(.25);
   for(const a of A)for(const b of B){if(!visible(a.m)||!visible(b.m)||!a.b.intersectsBox(b.b)||!routeIntersectsBox(a.m,b.b,.25)||!routeIntersectsBox(b.m,a.b,.25))continue;
@@ -31,13 +31,13 @@ for(const recipe of Object.keys(RECIPES)){
  }
  assert.equal(hits.size,0,recipe+' '+JSON.stringify([...hits.values()]));
  // The lens, not the nozzle row, must be directly over each fiducial.
- for(const e of sim.plan.events.filter(e=>e.type==='fid')){
+ for(const e of sim.plan.log.filter(e=>e.type==='fid')){
   sim.apply(e.t-.001);const cam=heads[e.H].downCam.cam;cam.updateMatrixWorld(true);
   const p=new THREE.Vector3(e.x,950,e.z).project(cam);assert(Math.abs(p.x)<1e-5&&Math.abs(p.y)<1e-5,'fiducial not on camera optical axis');
  }
  // Bores must be genuinely open along each spindle, not a painted circle.
- for(const H of ['A','B'])for(const shot of sim.plan.feeders[H].tr.segs.filter(s=>s.flash))for(const f of [.01,.5,.99]){
-  sim.apply(shot.t0+(shot.t1-shot.t0)*f);const cam=sim.machine.feeders[H].cam.cam,origin=cam.getWorldPosition(new THREE.Vector3()),plate=sim.machine.feeders[H].plate.getWorldPosition(new THREE.Vector3());
+ for(const H of ['A','B'])for(const shot of sim.plan.feeders[H].tr.steps.filter(s=>s.flash))for(const f of [.01,.5,.99]){
+  sim.apply(shot.start+shot.dur*f);const cam=sim.machine.feeders[H].cam.cam,origin=cam.getWorldPosition(new THREE.Vector3()),plate=sim.machine.feeders[H].plate.getWorldPosition(new THREE.Vector3());
   for(const [dx,dz] of [[0,0],[-65,-45],[-65,45],[65,-45],[65,45]]){
    const target=new THREE.Vector3(plate.x+dx,957,plate.z+dz),distance=target.distanceTo(origin),ray=new THREE.Raycaster(origin,target.sub(origin).normalize(),0,distance-1);
    assert.equal(ray.intersectObjects([...A,...B].filter(p=>visible(p.m)).map(p=>p.m)).length,0,'gantry obscures feeder exposure');
