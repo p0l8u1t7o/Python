@@ -76,6 +76,7 @@ node ../core/tools/serve.mjs WorkpieceMeasurement --no-open
 - `?spec=C&result=ERR`：規格與情境。
 - `?pause&st=3&view=st2`：停在 ST2 掃描；`?pause&step=7&view=chuck`：停在夾持；`?pause&time=6.2`：指定秒數。
 - `?hood=0`、`?pip=0`、`?labels`、`?speed=1`、`cam=x,y,z,tx,ty,tz`。
+- `?pause&movie&pip=0`：展示影片模式。不跑網頁迴圈、不隨視窗縮放重新取景，改由 `core/movie/movie.js` 的 `installMovie` 以絕對時間逐格渲染（取樣走 `project.apply`，另加 ST1／ST2 重播與穿線護口三個影片鏡位）；畫面下方有預覽滑桿、輸出與鏡頭檢查按鈕。
 
 主控台：`window.sim.seekTo(sec)`、`pause()`、`play()`、`setView(name)`、`views`、`total`、`steps`、`measurement`、`project`。
 
@@ -166,7 +167,7 @@ node ../core/tools/check.mjs WorkpieceMeasurement     # 在本資料夾；在 Te
 | `web/js/project.js` | 專案介面：建地面與機台，`apply(t)` 把整個場景放到時間 t（main.js 與統一檢查共用） |
 | `web/js/machine.js` | 機台、托盤、移載、光束示意 |
 | `web/js/camera-sim.js` | 取像模擬子畫面 |
-| `web/js/main.js` | 渲染器與燈光、控制、介面、紀錄匯出（場景與時間狀態取自 `project.js`） |
+| `web/js/main.js` | 舞台設定（`core/ui/stage.js` 的 `createStage`：曝光、背景與霧、相機、控制範圍、主光陰影、補光與輪廓光）、視角、介面、紀錄匯出、`?movie` 錄影掛勾（場景與時間狀態取自 `project.js`） |
 | `tools/verify.mjs` | 流程／幾何／運動驗證 |
 | `tools/update_cost_estimate.mjs` | 更新成本試算表並核對公式 |
 | `web/js/control-plan.js` | 3D 電盤／圖面共用元件與 I/O 清單 |

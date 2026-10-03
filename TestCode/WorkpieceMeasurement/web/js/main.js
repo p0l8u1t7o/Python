@@ -1,37 +1,32 @@
 // 主程式：場景、時間軸、UI、取像模擬子畫面
 import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { createStage, exposeSim } from '@core/ui/stage.js';
 import { SPECS, SCENARIOS, TRAYS, DEMO, X1, X2, Y0, YA, YM, YS, YT, DIR_A, occupied, inTol } from './spec.js';
 import { smooth, STATIONS } from './sequence.js';
 import { createProject } from './project.js';
 import { createCameraSim, TITLES } from './camera-sim.js';
 import { overviewFrame } from './render-finishes.js';
 
-const qp = new URLSearchParams(location.search);
+const qp = new URLSearchParams(location.search), movie = qp.has('movie');
 const compactViewport=matchMedia('(max-width:900px), (max-height:520px)').matches;
 document.body.classList.toggle('info-hidden',compactViewport);
 const specId = SPECS[qp.get('spec')] ? qp.get('spec') : 'B', scenarioId = SCENARIOS[qp.get('result')] ? qp.get('result') : 'OK';
 
 // ---------------------------------------------------------------- 場景
 const canvas = document.getElementById('c');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', logarithmicDepthBuffer: true, preserveDrawingBuffer: qp.has('shot') });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.shadowMap.enabled = qp.get('shadow') !== '0'; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = .94; renderer.outputColorSpace = THREE.SRGBColorSpace;
-const scene = new THREE.Scene(); scene.background = new THREE.Color(0x202a34);
-scene.fog = new THREE.Fog(0x202a34, 4500, 16000);
-const pmrem = new THREE.PMREMGenerator(renderer), room = new RoomEnvironment(renderer);
-scene.environment = pmrem.fromScene(room, 0.04).texture; room.dispose(); pmrem.dispose();
-const camera = new THREE.PerspectiveCamera(38, 1, 2, 20000), controls = new OrbitControls(camera, canvas);
-controls.enableDamping = true; controls.dampingFactor = 0.08; controls.minDistance = 8; controls.maxDistance = 6000;
-scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x2a2f36, 0.6));
-const sun = new THREE.DirectionalLight(0xffffff, 1.4); sun.position.set(-900, 2600, 1400); sun.target.position.set(0, 900, 0);
-sun.castShadow = renderer.shadowMap.enabled; sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -700, right: 700, top: 700, bottom: -700, near: 300, far: 5000 }); sun.shadow.bias = -0.0001; sun.shadow.normalBias = 0.4;
-scene.add(sun, sun.target);
-const fill = new THREE.DirectionalLight(0x9fb8ff, 0.5); fill.position.set(1200, 1500, -1500); scene.add(fill);
-sun.shadow.mapSize.set(innerWidth > 900 ? 4096 : 2048, innerWidth > 900 ? 4096 : 2048);
-const rim = new THREE.DirectionalLight(0xffead2, .65); rim.position.set(700, 2100, -500); scene.add(rim);
+// 共用舞台：此處只傳與預設不同的值（曝光、背景與霧、相機與控制範圍、主光陰影、補光、輪廓光）
+const stage = createStage({
+  canvas, qp, exposure: .94, background: 0x202a34, fog: [4500, 16000], logDepth: true,
+  camera: { fov: 38, near: 2, far: 20000 },
+  controls: { minDistance: 8, maxDistance: 6000, maxPolarAngle: Math.PI },   // 維持原本不限仰角（共用預設為 0.49π）
+  sun: {
+    color: 0xffffff, intensity: 1.4, position: [-900, 2600, 1400], target: [0, 900, 0],
+    shadow: { mapSize: innerWidth > 900 ? 4096 : 2048, camera: { left: -700, right: 700, top: 700, bottom: -700, near: 300, far: 5000 }, bias: -0.0001, normalBias: 0.4 },
+  },
+  fill: { color: 0x9fb8ff, intensity: .5, position: [1200, 1500, -1500] },
+  extraLights: [{ color: 0xffead2, intensity: .65, position: [700, 2100, -500] }],   // 輪廓光
+});
+const { renderer, scene, camera, controls } = stage;
 
 // ---------------------------------------------------------------- 物件（與 core 統一檢查共用 project.js）
 const project = createProject({ scene, spec: specId, scenario: scenarioId });
@@ -186,24 +181,26 @@ function drawHud() {
   for (const l of labels) { const p = l.pos.clone().project(camera), vis = ui.showLabels.checked && p.z < 1 && Math.abs(p.x) < 0.98 && Math.abs(p.y) < 0.95; l.el.style.display = vis ? 'block' : 'none'; if (vis) { l.el.style.left = canvas.offsetLeft + (p.x * 0.5 + 0.5) * canvas.clientWidth + 'px'; l.el.style.top = canvas.offsetTop + (-p.y * 0.5 + 0.5) * canvas.clientHeight + 'px'; } }
   document.getElementById('diagnostics').textContent = JSON.stringify({ time: T, total, step: current.index, station: S.station, action: S.action, loc: S.loc, optic: S.optic, pip: S.pip, playing, spec: specId, scenario: scenarioId });
 }
-function resize() { const w = canvas.clientWidth, h = canvas.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); if (selectedView === 'iso') setView('iso', true); }
+// 縮放：舞台已處理畫布與相機比例；全景視角另依新比例重新取景（錄影時畫布尺寸由錄影程式固定，不跟視窗變）
+function resize() { if (movie) return; stage.resize(); if (selectedView === 'iso') setView('iso', true); }
+if (movie) removeEventListener('resize', stage.resize);
+else addEventListener('resize', () => { if (selectedView === 'iso') setView('iso', true); });   // 舞台的 resize 監聽先註冊，這裡比例已更新
 const infoToggle=document.getElementById('infoToggle');
 infoToggle.setAttribute('aria-expanded',String(!document.body.classList.contains('info-hidden')));
 infoToggle.onclick=()=>{document.body.classList.toggle('info-hidden');infoToggle.setAttribute('aria-expanded',String(!document.body.classList.contains('info-hidden')));resize();};
-window.addEventListener('resize', resize);
-function render() { drawHud(); renderer.render(scene, camera); }
-const clock = new THREE.Clock();
-function frame() {
-  requestAnimationFrame(frame); const dt = Math.min(clock.getDelta(), 0.05);
+// 完整一格：介面與場景顯示狀態（drawHud）＋渲染；seekTo 與錄影都用這個
+function render() { drawHud(); stage.render(); }
+// 每格更新（舞台迴圈接著做 controls.update() 與渲染）
+function tick(dt) {
   if (playing) { T = Math.min(total, T + dt * speed); sampleAt(T); if (T >= total) { if (ui.loop.checked) T = 0; else setPlaying(false); } }
   const p = machine.partWorld();
   if (selectedView === 'part') { const d = p.clone().sub(lastPart); camera.position.add(d); controls.target.add(d); if (camAnim) for (const k of ['p0', 't0', 'p', 't']) camAnim[k].add(d); }
   lastPart.copy(p);
   if (camAnim) { camAnim.u = Math.min(1, camAnim.u + dt * 1.4); camera.position.lerpVectors(camAnim.p0, camAnim.p, smooth(camAnim.u)); controls.target.lerpVectors(camAnim.t0, camAnim.t, smooth(camAnim.u)); if (camAnim.u === 1) camAnim = null; }
-  controls.update(); render();
+  drawHud();
 }
-sampleAt(0); lastPart.copy(machine.partWorld()); resize(); setView('iso', true); setPlaying(playing);
-window.sim = { seekTo, pause: () => setPlaying(false), play: () => setPlaying(true), setView, views: Object.keys(views), get T() { return T; }, get state() { return S; }, total, project, steps: sequence.steps, stationStart: sequence.stationStart, spec: s, scenario: sc, measurement: m };
+sampleAt(0); lastPart.copy(machine.partWorld()); stage.resize(); setView('iso', true); setPlaying(playing && !movie);
+exposeSim({ seekTo, pause: () => setPlaying(false), play: () => setPlaying(true), setView, views: Object.keys(views), get T() { return T; }, get state() { return S; }, total, project, steps: sequence.steps, stationStart: sequence.stationStart, spec: s, scenario: sc, measurement: m });
 if (qp.has('st')) { setPlaying(false); seekTo(previewTime(THREE.MathUtils.clamp(+qp.get('st') || 0, 0, STATIONS.length - 1))); }
 if (qp.has('step')) { setPlaying(false); seekTo(sequence.steps[THREE.MathUtils.clamp(+qp.get('step') || 0, 0, sequence.steps.length - 1)].start + (+qp.get('t') || 0)); }
 if (qp.has('time')) { setPlaying(false); seekTo(+qp.get('time')); }
@@ -213,4 +210,32 @@ if (qp.get('hood') === '0') ui.showGuards.checked = false;
 if (qp.get('pip') === '0') ui.showPip.checked = false;
 if (compactViewport && qp.get('pip') !== '1') ui.showPip.checked = false;
 if (qp.has('cam')) { const a = qp.get('cam').split(',').map(Number); if (a.length === 6 && a.every(Number.isFinite)) { camera.position.set(...a.slice(0, 3)); controls.target.set(...a.slice(3)); controls.update(); } }
-document.getElementById('loading').classList.add('hide'); render(); frame();
+document.getElementById('loading').classList.add('hide'); render(); stage.loop(tick);   // ?movie 時舞台不啟動迴圈
+
+// ---------------------------------------------------------------- 錄影（?movie）：由 core/movie 以絕對時間逐格驅動
+if (movie) {
+  setPlaying(false);
+  // 影片專用鏡位（ST1／ST2 重播、桌板穿線護口），其餘沿用網頁視角
+  const FILM = { 'film-st1': [[-275, 1180, -430], [-120, 1090, 0]], 'film-st2': [[90, 1210, 460], [215, 1070, 0]], 'film-gland': [[20, 1100, 700], [290, 822, 231]] };
+  const movieView = (name, instant) => {
+    if (!FILM[name]) return setView(name, instant);
+    const [p, t] = FILM[name]; camera.position.set(...p); controls.target.set(...t); camera.lookAt(controls.target);
+  };
+  // 單站重播：該站第一步開始到最後一步結束
+  const span = (station, view, label) => { const a = sequence.steps.filter(x => x.station === station); return { view, label, simStart: a[0].start, simDuration: a.at(-1).start + a.at(-1).dur - a[0].start }; };
+  const { installMovie } = await import('@core/movie/movie.js');
+  installMovie({
+    project: 'WorkpieceMeasurement', scene, renderer, camera, controls, render, setView: movieView, total,
+    steps: sequence.steps,
+    sample(t) { T = t; sampleAt(t); },          // 與網頁、統一檢查同一條 project.apply 路徑
+    focus: () => machine.partWorld(), offset: [-580, 400, 850],
+    electricalMode: (_, mode) => machine.details.setMode(mode), keepGuards: true,
+    detailShots: [
+      span(1, 'film-st1', 'ST1 · 夾持、旋轉與三通道取像（重播）'),
+      span(3, 'film-st2', 'ST2 · 上頭避讓、落座與上下共焦量測（重播）'),
+      { view: 'carriers', label: 'X／Z 拖鏈 · 全行程折返與兩端固定（重播）', simStart: 0, simDuration: total },
+      span(3, 'fibers', '光纖整線 · 升降補償環與徑向補償環（重播）'),
+      { view: 'film-gland', label: '桌板穿線護口 · 線材通往下方電盤', simStart: total, simDuration: 0 },
+    ],
+  });
+}
