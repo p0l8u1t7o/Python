@@ -30,6 +30,7 @@ function mix(a, b, e) {
 export function createStepSequence({ base = {}, apply = () => { }, discrete = [], latch = [], ease = smooth, stations = 0, nested = false } = {}) {
   const DISCRETE = new Set(discrete), LATCH = new Set(latch);
   const steps = [], stationStart = Array.isArray(stations) ? Array(stations.length).fill(0) : [];
+  const started = new Set();                         // 已有步驟的 station（記 stationStart 用）
   let previous = copy(base), time = 0;
 
   // 預覽：照 add 的規則算出終點狀態，但不加入序列（例如先看終點姿態再決定要不要插退離步驟）
@@ -39,7 +40,7 @@ export function createStepSequence({ base = {}, apply = () => { }, discrete = []
     return end;
   }
   function add(station, dur, action, sub = '', values = {}, extra = {}) {
-    if (!steps.some(s => s.station === station)) stationStart[station] = time;
+    if (!started.has(station)) { stationStart[station] = time; started.add(station); }
     const initial = copy(previous), end = peek(values);
     end.station = station; end.action = action; end.sub = sub;
     const s = { station, start: time, dur, action, sub, initial, end, ...extra };
@@ -52,6 +53,7 @@ export function createStepSequence({ base = {}, apply = () => { }, discrete = []
   const mark = () => ({ n: steps.length, previous: copy(previous), time, stationStart: [...stationStart] });
   function rollback(m) {
     steps.length = m.n; previous = copy(m.previous); time = m.time;
+    started.clear(); for (const s of steps) started.add(s.station);
     stationStart.length = 0; stationStart.push(...m.stationStart);
   }
   // 事後重排時間：fn(step, index) 回傳新的 dur（例如依規劃好的關節角度算 PTP 時間）

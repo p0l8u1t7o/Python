@@ -5,18 +5,19 @@
 //   stage.loop(dt => player.update(dt));
 //
 // 選項：
-//   apply(T, { seek })      seek 為 true 時是跳播（手臂直接到位），false 是連續播放中的一格
+//   apply(T, { seek, dt })  seek 為 true 時是跳播（手臂直接到位，dt 為 0），false 是連續播放中的一格（dt 為這格的模擬時間）
 //   advance(T, dt)          自訂時間推進：回傳新時間（可小於 T + dt，用來等手臂到位）；回傳 null 代表停住（例如故障）
+//   maxStep                 每次推進的模擬時間上限（秒）：一格超過時拆成多個子步（高倍速時手臂追蹤仍穩定）
 //   loop                    true 或函式：播到結尾從頭再播；頁面有 #loop 勾選框時自動綁定
 //   speed                   預設速度；#speed 若是 <select> 以選項為準，若是拉桿用 speeds = [最小, 最大, 刻度]
 //   format(T)               時鐘格式（預設 mm:ss.s）
-//   onChange(T, state)／onEnd()
+//   onChange(T, state, { seek })／onEnd()
 const $ = id => document.getElementById(id);
 export const fmtTime = t => `${String(Math.floor(t / 60)).padStart(2, '0')}:${(t % 60).toFixed(1).padStart(4, '0')}`;
 
 export function createPlayer({
   total, apply, events = [], qp = new URLSearchParams(location.search), speeds = [.25, 4, .25], speed: defaultSpeed = 1,
-  advance = null, loop = null, format = fmtTime, onChange = () => { }, onEnd = () => { },
+  advance = null, maxStep = 0, loop = null, format = fmtTime, onChange = () => { }, onEnd = () => { },
 }) {
   const ui = { play: $('playBtn'), restart: $('restartBtn'), speed: $('speed'), speedVal: $('speedVal'), timeline: $('timeline'), clock: $('clock'), steps: $('stepSelect'), prev: $('previous'), next: $('next'), loop: $('loop') };
   const isSelect = ui.speed?.tagName === 'SELECT';
@@ -36,7 +37,7 @@ export function createPlayer({
     if (ui.steps && events.length) ui.steps.value = String(eventIndex());
   }
   const eventIndex = () => { let i = 0; events.forEach((e, k) => { if (e.time <= T + 1e-6) i = k; }); return i; };
-  function go(t, seek) { T = Math.min(total, Math.max(0, Number.isFinite(+t) ? +t : 0)); const s = apply(T, { seek }); show(); onChange(T, s); return s; }
+  function go(t, seek, dt = 0) { T = Math.min(total, Math.max(0, Number.isFinite(+t) ? +t : 0)); const s = apply(T, { seek, dt }); show(); onChange(T, s, { seek }); return s; }
   const seekTo = t => go(t, true);
   const play = () => { if (T >= total - 1e-9) seekTo(0); playing = true; show(); };
   const pause = () => { playing = false; show(); };
@@ -46,9 +47,25 @@ export function createPlayer({
   ui.speed?.addEventListener(isSelect ? 'change' : 'input', () => { speed = +ui.speed.value; show(); });
   ui.timeline?.addEventListener('input', () => { playing = false; seekTo(+ui.timeline.value); });
   ui.steps?.addEventListener('change', () => { playing = false; seekTo(events[+ui.steps.value].time); });
-  // 上一步：時間早於目前 0.5 s 以上的最後一個事件（同一時刻有多筆事件也不會卡住）
-  ui.prev?.addEventListener('click', () => { playing = false; let t = 0; for (const e of events) if (e.time < T - .5) t = e.time; seekTo(t); });
+  // 上一步：已播過目前步驟 0.5 s 以上時回到目前步驟開頭，否則回到前一個時刻的步驟（短步驟逐一經過，同一時刻多筆事件也不會卡住）
+  ui.prev?.addEventListener('click', () => {
+    playing = false;
+    const cur = events.filter(e => e.time <= T + 1e-6).at(-1);
+    if (cur && T - cur.time > .5) { seekTo(cur.time); return; }
+    seekTo(cur ? events.filter(e => e.time < cur.time - 1e-6).at(-1)?.time ?? 0 : 0);
+  });
   ui.next?.addEventListener('click', () => { playing = false; seekTo(events.find(e => e.time > T + 1e-6)?.time ?? total); });
+
+  // 推進一個子步（d 為模擬時間）
+  function step(d) {
+    const next = advance ? advance(T, d) : T + d;
+    if (next == null) { pause(); return; }
+    if (next >= total - 1e-9) {
+      if (looping()) { seekTo(0); return; }
+      playing = false; go(total, false, d); onEnd(); return;
+    }
+    go(next, false, d);
+  }
 
   seekTo(qp.has('t') ? +qp.get('t') : 0);
   return {
@@ -57,13 +74,9 @@ export function createPlayer({
     // 每格呼叫；播放中回傳 true（需要重繪）
     update(dt) {
       if (!playing) return false;
-      let next = advance ? advance(T, dt * speed) : T + dt * speed;
-      if (next == null) { pause(); return true; }
-      if (next >= total - 1e-9) {
-        if (looping()) { seekTo(0); return true; }
-        next = total; playing = false; go(next, false); onEnd(); return true;
-      }
-      go(next, false); return true;
+      const sim = dt * speed, n = maxStep > 0 ? Math.max(1, Math.ceil(sim / maxStep)) : 1;
+      for (let k = 0; k < n && playing; k++) step(sim / n);
+      return true;
     },
   };
 }

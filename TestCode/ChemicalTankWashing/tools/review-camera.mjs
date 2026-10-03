@@ -28,6 +28,8 @@ export async function runCameraReview(cdp, tab, out) {
   const mouse = (type, x, y) => cdp.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', buttons: type === 'mouseReleased' ? 0 : 1, clickCount: 1 });
   async function drag(x0, y0, dx, dy) { await mouse('mousePressed', x0, y0); for (let k = 1; k <= 4; k++) await mouse('mouseMoved', x0 + dx * k / 4, y0 + dy * k / 4); await mouse('mouseReleased', x0 + dx, y0 + dy); }
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  // 相機位置：OrbitControls 每格由球座標重算，最後一位浮點數會變，比對留 1e-6 mm 容差
+  const still = (a, b) => a.length === b.length && a.every((v, i) => Math.abs(v - b[i]) < 1e-6);
 
   await evaluate('sim.pause();sim.seekTo(0);sim.setView("iso",true)'); await settle();
   await select('focusTarget', 'agv'); await click('#focusNow');
@@ -41,18 +43,18 @@ export async function runCameraReview(cdp, tab, out) {
     check('追蹤及跳轉 · ' + key, await evaluate(`sim.focus.enabled&&sim.controls.target.distanceTo(sim.focusPosition(${JSON.stringify(key)}))<.01&&sim.camera.position.clone().sub(sim.controls.target).distanceTo({x:${before[0]},y:${before[1]},z:${before[2]}})<.01`));
   }
   await click('#followProduct'); const stopped = await state(); await evaluate('sim.seekTo(150)');
-  check('停止追隨後跳轉不移動相機', !stopped.focus && same((await state()).camera, stopped.camera));
+  check('停止追隨後跳轉不移動相機', !stopped.focus && still((await state()).camera, stopped.camera));
   await select('focusTarget', 'drum0'); await click('#followProduct');
   const beforeGone = await state(); await evaluate('sim.seekTo(sim.total)'); await settle();
-  check('桶離線時保留視角並提示', same((await state()).camera, beforeGone.camera) && await evaluate('document.getElementById("focusStatus").textContent') === '目標已離開產線');
+  check('桶離線時保留視角並提示', still((await state()).camera, beforeGone.camera) && await evaluate('document.getElementById("focusStatus").textContent') === '目標已離開產線');
   await evaluate('sim.seekTo(140)'); check('倒退跳轉恢復追蹤', await evaluate('sim.controls.target.distanceTo(sim.focusPosition("drum0"))<.01'));
   await click('.views button[data-view="gripper"]'); await evaluate('sim.setView("gripper",true)');
   check('預設視角可退出追隨', !(await state()).focus);
   await evaluate('sim.seekTo(sim.total);sim.setView("iso",true)'); await select('focusTarget', 'drum0');
   const absentStart = await state(); await click('#focusNow');
-  check('對準已離線目標不改變相機位置', same((await state()).camera, absentStart.camera));
+  check('對準已離線目標不改變相機位置', still((await state()).camera, absentStart.camera));
   await click('#followProduct');
-  check('從全景追隨已離線目標不突然拉近', same((await state()).camera, absentStart.camera) && (await state()).focus);
+  check('從全景追隨已離線目標不突然拉近', still((await state()).camera, absentStart.camera) && (await state()).focus);
   await click('#followProduct');
 
   // ---------------------------------------------------------------- 相機視窗
@@ -61,7 +63,7 @@ export async function runCameraReview(cdp, tab, out) {
   const initial = await state(), title = await rect('#pipTitle');
   await drag(title.x + 40, title.y + 15, 140, 60); await settle();
   const moved = await state();
-  check('標題列可拖曳且不旋轉主相機', moved.pip.x > initial.pip.x + 100 && moved.pip.y > initial.pip.y + 40 && same(moved.camera, initial.camera), moved.pip);
+  check('標題列可拖曳且不旋轉主相機', moved.pip.x > initial.pip.x + 100 && moved.pip.y > initial.pip.y + 40 && still(moved.camera, initial.camera), moved.pip);
   await evaluate('document.getElementById("pipTitle").focus()');
   await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 });
   await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 });

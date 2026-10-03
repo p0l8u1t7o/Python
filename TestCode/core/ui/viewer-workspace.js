@@ -80,7 +80,8 @@ export function createViewerWorkspace({camera, controls, canvas, resize, getFocu
   button(actions, '↗', '以獨立視窗顯示相機', detach);
   button(actions, '×', '隱藏相機視窗', () => { show.checked = false; updateVisibility(); });
   title.tabIndex = 0; title.title = '拖曳移動；方向鍵微調位置';
-  // focusOffset 可為 [x,y,z] 或 (焦點) => [x,y,z]；getFocus() 回傳 null 時（目標離線）保持目前視角
+  // focusOffset 可為 [x,y,z] 或 (焦點) => [x,y,z]；getFocus() 回傳 null 時（目標離線）保持目前視角，
+  // 目標重新出現時（例如倒退跳轉）平移視角回到目標，保留觀看方向與距離
   let savedNear = null;
   function setFollowing(on) {
     tracking = on; lastTarget = null; focusButton.setAttribute('aria-pressed', String(on));
@@ -99,7 +100,7 @@ export function createViewerWorkspace({camera, controls, canvas, resize, getFocu
     if (!tracking) return;
     const f = getFocus(); if (!f) { lastTarget = null; return; }
     const p = f.clone();
-    if (lastTarget) { const delta = p.clone().sub(lastTarget); camera.position.add(delta); controls.target.add(delta); }
+    const delta = p.clone().sub(lastTarget ?? controls.target); camera.position.add(delta); controls.target.add(delta);
     lastTarget = p; camera.lookAt(controls.target);
     focusButton.dataset.target = p.toArray().join(',');
   }
@@ -233,6 +234,8 @@ export function createViewerWorkspace({camera, controls, canvas, resize, getFocu
       popupContext.drawImage(imageCanvas, 0, 0); popupBadge.hidden = true;
       popup.document.querySelector('header b').textContent = title.textContent;
       popupClock.textContent = `主時間軸 ${Number(time).toFixed(2)} s · ${result.textContent}`;
+      popup.document.body.dataset.time = String(time);
+      cameraButton.title = `獨立相機視窗 · ${Number(time).toFixed(2)} s · 點選放回主頁`;
     }
   }
   /** 相機來源選單（自動＋各相機）：sources = [{ id, label }]；回傳目前選擇（'auto' 或來源 id） */

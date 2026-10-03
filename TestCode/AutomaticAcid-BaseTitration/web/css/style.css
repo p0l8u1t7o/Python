@@ -74,7 +74,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:
 #loading.hide{display:none}
 
 .label3d{font:11.5px var(--font);color:#dfe7f0;background:rgba(10,14,20,.72);border:1px solid rgba(255,255,255,.12);
-  padding:3px 8px;border-radius:6px;white-space:nowrap;pointer-events:none;transform:translate(-50%,-100%);position:absolute}
+  padding:3px 8px;border-radius:6px;white-space:nowrap;pointer-events:none;position:absolute}   /* 位置與對齊由 stage.updateLabels 設定 */
 .label3d b{color:var(--accent)}
 
 .views select{background:rgba(255,255,255,.06);border:1px solid var(--line);color:var(--fg);padding:6px 6px;border-radius:6px;font:12px var(--font);margin-left:6px;max-width:150px}

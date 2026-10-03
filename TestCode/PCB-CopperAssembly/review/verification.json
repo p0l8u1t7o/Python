@@ -11,6 +11,14 @@
       "meanErr": 0.0239,
       "minBeamGap": 191.5,
       "minBeamGapAt": 44.55,
+      "events": 37,
+      "stationStart": [
+        2.5,
+        2.7,
+        0,
+        2.7,
+        2.7
+      ],
       "endState": {
         "placed": {
           "A": 69,
@@ -31,6 +39,14 @@
       "meanErr": 0.0249,
       "minBeamGap": 209.4,
       "minBeamGapAt": 6.97,
+      "events": 19,
+      "stationStart": [
+        2.5,
+        2.7,
+        0,
+        2.7,
+        2.7
+      ],
       "endState": {
         "placed": {
           "A": 36,

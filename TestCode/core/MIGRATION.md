@@ -56,3 +56,8 @@ Node 端由 `core/tools/loader.mjs` 解析相同的三種名稱，檢查程式�
   - 介面：7 站播放列改用 `createPlayer`，標籤 `stage.addLabel`，視角 `stage.goTo`；化學桶相機視窗改用 viewer-workspace，`view-controls.js` 刪除。WPM 的 2D 模擬相機維持專案自有。
   - 材質：常見材質改用 MAT，框架、儀表盤等外觀略有變化（各站截圖差異已逐張檢視）。
   - 代理回報的 core 補強建議（尚未做）：標籤自動加畫布偏移（6 站各自補正）、player 的到位閘門／loop／speed getter／select 速度、步驟逐鍵緩動與 latch／retime／rollback、stage 取消轉場與 shiftView、Track.at(T)、MAT.frame（0x6b7480）／chrome／帶細紋材質、viewer-workspace 的 focusOffset 函式與 startFollowing、2D 影像來源、verify-cables 改讀 tr.steps 後移除 PCB 的 segs 別名。
+- 2026-10-03 精進輪（使用者選：四項全做、做完更新 Pages）：
+  - core（07b00ea1）：player 的 `advance`／`loop`／`<select>` 速度／`speed`；標籤自動加畫布偏移與 `anchor`；`stage.cancelTween`／`shiftView`；`createStepSequence` 的 `latch`、逐鍵緩動、`peek`、`mark`／`rollback`、`retime`、`nested`；`Track.at(T)`；`MAT.frame`／`chrome`／`finished()`；viewer-workspace 的 `renderImage`／`setSources`／`startFollowing`／focusOffset 函式。
+  - 7 站改用（ced15a38 化學桶、3dfc1a3a PCB、318e5f8a WPM、5d72ca9f 快門、ab2db938 滴定、864a053d 軍規、6592d70c SSD）：各站排程指紋、review JSON、專案檢查與改前相同；外觀差異只在改用 MAT.frame／chrome／finished 的框架、銷、鋁件。
+  - 收尾補 core：上一步改為逐步回退（短步驟不再被跳過）；追隨目標離線後重新出現時平移回目標（化學桶的 focusAbsent 變通寫法移除）；獨立相機視窗的 2D 影像也更新標題時間；player 加 `apply` 的 `dt`、`onChange` 的 `seek`、`maxStep`（軍規的 stepDt／seeking／自拆子步移除）；`createStepSequence.add` 由 O(n²) 改用 Set；滴定、軍規樣式表中被 stage 覆蓋的 `.label3d` transform 移除。
+  - 仍在專案內（刻意）：各站手臂 IK／PTP 規劃與到位判斷規則、SSD 的 `resume()`、各站自己的光源與產品外觀。

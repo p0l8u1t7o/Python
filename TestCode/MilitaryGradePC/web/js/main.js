@@ -167,11 +167,10 @@ const electrical=createElectricalInspector({scene,camera,controls,canvas,onEnter
 // ---------------------------------------------------------------- 播放列（core/ui/player.js）
 // 事件選單用排程的 events。跳播（seek）走 project.apply（手臂直接到位）；連續播放由 advance 推進時間（步驟終點等手臂到位、
 // NG 與到位逾時停住），apply 以 project.sample 取樣並讓手臂以限速追上目標。
-let stepDt=0,seeking=false;   // stepDt：本子步的模擬時間（advance 給 apply 的手臂追蹤用）；seeking：這次 apply 是否為跳播
-const player=createPlayer({total,qp,
+// maxStep：以不超過 25 ms 的子步推進，改變播放速度時各軸等比例變快
+const player=createPlayer({total,qp,maxStep:.025,
   events:sequence.events.map(e=>({...e,label:`S${e.station} · ${e.label}`})),
   advance(t,dt){
-    stepDt=dt;
     if(S.station===4&&ui.result.value==='NG'){fault='NG · 停留 S4 等待人工覆判';return null;}
     const e=robot.error(),s=current.step,end=s.start+s.dur;
     const blocked=(t>=end-1e-7||(s.contact&&e.position>3))&&(e.position>1.5||e.angle>3||e.rail>2);
@@ -183,21 +182,20 @@ const player=createPlayer({total,qp,
     const next=Math.min(end,t+dt);
     return next>=total-1e-9?total-1e-8:next;
   },
-  apply(t,{seek}){
-    T=t;seeking=seek;
+  apply(t,{seek,dt}){
+    T=t;
     if(seek){waiting=0;fault='';trailCount=0;trailGeo.setDrawRange(0,0);return go(project.apply(t,{capture:CAPTURE}));}
     // 連續播放：停在步驟終點時取樣終點前一點（仍屬本步驟），等手臂到位才跨入下一步；手臂以限速追上目標
     const s=current.step,end=s.start+s.dur,at=t<total&&t>=end-1e-7&&t<=end?Math.max(s.start,end-1e-8):t;
-    const c=go(project.sample(at));robot.update(stepDt);return c;
+    const c=go(project.sample(at));robot.update(dt);return c;
   },
   // 跳播後重繪（連續播放由 stage.loop 每格繪製；錄影取樣時不重繪）
-  onChange(){if(ready&&!quiet&&seeking)render();}});
+  onChange(t,s,{seek}){if(ready&&!quiet&&seek)render();}});
 // 播放鍵：清除故障與到位等待（播放列自己處理播放／暫停與終點歸零）
 ui.playBtn.addEventListener('click',()=>{fault='';waiting=0;});
 // stage.loop 每格：frameTick(dt) → controls.update() → render()（主畫面＋相機子畫面＋疊圖）
 function frameTick(dt){
-  // 以不超過 25 ms 的子步推進，改變播放速度時各軸等比例變快
-  const n=Math.max(1,Math.ceil(dt*player.speed/.025));for(let k=0;k<n;k++)player.update(dt/n);
+  player.update(dt);
   if(player.playing&&ui.showPath.checked)pushTrail(robot.getTcpWorld(robot.goal.tcp));
   const d=nb.doors.find(d=>S.action.startsWith(d.def.id+' '));if(selectedView==='door'&&d&&d.def.id!==viewDoorId)setView('door');
 }

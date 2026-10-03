@@ -110,20 +110,14 @@ function markFocusView() {
   selectedView = 'focus';
   document.querySelectorAll('.views button[data-view]').forEach(b => b.classList.remove('selected'));
 }
-let focusAbsent = false;   // 追隨中目標離線（桶已出線、尚未進場）
 const workspace = createViewerWorkspace({
   camera, controls, canvas, resize: stage.resize, focusNear: 100,
   getFocus: () => focusPosition(ui.focusTarget.value),
   focusOffset: () => focusOffsetFor(ui.focusTarget.value).toArray(),
-  onFocus() { markFocusView(); focusAbsent = !focusPosition(ui.focusTarget.value); },
+  onFocus: markFocusView,
 });
-// 每次跳轉／每格：目標離線後重新出現時（例如倒退跳轉），viewer-workspace 不會自動移回，這裡平移視角回到目標、保留觀看方向與距離
-function followFocus() {
-  const p = workspace.following ? focusPosition(ui.focusTarget.value) : null;
-  if (p && focusAbsent) stage.shiftView(p.sub(controls.target));
-  focusAbsent = workspace.following && !p;
-  workspace.follow();
-}
+// 每次跳轉／每格：目標離線（桶已出線、尚未進場）時保持視角，重新出現時 viewer-workspace 會平移視角回到目標
+const followFocus = () => workspace.follow();
 // 單次對準：追隨中則以新目標重新開始追隨
 function focusOnce() {
   if (workspace.following) { workspace.startFollowing(); return; }
