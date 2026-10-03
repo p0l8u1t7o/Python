@@ -16,13 +16,13 @@ const qp = new URLSearchParams(location.search);
 // ---------------------------------------------------------------- 場景（共用舞台，按需重繪：靜止時不重畫，狀態改變時 stage.invalidate）
 const canvas = document.getElementById('c');
 // 對數深度緩衝：場景 15 m、細節到 mm，一般深度緩衝會讓貼地的分區、標線互搶深度而閃爍
+// 外觀用廠房預設（look 'plant'：曝光、配色、環境光與燈光強度）；太陽與補光位置、陰影範圍沿用原本為這座廠房調好的值（不用 extent 推算，也不加霧）
 const stage = createStage({
-  canvas, qp, exposure: .86, logDepth: true, onDemand: true,
+  canvas, qp, look: 'plant', logDepth: true, onDemand: true,
   camera: { fov: 40, near: 100, far: 150000 },
   controls: { maxPolarAngle: Math.PI * .495, minDistance: 400, maxDistance: 70000 },
-  hemi: { sky: 0xcfe0ff, ground: 0x30363d, intensity: .55 },
-  sun: { intensity: 1.7, position: [-3000, 17000, 4000], target: [5000, 0, 8000], shadow: { mapSize: 4096, camera: { left: -11000, right: 11000, top: 11000, bottom: -11000, near: 2000, far: 40000 }, bias: -.0003, normalBias: 3 } },
-  fill: { color: 0x9fb8ff, intensity: .45, position: [16000, 9000, 22000] },
+  sun: { position: [-3000, 17000, 4000], target: [5000, 0, 8000], shadow: { mapSize: 4096, camera: { left: -11000, right: 11000, top: 11000, bottom: -11000, near: 2000, far: 40000 }, bias: -.0003, normalBias: 3 } },
+  fill: { position: [16000, 9000, 22000] },
 });
 const { renderer, scene, camera, controls } = stage;
 finishMaterials(renderer);
@@ -199,11 +199,12 @@ controls.addEventListener('start', () => stage.cancelTween());
 
 // ---------------------------------------------------------------- 3D 標籤（stage.addLabel；位置函式回傳 null 時隱藏）
 // 設備標籤立在標示點上方（anchor 'above'，不遮住設備）；尺寸標註置中在尺寸線上
+// priority：小畫布標籤重疊時先保留站名（S0～S7）與倉儲，其次 AGV、裝填區，結構柱與尺寸最先讓位
 const P = (x, y, z) => { const v = new THREE.Vector3(x, y, z); return () => v; };
 const showLabel = pos => () => ui.showLabels.checked ? pos() : null;
-const label = (html, pos) => stage.addLabel(html, showLabel(pos), '', { anchor: 'above' });
+const label = (html, pos, priority = 2) => stage.addLabel(html, showLabel(pos), '', { anchor: 'above', priority });
 label('<b>倉儲</b> 穿梭車密集架 212 桶', P(6000, 4000, 2700));
-label('<b>AGV</b> 平衡重式堆高', () => agv.root.position.clone().add(new THREE.Vector3(0, 2500, 0)));
+label('<b>AGV</b> 平衡重式堆高', () => agv.root.position.clone().add(new THREE.Vector3(0, 2500, 0)), 1);
 label('<b>S2</b> 棧板站＋龍門翻轉夾爪', P(4800, 3600, 9050));
 label('<b>S3</b> 貼標＋讀碼', P(LABEL.x, 2350, LYING.z + 500));
 label('<b>S4</b> 90° 翻桶機', P(10500, 1700, 9500));
@@ -212,8 +213,8 @@ label('<b>S6</b> FANUC R-2000iC/165F', P(ROBOT.x, 2700, ROBOT.z - 300));
 label('<b>S6</b> 沖洗站', P(9500, 2950, BOOTH.z0 + 200));
 label('<b>S7</b> 廢液回收', P(5700, 2500, 14300));
 label('<b>S0</b> 散桶入庫（捲門＋懸臂吊）', P(1500, 3500, INBOUND.z));
-label('裝填區（下一站）', P(11400, 1500, 14700));
-label('結構柱', P(COLUMN.x, 2600, COLUMN.z));
+label('裝填區（下一站）', P(11400, 1500, 14700), 1);
+label('結構柱', P(COLUMN.x, 2600, COLUMN.z), 0);
 for (const d of building.dimLabels) stage.addLabel(d.text, () => ui.showDims.checked ? d.pos : null, 'dim');
 
 // ---------------------------------------------------------------- 面板更新

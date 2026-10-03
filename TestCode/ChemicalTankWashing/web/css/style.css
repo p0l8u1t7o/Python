@@ -74,6 +74,10 @@ select option{background:#172431}
 .focusbar button{white-space:nowrap}
 #focusStatus{font-size:11px;color:#7fe2b2;white-space:nowrap}
 .focusbar .hint{font-size:11px;color:#819bad;white-space:nowrap}
+/* 精簡版面：焦點列收在 ☰ 選單裡，點按目標與 core 的視角按鈕一致（44 px） */
+.viewer-compact .focusbar{flex-wrap:wrap;margin-top:10px;font-size:13px}
+.viewer-compact .focusbar button{min-height:44px;font-size:13px;padding:8px 12px}
+.viewer-compact .focusbar select{min-height:44px;font-size:16px}
 
 #loading{position:absolute;inset:0;display:grid;place-items:center;background:var(--bg);z-index:10;color:var(--muted);font-size:14px;letter-spacing:1px}
 #loading.hide{display:none}
@@ -82,13 +86,9 @@ select option{background:#172431}
 .label3d b{color:var(--accent)}
 .label3d.dim{background:#0b1a26d0;border-color:#5d8aa3;color:#b6e3ff}
 
+/* 900～1100 px 的非觸控視窗仍走桌面版面：頂列改單欄、側欄縮窄（≤900 px 與觸控平板由 core 的精簡版面接手） */
 @media(max-width:1100px){
   #topbar{grid-template-columns:1fr;height:186px;grid-template-rows:46px 44px 42px 36px}
   #stations{overflow-x:auto}
   #side{top:196px;width:270px}#c{top:186px;width:calc(100% - 290px);height:calc(100% - 186px - 132px)}#bottombar{right:300px}
-}
-@media(max-width:760px){
-  #side{position:absolute;top:auto;bottom:150px;left:8px;right:8px;width:auto;max-height:32%}
-  #c{width:100%;height:calc(100% - 186px - 150px - 32%)}#bottombar{left:8px;right:8px}
-  .brand .sub{display:none}
 }

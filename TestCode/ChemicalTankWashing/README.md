@@ -189,6 +189,8 @@ node --import ../core/tools/register.mjs tools/verify-detail.mjs
 
 暫停且視角不變時停止重繪（共用舞台 `onDemand`，狀態改變時 `stage.invalidate`）；陰影只在重繪時更新，由主視角和子視窗共用。
 
+小螢幕（手機直向、手機橫向、觸控平板）走 core 的精簡版面：頂部只留標題，☰ 展開製程、視角與焦點列，⚙ 展開速度與步驟，工具列 ◨ 打開側欄抽屜；手機直向由舞台自動拉遠，視角照桌面定義。`node ../core/tools/check.mjs ChemicalTankWashing` 的 `ui` 項目以四種尺寸檢查（[review/ui-check.json](review/ui-check.json)）。
+
 新增驗證：
 
 ```powershell
@@ -204,7 +206,7 @@ node --import ../core/tools/register.mjs tools/verify-gripper.mjs
 | 檔案 | 用途 |
 |---|---|
 | `web/js/layout.js` | 場地、設備位置、手臂負載估算與空間檢核的唯一來源 |
-| `web/js/building.js` | 地坪、牆、門窗、柱、分區、尺寸標註 |
+| `web/js/building.js` | 廠房地坪（含分區、退縮的建物外框與周邊地面，不用 core 的 `floor()` 深色格線地坪）、牆、門窗、柱、尺寸標註 |
 | `web/js/inbound.js` | 散桶入庫：捲門、懸臂吊、台車、作業員 |
 | `web/js/storage.js`、`agv.js` | 穿梭車密集架、棧板、架上桶槽、AGV |
 | `web/js/line.js` | 棧板站、龍門、V 槽滾輪輸送、貼標讀碼、翻桶機、開蓋站、立放直線輸送、圍籬、控制櫃 |
@@ -213,8 +215,9 @@ node --import ../core/tools/register.mjs tools/verify-gripper.mjs
 | `core/geom/shapes.js`、`materials.js`、`hardware.js` | 材質表與基本形狀；倒角外殼、螺栓實例、馬達／法蘭／儀表等共用細節（其他專案也可用） |
 | `web/js/drum.js` | 200L 桶 |
 | `web/js/sequence.js` | 各設備與各桶的時間軌、交接推算、狀態取樣 |
-| `web/js/main.js` | 場景、面板、視角、3D 標籤、相機子畫面內容（依取像事件自動切換、桶塞標記）與焦點目標 |
-| `core/ui/stage.js`、`player.js` | 共用舞台（renderer、燈光、3D 標籤、視角轉場、按需重繪）、播放列 |
+| `web/js/main.js` | 場景（`createStage` 用 `look: 'plant'`；太陽／補光位置與陰影範圍沿用為本廠房調好的值，不用 `extent` 推算）、面板、視角、3D 標籤（站名 S0～S7 與倉儲 `priority` 最高，小畫布避讓時先保留）、相機子畫面內容（依取像事件自動切換、桶塞標記）與焦點目標 |
+| `web/css/style.css` | 桌面版面；900～1100 px 非觸控視窗的頂列單欄規則；精簡版面只補焦點列（收在 ☰ 選單內，點按目標 44 px），其餘窄螢幕版面由 core 接手 |
+| `core/ui/stage.js`、`player.js` | 共用舞台（renderer、外觀預設、3D 標籤與避讓、窄畫布拉遠、視角轉場、按需重繪）、播放列 |
 | `core/ui/viewer-workspace.js`、`vision-overlay.js` | 相機子畫面（拖曳、放大、獨立視窗、來源選單）、焦點追隨、模擬檢測標記 |
 | `web/js/plant.js`、`project.js` | 建立全場設備並套用取樣狀態；`project.js` 是網頁與 core 統一檢查共用的專案介面 |
 | `tools/verify.mjs`、`browser-check.mjs` | 幾何驗證、瀏覽器檢查（全場干涉與重合面改由 `core/tools/check.mjs` 執行） |
