@@ -43,6 +43,7 @@ node ../core/tools/serve.mjs MilitaryGradePC --no-open
 
 測試網址：`?pause&st=2&view=product`、`?pause&step=43&view=door`；`cam=x,y,z,tx,ty,tz` 可指定鏡頭。
 主控台支援 `window.sim.jump(st, view, off)`、`seekTo(sec)`、`setView(name, instant)`、`pause()`、`play()`；`window.sim.views` 列出視角名稱，`window.sim.steps` 列出步驟起點。
+- `?pause&movie`：展示影片模式。不跑一般畫面迴圈，改由 `core/movie/movie.js` 的 `installMovie` 依絕對時間逐格取樣（與 `project.apply` 同一路徑），鏡頭追焦載具，提供預覽、鏡頭檢查與「輸出完整影片」。本站自己的 1080p 影片輸出（`?capture=1`）照舊，見下方「MP4 影片與再次輸出」。
 
 ## 建模與運動
 
@@ -50,7 +51,7 @@ node ../core/tools/serve.mjs MilitaryGradePC --no-open
 
 動作由絕對時間和步驟快照驅動，避免跳站殘留；換 TCP 以法蘭座標插值保持連續。手臂採幾何初始解＋阻尼最小平方 IK，依流程順序選擇接近上一姿態的等價手腕解，避免轉位時多轉一圈。自由移位走關節插值（PTP），接近、接觸、減速與掃描走直線，皆有關節與線性限速；夾持交接先取得新約束再解除舊約束。新增退離與預備點後，規劃時間約 **348 秒＋到位等待**（2026-10 全場干涉修正加入翻轉治具升降、門邊作業後垂直上升與鉤爪預備點，比原本的 330 秒多 18 秒）。
 
-產品本體 300×210×36 mm、載具 440×330 mm、節距 110 mm、輸送面 760 mm 沿用概念尺寸；翻轉抬升改為 210 mm。手臂依 DENSO VM-60B1 型錄的臂長、偏移與關節範圍建模（見 [第一階段檢驗映射](docs/phase1-scope.md)），立在 600 mm 立座上；基座與手腕長度、關節零點方向仍待 DENSO CAD 核對，目前結果不能當成實機可達性保證。前、後側改由斜上方 35° 取像，因手腕 ±120° 限制。S1 改為前側單邊懸臂（立柱 z=1050），取像頭移入時穹頂底緣距產品 80 mm、退出 780 mm 讓手臂巡拍；S3 翻轉龍門移到輸送線前側、橫樑 1800 mm，後側留給手臂。
+產品本體 300×210×36 mm、載具 440×330 mm、節距 110 mm、輸送面 760 mm 沿用概念尺寸；翻轉抬升改為 210 mm。手臂依 DENSO VM-60B1 型錄的臂長、偏移與關節範圍建模（見 [第一階段檢驗映射](docs/phase1-scope.md)），立在 600 mm 立座上（手臂本體在共用模型 `core/models/robots/denso-vm60b1.js`，滑軌、立座與末端工具留在本專案）；基座與手腕長度、關節零點方向仍待 DENSO CAD 核對，目前結果不能當成實機可達性保證。前、後側改由斜上方 35° 取像，因手腕 ±120° 限制。S1 改為前側單邊懸臂（立柱 z=1050），取像頭移入時穹頂底緣距產品 80 mm、退出 780 mm 讓手臂巡拍；S3 翻轉龍門移到輸送線前側、橫樑 1800 mm，後側留給手臂。
 
 全場干涉修正（2026-10，`node ../core/tools/check.mjs MilitaryGradePC` 的 scene 動態／靜態皆 0）：S3 移到 x=1150，翻轉治具輸送期間停在上方 100 mm；右側護蓋改在滑軌 575 作業；鉤爪、壓頭、線雷射作業時工具繞軸轉動，讓環形光在 TCP 正上方，線雷射一律由斜上方 20° 掃描；護蓋開度 100°；門邊作業結束先垂直上升 150 mm 再轉位；待命位姿改為 TCP y=1150、z=-220；載具側夾氣缸放低；側門縮短並避開四角護角；滑軌供電線改沿地面繞過滑軌端部。實際尺寸、力／速度參數、量測 ROI 和安全回路須於實測後校正。碰撞檢查涵蓋手臂對 S1 懸臂／取像頭與 S3 龍門，以及末端工具對手臂、光學機殼對筆電本體、工具對翻轉治具；未涵蓋完整輸送線、堆料架與所有非相鄰連桿組合。
 
@@ -61,10 +62,11 @@ node ../core/tools/serve.mjs MilitaryGradePC --no-open
 | `web/js/notebook.js` | 產品、介面、封印與 SKU |
 | `core/geom/primitives.js` | 幾何、可讀文字貼圖、配線共用元件（各專案共用） |
 | `web/js/cell.js` | 載具、進出料、輸送與翻轉設備 |
-| `web/js/robot.js` | 概念手臂、末端工具、限速；IK 用 `core/robot/kinematics.js` |
+| `core/models/robots/denso-vm60b1.js` | DENSO VM-60B1 手臂本體（共用模型）：基座、連桿、關節 j1～j6、手臂線材保護段、法蘭工具安裝座、限位、關節速度、IK 參數與幾何初始解；模型目錄 `/core/catalog/` 可預覽 |
+| `web/js/robot.js` | 本站部分：第七軸滑軌與拖鏈、600 mm 立座、力覺末端（F/T、相機＋環形光、鉤爪／壓頭、線雷射）、TCP、逆解選解、PTP 與位姿快取；手臂本體取自共用模型 |
 | `web/js/sequence.js` | 第一階段逐步流程、時間、狀態快照 |
 | `web/js/project.js` | 專案介面 `createProject`：建立全部設備、產品與動作序列，`apply(t)` 把場景放到時間 t；網頁與 core 統一檢查共用 |
-| `web/js/main.js` | 燈光、控制、到位等待、紀錄匯出、錄影分鏡（場景物件由 `project.js` 建立） |
+| `web/js/main.js` | 控制、到位等待、紀錄匯出、手臂鏡頭子畫面、`?movie` 錄影掛勾與 `?capture=1` 影片輸出（場景物件由 `project.js` 建立）。renderer、相機、軌道控制、環境光與燈光（含跟隨載具的特寫陰影光）、畫面迴圈用共用舞台 `core/ui/stage.js` 的 `createStage`；`window.sim` 由 `exposeSim` 提供 |
 | `docs/phase1-scope.md` | 文件依據與範圍映射 |
 | `docs/cost-estimate.xlsx` | 元件選型與成本估算（預算級） |
 | `tools/verify.mjs` | 狀態／幾何／運動驗證 |

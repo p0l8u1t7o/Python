@@ -9,8 +9,7 @@ import { createVisionOverlay } from '@core/ui/vision-overlay.js';
 import { notebookResults } from './vision-results.js';
 const vision = createVisionOverlay();
 const fullSensorVision = createVisionOverlay();
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { createStage, exposeSim } from '@core/ui/stage.js';
 import { SKUS } from './notebook.js';
 import { LAYOUT } from './cell.js';
 import { smooth } from './sequence.js';
@@ -20,35 +19,26 @@ import { createProject, DEFAULT_SKU } from './project.js';
 const qp = new URLSearchParams(location.search);
 const SKU = qp.get('sku') && SKUS[qp.get('sku')] ? qp.get('sku') : DEFAULT_SKU;
 
-// ---------------------------------------------------------------- 場景
+// ---------------------------------------------------------------- 場景（共用舞台 core/ui/stage.js）
+// 本站場景約 7 m、近裁切面 10 mm，維持一般深度緩衝（logDepth: false；?movie 時 stage 一律開啟對數深度）
 const canvas = document.getElementById('c');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: qp.get('aa') !== '0', powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.shadowMap.enabled = qp.get('shadow') !== '0'; renderer.shadowMap.type = qp.get('shadow') ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
-renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0d1117);
-scene.fog = new THREE.Fog(0x0d1117, 7000, 14000);
-const pmrem = new THREE.PMREMGenerator(renderer);
-const room=new RoomEnvironment(renderer);room.traverse(o=>{if(o.isPointLight)o.intensity=240;});
-scene.environment = pmrem.fromScene(room, 0.04).texture;room.dispose();pmrem.dispose();
-
-const camera = new THREE.PerspectiveCamera(42, 1, 10, 30000);
-const controls = new OrbitControls(camera, canvas);
-controls.enableDamping = true; controls.dampingFactor = 0.08; controls.maxPolarAngle = Math.PI * 0.49; controls.minDistance = 150; controls.maxDistance = 10000;
-
-scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x2a2f36, 0.55));
-const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(-2500, 4200, 2600);
-sun.castShadow = qp.get('shadow') !== '0'; sun.shadow.mapSize.set(+(qp.get('shadow') || 2048), +(qp.get('shadow') || 2048));
-Object.assign(sun.shadow.camera, { left: -3500, right: 3500, top: 3500, bottom: -3500, near: 500, far: 12000 }); sun.shadow.bias = -0.0004;
-scene.add(sun);
-sun.shadow.normalBias=.08;
-const detailLight=new THREE.DirectionalLight(0xfff8ef,.65);detailLight.castShadow=renderer.shadowMap.enabled;
-detailLight.shadow.mapSize.set(2048,2048);Object.assign(detailLight.shadow.camera,{left:-240,right:240,top:230,bottom:-230,near:50,far:1500});
-detailLight.shadow.bias=-.00001;detailLight.shadow.normalBias=.035;scene.add(detailLight,detailLight.target);
-const fill = new THREE.DirectionalLight(0x9fb8ff, 0.5); fill.position.set(2500, 2000, -2500); scene.add(fill);
+const stage = createStage({
+  canvas, qp, exposure: 1.0, background: 0x0d1117, fog: [7000, 14000], logDepth: false,
+  camera: { fov: 42, near: 10, far: 30000 },
+  controls: { enableDamping: true, dampingFactor: .08, maxPolarAngle: Math.PI * .49, minDistance: 150, maxDistance: 10000 },
+  envLight: 240, envBlur: .04,
+  hemi: { sky: 0xbfd4ff, ground: 0x2a2f36, intensity: .55 },
+  sun: { color: 0xffffff, intensity: 1.6, position: [-2500, 4200, 2600], target: [0, 0, 0],
+    shadow: { mapSize: 2048, camera: { left: -3500, right: 3500, top: 3500, bottom: -3500, near: 500, far: 12000 }, bias: -.0004, normalBias: .08 } },
+  fill: { color: 0x9fb8ff, intensity: .5, position: [2500, 2000, -2500] },
+  // 載具特寫光：位置與照射點每格跟著載具（render 內更新），陰影範圍只涵蓋筆電周圍
+  extraLights: [{ color: 0xfff8ef, intensity: .65, position: [0, 1, 0], target: [0, 0, 0],
+    shadow: { mapSize: 2048, camera: { left: -240, right: 240, top: 230, bottom: -230, near: 50, far: 1500 }, bias: -.00001, normalBias: .035 } }],
+});
+const { renderer, scene, camera, controls } = stage;
+const detailLight = stage.lights.extra[0];
+// 舊網址參數相容：?shadow=4096 之類給數字時改用 PCF 陰影並放大主光陰影貼圖（?shadow=0 仍為關閉）
+if (qp.get('shadow') && qp.get('shadow') !== '0') { renderer.shadowMap.type = THREE.PCFShadowMap; stage.lights.sun.shadow.mapSize.set(+qp.get('shadow'), +qp.get('shadow')); }
 
 // ---------------------------------------------------------------- 物件（與 core 統一檢查共用 project.js）
 const project = createProject({ scene, sku: SKU });
@@ -164,8 +154,7 @@ function drawHud(){
   for(const l of labels){const p=l.getPos().project(camera),visible=ui.showLabels.checked&&p.z<1&&Math.abs(p.x)<.98&&Math.abs(p.y)<.83;l.el.style.display=visible?'block':'none';if(visible){l.el.style.left=canvas.offsetLeft+(p.x*.5+.5)*canvas.clientWidth+'px';l.el.style.top=canvas.offsetTop+(-p.y*.5+.5)*canvas.clientHeight+'px';}}
   document.getElementById('diagnostics').textContent=JSON.stringify({time:T,total,step:current.index,station:S.station,action:S.action,poseError:e,force,playing,waiting,fault,doors:S.doors,flip:S.flip,lift:S.lift,clamp:S.clamp,cradleClamp:S.cradleClamp});
 }
-function resize(){const w=canvas.clientWidth,h=canvas.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}
-window.addEventListener('resize',resize);
+// 完整一格：面板、主畫面（或手臂鏡頭全幅）、相機子畫面與疊圖（跳播、截圖、錄影直接呼叫；stage.loop 每格也用它繪製）
 function render(){
   drawHud();workspace.follow();electrical.update({time:T,playing,action:S.action,motion:true,vision:!!(S.flashTool||S.flashTop||S.flashUp||S.flashDown||S.flashSn)});detailLight.target.position.copy(carrier.position);detailLight.position.copy(carrier.position).add(new THREE.Vector3(-260,700,320));
   const caption=document.getElementById('sensorCaption'),sensor=selectedView==='sensor';caption.hidden=!sensor;fullSensorVision.hide();
@@ -182,10 +171,9 @@ function render(){
   workspace.renderCamera({renderer,scene,camera:robot.inspectionCam,vision,title:'手臂相機 · 外觀檢測',result:exposure?'本幀取像':'即時預覽／移動中',marks:notebookResults(nb,S,exposure,T)});
   renderer.setViewport(0,0,w,h);hidden.forEach((o,i)=>o.visible=visible[i]);
 }
-const workspace=createViewerWorkspace({camera,controls,canvas,resize,focusOccluders:[cell.occluders],getFocus:()=>carrier.getWorldPosition(new THREE.Vector3()),
+const workspace=createViewerWorkspace({camera,controls,canvas,resize:stage.resize,focusOccluders:[cell.occluders],getFocus:()=>carrier.getWorldPosition(new THREE.Vector3()),
   focusOffset:[-360,340,470],onFocus:()=>{setElectricalCutaway(scene,false);camAnim=null;selectedView='focus';controls.enabled=true;document.querySelectorAll('.views button').forEach(b=>b.classList.remove('selected'));}});
 const electrical=createElectricalInspector({scene,camera,controls,canvas,onEnter:()=>setView('electrical',true),onExit:()=>setView('iso',true),title:'MilitaryGradePC'});
-const clock=new THREE.Clock();
 function tick(dt){
   // Work at bounded substeps, so changing playback speed changes every axis equally.
   if(!playing)return;
@@ -200,24 +188,33 @@ function tick(dt){
   }
   robot.update(dt);
 }
-function frame(){
-  requestAnimationFrame(frame);const dt=Math.min(clock.getDelta(),.05);
-  if(CAPTURE)return;
+// stage.loop 每格：frameTick(dt) → controls.update() → render()（主畫面＋相機子畫面＋疊圖）
+function frameTick(dt){
   const n=Math.max(1,Math.ceil(dt*speed/.025));for(let k=0;k<n;k++)tick(dt*speed/n);
   if(playing&&ui.showPath.checked)pushTrail(robot.getTcpWorld(robot.goal.tcp));
   const d=nb.doors.find(d=>S.action.startsWith(d.def.id+' '));if(selectedView==='door'&&d&&d.def.id!==viewDoorId)setView('door');
   if(camAnim){camAnim.u=Math.min(1,camAnim.u+dt*1.4);camera.position.lerpVectors(camAnim.p0,camAnim.p,smooth(camAnim.u));controls.target.lerpVectors(camAnim.t0,camAnim.t,smooth(camAnim.u));if(camAnim.u===1)camAnim=null;}
-  controls.update();render();
 }
-go(project.apply(0));setView('iso',true);resize();ui.playBtn.textContent=playing?'⏸ 暫停':'▶ 播放';
-window.sim={jump(st,view,off=0){seekTo((stationStart[THREE.MathUtils.clamp(Math.trunc(st)||0,0,4)]||0)+off);if(view)setView(view,true);},seekTo,pause(){playing=false;ui.playBtn.textContent='▶ 播放';},play(){playing=true;ui.playBtn.textContent='⏸ 暫停';},get state(){return S;},get T(){return T;},setView,views:[...Object.keys(views),'sensor'],project,robot,total,stationStart,steps:sequence.steps};
-if(qp.has('st'))window.sim.jump(+qp.get('st'),qp.get('view'),+(qp.get('t')||0));else if(qp.has('view'))setView(qp.get('view'),true);
+go(project.apply(0));setView('iso',true);stage.resize();ui.playBtn.textContent=playing?'⏸ 暫停':'▶ 播放';
+const sim=exposeSim({jump(st,view,off=0){seekTo((stationStart[THREE.MathUtils.clamp(Math.trunc(st)||0,0,4)]||0)+off);if(view)setView(view,true);},seekTo,pause(){playing=false;ui.playBtn.textContent='▶ 播放';},play(){playing=true;ui.playBtn.textContent='⏸ 暫停';},get state(){return S;},get T(){return T;},setView,views:[...Object.keys(views),'sensor'],project,robot,total,stationStart,steps:sequence.steps});
+if(qp.has('st'))sim.jump(+qp.get('st'),qp.get('view'),+(qp.get('t')||0));else if(qp.has('view'))setView(qp.get('view'),true);
 if(qp.has('step')){playing=false;seekTo(sequence.steps[THREE.MathUtils.clamp(+qp.get('step')||0,0,sequence.steps.length-1)].start);if(qp.has('view'))setView(qp.get('view'),true);}
 if(qp.has('cam')){const a=qp.get('cam').split(',').map(Number);if(a.length===6&&a.every(Number.isFinite)){camera.position.set(...a.slice(0,3));controls.target.set(...a.slice(3));controls.update();}}
-document.getElementById('loading').classList.add('hide');render();frame();
+document.getElementById('loading').classList.add('hide');render();
+// ?capture=1 由 video.js 逐格繪製，不跑互動迴圈；?movie 時 stage 也不啟動迴圈（交給 installMovie）
+if(!CAPTURE)stage.loop(frameTick,{render});
 // Capture uses the same absolute mechanical sequence as interactive playback.
 if(CAPTURE){
   const {installVideo}=await import('./video.js');
   ui.showGuards.checked=false;ui.showLabels.checked=false;
   window.capture=installVideo({steps:sequence.steps,renderer,camera,controls,render,nb,getState:()=>S,sample(time){T=time;go(project.apply(time,{capture:true}));}});
+}
+
+// ---------------------------------------------------------------- 展示影片（?movie）：依絕對時間逐格取樣，與 project.apply 同一路徑
+if(qp.has('movie')&&!CAPTURE){
+  playing=false;ui.playBtn.textContent='▶ 播放';
+  const {installMovie}=await import('@core/movie/movie.js');
+  installMovie({project:'MilitaryGradePC',scene,renderer,camera,controls,render,setView,total,steps:sequence.steps,
+    sample(t){T=t;go(project.apply(t));},
+    focus:()=>carrier.getWorldPosition(new THREE.Vector3()),offset:[-650,620,1050]});
 }

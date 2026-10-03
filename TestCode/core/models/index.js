@@ -9,5 +9,6 @@ import * as densoVs068 from './robots/denso-vs068.js';
 import * as fanucR2000 from './robots/fanuc-r2000ic.js';
 import * as densoHsr065 from './robots/denso-hsr065.js';
 import * as cobottaPro900 from './robots/denso-cobotta-pro900.js';
+import * as densoVm60b1 from './robots/denso-vm60b1.js';
 
-export const MODELS = [fanucR2000, densoVs068, cobottaPro900, densoHsr065, conveyor, gantry, agvForklift, drum200l, motor, sensor, foot, gauge];
+export const MODELS = [fanucR2000, densoVs068, densoVm60b1, cobottaPro900, densoHsr065, conveyor, gantry, agvForklift, drum200l, motor, sensor, foot, gauge];

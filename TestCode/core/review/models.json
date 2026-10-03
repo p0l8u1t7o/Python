@@ -16,6 +16,14 @@
     "zfight": []
   },
   {
+    "id": "denso-vm60b1",
+    "name": "DENSO VM-60B1 六軸手臂",
+    "ok": true,
+    "meshes": 37,
+    "dynamic": [],
+    "zfight": []
+  },
+  {
     "id": "denso-cobotta-pro900",
     "name": "DENSO COBOTTA PRO 900 協作手臂",
     "ok": true,
