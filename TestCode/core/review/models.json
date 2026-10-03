@@ -16,6 +16,14 @@
     "zfight": []
   },
   {
+    "id": "denso-hsr065",
+    "name": "DENSO HSR065 SCARA",
+    "ok": true,
+    "meshes": 62,
+    "dynamic": [],
+    "zfight": []
+  },
+  {
     "id": "conveyor",
     "name": "滾筒輸送線",
     "ok": true,

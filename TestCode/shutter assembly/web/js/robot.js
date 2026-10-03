@@ -1,15 +1,14 @@
-// DENSO HSR065 SCARA（J1、J2 水平旋轉、J3 花鍵軸 Z 行程、J4 花鍵軸旋轉）＋三工具頭與下視相機。
+// DENSO HSR065 SCARA ＋三工具頭與下視相機。手臂本體與解析逆解在共用模型庫（core/models/robots/denso-hsr065.js），
+// 這裡只裝本站的工具頭、TCP、作業姿態追蹤與手臂安裝高度。
 // 世界座標：x 向右、y 向上、z 朝作業員。工具本地：原點在花鍵軸法蘭，y 向上（工具在 −y），隨 J4 轉動。單位 mm。
 import * as THREE from 'three';
-import { cable, carrier, support, CABLE } from '@core/electrical/cable-routing.js';
-import { block, cylinder, decal, bevelBox, screw, tube } from '@core/geom/primitives.js';
+import { cable, CABLE } from '@core/electrical/cable-routing.js';
+import { block, cylinder, decal, screw, tube } from '@core/geom/primitives.js';
+import { createHSR065, HSR065, HSR065_MAT, JOINTS, wrapPi, fk as armFk, ik as armIk } from '@core/models/robots/denso-hsr065.js';
 import { PART } from './product.js';
 
 const D2R = Math.PI / 180;
-const matArm = new THREE.MeshStandardMaterial({ color: 0xeef0f1, roughness: 0.4, metalness: 0.1 });
-const matArmD = new THREE.MeshStandardMaterial({ color: 0x2f343a, roughness: 0.5, metalness: 0.3 });
-const matJoint = new THREE.MeshStandardMaterial({ color: 0x1c1f23, roughness: 0.4, metalness: 0.5 });
-const matShaft = new THREE.MeshStandardMaterial({ color: 0xd9dee3, roughness: 0.12, metalness: 0.95 });
+const { armDark: matArmD, joint: matJoint, shaft: matShaft } = HSR065_MAT;
 const matTool = new THREE.MeshStandardMaterial({ color: 0x9aa3ad, roughness: 0.35, metalness: 0.75 });
 const matAnod = new THREE.MeshStandardMaterial({ color: 0x3b4149, roughness: 0.4, metalness: 0.6 });
 const matBlueAnod = new THREE.MeshStandardMaterial({ color: 0x2f5f9e, roughness: 0.45, metalness: 0.5 });
@@ -17,13 +16,8 @@ const matPad = new THREE.MeshStandardMaterial({ color: 0x3a3f33, roughness: 0.95
 const matESD = new THREE.MeshStandardMaterial({ color: 0x2c2c2c, roughness: 0.85 });         // ESD PEEK 夾指
 const matGlass = new THREE.MeshPhysicalMaterial({ color: 0x8fb8ff, roughness: 0.05, transmission: 0.6, transparent: true, opacity: 0.8 });
 
-/** 機型參數：HSR065 型錄動作範圍 650 mm、Z 行程 200 mm；臂長分配、J1 座高與速度為假設值，需以 DENSO 型錄／CAD 核對 */
-export const SCARA = {
-  L1: 350, L2: 300, colH: 320, arm1H: 80, arm2H: 70,
-  Y0: 1170,                                           // Z=0（最上）時法蘭的世界高度（手臂裝在 900 mm 台面上）
-  limits: { j1: [-170, 170], j2: [-145, 145], d3: [0, 200], j4: [-360, 360] },
-  speed: { j1: 3.3, j2: 6.1, d3: 850, j4: 21 },       // 假設型錄最高速度的 50%（rad/s、mm/s）
-};
+/** 機型參數（臂長、行程、限制、速度）取自共用模型；Y0＝Z=0（最上）時法蘭的世界高度（手臂裝在 900 mm 台面上：900 + HSR065.flange0） */
+export const SCARA = { ...HSR065, Y0: 1170 };
 /** 工具頭：三支氣動滑台（行程 12 mm，只有使用中的那支伸出）＋固定的下視相機 */
 export const TOOL = {
   stroke: 12, tip: -110,
@@ -39,44 +33,14 @@ export const TCP_OFFSET = {
   T3: new THREE.Vector3(TOOL.T3.x, TOOL.tip + 3, TOOL.T3.z),
   cam: new THREE.Vector3(TOOL.cam.x, TOOL.cam.y, TOOL.cam.z),
 };
-const JOINTS = ['j1', 'j2', 'd3', 'j4'];
-const wrapPi = a => Math.atan2(Math.sin(a), Math.cos(a));
 
 export function createRobot() {
-  const root = new THREE.Group(); root.name = 'robot';
-  const { L1, L2, colH, arm1H, arm2H } = SCARA;
-  // ---- 基座柱 ----
-  // 柱底埋在底板內 1 mm 起算，柱底面不與底板底面重合（閃爍）
-  const column = bevelBox(200, colH - 1, 240, matArm, 8); column.position.set(0, (colH + 1) / 2, -30); root.add(column);
-  block(root, [230, 12, 270], [0, 6, -30], matArmD);
-  for (const x of [-100, 100]) for (const z of [-150, 90]) screw(root, [x, 12.4, z], 4);
-  decal(root, 120, 34, [0, colH - 70, 90.8], [0, 0, 0], 'DENSO', { color: '#c8102e', center: true, bold: true });
-  decal(root, 110, 26, [0, colH - 120, 90.8], [0, 0, 0], 'HSR065', { color: '#59616b', center: true });
-  tube(root, [[0, 60, -150], [0, 40, -210], [0, 30, -280]], 14, matArmD).name = 'robot rear cable outlet';
-  const armParts = [column];
-  // ---- J1、第一臂 ----
-  const j1 = new THREE.Group(); j1.position.y = colH; root.add(j1);
-  const a1 = bevelBox(130, arm1H, L1, matArm, 10); a1.position.set(0, arm1H / 2, L1 / 2); j1.add(a1);
-  const a1c = new THREE.Mesh(new THREE.CylinderGeometry(78, 78, arm1H, 40), matArm); a1c.position.y = arm1H / 2; j1.add(a1c);
-  const a1e = new THREE.Mesh(new THREE.CylinderGeometry(65, 65, arm1H, 40), matArm); a1e.position.set(0, arm1H / 2, L1); j1.add(a1e);
-  decal(j1, 150, 30, [66, arm1H / 2, L1 / 2], [0, Math.PI / 2, 0], 'DENSO', { color: '#c8102e', center: true, bold: true });
-  armParts.push(a1, a1c, a1e);
-  // ---- J2、第二臂 ----
-  const j2 = new THREE.Group(); j2.position.set(0, arm1H, L1); j1.add(j2);
-  const a2 = bevelBox(110, arm2H, L2, matArm, 10); a2.position.set(0, arm2H / 2, L2 / 2); j2.add(a2);
-  const a2c = new THREE.Mesh(new THREE.CylinderGeometry(60, 60, arm2H, 40), matArm); a2c.position.y = arm2H / 2; j2.add(a2c);
-  const cover = bevelBox(120, 95, 170, matArm, 12); cover.position.set(0, arm2H + 47, L2 - 30); j2.add(cover);    // J3／J4 馬達蓋
-  const joint2 = new THREE.Mesh(new THREE.CylinderGeometry(50, 50, 8, 40), matJoint); joint2.position.y = 0; j2.add(joint2);
-  armParts.push(a2, a2c, cover);
-  // ---- 花鍵軸（J3 上下、J4 旋轉）----
-  const shaft = new THREE.Group(); shaft.position.set(0, 0, L2); j2.add(shaft);
-  const spline = new THREE.Mesh(new THREE.CylinderGeometry(10, 10, 400, 24), matShaft); spline.position.y = 200; shaft.add(spline);
-  const stopper = cylinder(shaft, 14, 10, [0, 395.8, 0], matJoint, 'y', 24);   // 頂面高出花鍵軸端 0.8 mm，不重合
-  const bellow = new THREE.Mesh(new THREE.CylinderGeometry(15, 15, 60, 20), matJoint); bellow.position.set(0, 0, 0); j2.add(bellow); bellow.position.set(0, -30, L2);
-  armParts.push(spline, stopper);
-  // ---- 工具頭（隨 J4 旋轉）----
-  const tool = new THREE.Group(); tool.name = 'tool'; shaft.add(tool);
-  cylinder(tool, 22, 10, [0, -5, 0], matJoint, 'y', 28);
+  // ---- 手臂本體（共用模型）：基座、J1、J2、花鍵軸、臂上線材、法蘭 ----
+  const arm = createHSR065();
+  const { root } = arm; root.name = 'robot';
+  const armParts = arm.armParts;
+  // ---- 工具頭（隨 J4 旋轉，裝在法蘭下）----
+  const tool = arm.flange; tool.name = 'tool';
   const plate = block(tool, [108, 8, 100], [0, -14, -18], matTool); plate.name = 'tool-plate';
   for (const x of [-46, 46]) for (const z of [-60, 24]) screw(tool, [x, -9.7, z], 2.2);
   decal(tool, 40, 10, [0, -9.3, 20], [-Math.PI / 2, 0, 0], 'EOAT', { color: '#2b3540', center: true });
@@ -156,27 +120,14 @@ export function createRobot() {
   for (const key of ['T1', 'T2', 'T3', 'cam']) { const o = new THREE.Object3D(); o.position.copy(TCP_OFFSET[key]); tool.add(o); tcps[key] = o; }
   for (const part of contact) part.traverse(o => { o.userData.contact = true; });
 
-  cable(j1,'SCARA / upper fixed sleeve',[[0,88,60],[0,104,115],[0,104,200],[0,88,250]],{radius:5,color:CABLE.sleeve});
-  cable(j2,'SCARA / forearm fixed sleeve',[[0,70,60],[0,94,95],[0,94,140],[0,70,165]],{radius:4,color:CABLE.sleeve,clips:1});
-  const zHarness=carrier(j2,'SCARA / Z service carrier',{origin:[90,40,L2],axis:[0,1,0],rise:[1,0,0],min:-440,max:0,radius:25,width:20,pitch:12});
-  support(j2,'SCARA / fixed guide mount',[60,100,L2],[79,100,L2],5);
-  // 線材起點在拖鏈活動端固定座（寬 26 mm）內；背撐軌偏 18 mm，軌與腳座不穿過固定座
-  cable(shaft,'SCARA / Z return to rotary inlet',[[140,0,0],[95,16,0],[40,20,0],[15,20,0]],{radius:3,color:CABLE.sleeve,backing:{offset:[0,0,18],feet:[[0,[15,30,0]],[3,[10,20,0]]],radius:4}});
   cable(tool,'CAM / rear connector',[[40,-10,-64],[40,-23,-75],[20,-32,-72],[0,-32,-60.5]],{radius:1.8,color:CABLE.signal});
   for(const x of [-36,0,36])cable(tool,'AIR / slide '+x,[[x,-18,18],[x,-29,27],[x,-44,26],[x,-48,11]],{radius:1.4,color:CABLE.air,clips:1});
 
   // ---- 關節狀態 ----
   const q = { j1: -1.5, j2: 1.9, d3: 60, j4: 0 };
   const home = { ...q };
-  function apply() {
-    j1.rotation.y = q.j1; j2.rotation.y = q.j2;
-    shaft.position.y = SCARA.Y0 - SCARA.colH - SCARA.arm1H - root.position.y - q.d3;   // 相對 J2 群組
-    // Like the spline datum, the routing mount uses the installed world height.
-    zHarness.group.position.y=940-root.position.y;
-    zHarness.set(shaft.position.y-zHarness.group.position.y);
-    tool.rotation.y = q.j4;
-    root.updateMatrixWorld(true);
-  }
+  // 法蘭高度以底座為基準（共用模型）；底座裝在 LAYOUT.robot 的 900 mm 台面上，與 SCARA.Y0 一致
+  const apply = () => arm.setJoints(q);
   apply();
   let ext = { T1: 0, T2: 0, T3: 0 };
   function setTools({ T1 = 0, T2 = 0, T3 = 0, open = 1 } = {}) {
@@ -189,31 +140,9 @@ export function createRobot() {
   // ---- 運動學 ----
   const base = () => root.position;
   /** 正解：關節 → 某 TCP 的世界座標與 yaw（工具頭以伸出狀態計） */
-  function fk(c, key = 'T1') {
-    const a = c.j1, b = c.j1 + c.j2, yaw = c.j1 + c.j2 + c.j4, o = TCP_OFFSET[key];
-    const fx = base().x + L1 * Math.sin(a) + L2 * Math.sin(b), fz = base().z + L1 * Math.cos(a) + L2 * Math.cos(b);
-    return { p: new THREE.Vector3(fx + o.x * Math.cos(yaw) + o.z * Math.sin(yaw), SCARA.Y0 - c.d3 + o.y, fz - o.x * Math.sin(yaw) + o.z * Math.cos(yaw)), yaw };
-  }
-  const within = c => JOINTS.every(n => { const [lo, hi] = SCARA.limits[n]; const v = n === 'd3' ? c[n] : c[n] / D2R; return v >= lo - 1e-6 && v <= hi + 1e-6; });
+  const fk = (c, key = 'T1') => armFk(c, TCP_OFFSET[key], base());
   /** 逆解：兩組肘部解中取離參考最近者；J4 取 ±360° 內最接近參考的等價角 */
-  function ik(key, target, yaw, ref = q) {
-    const o = TCP_OFFSET[key];
-    const fx = target.x - (o.x * Math.cos(yaw) + o.z * Math.sin(yaw)) - base().x, fz = target.z - (-o.x * Math.sin(yaw) + o.z * Math.cos(yaw)) - base().z;
-    const r2 = fx * fx + fz * fz, c2 = (r2 - L1 * L1 - L2 * L2) / (2 * L1 * L2), d3 = SCARA.Y0 - (target.y - o.y);
-    if (Math.abs(c2) > 1) return null;
-    let best = null, bestD = Infinity;
-    for (const s of [1, -1]) {
-      const b2 = s * Math.acos(c2), b1 = Math.atan2(fx, fz) - Math.atan2(L2 * Math.sin(b2), L1 + L2 * Math.cos(b2));
-      const c = { j1: wrapPi(b1), j2: b2, d3, j4: 0 };
-      const j4 = wrapPi(yaw - c.j1 - c.j2);
-      for (const k of [0, 2 * Math.PI, -2 * Math.PI]) {
-        const cand = { ...c, j4: j4 + k }; if (!within(cand)) continue;
-        const d = Math.abs(cand.j1 - ref.j1) * 2 + Math.abs(cand.j2 - ref.j2) + Math.abs(cand.j4 - ref.j4) * 0.2;
-        if (d < bestD) { bestD = d; best = cand; }
-      }
-    }
-    return best;
-  }
+  const ik = (key, target, yaw, ref = q) => armIk(target, yaw, ref, TCP_OFFSET[key], base());
 
   // ---- 目標與追蹤 ----
   const goal = { target: new THREE.Vector3(), yaw: 0, tcp: 'T1', speed: 800, joints: null };
