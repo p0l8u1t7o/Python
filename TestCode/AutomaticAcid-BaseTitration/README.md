@@ -59,17 +59,18 @@ node ../core/tools/serve.mjs AutomaticAcid-BaseTitration --no-open
 |---|---|
 | `web/js/layout.js` | 站別位置、器皿尺寸、時間與速度參數、樣品批次 |
 | `web/js/robot.js` | COBOTTA PRO 900 模型、逆解（肘部朝上、J1 固定角度窗）、長行程夾爪 |
-| `web/js/lab.js` | 實驗桌、天平、樣品瓶座、移液區（廢液漏斗、吸頭廢料口、吸頭架、移液模組座）、讀碼器、料架、Metrohm 進樣器與滴定儀、電腦、安全掃描器、器皿 |
+| `web/js/lab.js` | 地坪（`core/geom/environment.js` 的 `floor()`：9 × 7 m、100 mm 格、格線 9 m 見方高 1 mm，地坪與格線顏色沿用本站原本略深的 0x1a1f26／0x2c3440、0x222831）、實驗桌、天平、樣品瓶座、移液區（廢液漏斗、吸頭廢料口、吸頭架、移液模組座）、讀碼器、料架、Metrohm 進樣器與滴定儀、電腦、安全掃描器、器皿 |
 | `web/js/plan.js` | 手臂動作序列（逐步計算 PTP 與直線移動時間，直接寫入 `core/anim/sequence.js` 的 `createStepSequence`；進樣器區先試排，撞到轉盤轉動時用序列的 `mark()`／`rollback()` 退回重排；station＝流程編號 ①～⑨）、轉盤與滴定頭排程（`core/anim/track.js` 的 `createTimeline`，rack／head 兩條軌）、樣品表與通訊紀錄 |
 | `web/js/sim.js` | 把排程在任一時間的狀態套到場景（畫面與驗證共用） |
 | `web/js/project.js` | 專案介面 `createProject({ scene })`：建立場景、`apply(t)` 套到時間 t，並提供 core 全場檢查的設定（非實體物件、設備分工位、逐條說明的允許接觸）；`main.js` 與 core 檢查共用同一份場景 |
-| `web/js/main.js` | renderer、場景、相機、軌道控制、環境光與主要燈光由共用舞台 `core/ui/stage.js` 的 `createStage` 建立（只傳本站的曝光、霧、燈光參數；滴定杯補光有自己的陰影相機，留在本檔）；畫面迴圈用 `stage.loop`，3D 標籤用 `stage.addLabel`（`anchor: 'above'`，畫布偏移由 stage 處理），固定視角（`VIEWS`）用 `stage.goTo`、停止轉場用 `stage.cancelTween`、液面俯拍跟著液面平移用 `stage.shiftView`，`window.sim` 用 `exposeSim`；播放列用 `createPlayer`；液面俯拍、跟隨手臂、流程按鈕、樣品表、滴定曲線、交握訊號、通訊紀錄、匯出為本站自有；場景物件取自 `project.js` |
+| `web/js/main.js` | renderer、場景、相機、軌道控制、環境光與主要燈光由共用舞台 `core/ui/stage.js` 的 `createStage` 建立：`look: 'cell'` 給背景、環境光與補光配色強度，本站只寫與 look 不同的曝光（1.0）、環境點光（240）、暖色主光（0xfff8ef、1.25）與霧；主光／補光位置與陰影範圍是本站手調值，不用 `extent` 推算（推算結果會改變桌面陰影）；滴定杯補光（貼著杯座的小陰影相機）放在 `extraLights`。標籤避讓用 core 預設（精簡版面或畫布 < 900 px；本站桌面畫布約 960 px，不會避讓）；手臂（`priority` 2）與天平、進樣器、滴定儀（1）的標籤在小畫布優先保留；畫面迴圈用 `stage.loop`，3D 標籤用 `stage.addLabel`（`anchor: 'above'`，畫布偏移由 stage 處理），固定視角（`VIEWS`）用 `stage.goTo`、停止轉場用 `stage.cancelTween`、液面俯拍跟著液面平移用 `stage.shiftView`，`window.sim` 用 `exposeSim`；播放列用 `createPlayer`；液面俯拍、跟隨手臂、流程按鈕、樣品表、滴定曲線、交握訊號、通訊紀錄、匯出為本站自有；場景物件取自 `project.js` |
 | 材質 | 桌架、不鏽鋼件（`finished(MAT.steel, 'metal', .008)`）、黑件、狀態燈、安全掃描器、夾爪陽極件用 `core/geom/materials.js` 的 `MAT`；灰色件（電控箱、防風罩框、夾爪座、鍵帽、移液模組本體）是烤漆／塑膠，不用 `MAT.frame`（鋁擠型）；實驗桌面、Metrohm 外殼、POM、瓶蓋、玻璃、液體、吸頭與安全區留在 `lab.js`／`render-details.js` |
 | `tools/verify.mjs` | 排程與幾何驗證 |
+| `web/css/style.css` | 桌面版面（左側樣品表／通訊紀錄、右側狀態卡、下方播放列）；900～1100 px 的非觸控視窗標題列改三列、≤1300 px 先收起左側欄。手機直向、橫向與 ≤1100 px 觸控平板由 `core/ui/viewer-workspace.js` 的精簡版面接手（☰ 製程與視角、⚙ 播放設定、工具列 ◧／◨ 開左右側欄抽屜，畫布全寬），本檔不再寫 ≤760 px 的窄螢幕規則；手機直向的取景由 stage 的 `narrowFit` 自動拉遠，視角照桌面寫 |
 
 ## 驗證
 
-需要 Node.js 22 以上，不需 npm 套件。一次跑完 core 共用檢查（import 路徑、倒序一致、全場干涉與重合面閃爍）與本專案 `tools/verify*.mjs`：
+需要 Node.js 22 以上，不需 npm 套件。一次跑完 core 共用檢查（import 路徑、倒序一致、全場干涉與重合面閃爍，以及桌面、手機直向、手機橫向、觸控平板四種尺寸的標準互動測試 `ui`，結果在 `review/ui-check.json`，port 用環境變數 `UI_PORT` 指定）與本專案 `tools/verify*.mjs`：
 
 ```powershell
 node ../core/tools/check.mjs AutomaticAcid-BaseTitration          # 在本資料夾；在 TestCode 則為 node core/tools/check.mjs AutomaticAcid

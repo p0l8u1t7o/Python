@@ -14,24 +14,23 @@ import { createPlayer } from '@core/ui/player.js';
 import { createProject } from './project.js';
 import { ST, Y0, SAMPLES, TITRANT, ANALYTE } from './layout.js';
 
-// 共用舞台（core/ui/stage.js）：參數與原本手寫的 renderer／燈光完全相同，畫面不變
+// 共用舞台（core/ui/stage.js）：look 'cell' 給背景、環境光、補光配色與強度；與 look 不同的值（曝光、環境點光、暖色主光）與原本的燈位、陰影、霧照舊明確寫，畫面不變
+// 不給 extent：extent 推算的主光位置與陰影範圍（±r）和原本手調的不同，會改變桌面陰影
 const canvas = document.getElementById('c');
 const stage = createStage({
-  canvas, exposure: 1.0, background: 0x0d1117, fog: [6000, 14000],
+  canvas, look: 'cell', exposure: 1.0, fog: [6000, 14000],
   logDepth: false,                                   // 原本未開對數深度；?movie 時由 stage 強制開啟
   envLight: 240,                                     // RoomEnvironment 點光強度
   camera: { fov: 40, near: 2, far: 30000 },
   controls: { minDistance: 30, maxDistance: 9000 },  // 阻尼 .08、仰角上限 .49π 為 stage 預設
   sun: { color: 0xfff8ef, intensity: 1.25, position: [-1400, 3600, 2000], target: [0, 0, 0],
     shadow: { mapSize: 2048, camera: { left: -1800, right: 1800, top: 1800, bottom: -1800, near: 500, far: 9000 }, bias: -0.0003, normalBias: .08 } },
-  fill: { color: 0x9fb8ff, intensity: 0.5, position: [1800, 1500, -1800] },
+  fill: { position: [1800, 1500, -1800] },
+  // 滴定杯補光：只照杯座附近，陰影相機貼著杯子（液面與杯壁的細部陰影）
+  extraLights: [{ color: 0xfffbf3, intensity: .5, position: [590, 1530, 260], target: [810, 990, 60],
+    shadow: { mapSize: 1024, camera: { left: -130, right: 130, top: 180, bottom: -180, near: 50, far: 1000 }, bias: -.00001, normalBias: .025 } }],
 });
 const { renderer, scene, camera, controls, qp } = stage;
-// 滴定杯補光：有自己的投影目標與陰影相機，stage 的 extraLights 無法表達，留在這裡
-const cupLight=new THREE.DirectionalLight(0xfffbf3,.5);cupLight.position.set(590,1530,260);cupLight.target.position.set(810,990,60);
-cupLight.castShadow=renderer.shadowMap.enabled;cupLight.shadow.mapSize.set(1024,1024);
-Object.assign(cupLight.shadow.camera,{left:-130,right:130,top:180,bottom:-180,near:50,far:1000});
-cupLight.shadow.normalBias=.025;cupLight.shadow.bias=-.00001;scene.add(cupLight,cupLight.target);
 
 // 場景物件與時間狀態由 project.js 建立與套用（core 統一檢查用同一份，檢查的就是畫面上的幾何）
 const project = createProject({ scene }), plan = project.plan, lab = project.lab, total = project.total;
@@ -94,9 +93,10 @@ const _tcp = new THREE.Vector3();
 function followCam(dt) { project.robot.getTcpWorld('grip', _tcp); const k = 1 - Math.exp(-dt * 3); controls.target.lerp(_tcp, k); camera.position.lerp(_tcp.clone().add(new THREE.Vector3(260, 420, 620)), k); }
 
 // ---------------------------------------------------------------- 3D 標籤（stage.addLabel；y 相對桌面，標籤底邊在點上方；畫布偏移由 stage 處理）
-const addLabel = (text, x, y, z) => stage.addLabel(text, new THREE.Vector3(x, Y0 + y, z), '', { anchor: 'above' });
-addLabel('<b>DENSO</b> COBOTTA PRO 900', 0, 980, 0);
-addLabel('分析天平（上方滑門）', ST.balance.x, 420, ST.balance.z);
+// priority：小畫布標籤重疊時先留手臂（2），再留天平、進樣器、滴定儀（1），其餘器皿區照加入順序
+const addLabel = (text, x, y, z, priority = 0) => stage.addLabel(text, new THREE.Vector3(x, Y0 + y, z), '', { anchor: 'above', priority });
+addLabel('<b>DENSO</b> COBOTTA PRO 900', 0, 980, 0, 2);
+addLabel('分析天平（上方滑門）', ST.balance.x, 420, ST.balance.z, 1);
 addLabel('待處理杯區', ST.emptyRack.cols[1], 160, ST.emptyRack.rows[0]);
 addLabel('樣品瓶座／開蓋', ST.clamp.x, 260, ST.clamp.z);
 addLabel('瓶蓋暫放', ST.capRest.x, 90, ST.capRest.z);
@@ -109,8 +109,8 @@ addLabel('條碼讀取', ST.scanner.x, 200, ST.scanner.z);
 addLabel('待驗樣品瓶區', ST.sampleRack.cols[1], 260, ST.sampleRack.rows[500]);
 addLabel('完成樣品瓶區', ST.doneBottleRack.cols[1], 260, ST.doneBottleRack.rows[500]);
 addLabel('完成滴定杯區', ST.doneRack.cols[1], 150, ST.doneRack.rows[3]);
-addLabel('<b>Metrohm</b> 自動進樣器', ST.sampler.x, 330, ST.sampler.z - 150);
-addLabel('滴定儀＋Dosino', ST.titrator.x, 560, ST.titrator.z);
+addLabel('<b>Metrohm</b> 自動進樣器', ST.sampler.x, 330, ST.sampler.z - 150, 1);
+addLabel('滴定儀＋Dosino', ST.titrator.x, 560, ST.titrator.z, 1);
 addLabel('整合軟體／Metrohm 軟體', ST.pc.x, 520, ST.pc.z);
 addLabel('安全雷射掃描器', 0, -700, 580);
 

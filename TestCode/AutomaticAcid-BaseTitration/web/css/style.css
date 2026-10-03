@@ -106,8 +106,8 @@ button,select{font-family:var(--font)}select,button{color:var(--fg);background:#
 #cycleTime{font-size:10px;color:#819bad;white-space:nowrap}#timeline{grid-column:1;width:100%;accent-color:#69c8d0;cursor:pointer}.progress{display:none}.clock{grid-column:2;grid-row:3}
 .checklist{max-height:none}.checklist li{font-size:11px;line-height:1.65;align-items:flex-start}
 .checklist li .box{margin-top:3px}.label3d{font-size:10px;background:#10202be0;border-color:#49616d}
+/* 900～1100 px 的非觸控視窗仍是桌面版面（標題列改三列）；≤900 px、觸控平板與橫向手機由 core 的精簡版面接手 */
 @media(max-width:1100px){#topbar{grid-template-columns:1fr;height:150px;grid-template-rows:48px 40px 42px}#stations{grid-row:2}.views{grid-row:3}.brand .title{font-size:17px}#side{top:160px;width:280px}#c{top:156px;width:calc(100% - 300px);height:calc(100% - 305px)}#bottombar{right:312px}#cycleTime{display:none}.views{gap:4px}.views button{padding:6px 9px}}
-@media(max-width:760px){#topbar{padding:5px 10px}.views{overflow:auto}.views select{min-width:150px}.brand .sub{font-size:10px}#stations{gap:4px}#stations .st{padding:6px;font-size:10px}#side{width:225px}#c{width:calc(100% - 239px)}#bottombar{right:251px}.ctl{gap:6px}.ctl .chk{display:none}}
 
 /* ---- 酸鹼滴定：左側樣品表／通訊紀錄、滴定曲線、天平讀值、交握訊號 ---- */
 #c{left:386px;width:calc(100% - 386px - 332px)}
@@ -130,6 +130,7 @@ button,select{font-family:var(--font)}select,button{color:var(--fg);background:#
 .sigs>div{display:flex;align-items:center;gap:7px}.sigs i{width:7px;height:7px;border-radius:50%;background:#41505e;flex:none}
 .sigs .on{color:#dfeee8}.sigs .on i{background:#6edbb0;box-shadow:0 0 7px #65d4ad}
 .sigs .on.warn i{background:#ffb020;box-shadow:0 0 7px #ffb020}
+/* ≤1300 px 的桌面版面先收起左側欄（工具列 ◧ 可打開）；精簡版面的抽屜由 core 控制 */
 @media(max-width:1300px){#left{display:none}#c{left:0;width:calc(100% - 332px)}#bottombar{left:16px}}
 /* Detail views remain reachable without covering the 3D viewport. */
 .views{overflow-x:auto;min-width:0}.views button{flex:none;padding:7px 9px}.views select{flex:none;min-width:155px;max-width:220px}.views #detailShot{margin-left:8px}

@@ -5,6 +5,7 @@ import {cabinetShell,controlPanel,entryGland,panelFeed} from '@core/electrical/e
 import { cable, cableTray, carrier, support, CABLE } from '@core/electrical/cable-routing.js';
 import { finish } from '@core/geom/finish.js';
 import { perforated } from '@core/geom/perforated.js';
+import { floor as floorPlane } from '@core/geom/environment.js';
 import { block, cylinder, decal, tube } from '@core/geom/shapes.js';
 import { MAT, finished } from '@core/geom/materials.js';
 import { Y0, BENCH, ST, BEAKER, BOTTLES, CAP, PIPETTE, SAMPLES } from './layout.js';
@@ -72,9 +73,8 @@ export function createLab(scene) {
   const W = (x, y, z) => [x, Y0 + y, z];
 
   // ---------------------------------------------------------------- 地面與實驗桌
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(9000, 7000), new THREE.MeshStandardMaterial({ color: 0x1a1f26, roughness: 0.95 }));
-  floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; root.add(floor);
-  const grid = new THREE.GridHelper(9000, 90, 0x2c3440, 0x222831); grid.position.y = 1; root.add(grid);
+  // 9 × 7 m 地坪、100 mm 格（格線 9 m 見方、高 1 mm）；顏色沿用本站原本略深的地坪與格線
+  const { mesh: floor } = floorPlane(root, { size: [9000, 7000], cell: 100, color: 0x1a1f26, grid: [0x2c3440, 0x222831], gridY: 1 });
   const [bx0, bx1] = BENCH.x, [bz0, bz1] = BENCH.z, bw = bx1 - bx0, bd = bz1 - bz0;
   const benchPorts=[[-165,0,14],[-760,20,9],[1060,300,10]];
   const bench=perforated(root,[bw,40,bd],[0,Y0-20,0],[[ST.dock.x,ST.dock.z,22],[ST.tipChute.x,ST.tipChute.z,34],[ST.funnel.x,ST.funnel.z,10],...benchPorts],M.benchTop);bench.name='bench-with-service-bores';bench.userData.entryPlate=true;K('bench',bench);
