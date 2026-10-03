@@ -1,7 +1,9 @@
-// 相機／感測器模擬畫面（2D 繪製的示意影像，不是實拍）
+// 相機／感測器模擬畫面（2D 繪製的示意影像，不是實拍）。以 612 × 512 的座標繪製，
+// 畫進 core viewer-workspace 的相機視窗（renderImage 給的 2D context，呼叫端先縮放到該座標）。
 import { profile, inTol } from './spec.js';
 
-const W = 612, H = 512, FONT = '"Noto Sans TC","Microsoft JhengHei",sans-serif';
+export const W = 612, H = 512;
+const FONT = '"Noto Sans TC","Microsoft JhengHei",sans-serif';
 const rng = seed => () => (seed = (seed * 16807) % 2147483647) / 2147483647;
 // 厚度偏差色階：偏薄偏藍、中心綠、偏厚偏紅
 const hue = f => `hsl(${f < 0 ? 150 + 60 * -f : 150 - 150 * f},85%,55%)`;
@@ -10,8 +12,8 @@ export const TITLES = {
   C: '通道 C · 5MP 口部端面 1×', CF: 'ST2 · 上下共焦差分測厚（螺旋掃描）', result: '判定結果',
 };
 
-export function createCameraSim(canvas, s, m, scenario) {
-  canvas.width = W; canvas.height = H; const g = canvas.getContext('2d');
+export function createCameraSim(s, m, scenario) {
+  let g = null;                                                                       // 目前繪製的 2D context（draw 時指定）
   // 展開圖：x = 圓周角、y = 軸向；三個照明通道各一張
   const strips = ['R', 'G', 'B'].map((ch, k) => {
     const c = document.createElement('canvas'); c.width = 560; c.height = 118; const x = c.getContext('2d'), r = rng(11 + k * 7);
@@ -109,8 +111,8 @@ export function createCameraSim(canvas, s, m, scenario) {
     g.fillStyle = '#c9d1d9'; for (const sign of [1, -1]) { g.beginPath(); P.forEach(([r, y], i) => { const X = ox + sign * r * k, Y = oy + (s.len - y) * k; i ? g.lineTo(X, Y) : g.moveTo(X, Y); }); g.closePath(); g.fill(); }
   }
   return {
-    draw(S, completed) {
-      const mode = S.pip;
+    draw(S, completed, ctx) {
+      g = ctx; const mode = S.pip;
       if (mode === 'A') drawA(S); else if (mode === 'B') drawB(S); else if (mode === 'C') drawC({ shown: completed.has('shotC') || S.optic === 'C' }); else if (mode === 'CF') drawCF(S); else if (mode === 'result') drawResult(); else drawIdle();
       return mode;
     },

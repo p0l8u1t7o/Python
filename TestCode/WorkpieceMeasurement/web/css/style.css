@@ -74,7 +74,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:
 #loading.hide{display:none}
 
 .label3d{font:11.5px var(--font);color:#dfe7f0;background:rgba(10,14,20,.72);border:1px solid rgba(255,255,255,.12);
-  padding:3px 8px;border-radius:6px;white-space:nowrap;pointer-events:none;position:absolute;left:var(--canvas-x,0px);top:var(--canvas-y,0px)}  /* 位置由 stage.updateLabels 以 transform 設定，原點對齊畫布 */
+  padding:3px 8px;border-radius:6px;white-space:nowrap;pointer-events:none;position:absolute}  /* 位置由 stage.updateLabels 以 transform 設定（已含畫布在頁面中的偏移） */
 .label3d b{color:var(--accent)}
 
 .views select{background:rgba(255,255,255,.06);border:1px solid var(--line);color:var(--fg);padding:6px 6px;border-radius:6px;font:12px var(--font);margin-left:6px;max-width:150px}
@@ -147,39 +147,29 @@ body.capture #c{height:calc(100% - 132px)}body.capture #bottombar{display:none}
 .trayMap .t i.full{background:#b9c3cc}.trayMap .t i.cur{background:var(--warn);box-shadow:0 0 6px var(--warn)}
 .trayMap .t i.ok{background:var(--ok)}.trayMap .t i.ng{background:var(--bad)}.trayMap .t i.err{background:var(--warn)}
 .trayMap .n{font-size:10px;color:var(--muted);text-align:center;margin-top:3px}
-#pipFrame{position:absolute;left:18px;bottom:165px;width:400px;border:1px solid rgba(74,168,255,.55);border-radius:8px;pointer-events:none;z-index:4;box-shadow:0 6px 24px rgba(0,0,0,.45);display:flex;flex-direction:column;overflow:hidden;background:#0a0f15}
-#pipFrame[hidden]{display:none}
-#pipFrame .pipTitle{flex:none;padding:5px 9px;font-size:11px;color:#cfe6ff;background:rgba(13,17,23,.92)}
-#app #pipImage{width:100%;height:auto;aspect-ratio:612/512;display:block}
-#pipFrame.flash{border-color:#fff;box-shadow:0 0 22px rgba(255,255,255,.55)}
-@media(max-width:1100px){#pipFrame{width:230px}}
-#detailNote{position:absolute;top:140px;left:20px;z-index:3;white-space:pre-line;line-height:1.8;font-size:12px;color:#d5e5e2;background:#14212be8;border-left:2px solid #73cfc3;padding:9px 13px;border-radius:3px;pointer-events:none}
-@media(max-width:1100px){#detailNote{top:170px;font-size:11px}}
+/* 取像畫面在 core viewer-workspace 的相機視窗（拖曳、放大、獨立視窗）；頻閃取像時邊框亮起 */
+.viewer-workspace #app #pipFrame.flash{border-color:#fff;box-shadow:0 0 22px rgba(255,255,255,.55)}
+/* 細節說明放在畫布左下角（左上是相機視窗的預設位置） */
+#detailNote{position:absolute;bottom:160px;left:20px;z-index:3;white-space:pre-line;line-height:1.8;font-size:12px;color:#d5e5e2;background:#14212be8;border-left:2px solid #73cfc3;padding:9px 13px;border-radius:3px;pointer-events:none}
+@media(max-width:1100px){#detailNote{bottom:161px;font-size:11px}}
 .resultRow{align-items:center}
-#infoToggle{position:absolute;right:342px;top:135px;z-index:12;width:36px;height:36px;font-size:22px;line-height:1;padding:4px}
-body.info-hidden #side{display:none}body.info-hidden #c{width:100%}body.info-hidden #bottombar{right:16px}body.info-hidden #infoToggle{right:16px}
 .views{overflow-x:auto;scrollbar-width:thin}.views button{white-space:nowrap;flex-shrink:0}
 .views,#stations{color-scheme:dark;scrollbar-color:#486170 #172431}
-@media(max-width:1100px){#infoToggle{right:296px;top:162px}}
 @media(max-width:760px){
  #topbar{height:128px;grid-template-rows:36px 36px 38px}.brand .title{font-size:13px}.brand .sub{display:none}
  #stations{overflow-x:auto;white-space:nowrap}#stations .st{flex-shrink:0}.views button{font-size:11px;padding:5px 8px}
- #c,body.info-hidden #c{top:134px;width:100%;height:calc(100% - 300px)}
+ #c{top:134px;width:100%;height:calc(100% - 300px)}
  #side{top:174px;bottom:160px;right:10px;width:min(310px,calc(100% - 20px));z-index:10;background:#10202bf5}
- #infoToggle,body.info-hidden #infoToggle{top:138px;right:12px}
  #bottombar{left:8px;right:8px;bottom:8px;padding:8px;min-height:128px}
- #detailNote{top:138px;left:8px;font-size:10px;max-width:calc(100% - 62px);padding:5px 7px}
- #pipFrame{width:150px;left:8px;bottom:160px}
+ #detailNote{top:138px;bottom:auto;left:8px;font-size:10px;max-width:calc(100% - 62px);padding:5px 7px}
 }
 @media(max-height:520px){
  #topbar{height:92px;padding:3px 10px;grid-template-columns:1fr;grid-template-rows:22px 28px 32px}
  .brand .title{font-size:13px}.brand .sub{display:none}#stations{grid-row:2;overflow:auto;white-space:nowrap}#stations .st{padding:3px 7px;flex-shrink:0;font-size:10px}
  .views{grid-row:3;gap:4px}.views button{padding:3px 7px;font-size:10px}.views select{font-size:10px}
- #c,body.info-hidden #c{top:98px;width:100%;height:calc(100% - 177px)}
+ #c{top:98px;width:100%;height:calc(100% - 177px)}
  #side{top:98px;right:8px;bottom:80px;width:290px;z-index:10;background:#10202bf5}
- #infoToggle,body.info-hidden #infoToggle{top:102px;right:12px}
- #bottombar,body.info-hidden #bottombar{left:8px;right:8px;bottom:5px;min-height:0;padding:5px 10px;gap:4px;grid-template-rows:30px 25px}
+ #bottombar{left:8px;right:8px;bottom:5px;min-height:0;padding:5px 10px;gap:4px;grid-template-rows:30px 25px}
  #bottombar .stepRow{display:none}#bottombar .clock{grid-row:2}
- #detailNote{top:102px;left:8px;font-size:10px;max-width:calc(100% - 65px);padding:3px 7px}
- #pipFrame{width:135px;bottom:83px}
+ #detailNote{top:102px;bottom:auto;left:8px;font-size:10px;max-width:calc(100% - 65px);padding:3px 7px}
 }

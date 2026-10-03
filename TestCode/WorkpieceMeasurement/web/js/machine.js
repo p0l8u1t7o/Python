@@ -7,8 +7,9 @@ import { addEquipmentDetail } from './equipment-detail.js';
 import { MAT as SHARED } from '@core/geom/materials.js';
 
 const M = (color, metalness, roughness, o = {}) => new THREE.MeshStandardMaterial({ color, metalness, roughness, ...o });
-// 本機外觀材質：spec.js 的機構以鍵名指定，render-finishes.js 的 applyFinishes 會再加上拉絲／花崗岩／烤漆紋理並改色，
-// 所以留在專案內（改共用 MAT 會連帶改到其他模型）；一般黑色橡膠件等通用外觀才用 core 的 MAT（SHARED）
+// 本機外觀材質：spec.js 的機構以鍵名指定，render-finishes.js 的 applyFinishes 再加上本機專用的拉絲條紋、花崗岩、
+// 烤漆紋理並調色。顏色、金屬度與紋理都和 core 的 MAT／finished()（細紋 bump）不同，換用會改變外觀，所以留在專案內；
+// 一般黑色橡膠件等通用外觀才用 core 的 MAT（SHARED）
 const MAT = {
   granite: M(0x4b4f55, 0.05, 0.62), frame: M(0x8e98a3, 0.75, 0.42), axis: M(0x2c333c, 0.6, 0.45), plate: M(0xaab3bc, 0.8, 0.35),
   lens: M(0x15181d, 0.55, 0.38), camera: M(0x1f4f86, 0.45, 0.45), light: M(0xd8dde2, 0.4, 0.4), motor: M(0x23272d, 0.55, 0.42),

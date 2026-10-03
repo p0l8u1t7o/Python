@@ -15,7 +15,6 @@
 </head>
 <body>
 <div id="app">
-  <button id="infoToggle" aria-label="顯示或隱藏資訊" aria-controls="side" aria-expanded="true">ⓘ</button>
   <canvas id="c"></canvas>
 
   <header id="topbar">
@@ -83,9 +82,10 @@
   </aside>
 
   <div id="detailNote" hidden></div>
-  <div id="pipFrame">
+  <div id="pipFrame" hidden>
     <div class="pipTitle" id="pipTitle">取像</div>
-    <canvas id="pipImage" aria-label="取像模擬畫面"></canvas>
+    <div id="pipImage" aria-label="取像模擬畫面"></div>
+    <div id="pipResult" class="pipResult"></div>
   </div>
 
   <footer id="bottombar">

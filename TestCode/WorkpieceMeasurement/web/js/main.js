@@ -1,16 +1,15 @@
-// 主程式：舞台（core/ui/stage.js）＋播放控制（core/ui/player.js）＋本專案的視角、面板與取像模擬子畫面
+// 主程式：舞台（core/ui/stage.js）＋播放控制（core/ui/player.js）＋相機視窗（core/ui/viewer-workspace.js）＋本專案的視角、面板與取像模擬
 import * as THREE from 'three';
 import { createStage, exposeSim } from '@core/ui/stage.js';
 import { createPlayer } from '@core/ui/player.js';
+import { createViewerWorkspace } from '@core/ui/viewer-workspace.js';
 import { SPECS, SCENARIOS, TRAYS, DEMO, X1, X2, Y0, YA, YM, YS, YT, DIR_A, occupied, inTol } from './spec.js';
 import { STATIONS } from './sequence.js';
 import { createProject } from './project.js';
-import { createCameraSim, TITLES } from './camera-sim.js';
+import { createCameraSim, TITLES, W as SIM_W, H as SIM_H } from './camera-sim.js';
 import { overviewFrame } from './render-finishes.js';
 
 const qp = new URLSearchParams(location.search), movie = qp.has('movie');
-const compactViewport=matchMedia('(max-width:900px), (max-height:520px)').matches;
-document.body.classList.toggle('info-hidden',compactViewport);
 const specId = SPECS[qp.get('spec')] ? qp.get('spec') : 'B', scenarioId = SCENARIOS[qp.get('result')] ? qp.get('result') : 'OK';
 
 // ---------------------------------------------------------------- 場景
@@ -33,8 +32,8 @@ const { renderer, scene, camera, controls } = stage;
 const project = createProject({ scene, spec: specId, scenario: scenarioId });
 const { machine, sequence, spec: s, scenario: sc, measurement: m } = project;
 project.grid.visible = qp.has('grid');
-const pipCanvas = document.getElementById('pipImage'), sim = createCameraSim(pipCanvas, s, m, scenarioId);
-const ids = ['action', 'substep', 'zoneDot', 'zoneTxt', 'checklist', 'chkCount', 'loop', 'progBar', 'signals', 'poseError', 'phase', 'result', 'specSel', 'exportBtn', 'showGuards', 'showLabels', 'showBeams', 'showPip', 'cycleTime', 'pipFrame', 'pipTitle', 'stations', 'meas', 'verdict', 'trayMap', 'trayNote', 'specName', 'specNote', 'detailNote'];
+const sim = createCameraSim(s, m, scenarioId);
+const ids = ['action', 'substep', 'zoneDot', 'zoneTxt', 'checklist', 'chkCount', 'progBar', 'signals', 'poseError', 'phase', 'result', 'specSel', 'exportBtn', 'showGuards', 'showLabels', 'showBeams', 'showPip', 'cycleTime', 'pipFrame', 'stations', 'meas', 'verdict', 'trayMap', 'trayNote', 'specName', 'specNote', 'detailNote'];
 const ui = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
 for (const v of Object.values(SPECS)) ui.specSel.add(new Option(v.name, v.id));
 for (const v of Object.values(SCENARIOS)) ui.result.add(new Option('情境：' + v.name, v.id));
@@ -43,7 +42,7 @@ const reload = (k, v) => { const q = new URLSearchParams(location.search); q.set
 ui.specSel.onchange = () => reload('spec', ui.specSel.value); ui.result.onchange = () => reload('result', ui.result.value);
 ui.specName.textContent = `${s.name} · 配方 ${s.recipe}`; ui.specNote.textContent = `${s.note}。工件採圖面尺寸、設備為規劃包絡；量測值、缺陷與節拍為模擬示意，待樣品與 POC 校正。`;
 
-// 3D 標籤（共用舞台的 addLabel；畫布不在 #app 左上角，標籤的原點另由 placeLabels 對齊畫布）
+// 3D 標籤（共用舞台的 addLabel；畫布在頁面中的偏移由舞台處理）
 const V = (x, y, z) => new THREE.Vector3(x, y, z), addLabel = (html, pos) => stage.addLabel(html, pos);
 addLabel('<b>A</b> 4K 線掃＋1.5× 遠心', V(X1 + DIR_A[0] * 150, YA + 30, DIR_A[2] * 150));
 addLabel('<b>B</b> 0.5× 雙遠心鏡頭', V(X1 - 150, YA + 28, 0)); addLabel('<b>B</b> 遠心平行背光', V(X1 + 80, YA + 24, 0));
@@ -86,13 +85,15 @@ const VIEWS = {
   part: () => { const p = machine.partWorld(); return [p.clone().add(V(-26, 16, -34)).toArray(), p.toArray()]; },
 };
 const NEAR = { chuck: 0.5, seat: 0.5, part: 0.5 }, VIEW_TWEEN = .9;
-// tween：與舞台的視角轉場同步計時（同一個 dt），工件跟拍時把轉場期間工件的位移疊加上去
-let selectedView = 'iso', tween = null; const lastPart = V(0, 0, 0);
+// 工件跟拍：每格把工件位移交給 stage.shiftView（相機、注視點與進行中轉場的起訖點一起平移）
+let selectedView = 'iso'; const lastPart = V(0, 0, 0);
 function setView(name, instant = false) {
-  if (!VIEWS[name]) return; selectedView = name; camera.near = NEAR[name] || 4; camera.updateProjectionMatrix();
+  if (!VIEWS[name]) return;
+  workspace.stopFollowing();                         // 先解除焦點追隨（它會還原自己改過的近裁切面）
+  selectedView = name; camera.near = NEAR[name] || 4; camera.updateProjectionMatrix();
   machine.details.setMode(name === 'electrical' ? 'cutaway' : name === 'xray' ? 'xray' : 'shell');
   const [p, t] = typeof VIEWS[name] === 'function' ? VIEWS[name]() : VIEWS[name];
-  stage.goTo(p, t, instant, VIEW_TWEEN); tween = instant ? null : { u: 0, offset: V(0, 0, 0) };
+  stage.goTo(p, t, instant, VIEW_TWEEN);
   document.querySelectorAll('.views button').forEach(b => b.classList.toggle('selected', b.dataset.view === name));
   ui.detailNote.hidden = !['chuck', 'seat', 'part', 'electrical', 'xray', 'wiring', 'carriers', 'fibers'].includes(name);
   ui.detailNote.textContent = { chuck: `夾頭特寫 · 夾持帶只在杯口 1.5 mm\n吸嘴由後方爪間空隙伸入，貼靠中心距底面 1.8 mm`, seat: `環座特寫 · ${s.ring} 內孔 Ø${s.ringBore}\n下感測器由空心軸內向上量外底面，上感測器穿過杯口量內底面`, part: `工件跟拍 · Ø${s.od} × ${s.len} mm，實際尺寸` }[name] || '';
@@ -103,13 +104,10 @@ function setView(name, instant = false) {
 }
 document.querySelectorAll('.views button').forEach(b => b.onclick = () => setView(b.dataset.view));
 
-// 播放列：共用 createPlayer（播放、重播、速度、時間軸、時鐘、步驟選單、上一步／下一步），事件即序列的每一步。
-// 本專案預設 0.5× 播放；?movie 由錄影程式逐格驅動，不自動播放
-const playerQuery = new URLSearchParams(qp);
-if (!playerQuery.has('speed')) playerQuery.set('speed', '0.5');
-if (movie) playerQuery.set('pause', '');
+// 播放列：共用 createPlayer（播放、重播、速度、時間軸、時鐘、步驟選單、上一步／下一步、#loop 連續循環），事件即序列的每一步。
+// 本專案預設 0.5×（?speed= 可覆寫）；?movie 由錄影程式逐格驅動，不自動播放
 player = createPlayer({
-  total, qp: playerQuery, speeds: [.25, 2],
+  total, qp: movie ? new URLSearchParams(qp + '&pause') : qp, speeds: [.25, 2], speed: .5,
   events: sequence.events.map(e => ({ time: e.time, label: `S${e.station} · ${e.label}` })),
   apply: t => { sampleAt(t); return current; },
 });
@@ -180,37 +178,40 @@ function drawHud() {
   ui.chkCount.textContent = n + ' / ' + checklist[S.station].length;
   ui.stations.querySelectorAll('.st').forEach(b => { const i = +b.dataset.st; b.classList.toggle('active', i === S.station); b.classList.toggle('done', i < S.station || T >= total); });
   ui.progBar.style.width = T / total * 100 + '%';
-  ui.pipFrame.hidden = !ui.showPip.checked; if (ui.showPip.checked) { ui.pipTitle.textContent = TITLES[sim.draw(S, done)] + '（模擬）'; ui.pipFrame.classList.toggle('flash', !!S.flash); }
+  // 取像模擬畫進 viewer-workspace 的相機視窗（隱藏且未彈出獨立視窗時不繪製）
+  ui.pipFrame.classList.toggle('flash', !!S.flash);
+  workspace.renderImage({
+    draw: (g, w, h) => { g.scale(w / SIM_W, h / SIM_H); sim.draw(S, done, g); }, aspect: SIM_W / SIM_H, time: T,
+    title: TITLES[S.pip] + '（模擬）', result: `${S.pip === 'result' && judged ? `判定 ${m.result}${m.code ? ' · ' + m.code : ''}` : pipNote(S)} · 2D 示意影像，非實拍`,
+  });
   stage.updateLabels(ui.showLabels.checked);
   document.getElementById('diagnostics').textContent = JSON.stringify({ time: T, total, step: current.index, station: S.station, action: S.action, loc: S.loc, optic: S.optic, pip: S.pip, playing, spec: specId, scenario: scenarioId });
 }
-// 標籤原點對齊畫布（畫布位置隨版面與資訊欄收合而變）
-const app = document.getElementById('app');
-function placeLabels() { app.style.setProperty('--canvas-x', canvas.offsetLeft + 'px'); app.style.setProperty('--canvas-y', canvas.offsetTop + 'px'); }
-// 縮放：舞台已處理畫布與相機比例；全景視角另依新比例重新取景（錄影時畫布尺寸由錄影程式固定，不跟視窗變）
-function resize() { if (movie) return; stage.resize(); placeLabels(); if (selectedView === 'iso') setView('iso', true); }
-if (!movie) addEventListener('resize', () => { placeLabels(); if (selectedView === 'iso') setView('iso', true); });   // 舞台的 resize 監聽先註冊，這裡比例已更新
-const infoToggle=document.getElementById('infoToggle');
-infoToggle.setAttribute('aria-expanded',String(!document.body.classList.contains('info-hidden')));
-infoToggle.onclick=()=>{document.body.classList.toggle('info-hidden');infoToggle.setAttribute('aria-expanded',String(!document.body.classList.contains('info-hidden')));resize();};
+const pipNote = S => S.flash ? '本幀頻閃取像' : S.optic === 'A' ? '線掃取像中' : S.optic === 'CF' ? '共焦取樣中' : '待命／移動中';
+// 縮放：舞台處理畫布與相機比例；全景視角另依新比例重新取景。viewer-workspace 在視窗、版面（資訊欄收合）或畫布尺寸改變時呼叫；
+// 錄影時畫布尺寸由錄影程式固定，不跟視窗變
+function resize() { if (movie) return; stage.resize(); if (selectedView === 'iso') setView('iso', true); }
+// 相機視窗（拖曳、放大、獨立視窗）、資訊欄收合、產品焦點追隨與手機版面：core viewer-workspace，與其他站共用
+if (qp.get('pip') === '0') ui.showPip.checked = false;
+const workspace = createViewerWorkspace({
+  camera, controls, canvas, resize, focusOccluders: [machine.hood], getFocus: () => machine.partWorld(), focusOffset: [-26, 16, -34], focusNear: .5,
+  onFocus: () => {
+    stage.cancelTween(); selectedView = 'focus'; machine.details.setMode('shell'); ui.detailNote.hidden = true;
+    document.querySelectorAll('.views button').forEach(b => b.classList.remove('selected'));
+  },
+});
+if (qp.get('pip') === '1' && !ui.showPip.checked) { ui.showPip.checked = true; ui.showPip.dispatchEvent(new Event('change')); }   // 手機版預設收合，?pip=1 仍顯示
 // 完整一格：介面與場景顯示狀態（drawHud）＋渲染；seekTo 與錄影都用這個
 function render() { drawHud(); stage.render(); }
 // 每格更新（舞台迴圈接著做 controls.update() 與渲染）
 function tick(dt) {
-  const wasPlaying = player.playing;
-  player.update(dt);
-  if (wasPlaying && !player.playing && ui.loop.checked) { player.seekTo(0); player.play(); }   // 連續循環
-  // 工件跟拍：舞台的視角轉場每格由起訖點重算位置，轉場期間累積的工件位移要整段加上；轉場結束後逐格加位移
+  player.update(dt);                                  // 連續循環由播放列依 #loop 處理
+  // 工件跟拍：工件這格的位移整體平移視角（轉場中也跟住，跳播後下一格跟上）
   const p = machine.partWorld(), d = p.clone().sub(lastPart); lastPart.copy(p);
-  if (tween) tween.u = Math.min(1, tween.u + dt / VIEW_TWEEN);
-  if (selectedView === 'part') {
-    const shift = tween ? tween.offset.add(d) : d;
-    camera.position.add(shift); controls.target.add(shift);
-  }
-  if (tween?.u >= 1) tween = null;
-  drawHud();
+  if (selectedView === 'part' && d.lengthSq() > 0) stage.shiftView(d);
+  drawHud(); workspace.follow();
 }
-lastPart.copy(machine.partWorld()); stage.resize(); placeLabels(); setView('iso', true);
+lastPart.copy(machine.partWorld()); stage.resize(); setView('iso', true);
 exposeSim({
   seekTo, pause: () => player.pause(), play: () => player.play(), setView, views: Object.keys(VIEWS), get T() { return player.T; }, get state() { return S; }, total, project, player, camera, controls,
   steps: sequence.steps, events: sequence.events, stationStart: sequence.stationStart, spec: s, scenario: sc, measurement: m,
@@ -221,10 +222,10 @@ if (qp.has('time')) { player.pause(); seekTo(+qp.get('time')); }
 if (qp.has('view')) { lastPart.copy(machine.partWorld()); setView(qp.get('view'), true); }
 if (qp.has('labels')) ui.showLabels.checked = true;
 if (qp.get('hood') === '0') ui.showGuards.checked = false;
-if (qp.get('pip') === '0') ui.showPip.checked = false;
-if (compactViewport && qp.get('pip') !== '1') ui.showPip.checked = false;
-if (qp.has('cam')) { const a = qp.get('cam').split(',').map(Number); if (a.length === 6 && a.every(Number.isFinite)) { stage.goTo(a.slice(0, 3), a.slice(3), true); tween = null; } }
-document.getElementById('loading').classList.add('hide'); render(); stage.loop(tick);   // ?movie 時舞台不啟動迴圈
+// 自訂相機：之後縮放不再以全景重新取景
+if (qp.has('cam')) { const a = qp.get('cam').split(',').map(Number); if (a.length === 6 && a.every(Number.isFinite)) { stage.goTo(a.slice(0, 3), a.slice(3), true); selectedView = 'cam'; document.querySelectorAll('.views button').forEach(b => b.classList.remove('selected')); } }
+document.getElementById('loading').classList.add('hide'); render();
+stage.loop(tick, { render: () => workspace.renderOverview(renderer, scene) });   // 跟隨產品焦點時隱藏外罩；?movie 時舞台不啟動迴圈
 
 // ---------------------------------------------------------------- 錄影（?movie）：由 core/movie 以絕對時間逐格驅動
 if (movie) {

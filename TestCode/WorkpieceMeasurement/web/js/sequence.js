@@ -1,14 +1,13 @@
 // 動作序列：由絕對時間取樣出完整狀態（軸位置＋工件所在＋取像進度），跳站／倒退不殘留。
 // 排程建在共用的 createStepSequence（core/anim/sequence.js）上：這裡只負責依軸限速反推每步時間、
-// 每步自己的緩動（smooth／trap），以及取樣後附加的完成項目與取像進度。
+// 指定每步的緩動（smooth／trap，以步驟的 ease 交給 core 插值），以及取樣後附加的完成項目與取像進度。
 import { createStepSequence } from '@core/anim/sequence.js';
-import { linear } from '@core/anim/track.js';
 import { SPECS, SCENARIOS, DEMO, LIMIT, X1, X2, XW, YM, YS, YT, YC, RETRACT, pocket, shuttleFor } from './spec.js';
 
 export const STATIONS = ['取料', 'ST1 外觀／尺寸', '移載', 'ST2 底部量測', '判定分料'];
-const smooth = u => u * u * (3 - 2 * u);
+const smooth = u => u * u * (3 - 2 * u);   // 三次 smoothstep（與 core 的五次 smooth 不同，dur() 的限速反推依此曲線）
 const trap = u => { const k = 0.12; return u < k ? u * u / (2 * k * (1 - k)) : u > 1 - k ? 1 - (1 - u) * (1 - u) / (2 * k * (1 - k)) : (u - k / 2) / (1 - k); };
-const EASE = { smooth, trap, linear };
+const EASE = { smooth, trap };
 // smoothstep 的峰值速度 1.5 d/T、峰值加速度 6 d/T²，由限速反推時間
 const dur = (d, v, a) => Math.max(0.06, 1.5 * Math.abs(d) / v, Math.sqrt(6 * Math.abs(d) / a));
 const axisDur = (k, d) => k === 'tx' ? dur(d, LIMIT.vx, LIMIT.ax) : k === 'zt' ? dur(d, LIMIT.vz, LIMIT.az) : k === 'inZ' || k === 'outZ' ? dur(d, LIMIT.vShuttle, LIMIT.aShuttle) : k === 'a' ? 0.08 : k === 'jaw' ? 0.15 : 0.06;
@@ -21,14 +20,14 @@ export function createSequence({ spec = 'B', scenario = 'OK', apply } = {}) {
   // 軸位置在步驟中插值；工件所在、真空、取像通道等在步驟開始時切換（discrete）
   const axes = { tx: pin.x, zt: YC, a: RETRACT, jaw: 1, th1: 0, th2: 0, r2: s.scan.r0, inZ: shuttleFor('IN', DEMO.k), outZ: shuttleFor('OK', DEMO.filled.OK), headLift: 30 };
   const flags = { loc: 'in', vac: 0, optic: null, pip: 'idle', shotB: 0, zone: 'free', scanNo: 0 };
-  // 共用排程用線性插值，取樣時再依每步的 ease 重新插軸位置（core 的 ease 是整條序列共用）
-  const seq = createStepSequence({ base: { ...axes, ...flags }, discrete: Object.keys(flags), ease: linear, stations: STATIONS });
+  // 軸位置由 core 依每步的 ease（函式）插值；序列預設 smooth
+  const seq = createStepSequence({ base: { ...axes, ...flags }, discrete: Object.keys(flags), ease: smooth, stations: STATIONS });
   let station = 0;
   // step(動作, 說明, { to: 軸目標, set: 狀態切換, dur: 指定秒數（省略時由軸限速反推）, ease, done, prog, exposure })
   function step(action, sub, o = {}) {
     const to = o.to || {}, now = seq.state;
     const d = o.dur ?? Math.max(0.06, ...Object.entries(to).map(([k, v]) => axisDur(k, v - now[k])));
-    return seq.add(station, d, action, sub, { ...to, ...o.set }, { index: seq.steps.length, ease: o.ease || 'smooth', done: o.done, prog: o.prog, exposure: o.exposure });
+    return seq.add(station, d, action, sub, { ...to, ...o.set }, { index: seq.steps.length, ease: EASE[o.ease || 'smooth'], done: o.done, prog: o.prog, exposure: o.exposure });
   }
   const xMove = (x, action, sub, o = {}) => step(action, sub, { ...o, to: { ...(o.to || {}), tx: x } });
   // 吸附：前進貼靠 → 建立真空（工件所在於步驟交界切換，位置連續）
@@ -99,9 +98,9 @@ export function createSequence({ spec = 'B', scenario = 'OK', apply } = {}) {
 
   const { steps, total, stationStart, events } = seq;
   function sample(T) {
-    const { state, step: st, index: i, u, time } = seq.sample(T), e = EASE[st.ease](u);
+    const { state, step: st, index: i, u, time } = seq.sample(T);
     const S = { ...Object.fromEntries(Object.keys(flags).map(k => [k, state[k]])), station: st.station, action: st.action, sub: st.sub, u, step: i, time };
-    for (const k of AXES) S[k] = st.initial[k] + (st.end[k] - st.initial[k]) * e;
+    for (const k of AXES) S[k] = state[k];
     const completed = new Set(); for (const x of steps) if (x.done && (x.index < i || (x.index === i && time >= total - 1e-9))) completed.add(x.done);
     const prog = id => { const x = steps.find(y => y.prog === id); return !x ? 0 : x.index < i ? 1 : x.index === i ? u : 0; };
     S.scanA = prog('scanA'); S.spiral = [prog('spiral0'), prog('spiral1')];

@@ -18,7 +18,7 @@
 | 整機架構 | 照規格書半自動（不改 SCARA 全自動或分度盤） |
 | 工件範圍 | 三種杯體加工件 A／B／C；`docs/` 內的沖壓板件與帶齒管件不納入 |
 | 判定情境 | OK、NG-D、NG-A、NG-T、ERR 五種 |
-| 配套 | 取像模擬子畫面、驗證腳本、成本估算表 |
+| 配套 | 取像模擬相機視窗、驗證腳本、成本估算表 |
 
 ## 流程
 
@@ -67,8 +67,8 @@ node ../core/tools/serve.mjs WorkpieceMeasurement --no-open
 - 右上兩個選單切換**規格**（A／B／C）與**情境**，切換後重新載入。
 - 站別按鈕跳到 S0～S4 最有代表性的一刻並切到對應視角；下拉選單可選任一步驟（前面標開始時間），搭配前後步與時間滑桿。
 - 預設以 0.5× 播放（約 11.6 秒為動畫規劃值）；可調 0.25～2×，可勾「連續循環」。
-- 視角：全景、ST1 光學、夾頭特寫、ST2 測厚、環座特寫、托盤、工件跟拍、俯視；滑鼠可自由旋轉縮放。
-- **左下子畫面**是取像模擬：通道 A 三張展開圖逐行長出來、通道 B 剪影與量測值、通道 C 端面與擬合圓、ST2 螺旋厚度圖、判定結果。這是繪製的示意影像，不是實拍。
+- 視角：全景、ST1 光學、夾頭特寫、ST2 測厚、環座特寫、托盤、工件跟拍、俯視；滑鼠可自由旋轉縮放。畫面上方的工具列可收合右側資訊（◨）、開關相機視窗（▣）、追隨工件（◎）。
+- **相機視窗**（左上，可拖曳、放大、開成獨立視窗）是取像模擬：通道 A 三張展開圖逐行長出來、通道 B 剪影與量測值、通道 C 端面與擬合圓、ST2 螺旋厚度圖、判定結果；頻閃取像時邊框亮起。這是繪製的示意影像，不是實拍。手機版預設收合（`?pip=1` 仍顯示）。
 - 右側顯示量測結果（取像完成才出現數值）、托盤佔用、設備訊號、站別項目。
 - 「匯出紀錄」產生 JSON：情境、量測值、缺陷、取像事件、版本欄位。**沒有實拍影像、沒有實測值、未接 MES。**
 
@@ -80,15 +80,15 @@ node ../core/tools/serve.mjs WorkpieceMeasurement --no-open
 
 主控台：`window.sim.seekTo(sec)`、`pause()`、`play()`、`setView(name)`、`views`、`total`、`steps`、`events`、`stationStart`、`measurement`、`project`、`player`、`camera`、`controls`。
 
-### 共用寫法（2026-10-03）
+### 共用寫法（2026-10-03，同日第二輪改用 core 新增的功能）
 
-依 `core/README.md`「統一寫法」改寫，畫面與流程結果不變：
+依 `core/README.md`「統一寫法」改寫，流程結果不變：
 
-- 排程：`sequence.js` 建在 `createStepSequence` 上，`step(動作, 說明, { to, set, dur, ease })` 只負責由軸限速反推時間；每步的緩動（smooth／trap）在取樣時套用。提供 `events`、`stationStart`、`total`，15 組流程逐點取樣與改寫前完全相同。
-- 播放列：`createPlayer`（播放、重播、速度、時間軸、時鐘、步驟選單、前後步）；預設 0.5×、連續循環、站別按鈕與網址參數保留在本專案。
-- 3D 標籤用 `stage.addLabel`／`updateLabels`（標籤原點以 CSS 變數對齊畫布）；視角切換用 `stage.goTo`，全景縮放重新取景與工件跟拍（轉場中也跟住工件）保留。
-- 取像子畫面維持本專案的 2D 模擬（`camera-sim.js`）：它畫的是示意影像與量測值，不是虛擬相機的 3D 畫面，不適用 `createViewerWorkspace` 的相機視窗。
-- 電盤細節的鋼件、深色線槽、橡膠件與吸嘴墊片改用共用 `MAT`；機台本體材質會由 `render-finishes.js` 加紋理改色，留在 `machine.js`。
+- 排程：`sequence.js` 建在 `createStepSequence` 上，`step(動作, 說明, { to, set, dur, ease })` 只負責由軸限速反推時間；每步的緩動（本專案的三次 smoothstep／trap）以步驟的 `ease` 函式交給 core 插值。提供 `events`、`stationStart`、`total`，15 組流程逐點取樣與改寫前逐位元相同。
+- 播放列：`createPlayer`（播放、重播、速度、時間軸、時鐘、步驟選單、前後步，`speed: .5` 預設 0.5×，`#loop` 連續循環）；站別按鈕與網址參數保留在本專案。
+- 3D 標籤用 `stage.addLabel`／`updateLabels`（畫布偏移由 stage 處理）；視角切換用 `stage.goTo`，全景縮放重新取景保留；工件跟拍每格以 `stage.shiftView` 平移視角（轉場中也跟住工件）。
+- 取像模擬（`camera-sim.js`，612 × 512 座標的 2D 示意圖）經 `createViewerWorkspace` 的 `renderImage` 畫進共用相機視窗，拖曳、放大、獨立視窗、資訊欄收合（取代原本的 ⓘ）、產品焦點追隨與手機版面與其他站一致；細節說明移到畫布左下角，右側量測表不變。
+- 電盤細節的鋼件、深色線槽、橡膠件與吸嘴墊片改用共用 `MAT`；機台本體材質的顏色、金屬度與 `render-finishes.js` 的拉絲／花崗岩／烤漆紋理都和 `MAT`／`finished()` 不同，換用會改變外觀，留在 `machine.js`。
 
 ## 機構配置
 
@@ -176,7 +176,7 @@ node ../core/tools/check.mjs WorkpieceMeasurement     # 在本資料夾；在 Te
 | `web/js/product.js` | 工件（依剖面車出） |
 | `web/js/project.js` | 專案介面：建地面與機台，`apply(t)` 把整個場景放到時間 t（main.js 與統一檢查共用） |
 | `web/js/machine.js` | 機台、托盤、移載、光束示意 |
-| `web/js/camera-sim.js` | 取像模擬子畫面 |
+| `web/js/camera-sim.js` | 取像模擬（畫進共用相機視窗） |
 | `web/js/main.js` | 舞台設定（`core/ui/stage.js` 的 `createStage`：曝光、背景與霧、相機、控制範圍、主光陰影、補光與輪廓光）、播放列（`core/ui/player.js`）、視角、介面、紀錄匯出、`?movie` 錄影掛勾（場景與時間狀態取自 `project.js`） |
 | `tools/verify.mjs` | 流程／幾何／運動驗證 |
 | `tools/update_cost_estimate.mjs` | 更新成本試算表並核對公式 |
@@ -196,7 +196,7 @@ node ../core/tools/check.mjs WorkpieceMeasurement     # 在本資料夾；在 Te
 
 CL-3000、CL-S015 ×2、CL-S015N ×2、CL-CV5 ×2、OP-88864 ×1 按同一報價套組整併。OP-88864 是感測頭對置調整治具；ST1 夾頭與 ST2 環座另外設計。新增上頭避讓軸、固定支架、實際穿線孔與護口。元件模型沿用共用 `tools/electrical-components.js` 的配置示意外形。
 
-點選「電盤剖視」「電盤透視」「整線配置」檢視。資訊可由 ⓘ 收合，手機預設收合。材料與器件尺寸、線徑、彎曲半徑、熱負載和原廠接腳須待選型確認，電路圖為工程規劃用途。
+點選「電盤剖視」「電盤透視」「整線配置」檢視。資訊可由工具列的 ◨ 收合，手機預設收合。材料與器件尺寸、線徑、彎曲半徑、熱負載和原廠接腳須待選型確認，電路圖為工程規劃用途。
 
 重建圖面：先 `node WorkpieceMeasurement/tools/export_control_plan.mjs`，再 `python tools/circuit-drawings/render.py WorkpieceMeasurement`（需 reportlab 與中文字型）。成本更新需 Node 的 `@oai/artifact-tool` 及既有 XLSX，可執行 `node WorkpieceMeasurement/tools/update_cost_estimate.mjs`。
 
