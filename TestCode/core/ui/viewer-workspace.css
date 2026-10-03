@@ -77,6 +77,8 @@ body.capture .viewer-tools,body.capture #pipFrame{display:none!important}
   .viewer-compact #app{--viewer-top:56px!important}
   .viewer-compact .viewer-tools{top:2px!important;left:auto;right:58px}
   .viewer-compact #topbar .brand{margin-right:300px}
+  /* 橫向手機：側欄與電控面板改貼右側（左半邊畫布仍看得到），不從底部往上蓋住整個畫布 */
+  .viewer-workspace.viewer-compact #side,.viewer-workspace.viewer-compact #left,.viewer-workspace.viewer-compact #electrical-inspector{left:auto!important;right:8px!important;width:min(420px,48vw)!important;top:calc(var(--viewer-top,56px) + 4px)!important;bottom:calc(78px + env(safe-area-inset-bottom,0px))!important;max-height:none!important}
 }
 
 .camera-source{display:flex;align-items:center;gap:6px;padding:4px 10px;font-size:12px;color:#9fb0c0}.camera-source select{flex:1;min-width:0;background:#1a2633;color:#e6edf3;border:1px solid #2b3a4a;border-radius:4px;padding:2px 4px}

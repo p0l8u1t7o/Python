@@ -64,11 +64,9 @@ function focusPoint(hole = true) {
 function closeView(hole) {
   const t = focusPoint(hole), span = Math.max(PRODUCT.hole.l * 3, 23);
   // Keep the board overview below the gantry beam, including when the A beam crosses the board.
-  // 窄畫布（手機直向）舞台會把距離乘上 fitScale：基板近看只把水平方向拉遠到 1.7 倍、高度不變，
-  // 相機才會留在龍門下方、前罩（z 840）與立柱內側；先除以 fitScale 抵銷舞台的倍數（桌面 fitScale＝1，不受影響）
-  const f = stage.fitScale, k = Math.min(f, 1.7);
-  const offset = hole ? new THREE.Vector3(span * .4, span * .72, span) : new THREE.Vector3(200 * k / f, 235 / f, 450 * k / f);
-  return [t.clone().add(offset).toArray(), t.toArray()];
+  // 窄畫布（手機直向）：基板近看只把水平方向拉遠（最多 1.7 倍）、高度不變，相機才會留在龍門下方、前罩（z 840）與立柱內側
+  const offset = hole ? new THREE.Vector3(span * .4, span * .72, span) : new THREE.Vector3(200, 235, 450);
+  return [t.clone().add(offset).toArray(), t.toArray(), hole ? {} : { fit: (f, o) => { const k = Math.min(f, 1.7); return o.set(o.x * k, o.y, o.z * k); } }];
 }
 
 // ---------------------------------------------------------------- 視角：[相機位置, 注視點] 或 () => [...]，切換用 stage.goTo
@@ -87,8 +85,8 @@ function setView(name, instant = false) {
   workspace.stopFollowing(); setElectricalCutaway(scene, name === 'electrical');
   if (!views[name]) return;
   camera.near = name === 'hole' ? .2 : 5; camera.updateProjectionMatrix();
-  const [p, t] = typeof views[name] === 'function' ? views[name]() : views[name];
-  stage.goTo(p, t, instant, TWEEN);
+  const [p, t, fit] = typeof views[name] === 'function' ? views[name]() : views[name];
+  stage.goTo(p, t, instant, TWEEN, fit);
   follow = ['board', 'hole'].includes(name) ? { hole: name === 'hole', last: focusPoint(name === 'hole') } : null;
   document.querySelectorAll('.views button').forEach(b => b.classList.toggle('selected', b.dataset.view === name));
 }

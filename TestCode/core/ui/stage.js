@@ -9,7 +9,8 @@
 //
 // 小螢幕（手機直向、窄視窗）：
 //   narrowFit  畫布比 aspect 窄時，goTo 的相機距離乘上 (aspect / 畫布寬高比)^power（上限 max），保住水平方向的取景；
-//              旋轉螢幕或改變視窗時依新比例調整目前距離（含使用者自己轉過的視角）與 maxDistance
+//              旋轉螢幕或改變視窗時依新比例調整目前距離（含使用者自己轉過的視角）與 maxDistance；
+//              個別視角可用 goTo(…, { fit: false 或 (倍數, 偏移) => 新偏移 }) 自訂
 //   declutter  'narrow'（預設：畫布寬度 < 1100 px 時，與精簡版面一致）、true（一律）或 false：標籤互相重疊時隱藏優先度低的
 //              （addLabel 的 priority 大者優先，同優先度先加入者優先）
 import * as THREE from 'three';
@@ -144,17 +145,31 @@ function buildStage({
     return Math.min(narrowFit.max ?? 2.4, (narrowFit.aspect / (w / h)) ** (narrowFit.power ?? .85));
   };
   let fitScale = 1, baseMaxDistance = null;
+  // 最近一次 goTo 的視角：注視點、桌面偏移（相機－注視點）、fit 方式與目前套用的偏移；
+  // 相機仍停在該視角（或正轉場過去）時，旋轉螢幕依該視角的 fit 重算，使用者自己轉過則整體距離依比例調整
+  let view = null;
+  const fitOffset = (v, f) => v.fit === false ? v.base.clone() : typeof v.fit === 'function' ? v.fit(f, v.base.clone()) : v.base.clone().multiplyScalar(f);
   function refit() {
     const f = fitFor(); if (Math.abs(f - fitScale) < 1e-6) return;
-    const k = f / fitScale, d = camera.position.clone().sub(controls.target).multiplyScalar(k);
     baseMaxDistance ??= controls.maxDistance; controls.maxDistance = baseMaxDistance * f;
-    camera.position.copy(controls.target).add(d);
-    if (tween) { tween.P.sub(tween.Tg).multiplyScalar(k).add(tween.Tg); tween.p0.sub(tween.t0).multiplyScalar(k).add(tween.t0); }
+    const onView = view && controls.target.distanceTo(view.Tg) < 1e-3 && camera.position.clone().sub(view.Tg).distanceTo(view.applied) < 1e-3;
+    if (view && (onView || (tween && tween.Tg.distanceTo(view.Tg) < 1e-3))) {
+      view.applied = fitOffset(view, f);
+      (tween ? tween.P : camera.position).copy(view.Tg).add(view.applied);
+    } else {
+      const k = f / fitScale; camera.position.sub(controls.target).multiplyScalar(k).add(controls.target);
+      if (tween) tween.P.sub(tween.Tg).multiplyScalar(k).add(tween.Tg);
+    }
     fitScale = f; controls.update(); invalidate();
   }
-  function goTo(position, target, instant = false, duration = .9) {
+  // fit：true（預設）整體距離乘倍數；false 不拉遠（視角已自己依畫面比例取景）；
+  //      (倍數, 桌面偏移 Vector3) => 新偏移（例如只拉遠水平方向、高度不變，避免相機穿過上方的樑）
+  function goTo(position, target, instant = false, duration = .9, { fit = true } = {}) {
     refit();
-    const Tg = new THREE.Vector3(...target), P = new THREE.Vector3(...position).sub(Tg).multiplyScalar(fitScale).add(Tg);
+    const Tg = new THREE.Vector3(...target);
+    view = { Tg: Tg.clone(), base: new THREE.Vector3(...position).sub(Tg), fit };
+    view.applied = fitOffset(view, fitScale);
+    const P = Tg.clone().add(view.applied);
     if (instant) { camera.position.copy(P); controls.target.copy(Tg); controls.update(); tween = null; invalidate(); return; }
     tween = { p0: camera.position.clone(), t0: controls.target.clone(), P, Tg, u: 0, duration }; invalidate();
   }
@@ -162,7 +177,7 @@ function buildStage({
   function cancelTween() { tween = null; }
   // 整體平移視角：相機、注視點與進行中轉場的起訖點一起移動（跟著輸送中的工件看）
   function shiftView(delta) {
-    camera.position.add(delta); controls.target.add(delta);
+    camera.position.add(delta); controls.target.add(delta); view?.Tg.add(delta);
     if (tween) { tween.p0.add(delta); tween.t0.add(delta); tween.P.add(delta); tween.Tg.add(delta); }
     invalidate();
   }

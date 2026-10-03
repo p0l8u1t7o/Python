@@ -72,8 +72,8 @@ const checklist = [
 ];
 
 // 視角：[相機位置, 注視點] 或依目前狀態計算的函式（全景依機台外廓與畫面比例取景、工件跟拍依工件位置）
-// 全景已依畫面比例取景，先除掉舞台窄畫面拉遠的倍數（goTo 會再乘回），手機直向才不會拉遠兩次；桌面倍數為 1
-const isoFrame = () => { const [p, t] = overviewFrame(machine.root, camera), k = 1 / stage.fitScale; return [p.map((v, i) => t[i] + (v - t[i]) * k), t]; };
+// 全景已依畫面比例取景，不再讓舞台的窄畫面拉遠（fit: false），手機直向才不會拉遠兩次
+const isoFrame = () => [...overviewFrame(machine.root, camera), { fit: false }];
 const VIEWS = {
   iso: isoFrame, top: [[0, 2050, 1], [0, 900, 0]],
   st1: [[X1 - 105, YA + 60, -150], [X1 + 5, YA - 2, 5]], chuck: () => [[X1 - 38, YM + 6, -40], [X1, YM - s.len / 2, 0]],
@@ -94,8 +94,8 @@ function setView(name, instant = false) {
   workspace.stopFollowing();                         // 先解除焦點追隨（它會還原自己改過的近裁切面）
   selectedView = name; camera.near = NEAR[name] || 4; camera.updateProjectionMatrix();
   machine.details.setMode(name === 'electrical' ? 'cutaway' : name === 'xray' ? 'xray' : 'shell');
-  const [p, t] = typeof VIEWS[name] === 'function' ? VIEWS[name]() : VIEWS[name];
-  stage.goTo(p, t, instant, VIEW_TWEEN);
+  const [p, t, fit] = typeof VIEWS[name] === 'function' ? VIEWS[name]() : VIEWS[name];
+  stage.goTo(p, t, instant, VIEW_TWEEN, fit);
   lastPart.copy(machine.partWorld());                // 視角以目前工件位置為準（同一格先跳播再切視角時，跟拍不把跳播位移算進去）
   document.querySelectorAll('.views button').forEach(b => b.classList.toggle('selected', b.dataset.view === name));
   ui.detailNote.hidden = !['chuck', 'seat', 'part', 'electrical', 'xray', 'wiring', 'carriers', 'fibers'].includes(name);
