@@ -5,10 +5,11 @@ import * as THREE from 'three';
 import { cable, CABLE } from '@core/electrical/cable-routing.js';
 import { createCobottaPro900, MAT as ARM_MAT, JOINTS } from '@core/models/robots/denso-cobotta-pro900.js';
 import { block, cylinder, decal } from '@core/geom/shapes.js';
+import { MAT } from '@core/geom/materials.js';
 
 const matTool  = ARM_MAT.tool;
-const matAnod  = new THREE.MeshStandardMaterial({ color: 0x3b4149, roughness: 0.4, metalness: 0.6 });
-const matPad   = new THREE.MeshStandardMaterial({ color: 0x1b1d20, roughness: 0.95 });
+const matAnod  = MAT.steelDark;                                              // 陽極處理鋁件（快換盤、導軌、滑座）
+const matPad   = new THREE.MeshStandardMaterial({ color: 0x1b1d20, roughness: 0.95 });   // 橡膠指墊（霧面，留在本專案）
 const D2R = Math.PI / 180;
 
 // 夾爪幾何（排程與驗證共用）

@@ -6,17 +6,20 @@ import { cable, cableTray, carrier, support, CABLE } from '@core/electrical/cabl
 import { finish } from '@core/geom/finish.js';
 import { perforated } from '@core/geom/perforated.js';
 import { block, cylinder, decal, tube } from '@core/geom/shapes.js';
+import { MAT } from '@core/geom/materials.js';
 import { Y0, BENCH, ST, BEAKER, BOTTLES, CAP, PIPETTE, SAMPLES } from './layout.js';
 import { glass, glassRim, liquidMaterial, glassVessel, glassBottle, graduations, createLiquid, rim, screw, flowLine, tipFillHeight } from './render-details.js';
 
+// 常見材質用共用材質表（core/geom/materials.js 的 MAT）：桌架＝深色鋼、不鏽鋼件、黑件、狀態燈；
+// 不鏽鋼另加金屬細紋（finish 會改材質，所以用 MAT.steel 的複本，不動共用那一份）。
+// 實驗室與產品專屬外觀（桌面、Metrohm 外殼、POM、瓶蓋、吸頭、玻璃與液體、雷射與安全區）留在本專案。
 const M = {
-  bench: new THREE.MeshStandardMaterial({ color: 0x3a4048, roughness: 0.75, metalness: 0.1 }),
   benchTop: new THREE.MeshStandardMaterial({ color: 0xd9dcd6, roughness: 0.6 }),          // 耐酸鹼實驗桌面
-  frame: new THREE.MeshStandardMaterial({ color: 0x5b6470, roughness: 0.5, metalness: 0.6 }),
-  steel: new THREE.MeshStandardMaterial({ color: 0xb8bec5, roughness: 0.3, metalness: 0.85 }),
+  frame: MAT.steelDark,
+  steel: MAT.steel.clone(),
   white: new THREE.MeshStandardMaterial({ color: 0xeef0ee, roughness: 0.45 }),
   grey: new THREE.MeshStandardMaterial({ color: 0x8c949c, roughness: 0.5, metalness: 0.2 }),
-  dark: new THREE.MeshStandardMaterial({ color: 0x23272c, roughness: 0.55, metalness: 0.3 }),
+  dark: MAT.black,
   metrohm: new THREE.MeshStandardMaterial({ color: 0xd8dde2, roughness: 0.4, metalness: 0.1 }),
   metrohmDark: new THREE.MeshStandardMaterial({ color: 0x33414f, roughness: 0.45, metalness: 0.2 }),
   pom: new THREE.MeshStandardMaterial({ color: 0xf4f1e8, roughness: 0.6 }),
@@ -31,7 +34,7 @@ const M = {
   zoneWarn: new THREE.MeshBasicMaterial({ color: 0xffb020, transparent: true, opacity: 0.1, depthWrite: false, side: THREE.DoubleSide }),
   zoneStop: new THREE.MeshBasicMaterial({ color: 0xff4d4d, transparent: true, opacity: 0.12, depthWrite: false, side: THREE.DoubleSide }),
   screen: new THREE.MeshBasicMaterial({ color: 0x0b1220 }),
-  led: new THREE.MeshStandardMaterial({ color: 0x3dd68c, emissive: 0x3dd68c, emissiveIntensity: 0.9 }),
+  led: MAT.green,
 };
 
 for (const name of ['white','grey','metrohm','metrohmDark','pom','cap','capRed']) finish(M[name],'polymer',.02);
@@ -236,7 +239,7 @@ export function createLab(scene) {
   for(let row=0;row<4;row++) for(let col=0;col<14;col++) block(pc,[16,1.2,14],[-153+col*20,12.5,15+row*19],M.grey);
   // 安全雷射掃描器（地面）＋減速區／停止區
   const scan = new THREE.Group(); scan.position.set(0, 0, bz1 + 60); root.add(scan);
-  block(scan, [110, 150, 110], [0, 75, 0], new THREE.MeshStandardMaterial({ color: 0xf2c200, roughness: 0.5 }));
+  block(scan, [110, 150, 110], [0, 75, 0], MAT.yellow);
   const zoneW = new THREE.Mesh(new THREE.RingGeometry(0, 1500, 48, 1, 0, Math.PI), M.zoneWarn); zoneW.rotation.x = Math.PI / 2; zoneW.position.y = 3; scan.add(zoneW);   // 半圓朝操作員側（+Z）
   const zoneS = new THREE.Mesh(new THREE.RingGeometry(0, 700, 48, 1, 0, Math.PI), M.zoneStop); zoneS.rotation.x = Math.PI / 2; zoneS.position.y = 4; scan.add(zoneS);
 

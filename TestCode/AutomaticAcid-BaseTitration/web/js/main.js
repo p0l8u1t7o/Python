@@ -10,8 +10,9 @@ import { liquidResults } from './vision-results.js';
 const vision = createVisionOverlay();
 const fullProcessVision = createVisionOverlay();
 import { createStage, exposeSim } from '@core/ui/stage.js';
+import { createPlayer } from '@core/ui/player.js';
 import { createProject } from './project.js';
-import { ST, Y0, SAMPLES, TITRANT, ANALYTE, smooth } from './layout.js';
+import { ST, Y0, SAMPLES, TITRANT, ANALYTE } from './layout.js';
 
 // 共用舞台（core/ui/stage.js）：參數與原本手寫的 renderer／燈光完全相同，畫面不變
 const canvas = document.getElementById('c');
@@ -36,7 +37,7 @@ cupLight.shadow.normalBias=.025;cupLight.shadow.bias=-.00001;scene.add(cupLight,
 const project = createProject({ scene }), plan = project.plan, lab = project.lab, total = project.total;
 const $ = id => document.getElementById(id);
 const ui = Object.fromEntries(['phase', 'act', 'stepLabel', 'tbody', 'log', 'modeHint', 'tableHint', 'curve', 'titrPhase', 'titrInfo', 'titrRes', 'balance', 'sigs', 'showLabels', 'showZones', 'exportBtn',
-  'playBtn', 'restartBtn', 'speed', 'autoSpeed', 'previous', 'next', 'stepSelect', 'cycleTime', 'timeline', 'progBar', 'clock', 'stations', 'mode', 'subtitle'].map(id => [id, $(id)]));
+  'speed', 'autoSpeed', 'cycleTime', 'progBar', 'stations', 'mode', 'subtitle'].map(id => [id, $(id)]));
 const fmtT = t => { t = Math.max(0, t); const m = Math.floor(t / 60), s = Math.floor(t % 60); return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`; };
 
 // ---------------------------------------------------------------- Metrohm 整合方式（兩案並陳）
@@ -53,23 +54,24 @@ function refreshMode() {
 }
 refreshMode();
 
-// ---------------------------------------------------------------- 流程步驟按鈕（對照用戶文件 ①～⑨）
+// ---------------------------------------------------------------- 流程步驟按鈕（對照用戶文件 ①～⑨；排程的 station 即流程編號）
+// 按下跳到該流程下一次出現的節點（每瓶都會重複），之後沒有就回到第一次（stationStart）
 const FLOW = [[0, '①', '初始化'], [2, '②', '空杯秤重'], [3, '③', '讀碼開蓋'], [4, '④', '移液'], [5, '⑤', '樣品秤重'], [6, '⑥', '進樣器'], [8, '⑧', '關蓋'], [9, '⑨', '分析・取杯']];
 const flowBtns = FLOW.map(([ph, idx, name]) => {
   const b = document.createElement('button'); b.className = 'st'; b.innerHTML = `<span class="idx">${idx}</span>${name}`;
-  b.onclick = () => { const e = plan.events.find(x => x.phase === ph && x.t > T + 0.5) || plan.events.find(x => x.phase === ph); if (e) { pause(); seekTo(e.t); } };
+  b.onclick = () => { const e = plan.events.find(x => x.station === ph && x.time > T + 0.5); pause(); seekTo(e ? e.time : plan.stationStart[ph]); };
   ui.stations.appendChild(b); return b;
 });
 
-// ---------------------------------------------------------------- 視角
-const views = {
+// ---------------------------------------------------------------- 視角：[相機位置, 注視點]，切換用 stage.goTo；液面俯拍與跟隨手臂是動態視角，另外處理
+const VIEWS = {
   electrical: [[-950,700,1400],[0,480,0]],
   wiring: [[1550,1850,1100],[850,1250,60]],
   titration: [[680,1105,270],[810,1003,60]], liquid: [[90,1020,-190],[-20,905,-370]], bottles:[[-260,1140,650],[-500,970,300]],
   iso: [[-1450, 2550, 2450], [80, 930, -20]], balance: [[-80, 1720, 820], [-560, 1000, -40]], decap: [[-470, 1420, 60], [-180, 1030, -330]],
   pipette: [[120, 1560, -980], [90, 1000, -300]], sampler: [[330, 1650, 760], [690, 960, 40]], top: [[0, 3700, 250], [0, 850, 0]],
 };
-let camAnim = null, follow = false, liquidTrack = null, visionView='iso';
+let follow = false, liquidTrack = null, visionView='iso';
 function liquidFocus(){
   const cup=lab.items[`beaker${info?.sampler.job?.beaker??0}`],fluid=cup.userData.fluid;
   return cup.localToWorld(new THREE.Vector3(0,fluid.surface.position.y,0));
@@ -81,19 +83,18 @@ function setView(name, instant = false) {
   document.querySelectorAll('.views button').forEach(b => b.classList.toggle('selected', b.dataset.view === name));
   if (follow) return;
   if(name==='meniscus'){
-    info=project.apply(T);liquidTrack=liquidFocus();camAnim=null;
-    controls.target.copy(liquidTrack);camera.position.copy(liquidTrack).add(new THREE.Vector3(-75,115,90));controls.update();return;
+    info=project.apply(T);liquidTrack=liquidFocus();
+    stage.goTo(liquidTrack.clone().add(new THREE.Vector3(-75,115,90)).toArray(),liquidTrack.toArray(),true);return;
   }
-  if (!views[name]) return; const [p, t] = views[name].map(a => new THREE.Vector3(...a));
-  if (instant) { camAnim = null; camera.position.copy(p); controls.target.copy(t); controls.update(); } else camAnim = { p0: camera.position.clone(), t0: controls.target.clone(), p, t, u: 0 };
+  if (!VIEWS[name]) return;
+  stage.goTo(...VIEWS[name], instant, .72);          // 轉場 0.72 s（與原本的視角動畫同長）
 }
 document.querySelectorAll('.views button').forEach(b => b.onclick = () => setView(b.dataset.view));
 const _tcp = new THREE.Vector3();
 function followCam(dt) { project.robot.getTcpWorld('grip', _tcp); const k = 1 - Math.exp(-dt * 3); controls.target.lerp(_tcp, k); camera.position.lerp(_tcp.clone().add(new THREE.Vector3(260, 420, 620)), k); }
 
-// ---------------------------------------------------------------- 3D 標籤
-const labels = [];
-function addLabel(text, x, y, z) { const el = document.createElement('div'); el.className = 'label3d'; el.innerHTML = text; $('app').appendChild(el); labels.push({ el, pos: new THREE.Vector3(x, Y0 + y, z) }); }
+// ---------------------------------------------------------------- 3D 標籤（stage.addLabel；y 相對桌面）
+const addLabel = (text, x, y, z) => stage.addLabel(text, new THREE.Vector3(x, Y0 + y, z));
 addLabel('<b>DENSO</b> COBOTTA PRO 900', 0, 980, 0);
 addLabel('分析天平（上方滑門）', ST.balance.x, 420, ST.balance.z);
 addLabel('待處理杯區', ST.emptyRack.cols[1], 160, ST.emptyRack.rows[0]);
@@ -112,6 +113,13 @@ addLabel('<b>Metrohm</b> 自動進樣器', ST.sampler.x, 330, ST.sampler.z - 150
 addLabel('滴定儀＋Dosino', ST.titrator.x, 560, ST.titrator.z);
 addLabel('整合軟體／Metrohm 軟體', ST.pc.x, 520, ST.pc.z);
 addLabel('安全雷射掃描器', 0, -700, 580);
+// 標籤掛在 #app，畫布左側有樣品表、上方有工具列：標籤原點對齊畫布左上角（版面改變時重設）
+let labelOrigin = '';
+function updateLabels(show) {
+  const origin = canvas.offsetLeft + ',' + canvas.offsetTop;
+  if (origin !== labelOrigin) { labelOrigin = origin; for (const l of stage.labels) { l.el.style.left = canvas.offsetLeft + 'px'; l.el.style.top = canvas.offsetTop + 'px'; } }
+  stage.updateLabels(show);
+}
 
 // ---------------------------------------------------------------- 樣品表、訊號、紀錄
 const rows = [];
@@ -119,8 +127,6 @@ for (let k = 0; k < 12; k++) { const tr = document.createElement('tr'); tr.inner
 const SIGS = [['door', '天平門開'], ['stable', '天平穩定'], ['clamp', '瓶座夾緊'], ['tip', '吸頭已裝'], ['pip', '移液中'], ['zone', '手臂在進樣器區'], ['cup', '杯子到位'], ['rotating', '轉盤轉動'], ['titrating', '滴定中'], ['done', '分析完成'], ['cycle', 'Cycle Complete'], ['safe', '安全區無人・全速']];
 const sigEls = {};
 for (const [k, name] of SIGS) { const d = document.createElement('div'); d.innerHTML = `<i></i>${name}`; ui.sigs.appendChild(d); sigEls[k] = d; }
-plan.events.forEach((m, i) => { const o = document.createElement('option'); o.value = i; o.textContent = `${fmtT(m.t)} · ${m.label}`; ui.stepSelect.appendChild(o); });
-ui.timeline.max = total;
 ui.cycleTime.textContent = `批次 ${fmtT(total)}・手臂前處理 ${fmtT(plan.stats.prepEnd)}・每杯滴定 7 分`;
 
 // ---------------------------------------------------------------- 滴定曲線
@@ -157,13 +163,15 @@ function drawScreens(info, T) {
   });
 }
 
-// ---------------------------------------------------------------- 時間
-let T = 0, playing = !qp.has('pause'), lastLog = '', info = null;
-const pause = () => { playing = false; ui.playBtn.textContent = '▶ 播放'; };
-function seekTo(t) { T = THREE.MathUtils.clamp(t, 0, total); render(); }
-const play = () => { if (T >= total) T = 0; playing = true; ui.playBtn.textContent = '⏸ 暫停'; };
-ui.playBtn.onclick = () => playing ? pause() : play();
-ui.restartBtn.onclick = () => seekTo(0);
+// ---------------------------------------------------------------- 時間（播放列：core/ui/player.js；事件選單、上一步／下一步用排程的流程節點）
+let T = 0, lastLog = '', info = null;
+// 預設速度取 HTML 選單的預設值（5×）；網址 ?speed= 優先
+const playerQp = new URLSearchParams(location.search); if (!playerQp.has('speed')) playerQp.set('speed', ui.speed.value);
+const player = createPlayer({ total, qp: playerQp, events: plan.events, apply: t => { T = t; return (info = project.apply(T)); } });
+const { play, pause } = player;
+if (qp.has('t')) pause();
+// 跳到時間 t 並立即重畫（流程按鈕、細節示範、window.sim；播放列自己的拖曳由畫面迴圈重畫）
+function seekTo(t) { player.seekTo(t); render(); }
 const closeShots={
   dose:{view:'titration',time:()=>plan.jobs[0].start+90},
   water:{view:'titration',time:()=>plan.jobs[0].start+7},
@@ -171,13 +179,9 @@ const closeShots={
   bottles:{view:'bottles',time:()=>0},
 };
 $('detailShot').onchange=e=>{const shot=closeShots[e.target.value];if(shot){pause();seekTo(shot.time());setView(shot.view,true);}e.target.value='';};
-ui.timeline.oninput = () => { pause(); seekTo(+ui.timeline.value); };
-const jumpMs = d => { pause(); const ms = plan.events; let i = ms.findIndex(m => m.t > T + 1e-6); if (d < 0) { i = -1; ms.forEach((m, j) => { if (m.t < T - 0.5) i = j; }); } if (i >= 0) seekTo(ms[i].t); };
-ui.previous.onclick = () => jumpMs(-1); ui.next.onclick = () => jumpMs(1);
-ui.stepSelect.onchange = () => { pause(); seekTo(plan.events[+ui.stepSelect.value].t); };
 ui.showZones.onchange = () => { for (const z of lab.zones) z.visible = ui.showZones.checked; };
 ui.exportBtn.onclick = () => {
-  const end = project.apply(total);
+  const end = project.apply(total); info = project.apply(T);    // 取批次結束的樣品表後，場景放回目前時間
   const report = {
     mode: 'SIMULATION', integration: MODES[mode].label, batchSec: +total.toFixed(1), robotPrepSec: +plan.stats.prepEnd.toFixed(1), titrant: `${TITRANT.name} ${TITRANT.c} mol/L`, resultBasis: `${ANALYTE.name}（示意）`,
     samples: SAMPLES.map(s => ({ id: s.id + 1, barcode: s.barcode, bottleMl: s.size, simulatedConcMolL: +s.conc.toFixed(5) })),
@@ -190,11 +194,10 @@ ui.exportBtn.onclick = () => {
 };
 
 function drawHud() {
-  info = project.apply(T);
   if(liquidTrack){const p=liquidFocus(),delta=p.clone().sub(liquidTrack);camera.position.add(delta);controls.target.add(delta);liquidTrack=p;camera.lookAt(controls.target);}
   const f = info, s = f.state, smp = f.sampler;
   ui.act.textContent = s.act; ui.stepLabel.textContent = `${f.step.label}${f.step.idle ? '' : `（${f.step.dur.toFixed(1)} s）`}`;
-  ui.phase.textContent = T >= total ? 'CYCLE COMPLETE · 批次完成' : playing ? `AUTO · ${smp.phase === '待機' ? '前處理中' : 'Metrohm ' + smp.phase}` : 'HOLD · 暫停';
+  ui.phase.textContent = T >= total ? 'CYCLE COMPLETE · 批次完成' : player.playing ? `AUTO · ${smp.phase === '待機' ? '前處理中' : 'Metrohm ' + smp.phase}` : 'HOLD · 暫停';
   // 樣品表
   const active = smp.job ? smp.job.k : -1, prep = f.table.findIndex(r => ['空杯秤重', '移液', '樣品秤重'].includes(r.status));
   f.table.forEach((r, k) => {
@@ -214,8 +217,8 @@ function drawHud() {
   ui.balance.textContent = s.balText; ui.balance.classList.toggle('stable', s.balStable && s.balPan > 0 && s.door === 0);
   const sig = { ...f.sig, safe: true };
   for (const [k] of SIGS) { sigEls[k].classList.toggle('on', !!sig[k]); sigEls[k].classList.toggle('warn', k === 'rotating' || k === 'zone'); }
-  // 流程按鈕
-  let ph = 0; for (const e of plan.events) { if (e.t > T + 1e-6) break; if (e.phase !== undefined) ph = e.phase; }
+  // 流程按鈕：目前步驟所屬的流程編號
+  const ph = f.step.station;
   FLOW.forEach(([p], i) => { flowBtns[i].classList.toggle('active', p === ph || (p === 9 && ph === 10)); });
   // 通訊紀錄（最近 8 筆）
   let n = 0; for (const m of plan.msgs) { if (m.t > T + 1e-6) break; n++; }
@@ -225,9 +228,8 @@ function drawHud() {
     ui.log.innerHTML = plan.msgs.slice(Math.max(0, n - 8), n).reverse().map((m, i) => `<li class="${i === 0 ? 'new' : ''}"><time>${fmtT(m.t)}</time><span><b>${m.from.replace('Metrohm', M.name)} → ${m.to.replace('Metrohm', M.name)}</b> ${m.text.replace('Metrohm', M.name)}</span></li>`).join('');
   }
   drawScreens(f, T);
-  ui.timeline.value = T; ui.progBar.style.width = T / total * 100 + '%'; ui.clock.textContent = fmtT(T);
-  let mi = 0; plan.events.forEach((m, j) => { if (m.t <= T + 1e-6) mi = j; }); ui.stepSelect.value = mi;
-  for (const l of labels) { const p = l.pos.clone().project(camera), vis = ui.showLabels.checked && p.z < 1 && Math.abs(p.x) < .98 && Math.abs(p.y) < .9; l.el.style.display = vis ? 'block' : 'none'; if (vis) { const r = canvas.getBoundingClientRect(); l.el.style.left = r.left + (p.x * .5 + .5) * r.width + 'px'; l.el.style.top = r.top + (-p.y * .5 + .5) * r.height + 'px'; } }
+  ui.progBar.style.width = T / total * 100 + '%';
+  updateLabels(ui.showLabels.checked);
   $('diagnostics').textContent = JSON.stringify({ T, total, step: f.step.label, act: s.act });
 }
 let focusItem='beaker0';
@@ -240,7 +242,7 @@ function activeProduct(){
 }
 const processCamera=new THREE.PerspectiveCamera(38,1.5,.5,10000);
 // 一格畫面分三段：主畫面前（HUD、跟隨、電控）、主畫面、主畫面後（疊圖與製程相機）
-function beforeMain() { drawHud();workspace.follow();electrical.update({time:T,playing,action:info?.step.label,motion:!info?.step.idle,vision:false}); }
+function beforeMain() { drawHud();workspace.follow();electrical.update({time:T,playing:player.playing,action:info?.step.label,motion:!info?.step.idle,vision:false}); }
 // 完整一格（跳播、切換模式、錄影都用這個）
 function render() { beforeMain(); workspace.renderOverview(renderer,scene); afterMain(); }
 function afterMain() {
@@ -250,25 +252,18 @@ function afterMain() {
   workspace.renderCamera({renderer,scene,camera:processCamera,vision,title:'製程觀察 · 液面示意（虛擬相機）',result:'跟隨目前處理的樣品，非實拍量測',marks:liquidResults(lab,info,T,info.sampler.job&&info.step.idle?'titration':visionView)});
 }
 const workspace=createViewerWorkspace({camera,controls,canvas,resize:stage.resize,getFocus:activeProduct,
-  focusOffset:[-150,180,230],focusNear:.5,onFocus:()=>{setElectricalCutaway(scene,false);camAnim=null;liquidTrack=null;follow=false;visionView='focus';document.querySelectorAll('.views button').forEach(b=>b.classList.remove('selected'));}});
+  focusOffset:[-150,180,230],focusNear:.5,onFocus:()=>{setElectricalCutaway(scene,false);stage.goTo(camera.position.toArray(),controls.target.toArray(),true);liquidTrack=null;follow=false;visionView='focus';document.querySelectorAll('.views button').forEach(b=>b.classList.remove('selected'));}});
 const electrical=createElectricalInspector({scene,camera,controls,canvas,onEnter:()=>setView('electrical',true),onExit:()=>setView('iso',true),title:'AutomaticAcid-BaseTitration'});
-// 每格：時間推進、視角轉場、跟隨 → HUD 與疊圖 → stage 做 controls.update() 與主畫面渲染
+// 每格：stage 先推進視角轉場 → 時間推進（手臂等待分析時可再加速 10 倍）、跟隨 → HUD 與疊圖 → stage 做 controls.update() 與主畫面渲染
 function tick(dt) {
-  if (playing) {
-    const idle = info?.step.idle && ui.autoSpeed.checked;
-    T += dt * +ui.speed.value * (idle ? 10 : 1);
-    if (T >= total) { T = total; pause(); }
-  }
-  if (camAnim) { camAnim.u = Math.min(1, camAnim.u + dt * 1.4); camera.position.lerpVectors(camAnim.p0, camAnim.p, smooth(camAnim.u)); controls.target.lerpVectors(camAnim.t0, camAnim.t, smooth(camAnim.u)); if (camAnim.u === 1) camAnim = null; }
+  player.update(info?.step.idle && ui.autoSpeed.checked ? dt * 10 : dt);
   if (follow) followCam(dt);
   camera.lookAt(controls.target);   // 與 controls.update() 的朝向一致，讓本格疊圖對齊
   beforeMain(); afterMain();
 }
-setView(qp.get('view') || 'iso', true); stage.resize(); ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放';
-if (qp.has('speed')) ui.speed.value = qp.get('speed');
-if (qp.has('t')) { pause(); T = +qp.get('t') || 0; }
+setView(qp.get('view') || 'iso', true); stage.resize();
 if (qp.get('view') === 'follow') { project.apply(T); project.robot.getTcpWorld('grip', _tcp); controls.target.copy(_tcp); camera.position.copy(_tcp).add(new THREE.Vector3(260, 420, 620)); }
-exposeSim({ plan, seekTo, get T() { return T; }, setView, views: [...Object.keys(views), 'meniscus', 'follow'], total, play, pause });
+exposeSim({ plan, seekTo, get T() { return T; }, setView, views: [...Object.keys(VIEWS), 'meniscus', 'follow'], total, play, pause });
 $('loading').classList.add('hide'); render();
 stage.loop(tick);   // ?movie 時 stage 不啟動迴圈，由錄影程式逐格驅動
 

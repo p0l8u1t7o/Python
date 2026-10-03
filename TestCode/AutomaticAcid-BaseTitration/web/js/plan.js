@@ -1,6 +1,12 @@
 // 排程：手臂動作序列（逐步計算 PTP 時間）＋ Metrohm 進樣器轉盤／滴定排程＋樣品表與交握訊息
-// 每一步存起始狀態快照；sample(T) 只由 T 決定，倒退／跳站結果一致。
+// 兩種共用排程（core/anim）：
+//   手臂 → createStepSequence：單一手臂依序作業；每步存起始狀態快照（s0）與步驟內變化（fx），station = 用戶文件流程編號（①～⑨）
+//   進樣器 → createTimeline：轉盤（rack）與滴定頭（head）兩條時間軌，與手臂並行
+// 手臂步驟先在本檔的規劃器排出（進樣器區需試排、避開轉盤轉動時退回重排），定案後依序寫入步驟序列。
+// sample(T)／sampler(T) 只由 T 決定，倒退／跳站結果一致。
 import * as THREE from 'three';
+import { createStepSequence, timelineEvents } from '@core/anim/sequence.js';
+import { createTimeline, linear } from '@core/anim/track.js';
 import { Y0, ST, BEAKER, BOTTLES, CAP, PIPETTE, TRAVEL, PIP_TRAVEL, TIME, SPEED, RINSE, ALIQUOT, TITRANT, ANALYTE, SAMPLES, rng, gauss, smooth } from './layout.js';
 
 const SP = ST.sampler, SLOT = 2 * Math.PI / SP.slots;
@@ -52,13 +58,13 @@ export function buildPlan(robot) {
   s.loc.pip = { w: dockPos, yaw: 0 };
 
   // ---------------------------------------------------------------- 轉盤與滴定排程（隨手臂放杯逐步決定）
-  const TQ = { rots: [], jobs: [] };
-  function rackAngleAt(time) {
-    let a = 0;
-    for (const r of TQ.rots) { if (time < r.t0) break; a = time >= r.t1 ? r.a1 : THREE.MathUtils.lerp(r.a0, r.a1, smooth((time - r.t0) / (r.t1 - r.t0))); }
-    return a;
-  }
-  const lastRotEnd = () => TQ.rots.length ? TQ.rots.at(-1).t1 : 0;
+  // 進樣器時間軸：rack＝轉盤角度；head＝滴定頭下降量、攪拌、噴洗與目前的滴定工作（步驟 action 即 Metrohm 階段）
+  const timeline = createTimeline();
+  const rack = timeline.track('rack', { angle: 0 }), head = timeline.track('head', { drop: 0, stir: false, spray: false, job: null });
+  const rots = rack.steps;                                  // 轉盤轉動（每步另記 t0／t1／a0／a1／kind／job）
+  const jobs = [];
+  const rackAngleAt = time => rack.sample(time).angle;
+  const lastRotEnd = () => rots.length ? rots.at(-1).t1 : 0;
   const towerSlotAt = time => mod(Math.round(-rackAngleAt(time) / SLOT), SP.slots);
   const slotDist = (a, b) => { const d = mod(a - b, SP.slots); return Math.min(d, SP.slots - d); };
   function slotWorld(slot, time) { const a = rackAngleAt(time) + slot * SLOT; return { p: [SP.x + Math.cos(a) * SP.r, Y0 + SP.plate, SP.z - Math.sin(a) * SP.r], a }; }
@@ -68,25 +74,39 @@ export function buildPlan(robot) {
     const a0 = rackAngleAt(t0); let d = wrapPi(toAngle - a0);
     const n = Math.round(Math.abs(d) / SLOT), dur = n ? TIME.rotBase + TIME.rotPerSlot * n : 0;
     if (!dur) return t0;
-    TQ.rots.push({ t0, t1: t0 + dur, a0, a1: a0 + d, kind, job });
+    const action = kind === 'move' ? '轉盤移動（空位轉到手臂側）' : `轉到位置 ${jobs.find(j => j.k === job).slot + 1}`;
+    const r = rack.add(dur, { angle: a0 + d }, { at: t0, ease: smooth, action });
+    if (r.start !== t0) throw new Error(`轉盤轉動重疊：${t0} < ${r.start}`);
+    Object.assign(r, { t0, t1: t0 + dur, a0, a1: a0 + d, kind, job });
     return t0 + dur;
   }
   // 手臂放杯後排入滴定：轉盤轉到滴定頭下 → 下降 → 加水、攪拌、滴定 → 上升 → 電極噴洗
   function scheduleJob(job, placeT) {
-    const prev = TQ.jobs.at(-1);
+    const prev = jobs.at(-1);
     const rotStart = Math.max(placeT + TIME.startDelay, prev ? prev.rinseEnd : 0, lastRotEnd());
+    jobs.push(job);
     const rotEnd = addRotation(rotStart, -job.slot * SLOT, 'titration', job.k);
     Object.assign(job, { rotStart, rotEnd, start: rotEnd + TIME.lower, placeT });
     job.end = job.start + TIME.titrate; job.liftEnd = job.end + TIME.lift; job.rinseEnd = job.liftEnd + TIME.rinse;
-    TQ.jobs.push(job);
+    // 滴定頭：轉到位 → 下降 → 加水、攪拌、DET、終點 → 上升 → 噴洗 → 待機（升降為等速，與原本相同）
+    const at = (t, dur, values, action, o = {}) => head.add(dur, values, { at: t, action, ...o });
+    at(rotStart, rotEnd - rotStart, { job }, `轉到位置 ${job.slot + 1}`);
+    at(rotEnd, TIME.lower, { drop: 1 }, '滴定頭下降', { ease: linear });
+    at(job.start, 15, { stir: true }, '加純水 50 mL');
+    at(job.start + 15, 20, {}, '攪拌、電極平衡');
+    at(job.start + 35, job.end - 20 - (job.start + 35), {}, '動態滴定（DET）');
+    at(job.end - 20, 20, {}, '終點判定、計算結果');
+    at(job.end, TIME.lift, { drop: 0, stir: false }, '滴定頭上升', { ease: linear });
+    at(job.liftEnd, TIME.rinse, { spray: true }, '電極噴洗');
+    at(job.rinseEnd, 0, { spray: false, job: null }, '');
     say(placeT, '整合軟體', 'Metrohm', `樣品表第 ${job.k + 1} 列：位置 ${job.slot + 1}、淨重 ${job.net.toFixed(4)} g → 啟動`);
     say(rotStart, 'Metrohm', '—', `轉盤轉到位置 ${job.slot + 1}`);
     say(job.start, 'Metrohm', '整合軟體', `滴定中：樣品 ${job.sample + 1}-${job.rep + 1}`);
     say(job.end, 'Metrohm', '整合軟體', `分析完成：樣品 ${job.sample + 1}-${job.rep + 1}，${job.result.toFixed(3)} %`);
   }
 
-  // ---------------------------------------------------------------- 手臂動作建構
-  const steps = [], events = [];
+  // ---------------------------------------------------------------- 手臂動作建構（規劃器：草稿步驟可退回重排，定案後寫入步驟序列）
+  const steps = [], events = [];                         // 草稿步驟、流程節點 { t, label, phase, sample?, job? }
   const B = { t: 0, pose: null, j: null };
   const jawVec = a => new THREE.Vector3(Math.sin(a), 0, Math.cos(a));   // 夾爪沿 (cos a, 0, −sin a) 開合
   function P(x, y, z, a = 0, sym = true) {
@@ -288,7 +308,7 @@ export function buildPlan(robot) {
     for (let guard = 0; guard < 80; guard++) {
       const m = mark(), t0 = B.t, info = build(t0);
       if (info === null) { rollback(m); return null; }
-      const hit = TQ.rots.find(r => r.t0 < B.t + 0.5 && r.t1 > t0 - 0.5);
+      const hit = rots.find(r => r.t0 < B.t + 0.5 && r.t1 > t0 - 0.5);
       if (!hit && info.ok !== false) return info;
       rollback(m);
       const until = hit ? hit.t1 + 0.3 : info.retryAt;
@@ -296,15 +316,15 @@ export function buildPlan(robot) {
     }
     throw new Error('sampler visit: no window');
   };
-  function freeSlots() { const used = new Set(TQ.jobs.filter(j => !j.removed).map(j => j.slot)); return [...Array(SP.slots).keys()].filter(x => !used.has(x)); }
-  const idleFrom = () => Math.max(lastRotEnd(), TQ.jobs.length ? TQ.jobs.at(-1).rinseEnd : 0);
+  function freeSlots() { const used = new Set(jobs.filter(j => !j.removed).map(j => j.slot)); return [...Array(SP.slots).keys()].filter(x => !used.has(x)); }
+  const idleFrom = () => Math.max(lastRotEnd(), jobs.length ? jobs.at(-1).rinseEnd : 0);
   function placeInSampler(k, job) {
     go(P(STAGE.m.x, Y_BEAKER, STAGE.m.z, 0), '移到進樣器前待命點');
     return samplerVisit(t0 => {
       const tower = towerSlotAt(t0), cand = freeSlots().filter(x => slotDist(x, tower) >= 3).sort((a, b) => slotDist(b, tower) - slotDist(a, tower) || a - b);
       if (!cand.length) {
         // 可放的空位都在滴定頭附近：等轉盤空閒後把空位轉到手臂側（MOVE 指令）
-        const future = TQ.rots.find(r => r.t0 >= t0);
+        const future = rots.find(r => r.t0 >= t0);
         if (future) return { ok: false, retryAt: future.t1 + 0.3 };
         const t = Math.max(t0, idleFrom()), slot = freeSlots()[0];
         addRotation(t, Math.PI - slot * SLOT, 'move');
@@ -320,7 +340,7 @@ export function buildPlan(robot) {
   }
   function removeFromSampler(job, n) {
     const r = samplerVisit(t0 => {
-      if (TQ.rots.some(r => r.t0 <= t0 && r.t1 > t0)) return { ok: false, retryAt: TQ.rots.find(r => r.t0 <= t0 && r.t1 > t0).t1 + 0.3 };
+      if (rots.some(r => r.t0 <= t0 && r.t1 > t0)) return { ok: false, retryAt: rots.find(r => r.t0 <= t0 && r.t1 > t0).t1 + 0.3 };
       const w = slotWorld(job.slot, t0);
       pick(`beaker${job.k}`, w.p[0], w.p[1] + BEAKER.h / 2, w.p[2], w.a, 80, BEAKER.d - 2, Y_BEAKER,
         [`進樣器位置 ${job.slot + 1}：移到上方`, '直線下降', '夾取已滴定杯', '直線上升'], { stepOpts: { zone: 'sampler' } });
@@ -449,10 +469,10 @@ export function buildPlan(robot) {
   // ---- 等待滴定完成、逐杯取出
   ev('⑨ 等待分析完成，逐杯移到完成滴定杯區', { phase: 9 });
   act('等待分析完成'); goHome('回待命位置');
-  const pending = [...TQ.jobs]; let doneN = 0;
+  const pending = [...jobs]; let doneN = 0;
   for (let guard = 0; pending.length && guard < 200; guard++) {
     const t0 = B.t;
-    const ready = pending.filter(j => j.rinseEnd <= t0 + 1e-6 && slotDist(j.slot, towerSlotAt(t0)) >= 3 && !TQ.rots.some(r => r.t0 <= t0 && r.t1 > t0));
+    const ready = pending.filter(j => j.rinseEnd <= t0 + 1e-6 && slotDist(j.slot, towerSlotAt(t0)) >= 3 && !rots.some(r => r.t0 <= t0 && r.t1 > t0));
     if (ready.length) {
       const j = ready.sort((a, b) => a.end - b.end)[0];
       act(`取出樣品 ${j.sample + 1}-${j.rep + 1}`); ev(`取出樣品 ${j.sample + 1}-${j.rep + 1}（分析完成）`, { job: j.k, phase: 9 });
@@ -461,9 +481,9 @@ export function buildPlan(robot) {
       continue;
     }
     // 下一個時間點：某杯分析完成、或轉盤轉完
-    const cands = [...pending.map(j => j.rinseEnd), ...TQ.rots.map(r => r.t1)].filter(x => x > t0 + 1e-6);
+    const cands = [...pending.map(j => j.rinseEnd), ...rots.map(r => r.t1)].filter(x => x > t0 + 1e-6);
     const allDone = pending.every(j => j.rinseEnd <= t0 + 1e-6);
-    if (allDone && !TQ.rots.some(r => r.t1 > t0)) {
+    if (allDone && !rots.some(r => r.t1 > t0)) {
       // 全部分析完成，剩下的杯子在滴定頭附近：轉盤把它轉到手臂側
       const j = pending[0]; addRotation(t0, Math.PI - j.slot * SLOT, 'move');
       say(t0, '整合軟體', 'Metrohm', `轉盤移動：位置 ${j.slot + 1} 轉到手臂側`);
@@ -479,38 +499,52 @@ export function buildPlan(robot) {
   act('批次完成'); setSig('cycle', true);
   wait(10, '批次完成', null, { idle: true });
 
-  const total = B.t;
   msgs.sort((a, b) => a.t - b.t); events.sort((a, b) => a.t - b.t);
-  const idx = new Float64Array(steps.map(st => st.start));
-  function stepAt(T) { let lo = 0, hi = steps.length - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (idx[m] <= T) lo = m; else hi = m - 1; } return lo; }
-  /** 任一時間的手臂位姿與器皿狀態（純函數） */
+
+  // ---------------------------------------------------------------- 定案：草稿步驟依序寫入共用步驟序列
+  // 流程節點（ev）落在某一步的起點：該步的 action 為節點文字、station 為流程編號，之後各步沿用到下一個節點。
+  // 其他步驟 action 留空，所以 sequence.events 就是節點清單（事件選單、上一步／下一步、流程按鈕）。
+  const sequence = createStepSequence();
+  let ei = 0, phase = 0;
+  for (const draft of steps) {
+    let action = '';
+    if (ei < events.length && events[ei].t <= draft.start) {
+      const m = events[ei++];
+      if (m.t !== draft.start || (ei < events.length && events[ei].t <= draft.start)) throw new Error(`流程節點未對齊步驟起點：${m.label}`);
+      action = m.label; phase = m.phase; draft.milestone = { sample: m.sample, job: m.job };
+    }
+    const { start, ...rest } = draft;
+    const st = sequence.add(phase, draft.dur, action, '', {}, rest);
+    if (st.start !== start) throw new Error(`步驟時間不一致：${draft.label} ${st.start} ≠ ${start}`);
+  }
+  if (ei !== events.length) throw new Error('流程節點在最後一步之後');
+  const total = sequence.total;
+  if (total !== B.t) throw new Error(`批次總長不一致：${total} ≠ ${B.t}`);
+  const armSteps = sequence.steps, armEvents = sequence.events;
+
+  /** 任一時間的手臂位姿與器皿狀態（純函數）：步驟序列找出所在步驟與進度，狀態由起始快照＋步驟內變化（fx）算出 */
   function sample(T) {
-    T = THREE.MathUtils.clamp(T, 0, total);
-    const n = stepAt(T), st = steps[n], e = st.dur > 0 ? THREE.MathUtils.clamp((T - st.start) / st.dur, 0, 1) : 1;
+    const { step: st, index, u: e } = sequence.sample(T);
     const state = JSON.parse(st.s0); st.fx?.(state, e);
     const pose = st.kind === 'ptp' ? { ptp: { from: st.p0, to: st.p1, e: smooth(e) } } : st.kind === 'lin' ? { lin: { from: st.p0, to: st.p1, e: smooth(e) } } : st.p1;
-    return { step: st, index: n, e, state, pose };
+    return { step: st, index, e, state, pose };
   }
-  // 轉盤、滴定頭與滴定進度（純函數）
+  // 轉盤、滴定頭與滴定進度（純函數，取自進樣器時間軸）
   function sampler(T) {
-    const angle = rackAngleAt(T);
-    let drop = 0, job = null, phase = '待機', stir = false, spray = false;
-    for (const j of TQ.jobs) {
-      if (T < j.rotStart) continue;
-      if (T < j.rotEnd) { phase = `轉到位置 ${j.slot + 1}`; job = j; break; }
-      if (T < j.start) { drop = (T - j.rotEnd) / TIME.lower; phase = '滴定頭下降'; job = j; break; }
-      if (T < j.end) { drop = 1; job = j; stir = true; const u = T - j.start; phase = u < 15 ? '加純水 50 mL' : u < 35 ? '攪拌、電極平衡' : T < j.end - 20 ? '動態滴定（DET）' : '終點判定、計算結果'; break; }
-      if (T < j.liftEnd) { drop = 1 - (T - j.end) / TIME.lift; phase = '滴定頭上升'; job = j; break; }
-      if (T < j.rinseEnd) { phase = '電極噴洗'; spray = true; job = j; break; }
-    }
-    const rot = TQ.rots.find(r => T >= r.t0 && T < r.t1);
-    if (rot && !job) phase = rot.kind === 'move' ? '轉盤移動（空位轉到手臂側）' : phase;
-    return { angle, drop: THREE.MathUtils.clamp(drop, 0, 1), job, phase, stir, spray, rotating: !!rot };
+    const { rack: r, head: h } = timeline.sample(T), active = head.active(T), rot = rack.active(T);
+    let phase = active?.action || '待機';
+    if (rot && !h.job && rot.kind === 'move') phase = rot.action;
+    return { angle: r.angle, drop: THREE.MathUtils.clamp(h.drop, 0, 1), job: h.job, phase, stir: h.stir, spray: h.spray, rotating: !!rot };
   }
   const stats = {
-    total, prepEnd, steps: steps.length, jobs: TQ.jobs.length,
-    firstStart: TQ.jobs[0]?.start, lastEnd: TQ.jobs.at(-1)?.end,
-    robotBusy: steps.filter(s => !s.idle).reduce((a, s) => a + s.dur, 0),
+    total, prepEnd, steps: armSteps.length, jobs: jobs.length,
+    firstStart: jobs[0]?.start, lastEnd: jobs.at(-1)?.end,
+    robotBusy: armSteps.filter(s => !s.idle).reduce((a, s) => a + s.dur, 0),
   };
-  return { steps, total, sample, sampler, jobs: TQ.jobs, rots: TQ.rots, events, msgs, stats, towerSlotAt, slotDist, beakerMass };
+  return {
+    // 共用事件介面（core/anim/sequence.js）：events [{ time, dur, label, sub, station }]、stationStart（依流程編號）、total
+    steps: armSteps, total, events: armEvents, stationStart: sequence.stationStart, sequence,
+    sample, sampler, timeline, deviceEvents: timelineEvents(timeline),
+    jobs, rots, msgs, stats, towerSlotAt, slotDist, beakerMass,
+  };
 }
