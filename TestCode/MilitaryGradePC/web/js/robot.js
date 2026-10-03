@@ -33,8 +33,8 @@ export function createRobot() {
   const railBase = box(railLen, 120, 260, matArmD); railBase.position.y = 60; root.add(railBase);
   for (const z of [-80, 80]) { const r = box(railLen - 40, 24, 24, matRail); r.position.set(0, 132, z); root.add(r); }
   const carriage = new THREE.Group(); carriage.position.y = CARRIAGE_Y; root.add(carriage);
-  // 滑座本體（底面離滑軌螺絲頭 1 mm）。原程式的 carriage.add 寫在註解裡，滑座本體一直沒有加入場景；保持原畫面與檢查結果，未加入
-  const carBody = box(360, 57, 300, matArmD); carBody.position.y = 31.5;
+  // 滑座本體（底面離滑軌螺絲頭 1 mm），上接手臂立座。原程式的 carriage.add 誤寫在註解裡，2026-10-03 補回
+  const carBody = box(360, 57, 300, matArmD); carBody.position.y = 31.5; carriage.add(carBody);
   const railHarness=carrier(root,'RAIL / rolling power-data-air carrier',{origin:[0,30,-220],min:-1100,max:1100,radius:65,width:44,pitch:24});
   for(const x of [-1050,-550,-50,50,550,1050])support(root,'RAIL / guide cantilever',[x,19,-130],[x,19,-220],8);
   support(carriage,'RAIL / moving anchor',[0,16,-150],[0,16,-220],6);
