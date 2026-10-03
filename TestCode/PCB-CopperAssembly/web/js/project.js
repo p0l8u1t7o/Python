@@ -10,7 +10,7 @@ export function createProject({ scene, headless = false, recipe } = {}) {
 
   // 非實體：地面、板面標示（貼圖文字平面）
   const isDecal = o => o.isMesh && o.geometry?.type === 'PlaneGeometry' && o.material?.map;
-  const floor = machine.group.children.find(o => o.isMesh && o.geometry?.type === 'PlaneGeometry' && o.geometry.parameters.width === 9000);
+  const floor = machine.floor;                             // core floor() 建的地坪（name 'floor'）
 
   return {
     // 標準排程介面：timeline（core createTimeline）、events（各站與每一趟的節點）、stationStart（S0–S4 開始作業時間）

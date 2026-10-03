@@ -58,11 +58,12 @@ node ../core/tools/serve.mjs PCB-CopperAssembly --no-open
 | `web/js/layout.js` | 機種配方、產品與機台尺寸、運動參數、誤差模型 |
 | `web/js/plan.js` | 一個節拍的完整排程：每個機構是 core 時間軸（`createTimeline`）上的一條軌，並行排程，任一時刻用 core 的 `Track.at(T)` 取姿勢與所在步驟；`log` 是逐顆取放／取像紀錄，`events`／`stationStart`／`total` 是統一的事件介面；誤差抽樣 |
 | `web/js/board.js` | 基板（依配方的長圓孔或圓孔＋黏紙）、銅片、量測與檢查標記 |
-| `web/js/machine.js` | 輸送線、料倉與上下料、相機龍門、雙龍門與吸嘴頭、供料盤、仰視相機、外罩；鋁擠型框、鋁件、底座烤漆用 core 的 `MAT.frame`／`finished(MAT.alu, 'metal')`／`finished(MAT.cabinet, 'polymer')` |
+| `web/js/machine.js` | 地坪、輸送線、料倉與上下料、相機龍門、雙龍門與吸嘴頭、供料盤、仰視相機、外罩；地坪用 core 的 `floor()`（`core/geom/environment.js`，9 × 6 m 深色地坪＋9 m 見方、200 mm 格線，回傳的地坪以 `machine.floor` 交給 `project.js` 排除在干涉檢查外）；鋁擠型框、鋁件、底座烤漆用 core 的 `MAT.frame`／`finished(MAT.alu, 'metal')`／`finished(MAT.cabinet, 'polymer')` |
 | `web/js/sim.js` | 把排程在任一時間的狀態套到機台（畫面與驗證共用） |
 | `web/js/project.js` | 專案介面 `createProject({ scene, recipe })`：建立機台、基板與排程，`apply(t)` 把整個場景放到時間 t；網頁與 core 統一檢查共用同一份（含 `layoutChecks` 與全場檢查設定） |
-| `web/js/main.js` | UI、視角、相機子畫面、紀錄匯出（場景物件與逐時狀態都取自 `project.js`）；舞台 `core/ui/stage.js`（不開對數深度；3D 標籤 `addLabel`、視角轉場 `goTo`，基板近看／孔位細節以 `shiftView` 跟著輸送中的基板），播放列 `core/ui/player.js`（事件選單用排程的 `events`，循環播放綁定標準 `#loop` 勾選框），`?movie` 時改由 `core/movie/movie.js` 驅動 |
+| `web/js/main.js` | UI、視角、相機子畫面、紀錄匯出（場景物件與逐時狀態都取自 `project.js`）；舞台 `core/ui/stage.js`（光源用 `look: 'cell'` 的配色、曝光與燈光強度，只另寫霧、環境點光 240 與原本的太陽／補光位置和陰影相機；不開對數深度；3D 標籤 `addLabel`，站名 priority 2、龍門 1，小螢幕重疊時先留；視角轉場 `goTo`，手機直向由舞台自動拉遠，基板近看在窄畫布只水平拉遠、高度不變，相機留在龍門下方與前罩內；基板近看／孔位細節以 `shiftView` 跟著輸送中的基板），播放列 `core/ui/player.js`（事件選單用排程的 `events`，循環播放綁定標準 `#loop` 勾選框），`?movie` 時改由 `core/movie/movie.js` 驅動 |
 | `tools/verify.mjs` | 排程與幾何驗證 |
+| `web/css/style.css` | 桌面版面；900～1100 px 的非觸控視窗頂部改三列。≤900 px、觸控平板與橫向手機由 core 的精簡版面（`core/ui/viewer-workspace.css`）接手，本專案不再寫手機規則 |
 
 ## 驗證
 

@@ -5,6 +5,7 @@ import {cabinetShell,controlPanel,entryGland,panelFeed} from '@core/electrical/e
 import { cable, cableTray, carrier, support, CABLE } from '@core/electrical/cable-routing.js';
 import { perforated } from '@core/geom/perforated.js';
 import { block, cylinder, decal } from '@core/geom/shapes.js';
+import { floor } from '@core/geom/environment.js';
 import { MAT, finished } from '@core/geom/materials.js';
 import { LAYOUT, PRODUCT, HOLES, BOARD_TOP } from './layout.js';
 import { createCoin } from './board.js';
@@ -57,8 +58,7 @@ export function createMachine(scene) {
   const g = new THREE.Group(); g.name = 'machine'; scene.add(g);
   const keepout = [], ko = (m, n) => { m.name = n; keepout.push(m); return m; };
   const routingUpdates=[];
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(9000, 6000), new THREE.MeshStandardMaterial({ color: 0x1b2027, roughness: 0.95 })); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; g.add(floor);
-  const grid = new THREE.GridHelper(9000, 45, 0x2c3540, 0x222a33); grid.position.y = 0.5; g.add(grid);
+  const ground = floor(g, { size: [9000, 6000], cell: 200 });   // 9 × 6 m 深色地坪＋9 m 見方、200 mm 格線（core 預設配色）
 
   // ---- 底座（S2 花崗岩平台）與輸送線 ----
   const baseEntries=[{x:-620,z:LAYOUT.feeder.A.z-42,hole:9,sourceY:784},{x:620,z:LAYOUT.feeder.B.z-42,hole:9,sourceY:784},...['A','B'].map(H=>({x:LAYOUT.upCam[H].x,z:LAYOUT.upCam[H].z-42,hole:9,sourceY:755}))];
@@ -240,7 +240,7 @@ export function createMachine(scene) {
 
   return {
     updateRouting(){for(const update of routingUpdates)update();},
-    group: g, occluders: occ, keepout, lifts, stops, beltMarks, stacks, loaders, scanners, heads, feeders, upCams,
+    group: g, floor: ground.mesh, occluders: occ, keepout, lifts, stops, beltMarks, stacks, loaders, scanners, heads, feeders, upCams,
     tower: { set(k) { for (const n in lamps) lamps[n].material.emissiveIntensity = n === k ? 1.6 : 0.08; } },
   };
 }

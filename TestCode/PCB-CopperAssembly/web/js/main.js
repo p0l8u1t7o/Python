@@ -17,16 +17,16 @@ const vision = createVisionOverlay();
 const qp = new URLSearchParams(location.search);
 const { createProject } = await import('./project.js');
 const canvas = document.getElementById('c');
-// 共用舞台：只傳與預設不同的部分（霧、環境點光 240、相機範圍、太陽位置與陰影相機）
+// 共用舞台：look 'cell' 給配色、曝光與燈光強度；這裡只寫與 look 不同的部分（霧、環境點光 240、相機範圍）
+// 太陽與補光位置、陰影相機照原本明確寫（extent 推算的燈位與陰影範圍和原本不同，桌面畫面會變）
 // 不開對數深度（孔位特寫的近裁切面只有 0.2 mm）；?movie 時舞台會自動開
 const stage = createStage({
-  canvas, qp, exposure: 1.05, background: 0x0d1117, fog: [6000, 13000], logDepth: false,
-  envLight: 240, envBlur: .04,
+  canvas, qp, look: 'cell', fog: [6000, 13000], logDepth: false, envLight: 240,
   camera: { fov: 40, near: .1, far: 30000 },
   controls: { minDistance: 7, maxDistance: 9000 },
-  sun: { color: 0xffffff, intensity: 1.5, position: [-1500, 3500, 2200], target: [0, 0, 0],
+  sun: { position: [-1500, 3500, 2200], target: [0, 0, 0],
     shadow: { mapSize: 2048, camera: { left: -2200, right: 2200, top: 2200, bottom: -2200, near: 500, far: 9000 }, bias: -.0003, normalBias: .05 } },
-  fill: { color: 0x9fb8ff, intensity: .5, position: [1800, 1500, -1800] },
+  fill: { position: [1800, 1500, -1800] },
 });
 const { renderer, scene, camera, controls } = stage;
 
@@ -64,7 +64,11 @@ function focusPoint(hole = true) {
 function closeView(hole) {
   const t = focusPoint(hole), span = Math.max(PRODUCT.hole.l * 3, 23);
   // Keep the board overview below the gantry beam, including when the A beam crosses the board.
-  return [t.clone().add(hole ? new THREE.Vector3(span * .4, span * .72, span) : new THREE.Vector3(200, 235, 450)).toArray(), t.toArray()];
+  // 窄畫布（手機直向）舞台會把距離乘上 fitScale：基板近看只把水平方向拉遠到 1.7 倍、高度不變，
+  // 相機才會留在龍門下方、前罩（z 840）與立柱內側；先除以 fitScale 抵銷舞台的倍數（桌面 fitScale＝1，不受影響）
+  const f = stage.fitScale, k = Math.min(f, 1.7);
+  const offset = hole ? new THREE.Vector3(span * .4, span * .72, span) : new THREE.Vector3(200 * k / f, 235 / f, 450 * k / f);
+  return [t.clone().add(offset).toArray(), t.toArray()];
 }
 
 // ---------------------------------------------------------------- 視角：[相機位置, 注視點] 或 () => [...]，切換用 stage.goTo
@@ -105,11 +109,12 @@ document.getElementById('beforeInsert').onclick = () => inspectHole('before');
 document.getElementById('afterInsert').onclick = () => inspectHole('after');
 
 // ---------------------------------------------------------------- 3D 標籤（共用舞台；顯示與否由「顯示設備標籤」決定）
-const label = (html, pos) => stage.addLabel(html, new THREE.Vector3(...pos));
-STNAMES.forEach((n, i) => label(`<b>S${i}</b> ${n}`, [X[i], 1480, -120]));
+// priority：小螢幕標籤重疊時先留站名（2），再留龍門（1），供料與仰視相機最後
+const label = (html, pos, priority = 0) => stage.addLabel(html, new THREE.Vector3(...pos), '', { priority });
+STNAMES.forEach((n, i) => label(`<b>S${i}</b> ${n}`, [X[i], 1480, -120], 2));
 label('柔性供料 A', [LAYOUT.feeder.A.x, 1010, LAYOUT.feeder.A.z]); label('柔性供料 B', [LAYOUT.feeder.B.x, 1010, LAYOUT.feeder.B.z]);
 label('仰視相機 A', [LAYOUT.upCam.A.x, 890, LAYOUT.upCam.A.z]); label('仰視相機 B', [LAYOUT.upCam.B.x, 890, LAYOUT.upCam.B.z]);
-label('龍門 A（4 吸嘴）', [0, 1350, 360]); label('龍門 B（4 吸嘴）', [0, 1350, -360]);
+label('龍門 A（4 吸嘴）', [0, 1350, 360], 1); label('龍門 B（4 吸嘴）', [0, 1350, -360], 1);
 
 // ---------------------------------------------------------------- 相機子畫面
 let T = 0, info = null, player = null;
