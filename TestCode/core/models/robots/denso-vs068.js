@@ -127,7 +127,7 @@ export function createVS068({ q: pose = READY, ik: ikOptions = {}, dress = true,
 // ---------------------------------------------------------------- 模型目錄
 // 目錄的狀態範圍比限位窄：模型目錄把六軸同時從最小掃到最大，全限位組合會讓前臂／手腕撞上基座或上臂。
 export const meta = {
-  id: 'denso-vs068', name: 'DENSO VS-068 六軸手臂', category: '機器手臂', source: 'RobotArmPressSSD',
+  id: 'denso-vs068', name: 'DENSO VS-068 六軸手臂', category: '機械手臂', source: 'RobotArmPressSSD',
   params: {},
   states: {
     j1: { value: READY.j1, min: -170, max: 170, unit: '°', label: 'J1 基座旋轉' },

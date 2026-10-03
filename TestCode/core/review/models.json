@@ -16,6 +16,14 @@
     "zfight": []
   },
   {
+    "id": "denso-cobotta-pro900",
+    "name": "DENSO COBOTTA PRO 900 協作手臂",
+    "ok": true,
+    "meshes": 60,
+    "dynamic": [],
+    "zfight": []
+  },
+  {
     "id": "denso-hsr065",
     "name": "DENSO HSR065 SCARA",
     "ok": true,
