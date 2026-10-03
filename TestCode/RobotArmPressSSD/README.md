@@ -7,7 +7,7 @@
   - 有整排接頭的機種（8 顆、片距 21 mm）用 **8 頭整排壓墊**（標準），每頭獨立彈簧，一次壓一整排。
   - 只有單顆接頭的機種（例如 3.5 吋 SSD）快拆換單點彈簧壓頭。
 - 換機種只換配方。固定的全局相機先拍整盤，找出每顆接頭的位置與方向。
-- 所有 Three.js 依賴在 `web/vendor`，可離線執行。
+- Three.js 與共用模組來自 `../core`（`core/vendor`），可離線執行。
 
 文件：
 - [多機種重新設計](docs/redesign-multi-product.md)：共用治具、配方、全局相機、節拍。
@@ -64,6 +64,7 @@ node ../core/tools/serve.mjs RobotArmPressSSD --no-open
 - `?pause&st=3&view=inspect`（直接看取像）；加 `t` 時仍以站別起點加秒數精確定位。
 - `?pause&st=2&view=leads&focus=A1`、`?pause&st=2&view=product`
 - `?shadow=0`、`cam=x,y,z,tx,ty,tz`
+- `?pause&movie`：展示影片模式。不跑一般畫面迴圈，改由 `core/movie/movie.js` 的 `installMovie` 依絕對時間逐格取樣（與 `project.apply` 同一路徑），提供預覽、鏡頭檢查與「輸出完整影片」。
 
 主控台：`window.sim.seekTo(sec)`、`pause()`、`play()`、`setView(name)`、`steps`。
 
@@ -103,7 +104,7 @@ node ../core/tools/serve.mjs RobotArmPressSSD --no-open
 | `web/js/sequence.js` | 由配方產生流程、拍攝分組、接頭狀態與力值計算 |
 | `web/js/station.js` | 組裝整站並套用狀態（畫面與驗證共用） |
 | `web/js/project.js` | 專案介面 `createProject`：依配方／壓墊建整站、ROI 框與流程；`apply(t)` 把流程狀態、手臂姿態、燈號與 ROI 放到時間 t。`main.js` 與 core 統一檢查共用 |
-| `web/js/main.js` | 場景、配方選單、接頭狀態、相機子畫面、紀錄匯出（物件與時間狀態取自 `project.js`） |
+| `web/js/main.js` | 配方選單、接頭狀態、相機子畫面、紀錄匯出、`?movie` 錄影掛勾（物件與時間狀態取自 `project.js`）。renderer、相機、軌道控制、環境光與燈光、畫面迴圈用共用舞台 `core/ui/stage.js` 的 `createStage`；作業區局部光（含陰影）在 main.js 另建 |
 | `tools/verify.mjs` | 全配方驗證 |
 
 ## 驗證

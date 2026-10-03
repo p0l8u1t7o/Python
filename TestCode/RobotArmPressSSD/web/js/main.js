@@ -8,8 +8,7 @@ import * as THREE from 'three';
 import { createVisionOverlay } from '@core/ui/vision-overlay.js';
 import { ssdResults } from './vision-results.js';
 const vision = createVisionOverlay();
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { createStage, exposeSim } from '@core/ui/stage.js';
 import { createProject, resolveRecipe } from './project.js';
 import { smooth, STATIONS, SPEC } from './sequence.js';
 import { RECIPES } from './recipes.js';
@@ -20,34 +19,20 @@ const qp = new URLSearchParams(location.search);
 // 配方與壓墊的預設規則在 project.js（檢查用同一規則）
 const { key: RECIPE_KEY, recipe, insert: INSERT } = resolveRecipe(qp.get('recipe'), qp.get('insert'));
 
-// ---------------------------------------------------------------- 場景
+// ---------------------------------------------------------------- 場景（共用舞台 core/ui/stage.js）
+// 曝光、背景、相機、半球光、補光與 stage 預設相同，只列出差異；本站場景約 2 m、銀腳特寫近裁切面 0.15 mm，不用對數深度（?movie 時 stage 一律開啟）
 const canvas = document.getElementById('c');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: qp.get('aa') !== '0', powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.shadowMap.enabled = qp.get('shadow') !== '0'; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0d1117);
-scene.fog = new THREE.Fog(0x0d1117, 5000, 11000);
-const pmrem = new THREE.PMREMGenerator(renderer);
-const environmentRoom = new RoomEnvironment(renderer);
-environmentRoom.traverse(o=>{if(o.isPointLight) o.intensity=220;});
-const environmentTarget = pmrem.fromScene(environmentRoom, 0.04);
-scene.environment = environmentTarget.texture;
-environmentRoom.dispose(); pmrem.dispose();
-
-const camera = new THREE.PerspectiveCamera(40, 1, 2, 20000);
-const controls = new OrbitControls(camera, canvas);
-controls.enableDamping = true; controls.dampingFactor = 0.08; controls.maxPolarAngle = Math.PI * 0.49; controls.minDistance = 8; controls.maxDistance = 7000;
-
-scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x2a2f36, 0.6));
-const sun = new THREE.DirectionalLight(0xffffff, 1.5); sun.position.set(-1500, 3200, 1800);
-sun.castShadow = qp.get('shadow') !== '0'; sun.shadow.mapSize.set(2048, 2048);
-Object.assign(sun.shadow.camera, { left: -1800, right: 1800, top: 1800, bottom: -1800, near: 500, far: 8000 }); sun.shadow.bias = -0.0003;
-scene.add(sun);
-const fill = new THREE.DirectionalLight(0x9fb8ff, 0.5); fill.position.set(1800, 1500, -1800); scene.add(fill);
+const stage = createStage({
+  canvas, qp, exposure: 1.05, background: 0x0d1117, fog: [5000, 11000], logDepth: false,
+  camera: { fov: 40, near: 2, far: 20000 },
+  controls: { enableDamping: true, dampingFactor: .08, maxPolarAngle: Math.PI * .49, minDistance: 8, maxDistance: 7000 },
+  envLight: 220, envBlur: .04,
+  hemi: { sky: 0xbfd4ff, ground: 0x2a2f36, intensity: .6 },
+  sun: { color: 0xffffff, intensity: 1.5, position: [-1500, 3200, 1800], target: [0, 0, 0], shadow: { mapSize: 2048, camera: { left: -1800, right: 1800, top: 1800, bottom: -1800, near: 500, far: 8000 }, bias: -.0003 } },
+  fill: { color: 0x9fb8ff, intensity: .5, position: [1800, 1500, -1800] },
+});
+const { renderer, scene, camera, controls } = stage;
+// 作業區局部光：stage 的 extraLights 不含陰影與目標點，在這裡自建
 const taskLight = new THREE.DirectionalLight(0xfff5e7, 1.3);
 taskLight.position.set(180,1350,160); taskLight.target.position.set(0,900,0);
 taskLight.castShadow=renderer.shadowMap.enabled; taskLight.shadow.mapSize.set(2048,2048);
@@ -227,11 +212,10 @@ function drawHud() {
   for (const l of labels) { const p = l.getPos().project(camera), visible = ui.showLabels.checked && p.z < 1 && Math.abs(p.x) < .98 && Math.abs(p.y) < .83; l.el.style.display = visible ? 'block' : 'none'; if (visible) { l.el.style.left = canvas.offsetLeft + (p.x * .5 + .5) * canvas.clientWidth + 'px'; l.el.style.top = canvas.offsetTop + (-p.y * .5 + .5) * canvas.clientHeight + 'px'; } }
   document.getElementById('diagnostics').textContent = JSON.stringify({ recipe: RECIPE_KEY, insert: INSERT, time: T, total, step: current.index, station: S.station, action: S.action, poseError: e, force, playing, waiting, fault, gaps: ps.gap, lift: S.lift, stop: S.stop });
 }
-function resize() { const w = canvas.clientWidth, h = canvas.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
-window.addEventListener('resize', resize);
-function render() {
+// 主畫面以外的每格工作：面板、產品追隨、電控狀態、相機子畫面（子畫面畫進離屏目標，不動主畫布）
+function prepareFrame() {
   drawHud(); workspace.follow();electrical.update({time:T,playing,action:S.action,motion:true,vision:!!(S.flashTool||S.flashTop||S.flashUp||S.flashDown||S.flashSn)});
-  renderer.setScissorTest(false); renderer.setViewport(0,0,canvas.clientWidth,canvas.clientHeight); workspace.renderOverview(renderer,scene);
+  renderer.setScissorTest(false); renderer.setViewport(0,0,canvas.clientWidth,canvas.clientHeight);
   const hidden=[cell.occluders,trail,...project.roiBoxes],visible=hidden.map(o=>o.visible); hidden.forEach(o=>o.visible=false);
   const exposure=renderer.toneMappingExposure;renderer.toneMappingExposure=.88;
   const global=useGlobalView(),shotReady=S.flashTool>0&&arrived();
@@ -239,12 +223,13 @@ function render() {
     marks:{title:global?'USB 定位':'銀腳貼合',state:global?(S.station===1&&S.detected>0?'定位示意':'預覽'):shotReady?`本幀取像 · ≤ ${recipe.gapLimit} mm`:'待取像',time:T,marks:ssdResults(product,recipe,{global,detected:S.station===1&&S.detected>0,exposure:shotReady,ids:shotIds(),gaps:st.state.gap})}});
   renderer.toneMappingExposure=exposure;hidden.forEach((o,i)=>o.visible=visible[i]);
 }
-const workspace=createViewerWorkspace({camera,controls,canvas,resize,focusOccluders:[cell.occluders],
+// 完整一格（跳播、截圖、錄影直接呼叫）
+function render() { prepareFrame(); workspace.renderOverview(renderer,scene); }
+const workspace=createViewerWorkspace({camera,controls,canvas,resize:stage.resize,focusOccluders:[cell.occluders],
   getFocus:()=>product.root.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0,recipe.pallet.t+5,0)),
   focusOffset:[-recipe.pallet.w*.55,recipe.pallet.w*.85,recipe.pallet.d*.95],
   onFocus:()=>{setElectricalCutaway(scene,false);camAnim=null;selectedView='focus';document.querySelectorAll('.views button').forEach(b=>b.classList.remove('selected'));}});
 const electrical=createElectricalInspector({scene,camera,controls,canvas,onEnter:()=>setView('electrical',true),onExit:()=>setView('iso',true),title:'RobotArmPressSSD'});
-const clock = new THREE.Clock();
 const lastProductPosition = product.root.position.clone();
 function tick(dt) {
   if (!playing) return;
@@ -259,8 +244,8 @@ function tick(dt) {
   }
   robot.update(dt);
 }
-function frame() {
-  requestAnimationFrame(frame); const dt = Math.min(clock.getDelta(), .05);
+// stage.loop 每格：frameTick(dt) → controls.update() → 主畫面 renderer.render(scene, camera)
+function frameTick(dt) {
   const n = Math.max(1, Math.ceil(dt * speed / .01)); for (let k = 0; k < n; k++) tick(dt * speed / n);
   if (selectedView==='product'||selectedView==='leads') {
     const delta=product.root.position.clone().sub(lastProductPosition);
@@ -270,12 +255,24 @@ function frame() {
   lastProductPosition.copy(product.root.position);
   if (playing && ui.showPath.checked) pushTrail(robot.getTcpWorld(robot.goal.tcp));
   if (camAnim) { camAnim.u = Math.min(1, camAnim.u + dt * 1.4); camera.position.lerpVectors(camAnim.p0, camAnim.p, smooth(camAnim.u)); controls.target.lerpVectors(camAnim.t0, camAnim.t, smooth(camAnim.u)); if (camAnim.u === 1) camAnim = null; }
-  controls.update(); render();
+  prepareFrame();
+  // 主畫面接著由 stage 繪製；產品追隨（◎）時與 workspace.renderOverview 相同，暫時隱藏外罩（下一格 drawHud 依勾選還原）
+  if (workspace.following) cell.occluders.visible = false;
 }
-current = project.apply(0); S = current.state; setView('iso', true); resize(); ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放';
-window.sim = { seekTo, views: Object.keys(views), project, pause() { playing = false; ui.playBtn.textContent = '▶ 播放'; }, play() { playing = true; ui.playBtn.textContent = '⏸ 暫停'; }, get state() { return S; }, robot, total, stationStart, steps: sequence.steps, setView, recipe: RECIPE_KEY, insert: INSERT };
+current = project.apply(0); S = current.state; setView('iso', true); stage.resize(); ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放';
+exposeSim({ seekTo, views: Object.keys(views), project, pause() { playing = false; ui.playBtn.textContent = '▶ 播放'; }, play() { playing = true; ui.playBtn.textContent = '⏸ 暫停'; }, get state() { return S; }, robot, total, stationStart, steps: sequence.steps, setView, recipe: RECIPE_KEY, insert: INSERT });
 if (qp.has('st')) { playing = false; const station = THREE.MathUtils.clamp(+qp.get('st') || 0, 0, STATIONS.length - 1); seekTo(qp.has('t') ? stationStart[station] + (+qp.get('t') || 0) : stationPreviewTime(sequence, station)); }
 if (qp.has('step')) { playing = false; seekTo(sequence.steps[THREE.MathUtils.clamp(+qp.get('step') || 0, 0, sequence.steps.length - 1)].start + (+qp.get('t') || 0)); }
 if (qp.has('view')) setView(qp.get('view'), true);
 if (qp.has('cam')) { const a = qp.get('cam').split(',').map(Number); if (a.length === 6 && a.every(Number.isFinite)) { camera.position.set(...a.slice(0, 3)); controls.target.set(...a.slice(3)); controls.update(); } }
-document.getElementById('loading').classList.add('hide'); render(); frame();
+document.getElementById('loading').classList.add('hide'); render(); stage.loop(frameTick);   // ?movie 時 stage 不啟動迴圈
+
+// ---------------------------------------------------------------- 展示影片（?movie）：依絕對時間逐格取樣，與 project.apply 同一路徑
+if (qp.has('movie')) {
+  playing = false; ui.playBtn.textContent = '▶ 播放';
+  const { installMovie } = await import('@core/movie/movie.js');
+  installMovie({ project: 'RobotArmPressSSD', scene, renderer, camera, controls, render, setView, total, steps: sequence.steps,
+    sample(t) { T = t; current = project.apply(t); S = current.state; },
+    focus: () => product.root.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, recipe.pallet.t + 5, 0)),
+    offset: [-recipe.pallet.w * 1.1, recipe.pallet.w * 1.65, recipe.pallet.d * 1.9] });
+}
