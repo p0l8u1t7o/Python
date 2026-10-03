@@ -6,6 +6,7 @@ import { cable, cableTray, carrier, support, CABLE } from '@core/electrical/cabl
 import { NB } from './notebook.js';
 import { block, cylinder, decal, tube } from '@core/geom/shapes.js';
 import { MAT } from '@core/geom/materials.js';
+import { floor } from '@core/geom/environment.js';
 
 export const LAYOUT = {
   // S3 在 x=1150：S2 右側護蓋作業時手腕在 x≤約 680，翻轉治具左端（x≥695）不在手腕範圍內
@@ -25,8 +26,7 @@ export const LAYOUT = {
 };
 
 // 常見材質用共用材質表 MAT（鋁擠型結構框、鋁、皮帶、鋼、黑件、警示黃、PU、藍色烤漆、螢幕、拋光銷）；
-// 本站專屬外觀留在這裡：深色地面、相機外殼、穹頂光擴散罩
-const matFloor = new THREE.MeshStandardMaterial({ color: 0x1b2027, roughness: 0.95 });
+// 本站專屬外觀留在這裡：相機外殼、穹頂光擴散罩（地面用共用的 floor()）
 const matFrame = MAT.frame;
 const matAlu = MAT.alu, matBelt = MAT.belt, matPallet = MAT.steel, matDark = MAT.black;
 const matCam   = new THREE.MeshStandardMaterial({ color: 0x2c3138, roughness: 0.4, metalness: 0.5 });
@@ -136,8 +136,8 @@ export function createCell(scene) {
   const g = new THREE.Group(); g.name = 'cell'; scene.add(g);
   const { stationX, conveyorTop: top, railZ } = LAYOUT;
 
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(11000, 7000), matFloor); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; g.add(floor);
-  const grid = new THREE.GridHelper(11000, 55, 0x2c3540, 0x222a33); grid.position.y = 0.5; g.add(grid);
+  // 地面：11 × 7 m 深色地坪＋11 m 正方形格線（200 mm 一格，共 55 格，y = 0.5）
+  floor(g, { size: [11000, 7000], cell: 200 });
   for (const z of [1150, -1150]) { const l = box(6000, 1, 40, matYellow); l.position.set(0, 1, z); g.add(l); }
 
   // ---- 載具式輸送線（S0 堆料架出口 → S4 堆料架入口）----

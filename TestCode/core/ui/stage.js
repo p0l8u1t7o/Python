@@ -9,7 +9,7 @@
 //
 // 小螢幕（手機直向、窄視窗）：
 //   narrowFit  畫布比 aspect 窄時，goTo 的相機距離乘上 (aspect / 畫布寬高比)^power（上限 max），保住水平方向的取景；
-//              旋轉螢幕或改變視窗時依新比例調整目前距離（含使用者自己轉過的視角）與 maxDistance；
+//              旋轉螢幕或改變視窗時依新比例調整目前距離（含使用者自己轉過的視角）、maxDistance 與霧的起訖距離；
 //              個別視角可用 goTo(…, { fit: false 或 (倍數, 偏移) => 新偏移 }) 自訂
 //   declutter  'narrow'（預設：精簡版面時，或畫布寬度 < 900 px）、true（一律）、false 或函式（每格判斷）：標籤互相重疊時隱藏優先度低的
 //              （addLabel 的 priority 大者優先，同優先度先加入者優先）
@@ -144,7 +144,7 @@ function buildStage({
     const w = canvas.clientWidth, h = canvas.clientHeight; if (fitOff || !w || !h || w / h >= narrowFit.aspect) return 1;
     return Math.min(narrowFit.max ?? 2.4, (narrowFit.aspect / (w / h)) ** (narrowFit.power ?? .85));
   };
-  let fitScale = 1, baseMaxDistance = null;
+  let fitScale = 1, baseMaxDistance = null, baseFog = null;
   // 最近一次 goTo 的視角：注視點、桌面偏移（相機－注視點）、fit 方式與目前套用的偏移；
   // 相機仍停在該視角（或正轉場過去）時，旋轉螢幕依該視角的 fit 重算，使用者自己轉過則整體距離依比例調整
   let view = null;
@@ -152,6 +152,8 @@ function buildStage({
   function refit() {
     const f = fitFor(); if (Math.abs(f - fitScale) < 1e-6) return;
     baseMaxDistance ??= controls.maxDistance; controls.maxDistance = baseMaxDistance * f;
+    // 霧的起訖距離跟著放大（拉遠後的相機才不會落進霧裡、整片泛白）
+    if (scene.fog) { baseFog ??= [scene.fog.near, scene.fog.far]; scene.fog.near = baseFog[0] * f; scene.fog.far = baseFog[1] * f; }
     const onView = view && controls.target.distanceTo(view.Tg) < 1e-3 && camera.position.clone().sub(view.Tg).distanceTo(view.applied) < 1e-3;
     if (view && (onView || (tween && tween.Tg.distanceTo(view.Tg) < 1e-3))) {
       view.applied = fitOffset(view, f);

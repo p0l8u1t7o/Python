@@ -23,16 +23,18 @@ const SKU = qp.get('sku') && SKUS[qp.get('sku')] ? qp.get('sku') : DEFAULT_SKU;
 
 // ---------------------------------------------------------------- 場景（共用舞台 core/ui/stage.js）
 // 本站場景約 7 m、近裁切面 10 mm，維持一般深度緩衝（logDepth: false；?movie 時 stage 一律開啟對數深度）
+// look: 'cell' 提供背景、環境光模糊、天空光配色與補光；本站曝光、環境光、天空光與主光強度略不同，照舊寫明。
+// 燈位、陰影範圍與霧沿用原本的明確值（extent 推算的位置不同，會改變桌面畫面），所以不給 extent
 const canvas = document.getElementById('c');
 const stage = createStage({
-  canvas, qp, exposure: 1.0, background: 0x0d1117, fog: [7000, 14000], logDepth: false,
+  canvas, qp, look: 'cell', exposure: 1.0, fog: [7000, 14000], logDepth: false,
   camera: { fov: 42, near: 10, far: 30000 },
   controls: { enableDamping: true, dampingFactor: .08, maxPolarAngle: Math.PI * .49, minDistance: 150, maxDistance: 10000 },
-  envLight: 240, envBlur: .04,
-  hemi: { sky: 0xbfd4ff, ground: 0x2a2f36, intensity: .55 },
-  sun: { color: 0xffffff, intensity: 1.6, position: [-2500, 4200, 2600], target: [0, 0, 0],
+  envLight: 240,
+  hemi: { intensity: .55 },
+  sun: { intensity: 1.6, position: [-2500, 4200, 2600], target: [0, 0, 0],
     shadow: { mapSize: 2048, camera: { left: -3500, right: 3500, top: 3500, bottom: -3500, near: 500, far: 12000 }, bias: -.0004, normalBias: .08 } },
-  fill: { color: 0x9fb8ff, intensity: .5, position: [2500, 2000, -2500] },
+  fill: { position: [2500, 2000, -2500] },
   // 載具特寫光：位置與照射點每格跟著載具（render 內更新），陰影範圍只涵蓋筆電周圍
   extraLights: [{ color: 0xfff8ef, intensity: .65, position: [0, 1, 0], target: [0, 0, 0],
     shadow: { mapSize: 2048, camera: { left: -240, right: 240, top: 230, bottom: -230, near: 50, far: 1500 }, bias: -.00001, normalBias: .035 } }],
@@ -52,12 +54,13 @@ let trailCount = 0;
 function pushTrail(p) { if (trailCount >= trailN) { trailPos.copyWithin(0, 3); trailCount = trailN - 1; } trailPos.set([p.x, p.y, p.z], trailCount * 3); trailCount++; trailGeo.attributes.position.needsUpdate = true; trailGeo.setDrawRange(0, trailCount); }
 
 // 3D 標籤（stage.addLabel；畫布在頁面中的位移由 stage 處理）
+// 小螢幕重疊時依 priority 避讓：站名與手臂（2）＞頂視相機、翻轉治具（1）＞條碼讀取器、力覺末端（0）
 const sName = ['<b>S0</b> 進料升降堆料架', '<b>S1</b> 閉合外觀站', '<b>S2</b> 側邊護蓋站', '<b>S3</b> 翻面檢測站', '<b>S4</b> 出料升降堆料架'];
-LAYOUT.stationX.forEach((x, i) => stage.addLabel(sName[i], () => new THREE.Vector3(x, LAYOUT.conveyorTop + (i === 0 || i === 4 ? 1100 : 330), 0)));
-stage.addLabel('DENSO VM-60B1＋第七軸滑軌', () => new THREE.Vector3(robot.q.rail, 250, LAYOUT.railZ));
-stage.addLabel('頂視 20MP＋穹頂光', () => cell.topCamPos.clone().add(new THREE.Vector3(0, 120, 0)));
+LAYOUT.stationX.forEach((x, i) => stage.addLabel(sName[i], () => new THREE.Vector3(x, LAYOUT.conveyorTop + (i === 0 || i === 4 ? 1100 : 330), 0), '', { priority: 2 }));
+stage.addLabel('DENSO VM-60B1＋第七軸滑軌', () => new THREE.Vector3(robot.q.rail, 250, LAYOUT.railZ), '', { priority: 2 });
+stage.addLabel('頂視 20MP＋穹頂光', () => cell.topCamPos.clone().add(new THREE.Vector3(0, 120, 0)), '', { priority: 1 });
 stage.addLabel('SN 條碼讀取器', () => cell.snReaderPos.clone().add(new THREE.Vector3(0, -70, 0)));
-stage.addLabel('翻轉夾持治具', () => new THREE.Vector3(LAYOUT.stationX[3] + 380, 1560, -270));
+stage.addLabel('翻轉夾持治具', () => new THREE.Vector3(LAYOUT.stationX[3] + 380, 1560, -270), '', { priority: 1 });
 stage.addLabel('力覺末端', () => robot.getTcpWorld('cam').add(new THREE.Vector3(0, 90, 0)));
 
 const ui=Object.fromEntries(['action','substep','forceBar','forceVal','zoneDot','zoneTxt','checklist','chkCount','playBtn','speed','showZone','showPath','progBar','sku','signals','poseError','phase','result','exportBtn','showGuards','showLabels','cycleTime'].map(id=>[id,document.getElementById(id)]));
@@ -76,13 +79,21 @@ const checklist=[
   [['flip','夾持交接 / 抬升 / 翻面'],['print','底面法規白字'],['labels','SN / 安規 / 鈕扣電池警語'],['dock','外露 Docking 接點'],['screws','分區螺絲 / 腳墊 / 維修蓋'],['return','翻回 / 落座 / 夾持交接']],
   [['judge','第一階段結果彙整'],['stack','出料托叉承重 / 堆疊']]
 ];
-// ---------------------------------------------------------------- 視角：[相機位置, 注視點]，切換用 stage.goTo
+// ---------------------------------------------------------------- 視角：[相機位置, 注視點, goTo 選項]，切換用 stage.goTo
+// 窄畫布（手機直向）由 stage 自動拉遠（倍數 f；桌面 f = 1，下列 fit 原樣回傳，桌面畫面不變）：
+//   俯視  直向畫面改從 +x 側俯看，輸送線由上到下（S0 在上），距離取整條線 6 m 與寬度 2.6 m 都放得下
+const portrait=()=>canvas.clientWidth<canvas.clientHeight*.8;
+const topFit=(f,o)=>{
+  if(f<=1||!portrait())return o;
+  const k=2*Math.tan(THREE.MathUtils.degToRad(camera.fov/2)),d=Math.max(6000,2600*canvas.clientHeight/canvas.clientWidth)/k;
+  return new THREE.Vector3(o.z,o.y,0).setLength(d);
+};
 const views={
   electrical: [[-1000,530,1550],[-1000,330,20]],
   wiring: [[1200,2300,-2700],[-350,1050,-350]],
   iso:[[3300,2750,3900],[0,650,-100]],robot:[[1050,1400,1150],[-100,870,-250]],
   stacker:[[-2850,1800,1650],[-1850,990,0]],flip:[[LAYOUT.stationX[3]+620,1340,1120],[LAYOUT.stationX[3],980,0]],
-  top:[[0,5300,500],[0,750,0]],product:[[310,1120,360],[0,835,0]],door:[[-480,990,470],[-130,850,0]]
+  top:[[0,5300,500],[0,750,0],{fit:topFit}],product:[[310,1120,360],[0,835,0]],door:[[-480,990,470],[-130,850,0]]
 };
 let selectedView='iso',viewDoorId='';
 function setView(name,instant=false){
@@ -90,13 +101,13 @@ function setView(name,instant=false){
   if(!views[name]&&name!=='sensor')return;selectedView=name;controls.enabled=name!=='sensor';
   document.querySelectorAll('.views button').forEach(b=>b.classList.toggle('selected',b.dataset.view===name));
   if(name==='sensor'){stage.cancelTween();return;}   // 手臂取景：相機不再被轉場拉走
-  let [p,t]=views[name].map(a=>new THREE.Vector3(...a));
+  const [p0,t0,opts]=views[name];let p=new THREE.Vector3(...p0),t=new THREE.Vector3(...t0);
   if(name==='door'||name==='product'){p.x+=S.palletX;t.x+=S.palletX;p.y+=S.lift;t.y+=S.lift;}
   if(name==='door'){
     const d=nb.doors.find(d=>S.action.startsWith(d.def.id+' '));viewDoorId=d?.def.id||'';
     if(d){t=d.centerWorld();const n=d.normalWorld(),tangent=new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0),n);p=t.clone().addScaledVector(n,250).addScaledVector(tangent,150).add(new THREE.Vector3(0,120,0));}
   }
-  stage.goTo(p.toArray(),t.toArray(),instant);
+  stage.goTo(p.toArray(),t.toArray(),instant,undefined,opts);
 }
 document.querySelectorAll('.views button').forEach(b=>b.onclick=()=>{
   if(b.dataset.view==='sensor')player.pause();
@@ -155,6 +166,10 @@ function render(){
     hidden.forEach(o=>o.visible=false);
     const ph=Math.min(h,w/1.5),pw=ph*1.5;renderer.clear();renderer.setViewport((w-pw)/2,(h-ph)/2,pw,ph);renderer.render(scene,robot.inspectionCam);
     caption.textContent='手臂鏡頭 · 3:2 完整視野 · 模擬影像';
+    // 說明預設在畫布左上（桌面落在影像左側留白）；畫面窄到與影像重疊時改放影像左下角內側，不蓋住影像上緣的檢測資訊
+    caption.style.left=caption.style.top='';
+    const cr=caption.getBoundingClientRect(),rect=canvas.getBoundingClientRect(),il=rect.left+(w-pw)/2,it=rect.top+(h-ph)/2;
+    if(cr.right>il&&cr.left<il+pw&&cr.bottom>it&&cr.top<it+ph){caption.style.left=il+10+'px';caption.style.top=it+ph-cr.height-10+'px';}
   }else workspace.renderOverview(renderer,scene);
   hidden.forEach(o=>o.visible=false);
   const e=robot.error(),exposure=S.flashTool>0&&e.position<2&&e.angle<3&&e.rail<2;

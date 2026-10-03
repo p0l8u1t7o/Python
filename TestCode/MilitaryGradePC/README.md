@@ -37,6 +37,7 @@ node ../core/tools/serve.mjs MilitaryGradePC --no-open
 - 全景、堆料架、手臂、護蓋特寫、翻面、俯視、產品特寫；護蓋視角會隨目前門的位置改變。滑鼠可自由旋轉縮放。
 - 右側顯示設備訊號、TCP 位置／姿態誤差、模擬力值與檢驗清單。曝光與動作銜接等待手臂到位，逾時會停止並顯示原因。
 - 下方可顯示 TCP 路徑與參考包絡；右側可顯示／隱藏圍籬、控制櫃及設備標籤。
+- 手機與平板：≤900 px、觸控平板 ≤1100 px 與橫向手機改用 core 的精簡版面（☰ 站別與視角、⚙ 播放設定、工具列 ◨ 開側欄）。手機直向時畫面自動拉遠，霧也跟著放遠；俯視改由側面俯看，讓輸送線由上而下排列（S0 在上）；手臂取景的說明文字若會蓋到影像，就移到影像左下角。設備標籤重疊時，先保留站名與手臂標籤。
 - 「示意 NG」會使播放在 S4 停止。切回 OK 只是在示範正常流程，不代表真實覆判；時間滑桿仍可檢視其他步驟。
 - 「匯出紀錄」產生 JSON：模擬 SN、配方、完成／未完成項目、曝光事件及目前模型誤差。**無實拍影像、無實測數值、未接 MES。**
 - `V110-RF` 保留為非本工單的擴充示意，不冒充 G7-STND 配置。
@@ -61,12 +62,12 @@ node ../core/tools/serve.mjs MilitaryGradePC --no-open
 |---|---|
 | `web/js/notebook.js` | 產品、介面、封印與 SKU |
 | `core/geom/shapes.js` | 幾何、可讀文字貼圖、配線共用元件（各專案共用） |
-| `web/js/cell.js` | 載具、進出料、輸送與翻轉設備；鋁擠型結構框（`MAT.frame`）、拋光定位銷與導桿（`MAT.chrome`）、鋁、鋼、黑件、皮帶、警示黃、PU、藍色烤漆、螢幕用共用材質表 `core/geom/materials.js` 的 `MAT`，深色地面、相機外殼、穹頂擴散罩與三色燈留在本檔 |
+| `web/js/cell.js` | 載具、進出料、輸送與翻轉設備；鋁擠型結構框（`MAT.frame`）、拋光定位銷與導桿（`MAT.chrome`）、鋁、鋼、黑件、皮帶、警示黃、PU、藍色烤漆、螢幕用共用材質表 `core/geom/materials.js` 的 `MAT`，相機外殼、穹頂擴散罩與三色燈留在本檔；地面用共用的 `floor()`（`core/geom/environment.js`，11 × 7 m 地坪＋11 m 格線、200 mm 一格） |
 | `core/models/robots/denso-vm60b1.js` | DENSO VM-60B1 手臂本體（共用模型）：基座、連桿、關節 j1～j6、手臂線材保護段、法蘭工具安裝座、限位、關節速度、IK 參數與幾何初始解；模型目錄 `/core/catalog/` 可預覽 |
 | `web/js/robot.js` | 本站部分：第七軸滑軌與拖鏈、600 mm 立座、力覺末端（F/T、相機＋環形光、鉤爪／壓頭、線雷射）、TCP、逆解選解、PTP 與位姿快取；手臂本體取自共用模型 |
 | `web/js/sequence.js` | 第一階段逐步流程。通用排程（起訖快照、插值、護蓋開度的巢狀插值 `nested`、`stationStart`、`total`、`events`）用 core 的 `createStepSequence`，每步由 core 的 `apply` 套用終點狀態並算出終點位姿；本檔只加手臂位姿層（每步起訖位姿、PTP／直線、偏軸 TCP 轉向、先用 `peek` 預覽終點再決定是否低位先退離）與力值曲線；另匯出手臂到位規則 `ARRIVAL`（門檻、逾時 12 s、子步 25 ms），`main.js` 與 `tools/verify.mjs` 共用 |
 | `web/js/project.js` | 專案介面 `createProject`：建立全部設備、產品與動作序列，`apply(t)` 把場景放到時間 t；網頁與 core 統一檢查共用 |
-| `web/js/main.js` | 控制、紀錄匯出、手臂鏡頭子畫面、`?movie` 錄影掛勾與 `?capture=1` 影片輸出（場景物件由 `project.js` 建立）。renderer、相機、軌道控制、環境光與燈光（含跟隨載具的特寫陰影光）、畫面迴圈、3D 標籤（`stage.addLabel`／`updateLabels`，畫布位移由 stage 處理）與視角轉場（`stage.goTo`／`cancelTween`）用共用舞台 `core/ui/stage.js`；播放、重播、速度、時間軸、時鐘、步驟選單與前後步用 `core/ui/player.js` 的 `createPlayer`（事件取自 `sequence.events`），`advance` 交給 core 的到位閘門 `createArrivalGate`（`core/anim/arrival.js`，規則 `ARRIVAL`：子步推進、步驟終點等手臂到位、到位逾時停止），本檔只加 NG 停在 S4 的故障判斷與 `apply(T, { seek })`（跳播時手臂直接到位並清除等待與故障）；`window.sim` 由 `exposeSim` 提供 |
+| `web/js/main.js` | 控制、紀錄匯出、手臂鏡頭子畫面、`?movie` 錄影掛勾與 `?capture=1` 影片輸出（場景物件由 `project.js` 建立）。renderer、相機、軌道控制、環境光與燈光、畫面迴圈、3D 標籤（`stage.addLabel`／`updateLabels`，畫布位移由 stage 處理）與視角轉場（`stage.goTo`／`cancelTween`）用共用舞台 `core/ui/stage.js`。光源用 `look: 'cell'` 提供配色，本站另外寫明曝光 1.0、環境光 240、天空光 .55、主光 1.6，以及原本的主光／補光位置、陰影範圍與霧 7～14 m；沒有給 `extent`，避免改變桌面畫面。跟隨載具的特寫陰影光放在 `extraLights`。手機直向的拉遠由 stage 的 `narrowFit` 處理，俯視另外用 `fit` 改變方向；標籤用 `priority` 指定避讓順序。播放、重播、速度、時間軸、時鐘、步驟選單與前後步用 `core/ui/player.js` 的 `createPlayer`（事件取自 `sequence.events`），`advance` 交給 core 的到位閘門 `createArrivalGate`（`core/anim/arrival.js`，規則 `ARRIVAL`：子步推進、步驟終點等手臂到位、到位逾時停止），本檔只加 NG 停在 S4 的故障判斷與 `apply(T, { seek })`（跳播時手臂直接到位並清除等待與故障）；`window.sim` 由 `exposeSim` 提供 |
 | `docs/phase1-scope.md` | 文件依據與範圍映射 |
 | `docs/cost-estimate.xlsx` | 元件選型與成本估算（預算級） |
 | `tools/verify.mjs` | 狀態／幾何／運動驗證（連續播放用與網頁相同的到位閘門與 `ARRIVAL`） |

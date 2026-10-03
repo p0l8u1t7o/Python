@@ -61,3 +61,11 @@ Node 端由 `core/tools/loader.mjs` 解析相同的三種名稱，檢查程式�
   - 7 站改用（ced15a38 化學桶、3dfc1a3a PCB、318e5f8a WPM、5d72ca9f 快門、ab2db938 滴定、864a053d 軍規、6592d70c SSD）：各站排程指紋、review JSON、專案檢查與改前相同；外觀差異只在改用 MAT.frame／chrome／finished 的框架、銷、鋁件。
   - 收尾補 core：上一步改為逐步回退（短步驟不再被跳過）；追隨目標離線後重新出現時平移回目標（化學桶的 focusAbsent 變通寫法移除）；獨立相機視窗的 2D 影像也更新標題時間；player 加 `apply` 的 `dt`、`onChange` 的 `seek`、`maxStep`（軍規的 stepDt／seeking／自拆子步移除）；`createStepSequence.add` 由 O(n²) 改用 Set；滴定、軍規樣式表中被 stage 覆蓋的 `.label3d` transform 移除。
   - 仍在專案內（刻意）：各站手臂 IK／PTP 規劃與到位判斷規則、SSD 的 `resume()`、各站自己的光源與產品外觀。
+- 2026-10-03 第四輪（使用者選：手臂到位閘門、標準互動測試、光源與地面預設、favicon，另加「手機、平板等小螢幕可以順利觀看」）：
+  - 到位閘門（43376644）：`core/anim/arrival.js` 的 `createArrivalGate`；MGPC、SSD 的網頁與 `tools/verify.mjs` 共用各站 `sequence.js` 的 `ARRIVAL`，9 支工具輸出逐字相同。
+  - 小螢幕（d7e68b64、0af3983f、365678c0）：stage 的 `narrowFit`（窄畫布拉遠，旋轉時依視角的 `fit` 重算，霧與 maxDistance 一起放大）、標籤避讓（精簡版面時依 priority）；viewer-workspace 精簡版面擴及觸控平板 ≤1100 px，大平板加大點按目標，觸控裝置預設不開相機視窗；播放設定展開時步驟列緊接播放列；橫向手機的側欄與電控面板改為右側面板；手機直向電控面板精簡。
+  - 光源與地面：`createStage({ look, extent })`（cell／plant／studio）、`core/geom/environment.js` 的 `floor()`。7 站都改用 look；`extent` 推算的燈位與各站手調值不同，為了桌面畫面不變，各站保留原本的燈位與陰影。地面：Acid、MGPC、PCB、SSD、快門改用 `floor()`，WPM 用 `material` 保留展示地面，化學桶的廠房地坪維持專案自建。
+  - 標準互動測試：`core/tools/ui-check.mjs`（桌面、手機直向、手機橫向、觸控平板 × 載入、溢出、畫布、播放、步驟、視角、側欄、標籤、點按目標、?movie），接進 check.mjs 完整檢查的 `ui`（`UI_PORT`），結果在各站 `review/ui-check.json`。7 站四種尺寸全過。
+  - favicon：`core/favicon.svg`，首頁、目錄頁、7 站與範本都連上。
+  - 範本改為標準版面（viewer-workspace、look／extent、floor、標籤 priority），並修掉範本原本的靜態相撞（龍門 offset 300→400）；new-project 依檔案類型跳脫標題；`createTimeline` 補上 `stationStart`。
+  - 桌面截圖：各站與第四輪前的 HEAD 逐張比對，差異 0；刻意改動只有 WPM 工件跟拍（原本同一格先跳播再切視角會空白）與 MGPC 手臂取景說明文字（原本壓在影像資訊框上，改到影像左下角）。

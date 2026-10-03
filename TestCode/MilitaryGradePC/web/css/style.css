@@ -126,6 +126,6 @@ button,select{font-family:var(--font)}select,button{color:var(--fg);background:#
 .checklist{max-height:none}.checklist li{font-size:11px;line-height:1.65;align-items:flex-start}
 .checklist li .box{margin-top:3px}.label3d{font-size:10px;background:#10202be0;border-color:#49616d}
 body.capture #c{height:calc(100% - 132px)}body.capture #bottombar{display:none}
+/* 900～1100 px 的非觸控視窗仍走桌面版面（較窄的兩列頂欄）；≤900 px 與觸控平板由 core 的精簡版面接手 */
 @media(max-width:1100px){#topbar{grid-template-columns:1fr;height:150px;grid-template-rows:48px 40px 42px}#stations{grid-row:2}.views{grid-row:3}.brand .title{font-size:17px}#side{top:160px;width:280px}#c{top:156px;width:calc(100% - 300px);height:calc(100% - 305px)}#bottombar{right:312px}#cycleTime{display:none}.views{gap:4px}.views button{padding:6px 9px}}
-@media(max-width:760px){#topbar{padding:5px 10px}.views{overflow:auto}.views select{min-width:150px}.brand .sub{font-size:10px}#stations{gap:4px}#stations .st{padding:6px;font-size:10px}#side{width:225px}#c{width:calc(100% - 239px)}#bottombar{right:251px}.ctl{gap:6px}.ctl .chk{display:none}}
 #movie{position:fixed;inset:0;z-index:100;background:#080f18;display:flex;align-items:center;justify-content:center}#movieCanvas{width:100%;height:100%;object-fit:contain}#movieControls{position:absolute;left:20px;bottom:8px;display:flex;gap:18px;align-items:center;font:12px var(--font);color:#b8d3e0;background:#0b1629e8;padding:8px 14px;border-radius:6px}#movieControls button{font-size:12px}
