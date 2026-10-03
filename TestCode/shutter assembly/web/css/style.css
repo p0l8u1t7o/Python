@@ -132,7 +132,6 @@ button,select{font-family:var(--font)}select,button{color:var(--fg);background:#
 .checklist li .box{margin-top:3px}.label3d{font-size:10px;background:#10202be0;border-color:#49616d}
 body.capture #c{height:calc(100% - 132px)}body.capture #bottombar{display:none}
 @media(max-width:1100px){#topbar{grid-template-columns:1fr;height:150px;grid-template-rows:48px 40px 42px}#stations{grid-row:2}.views{grid-row:3}.brand .title{font-size:17px}#side{top:160px;width:280px}#c{top:156px;width:calc(100% - 300px);height:calc(100% - 305px)}#bottombar{right:312px}#cycleTime{display:none}.views{gap:4px}.views button{padding:6px 9px}}
-@media(max-width:760px){#topbar{padding:5px 10px}.views{overflow:auto}.views select{min-width:150px}.brand .sub{font-size:10px}#stations{gap:4px}#stations .st{padding:6px;font-size:10px}#side{width:225px}#c{width:calc(100% - 239px)}#bottombar{right:251px}.ctl{gap:6px}.ctl .chk{display:none}}
 #movie{position:fixed;inset:0;z-index:100;background:#080f18;display:flex;align-items:center;justify-content:center}#movieCanvas{width:100%;height:100%;object-fit:contain}#movieControls{position:absolute;left:20px;bottom:8px;display:flex;gap:18px;align-items:center;font:12px var(--font);color:#b8d3e0;background:#0b1629e8;padding:8px 14px;border-radius:6px}#movieControls button{font-size:12px}
 
 /* ---- 快門組裝站：零件狀態格、相機子畫面 ---- */
@@ -158,5 +157,7 @@ body.capture #c{height:calc(100% - 132px)}body.capture #bottombar{display:none}
 #detailNote{position:absolute;top:140px;left:20px;z-index:3;white-space:pre-line;line-height:1.8;font-size:12px;color:#d5e5e2;background:#14212be8;border-left:2px solid #73cfc3;padding:9px 13px;border-radius:3px;pointer-events:none}
 body.detail-view #pipFrame{width:250px}
 @media(max-width:1100px){#detailNote{top:170px;font-size:11px}body.detail-view #pipFrame{width:190px}}
+/* 精簡版面（手機、觸控平板）：說明貼在畫布頂端，橫向手機畫布很矮，不能壓在產品上 */
+body.viewer-compact #detailNote{top:calc(var(--viewer-top,108px) + 8px)}
 .views select{max-width:260px;min-width:230px}
 .resultRow{align-items:center}

@@ -24,16 +24,17 @@ const NG = qp.get('result') === 'NG';
 // ---------------------------------------------------------------- 場景（共用舞台 core/ui/stage.js）
 // 畫面迴圈仍由本檔管理：每格要畫 HUD、主畫面與相機子畫面（多次 render），stage.loop 只會畫一次主相機
 const canvas = document.getElementById('c');
+// 外觀用 look 'cell'（曝光、背景、半球光與太陽／補光的顏色強度）；燈位、陰影與霧照舊明確寫，不用 extent：
+// extent 推算的燈位、陰影範圍與 bias（-0.0003）都和本站原本的設定（bias -0.00004）不同，換掉會改變桌面畫面
 const stage = createStage({
-  canvas, qp, exposure: 1.05, background: 0x0d1117, fog: [5000, 11000],
+  canvas, qp, look: 'cell', fog: [5000, 11000],
   logDepth: true,                                   // ?logdepth=0 可關
-  envLight: 220, envBlur: .04,                      // RoomEnvironment 點光強度
+  envLight: 220,                                    // RoomEnvironment 點光強度（look 'cell' 為 230）
   camera: { fov: 40, near: 2, far: 20000 },
   controls: { enableDamping: true, dampingFactor: .08, maxPolarAngle: Math.PI * .49, minDistance: 3, maxDistance: 7000 },
-  hemi: { sky: 0xbfd4ff, ground: 0x2a2f36, intensity: .6 },
-  sun: { color: 0xffffff, intensity: 1.5, position: [-1500, 3200, 1800], target: [0, 0, 0],
+  sun: { position: [-1500, 3200, 1800], target: [0, 0, 0],
     shadow: { mapSize: 2048, camera: { left: -1200, right: 1200, top: 1200, bottom: -1200, near: 500, far: 8000 }, bias: -.00004, normalBias: .08 } },
-  fill: { color: 0x9fb8ff, intensity: .5, position: [1800, 1500, -1800] },
+  fill: { position: [1800, 1500, -1800] },
 });
 const { renderer, scene, camera, controls } = stage;
 // 作業區局部光：治具與相機附近的小零件需要細緻陰影（stage 的 extraLights 不含陰影與 target，故在此自建）
@@ -59,15 +60,15 @@ const trailGeo = new THREE.BufferGeometry(); trailGeo.setAttribute('position', n
 const trail = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({ color: 0x7fd4ff, transparent: true, opacity: 0.7 })); scene.add(trail);
 function pushTrail(p) { if (trailCount >= trailN) { trailPos.copyWithin(0, 3); trailCount = trailN - 1; } trailPos.set([p.x, p.y, p.z], trailCount * 3); trailCount++; trailGeo.attributes.position.needsUpdate = true; trailGeo.setDrawRange(0, trailCount); }
 
-// 3D 標籤（stage.addLabel；位置每格由 stage.updateLabels 更新）
+// 3D 標籤（stage.addLabel；位置每格由 stage.updateLabels 更新）；小螢幕重疊時先留手臂，其次治具與上視相機（priority）
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
-stage.addLabel('<b>DENSO</b> HSR065 SCARA', () => V(...LAYOUT.robot).add(V(0, 420, -40)));
+stage.addLabel('<b>DENSO</b> HSR065 SCARA', () => V(...LAYOUT.robot).add(V(0, 420, -40)), '', { priority: 2 });
 stage.addLabel('T1 葉片吸嘴', () => robot.getTcpWorld('T1').add(V(0, 60, 0)));
 stage.addLabel('T2 上蓋吸盤＋荷重元', () => robot.getTcpWorld('T2').add(V(0, 75, 0)));
 stage.addLabel('T3 本體夾爪', () => robot.getTcpWorld('T3').add(V(0, 60, 0)));
 stage.addLabel('下視相機 5MP', () => robot.getTcpWorld('cam').add(V(0, 95, 0)));
-stage.addLabel('上視遠心相機', () => V(LAYOUT.upCam.x, LAYOUT.table + 30, LAYOUT.upCam.z));
-stage.addLabel('組裝治具（基準邊＋推塊夾緊）', () => V(LAYOUT.nest.x, LAYOUT.nest.top + 20, LAYOUT.nest.z));
+stage.addLabel('上視遠心相機', () => V(LAYOUT.upCam.x, LAYOUT.table + 30, LAYOUT.upCam.z), '', { priority: 1 });
+stage.addLabel('組裝治具（基準邊＋推塊夾緊）', () => V(LAYOUT.nest.x, LAYOUT.nest.top + 20, LAYOUT.nest.z), '', { priority: 1 });
 stage.addLabel('離子風嘴', () => V(LAYOUT.upCam.x - 75, LAYOUT.table + 60, LAYOUT.upCam.z));
 stage.addLabel('NG 盒', () => V(LAYOUT.ngBin.x, LAYOUT.ngBin.top + 15, LAYOUT.ngBin.z));
 stage.addLabel('抽屜 A · 供料中', () => V(-LAYOUT.drawerX, LAYOUT.table + 60, 0));
@@ -96,6 +97,8 @@ const checklist = [
 
 // 視角
 const nestP = V(NEST_SEAT.x, NEST_SEAT.y, NEST_SEAT.z);
+// 橫向手機（精簡版面且畫布寬高比 > 2）：垂直方向看得到的範圍很小，上視相機視角整體下移 30 mm，環形光才不會落在畫布底邊；桌面不受影響
+const wideShort = () => document.body.classList.contains('viewer-compact') && canvas.clientWidth > 2 * canvas.clientHeight;
 const views = {
   electrical: () => [[900,1000,1250],[0,480,-400]],
   wiring: () => [[800,1750,-700],[0,1310,-300]],
@@ -103,7 +106,7 @@ const views = {
   robot: () => [[-850, 1450, 650], [0, 1100, -220]],
   nest: () => [nestP.clone().add(V(-70, 85, 115)).toArray(), nestP.clone().add(V(0, 0, -5)).toArray()],
   part: () => { const p = st.pose('base').p; return [p.clone().add(V(-16, 26, 28)).toArray(), p.toArray()]; },
-  upcam: () => { const p = V(LAYOUT.upCam.x, LAYOUT.upCam.focus - 20, LAYOUT.upCam.z); return [p.clone().add(V(-120, 45, 150)).toArray(), p.toArray()]; },
+  upcam: () => { const p = V(LAYOUT.upCam.x, LAYOUT.upCam.focus - (wideShort() ? 50 : 20), LAYOUT.upCam.z); return [p.clone().add(V(-120, 45, 150)).toArray(), p.toArray()]; },
   trays: () => [[-390, 1180, 40], [-390, 912, -305]],
   top: () => [[0, 2300, -80], [0, 900, -100]],
 };

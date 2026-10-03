@@ -7,6 +7,7 @@ import { cable, cableTray, support, CABLE } from '@core/electrical/cable-routing
 import { block, cylinder, decal, screw } from '@core/geom/shapes.js';
 import { MAT, finished } from '@core/geom/materials.js';
 import { batchStatic } from '@core/geom/surfaces.js';
+import { floor } from '@core/geom/environment.js';
 import { PART, createBase, createBlade, createCover, createAssembly } from './product.js';
 
 export const LAYOUT = {
@@ -49,7 +50,6 @@ const matPOM = new THREE.MeshStandardMaterial({ color: 0xe8e4d8, roughness: 0.6 
 const matTray = new THREE.MeshPhysicalMaterial({ color: 0xcfe6f2, roughness: 0.15, transmission: 0.2, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide });
 const matTrayEdge = new THREE.MeshStandardMaterial({ color: 0x9fc4d6, roughness: 0.3, transparent: true, opacity: 0.55 });
 const matPC = new THREE.MeshPhysicalMaterial({ color: 0xcfe3ff, roughness: 0.1, transmission: 0.3, transparent: true, opacity: 0.12, depthWrite: false, side: THREE.DoubleSide });
-const matFloor = new THREE.MeshStandardMaterial({ color: 0x1b2027, roughness: 0.95 });
 
 /**
  * @param k 本循環使用的本體格號（0 起算）；ng 示意疊片時大葉片多用一格
@@ -59,8 +59,7 @@ export function createCell(scene, { k = 9, ng = false } = {}) {
   const { table: top } = LAYOUT, keepout = [], trayBoxes = [], traySolids = [];
   const ko = (m, name) => { m.name = name; keepout.push(m); return m; };
 
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(9000, 6000), matFloor); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; g.add(floor);
-  const grid = new THREE.GridHelper(9000, 45, 0x2c3540, 0x222a33); grid.position.y = 0.5; g.add(grid);
+  floor(g, { size: [9000, 6000], cell: 200 });       // 9 × 6 m 深色地坪＋200 mm 格線（core 共用）
   for (const z of [1100, -1000]) block(g, [3600, 1, 40], [0, 1, z], MAT.yellow);
 
   // ---- 機台：底櫃（RC8A／PLC／視覺 IPC）＋ 20 mm 台面 ----

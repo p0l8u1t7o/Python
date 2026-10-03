@@ -107,12 +107,13 @@ GitHub 首頁與五專案發布設定：[static.yml](../tools/github-pages/stati
 | 檔案 | 用途 |
 |---|---|
 | `web/js/product.js` | 本體、葉片、上蓋、成品幾何；樞軸銷與葉片安裝位置 |
-| `web/js/cell.js` | 機台、雙抽屜與 4 種吸塑盤、組裝治具、上視相機、離子風嘴、NG 盒、外罩；料格座標。鋁擠型框架用 `MAT.frame`，治具座與抽屜用 `finished(MAT.alu, 'metal')`，台面板用 `finished(MAT.steel, 'metal')`（較深，維持與吸塑盤的對比） |
+| `web/js/cell.js` | 機台、雙抽屜與 4 種吸塑盤、組裝治具、上視相機、離子風嘴、NG 盒、外罩；料格座標。鋁擠型框架用 `MAT.frame`，治具座與抽屜用 `finished(MAT.alu, 'metal')`，台面板用 `finished(MAT.steel, 'metal')`（較深，維持與吸塑盤的對比）。地面用 core 的 `floor()`（`@core/geom/environment.js`：9 × 6 m 深色地坪＋200 mm 格線） |
 | `web/js/robot.js` | HSR065、三工具頭、下視相機、解析逆解與關節規劃 |
 | `web/js/sequence.js` | 單顆組裝流程、料件偏移與補正。排程本體是 core 的 `createStepSequence`（快照、插值、`stationStart`、`total`、`events`；零件歸屬 `loc` 用 `latch` 在步驟完成才換，NG 落下步驟以 `easeKeys: { drop: linear }` 讓 `drop` 隨時間線性）；本檔只做取放料拆解、PTP 時間依關節速度延長、NG 疊片剔除，取樣時補上 SCARA 姿態（PTP 關節插值／直線段） |
 | `web/js/station.js` | 組裝整站、依歸屬擺放零件（畫面與驗證共用） |
 | `web/js/project.js` | 專案介面 `createProject({ scene })`：建立整站與流程，`apply(t)` 把整個場景放到時間 t；網頁與 core 統一檢查共用（`?result=NG` 對應 `ng: true`） |
-| `web/js/main.js` | renderer、場景、相機、軌道控制、環境光與主要燈光由共用舞台 `createStage`（`core/ui/stage.js`）建立，本檔只傳差異（霧、RoomEnvironment 點光 220、陰影範圍、縮放距離）；作業區局部光（跟隨本體、細緻陰影）在本檔。畫面迴圈用 `stage.loop`（自訂繪製：HUD＋主畫面＋相機子畫面）；3D 標籤用 `stage.addLabel`／`updateLabels`（畫布偏移由 stage 處理），視角轉場用 `stage.goTo`，追隨鏡頭接手時 `stage.cancelTween()`，產品近看跟著本體用 `stage.shiftView`（轉場中也跟）；播放列用 `createPlayer`（`core/ui/player.js`，事件選單取排程的 `events`）：跳播走 `apply(T, { seek: true })`（`project.apply`，手臂直接到位），連續播放走 `advance(T, dt)`：以 5 ms 細分、手臂以實際限速追蹤，步驟結束（含最後一步）或接近／接觸中偏離時等到位才前進，等超過 5 秒回傳 `null` 讓播放列停住並報逾時，再按播放時手臂先重新到位。UI、紀錄匯出；設備與時間軸取自 `project.js`；`window.sim` 由 `exposeSim` 提供。網址 `?movie` 時不跑畫面迴圈，改由 `core/movie/movie.js` 的 `installMovie` 依絕對時間逐格錄影（取樣走 `project.apply`，鏡頭跟著手上的零件） |
+| `web/js/main.js` | renderer、場景、相機、軌道控制、環境光與主要燈光由共用舞台 `createStage`（`core/ui/stage.js`）建立：外觀用 `look: 'cell'`（曝光、背景、半球光與太陽／補光的顏色強度），本檔只傳差異（RoomEnvironment 點光 220、太陽與補光位置、陰影範圍與 bias、霧、縮放距離）；`extent` 推算的燈位、陰影範圍與 bias 都和原本不同，所以燈位與陰影照舊明確寫；作業區局部光（跟隨本體、細緻陰影）在本檔。畫面迴圈用 `stage.loop`（自訂繪製：HUD＋主畫面＋相機子畫面）；3D 標籤用 `stage.addLabel`／`updateLabels`（畫布偏移由 stage 處理；小螢幕重疊時依 `priority` 先留手臂，其次治具與上視相機），視角轉場用 `stage.goTo`（手機直向等窄畫布由 stage 自動拉遠；橫向手機畫布寬高比 > 2 時，上視相機視角整體下移 30 mm，環形光才不會落在畫布底邊，桌面不變），追隨鏡頭接手時 `stage.cancelTween()`，產品近看跟著本體用 `stage.shiftView`（轉場中也跟）；播放列用 `createPlayer`（`core/ui/player.js`，事件選單取排程的 `events`）：跳播走 `apply(T, { seek: true })`（`project.apply`，手臂直接到位），連續播放走 `advance(T, dt)`：以 5 ms 細分、手臂以實際限速追蹤，步驟結束（含最後一步）或接近／接觸中偏離時等到位才前進，等超過 5 秒回傳 `null` 讓播放列停住並報逾時，再按播放時手臂先重新到位。UI、紀錄匯出；設備與時間軸取自 `project.js`；`window.sim` 由 `exposeSim` 提供。網址 `?movie` 時不跑畫面迴圈，改由 `core/movie/movie.js` 的 `installMovie` 依絕對時間逐格錄影（取樣走 `project.apply`，鏡頭跟著手上的零件） |
+| `web/css/style.css` | 版面與面板樣式。≤900 px、觸控平板與橫向手機由 core 的精簡版面（`createViewerWorkspace`）接手，本檔只留 900～1100 px 桌面窄視窗的規則；精簡版面中產品近看／組裝特寫的說明貼齊畫布頂端（`--viewer-top`），不壓在產品上 |
 | `web/js/vision-results.js` | 相機標記（孔位、疊片、銷位、成品） |
 | `tools/verify.mjs`、`verify-physics.mjs`、`verify-product-detail.mjs` | 專案自有驗證（流程、物理、產品細節） |
 | `tools/build_cost_estimate.py` | 產生成本試算表 |
