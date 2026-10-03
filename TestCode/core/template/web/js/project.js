@@ -6,6 +6,7 @@ import { block, plate } from '@core/geom/shapes.js';
 import { MAT } from '@core/geom/materials.js';
 import { sensor } from '@core/geom/hardware.js';
 import { createTimeline } from '@core/anim/track.js';
+import { floor } from '@core/geom/environment.js';
 import { create as createConveyor } from '@core/models/conveyor.js';
 import { create as createGantry } from '@core/models/gantry.js';
 
@@ -14,14 +15,16 @@ export const LAYOUT = {
   conveyor: { x0: -1400, x1: 200, z: 0, top: 800, width: 360 },
   pick: { x: 0, z: 0 },
   place: { x: 700, z: 0, top: 800 },
-  gantry: { cx: 350, span: 1300, height: 1700, offset: 300, safeY: 1250 },
+  gantry: { cx: 350, span: 1300, height: 1700, offset: 400, safeY: 1250 },   // offset 400：龍門腳座退到輸送線腳座北側（300 時兩者腳座重疊）
   part: [200, 120, 160],                      // 工件 長×高×寬
 };
+// 站別（頂部列的站別按鈕）：時間軸步驟以 station 標記所屬站別
+export const STATIONS = ['輸送進料', '取料', '放料', '回原點'];
 
 export function createProject({ scene }) {
   const L = LAYOUT, c = L.conveyor, g = L.gantry, [pl, ph, pw] = L.part;
 
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(4000, 3000), MAT.floor); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; floor.name = 'floor'; scene.add(floor);
+  floor(scene, { size: [4000, 3000], cell: 200 });                            // 共用地坪＋格線（core/geom/environment.js）
 
   // ---- 輸送線（共用模型）
   const conveyor = createConveyor({ length: c.x1 - c.x0, width: c.width, height: c.top });
@@ -47,18 +50,18 @@ export function createProject({ scene }) {
   const tl = createTimeline();
   const gt = tl.track('gantry', { x: home, y: g.safeY, jaw: 1 });       // x 世界座標；y＝夾爪中心高度；jaw 1＝張開
   const pt = tl.track('part', { mode: 'conveyor', s: c.x0 + pl / 2 });
-  const s1 = pt.add(3, { s: L.pick.x }, { action: '輸送到取料位', sub: '光電感測到位停止' });
-  gt.add(1.5, { x: L.pick.x }, { action: '龍門移到取料位', at: 0 });
-  gt.add(1, { y: c.top + ph / 2 }, { action: 'Z 軸下降', at: s1.start + s1.dur });
-  const grip = gt.add(.5, { jaw: 0 }, { action: '夾爪夾持' });
+  const s1 = pt.add(3, { s: L.pick.x }, { action: '輸送到取料位', sub: '光電感測到位停止', station: 0 });
+  gt.add(1.5, { x: L.pick.x }, { action: '龍門移到取料位', at: 0, station: 0 });
+  gt.add(1, { y: c.top + ph / 2 }, { action: 'Z 軸下降', at: s1.start + s1.dur, station: 1 });
+  const grip = gt.add(.5, { jaw: 0 }, { action: '夾爪夾持', station: 1 });
   pt.add(0, { mode: 'held' }, { at: grip.start + grip.dur });
-  gt.add(1, { y: g.safeY }, { action: 'Z 軸上升' });
-  gt.add(1.5, { x: L.place.x }, { action: '移到出料台' });
-  gt.add(1, { y: L.place.top + ph / 2 }, { action: '下降放料' });
-  const rel = gt.add(.5, { jaw: 1 }, { action: '鬆開' });
+  gt.add(1, { y: g.safeY }, { action: 'Z 軸上升', station: 1 });
+  gt.add(1.5, { x: L.place.x }, { action: '移到出料台', station: 2 });
+  gt.add(1, { y: L.place.top + ph / 2 }, { action: '下降放料', station: 2 });
+  const rel = gt.add(.5, { jaw: 1 }, { action: '鬆開', station: 2 });
   pt.add(0, { mode: 'placed' }, { at: rel.start });
-  gt.add(1, { y: g.safeY }, { action: '回安全高度' });
-  gt.add(1.5, { x: home }, { action: '回原點' });
+  gt.add(1, { y: g.safeY }, { action: '回安全高度', station: 3 });
+  gt.add(1.5, { x: home }, { action: '回原點', station: 3 });
 
   // ---------------------------------------------------------------- 套用時間 t
   function apply(t) {
@@ -70,9 +73,11 @@ export function createProject({ scene }) {
     else part.position.set(L.place.x, L.place.top, L.place.z);
     return st;
   }
+  // 各站第一個步驟的開始時間（站別按鈕跳到這裡）
+  const stationStart = STATIONS.map((_, k) => Math.min(...tl.events.filter(e => e.station === k).map(e => e.start)));
 
   return {
-    total: tl.total, timeline: tl, apply,
+    total: tl.total, timeline: tl, apply, stationStart, part,
     layoutChecks: () => [
       { group: '範例', name: '取放位在龍門行程內', ok: [L.pick.x, L.place.x, g.cx - g.span / 2 + 100].every(x => Math.abs(x - g.cx) <= g.span / 2), value: `±${g.span / 2} mm` },
       { group: '範例', name: '安全高度：夾持工件底面高於輸送線與出料台 100 mm', ok: g.safeY - ph / 2 - Math.max(c.top, L.place.top) >= 100, value: `${g.safeY - ph / 2 - Math.max(c.top, L.place.top)} mm` },

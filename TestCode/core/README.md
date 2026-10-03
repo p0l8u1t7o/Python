@@ -11,7 +11,7 @@ TestCode 底下每個有 `web/index.html` 的資料夾都是一個展示專案�
 | `robot/` | `kinematics.js`：6 軸阻尼最小平方 IK（參數可調） |
 | `models/` | 共用模型庫：每個模型有 `meta`（名稱、分類、可調參數、可動狀態、用法）與 `create(params) → { root, set(state) }`，在 `models/index.js` 登記；目錄頁 `/core/catalog/` 可預覽與調參 |
 | `catalog/` | 模型目錄頁（發布在 Pages） |
-| `anim/` | `track.js`：時間軌與時間軸（`createTimeline`、`Track`、`smooth`），狀態只由時間決定 |
+| `anim/` | `track.js`：時間軌與時間軸（`createTimeline`、`Track`、`smooth`），狀態只由時間決定；`sequence.js`：單一手臂的步驟序列；`arrival.js`：手臂到位閘門（播放時等手臂到位、逾時故障） |
 | `electrical/` | 線材、拖鏈、電盤、電控元件與檢視器 |
 | `movie/` | 錄影程式（4K 取樣 1080p、絕對時間取樣、追焦運鏡），各專案以 `?movie` 呼叫 |
 | `ui/` | `stage.js`（renderer／場景／相機／燈光／3D 標籤／視角轉場／畫面迴圈／`exposeSim`）、`player.js`（標準播放列）、`viewer-workspace`（相機視窗與焦點追隨，所有專案共用）、`vision-overlay` |
@@ -25,7 +25,7 @@ TestCode 底下每個有 `web/index.html` 的資料夾都是一個展示專案�
 node core/tools/new-project.mjs MyStation "我的工作站" "首頁卡片上的一句說明"
 ```
 
-範本已經接好舞台、播放列、時間軸、`project.js` 與一支自有檢查，建好就能開啟、檢查，推送後自動出現在 Pages 首頁。之後在 `project.js` 建模型與時間軸，在 `main.js` 加視角與面板。
+範本已經接好標準版面（含手機／平板精簡版面與相機視窗）、舞台（`look`＋`extent`、`floor()`）、播放列、時間軸、`project.js` 與一支自有檢查，建好就能開啟、檢查，推送後自動出現在 Pages 首頁。之後在 `project.js` 建模型與時間軸，在 `main.js` 加視角與面板。
 
 ## 引用方式
 
@@ -130,10 +130,14 @@ exposeSim({ seekTo, setView, views, total, play, pause, get T() { return T; } })
 | 形狀與材質 | `@core/geom/shapes.js`（block／cylinder／rod…，陣列參數）＋`@core/geom/materials.js` 的 `MAT`（含 `frame` 鋁擠型、`chrome`）與 `finished(MAT.alu, 'metal')`（帶細紋的快取複本）。常見材質用 MAT，產品專屬外觀才在專案自建 |
 | 排程 | 單一手臂依序作業：`createStepSequence`（`@core/anim/sequence.js`；`discrete`、`latch`、`nested`、步驟 `ease`／`easeKeys`、`peek`、`mark`／`rollback`、`retime`）；多台設備並行：`createTimeline`（`@core/anim/track.js`；`Track.at(T)`）。兩者都提供 `events`、`stationStart`、`total` |
 | 播放列 | `createPlayer`（`@core/ui/player.js`）綁定標準元素 `playBtn／restartBtn／speed／speedVal／timeline／clock／stepSelect／previous／next／loop`，事件選單用排程的 `events`；`apply(T, { seek, dt })`、`advance(T, dt)`（等手臂到位、故障停住）、`maxStep`（高倍速拆子步）、`onChange(T, state, { seek })`、`loop`、`<select>` 速度選單、`speed` 預設值；上一步：已播過目前步驟 0.5 s 以上回到步驟開頭，否則回到前一步 |
-| 3D 標籤 | `stage.addLabel(html, getPos, cls, { anchor: 'center' 或 'above' })`，每格 `stage.updateLabels(show)`；畫布在頁面中的偏移由 stage 處理 |
-| 視角 | `VIEWS = { 名稱: [位置, 注視點] 或 () => [...] }`，切換用 `stage.goTo(位置, 注視點, instant, 秒)`；`stage.cancelTween()`、`stage.shiftView(位移)`（跟著輸送中的工件） |
+| 手臂到位 | `createArrivalGate`（`@core/anim/arrival.js`）：規則（`tolerance` 門檻、`contactPosition`、`timeout`、`maxStep`，或自訂 `blocked(e, step, atEnd)`）放在專案的 `sequence.js` 匯出（如 `ARRIVAL`），網頁與驗證腳本共用；專案提供 `error()`、`step()`、`sample(t)`、`update(h)` 與選用的額外故障 `fault()`（如 NG 停線）。`advance` 直接交給 `createPlayer`（子步、步驟終點等到位、終點前一點取樣、逾時停住），跳播時 `reset()`，面板讀 `waiting`／`fault`；Node 驗證腳本用 `step(t, h)` 逐子步驅動 |
+| 3D 標籤 | `stage.addLabel(html, getPos, cls, { anchor: 'center' 或 'above', priority })`，每格 `stage.updateLabels(show)`；畫布在頁面中的偏移由 stage 處理。畫布寬度 < 1100 px 時重疊的標籤自動避讓（priority 大、先加入者優先；`declutter` 選項或 `?declutter=0/1` 可改） |
+| 視角 | `VIEWS = { 名稱: [位置, 注視點] 或 () => [...] }`，切換用 `stage.goTo(位置, 注視點, instant, 秒)`；`stage.cancelTween()`、`stage.shiftView(位移)`（跟著輸送中的工件）。手機直向等窄畫布（寬高比 < 1.25）由 stage 自動拉遠（`narrowFit`，`?narrowfit=0` 關閉），視角照桌面寫即可 |
+| 光源與地面 | `createStage({ look: 'cell' 或 'plant' 或 'studio', extent: { center, radius } })`：look 給配色、曝光與燈光強度，extent（場景中心與半徑，mm）推算太陽／補光位置、陰影範圍與霧；專案明確給的 `sun`／`fill`／`hemi`／`fog` 逐欄優先。地面用 `floor(g, { size, cell })`（`@core/geom/environment.js`，深色地坪＋格線，建在 project.js 的場景樹裡） |
+| 小螢幕與觸控 | 版面骨架固定為 `#topbar`（`.brand`、`#stations`、`.views`）、`#side`／`#left`、`#bottombar`（`#playBtn`、`#timeline`、`#clock`、`.stepRow`），並呼叫 `createViewerWorkspace`：≤900 px、觸控平板 ≤1100 px 與橫向手機自動改精簡版面（☰ 製程與視角、⚙ 播放設定、工具列開側欄，畫布全寬），較大的觸控平板加大點按目標；專案 CSS 不要再寫隱藏或縮小這些區塊的窄螢幕規則 |
 | 相機子畫面與焦點追隨 | `createViewerWorkspace`（`@core/ui/viewer-workspace.js`）：`renderCamera`（3D 相機）、`renderImage`（2D 示意影像）、`setSources`（來源選單＋自動切換）、`startFollowing`／`stopFollowing`，`focusOffset` 可為函式；`getFocus()` 回傳 null（目標離線）時保持視角，目標重新出現時平移回去 |
 | window.sim | `exposeSim({ seekTo, setView, views, total, play, pause, … })` |
+| 圖示 | 每頁 `<link rel="icon" href="../core/favicon.svg" type="image/svg+xml">` |
 
 ## 檢查
 
@@ -151,6 +155,7 @@ node core/tools/check.mjs --only scene     # 只跑某項
 | `determinism` | ✓ | 40 個時間點順序與倒序取樣，所有可見物件的世界矩陣必須相同 |
 | `layout` | ✓ | `layoutChecks()` 全數通過 |
 | `scene` | ✓ | 動態干涉、靜態架設相撞、重合面閃爍；結果寫入 `review/scene-verification.json/.txt` |
+| `ui` |  | 標準互動測試（`core/tools/ui-check.mjs`）：桌面、手機直向、手機橫向、觸控平板四種尺寸，檢查載入與主控台錯誤、版面不溢出、畫布面積、播放／暫停、上一步／下一步／步驟選單、視角按鈕與選單收合、側欄、標籤在畫布內且（精簡版面）不重疊、點按目標 ≥ 30 px、`?movie`；結果寫入 `review/ui-check.json`，`--shots 資料夾` 另存截圖；`project.json` 的 `ui.skip`／`ui.params` 可設定 |
 | 專案自有 | 依 `checks` | `project.json` 的 `checks.quick`／`checks.full` |
 
 ## 回歸比對（改共用模組或渲染時）

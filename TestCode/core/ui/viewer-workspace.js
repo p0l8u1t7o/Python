@@ -5,9 +5,11 @@ export function createViewerWorkspace({camera, controls, canvas, resize, getFocu
   const $ = id => document.getElementById(id);
   const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('./viewer-workspace.css', import.meta.url); document.head.append(css);
   document.body.classList.add('viewer-workspace');
-  const compactQuery = matchMedia('(max-width:900px), (max-height:500px) and (pointer:coarse)');
+  // 精簡版面：窄視窗、觸控平板（≤1100 px）、橫向手機；較大的觸控平板維持桌面版面但加大點按目標（viewer-touch）
+  const compactQuery = matchMedia('(max-width:900px), (pointer:coarse) and (max-width:1100px), (max-height:500px) and (pointer:coarse)');
+  const touch = matchMedia('(pointer:coarse)').matches;
   let compact = compactQuery.matches;
-  document.body.classList.toggle('viewer-compact', compact);
+  document.body.classList.toggle('viewer-compact', compact); document.body.classList.toggle('viewer-touch', touch);
   const app = $('app'), bar = document.createElement('div'); bar.className = 'viewer-tools'; bar.setAttribute('aria-label', '視窗與追隨控制'); app.append(bar);
   const button = (parent, icon, label, action) => {
     const b = document.createElement('button'); b.type = 'button'; b.textContent = icon; b.title = label; b.setAttribute('aria-label', label); b.onclick = action; parent.append(b); return b;
@@ -34,7 +36,7 @@ export function createViewerWorkspace({camera, controls, canvas, resize, getFocu
   let show = $('showPip');
   if (!show) { show = document.createElement('input'); show.type = 'checkbox'; show.id = 'showPip'; show.checked = true; show.hidden = true; app.append(show); }
   let desktopCamera=show.checked;
-  if(compact)show.checked=false;
+  if(compact||touch)show.checked=false;   // 小螢幕與觸控裝置預設不開相機視窗（工具列 ▣ 可開）
   const navButton=button($('topbar'),'☰','展開／收合製程與視角選單',()=>{const open=!document.body.classList.contains('viewer-nav-open');if(open)announce('topbar');document.body.classList.toggle('viewer-nav-open',open);layout();});
   navButton.id='mobileNavToggle';navButton.setAttribute('aria-controls','stations');
   const playbackButton=button($('bottombar'),'⚙','展開／收合播放設定',()=>{const open=!document.body.classList.contains('viewer-playback-open');if(open)announce('bottombar');document.body.classList.toggle('viewer-playback-open',open);layout();});

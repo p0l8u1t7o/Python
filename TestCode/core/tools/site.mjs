@@ -5,7 +5,7 @@ export function galleryHtml(projects, { catalog = true } = {}) {
   const cards = projects.map(p => `<a href="./${encodeURIComponent(p.id)}/"><strong>${esc(p.title)}</strong>${p.summary ? `<em>${esc(p.summary)}</em>` : ''}<span>${esc(p.id)}</span></a>`).join('');
   const extra = catalog ? '<p class="more"><a class="link" href="./core/catalog/">共用 3D 模型目錄 →</a></p>' : '';
   return `<!doctype html>
-<html lang="zh-Hant"><head><meta charset="utf-8">
+<html lang="zh-Hant"><head><meta charset="utf-8"><link rel="icon" href="core/favicon.svg" type="image/svg+xml">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>自動化設備 3D 展示</title>
 <style>

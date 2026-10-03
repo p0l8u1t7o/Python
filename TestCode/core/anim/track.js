@@ -52,5 +52,11 @@ export function createTimeline() {
     activity(T) { return Object.values(tracks).map(t => t.active(T)).filter(Boolean); },
     // 有 action 文字的步驟，依時間排序（做事件下拉選單、上一步／下一步）
     get events() { return Object.values(tracks).flatMap(t => t.steps.filter(s => s.action)).sort((a, b) => a.start - b.start); },
+    // 各站最早開始作業的時間（步驟上有 station 編號時；與 createStepSequence 的 stationStart 相同用途）
+    get stationStart() {
+      const out = [];
+      for (const t of Object.values(tracks)) for (const s of t.steps) if (Number.isInteger(s.station) && !(s.start >= out[s.station])) out[s.station] = s.start;
+      return Array.from(out, v => v ?? 0);
+    },
   };
 }

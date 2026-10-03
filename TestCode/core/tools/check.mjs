@@ -13,6 +13,7 @@
 //   determinism  倒序／跳播一致（快速）
 //   layout       project.layoutChecks() 空間檢核（快速）
 //   scene        全場動態／靜態干涉＋重合面閃爍（快速）
+//   ui           標準互動測試：桌面／手機直向／手機橫向／觸控平板的播放列、選單、側欄、標籤與版面（ui-check.mjs，只在完整檢查）
 // project.json 的 "core" 可覆寫：{ "skip": ["scene"], "quick": ["scene"] }
 import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -36,6 +37,11 @@ const BUILTIN = {
   determinism: { quick: true, needsProject: true, run: viaRunner('determinism') },
   layout: { quick: true, needsProject: true, run: viaRunner('layout') },
   scene: { quick: true, needsProject: true, run: viaRunner('scene') },     // 干涉與閃爍也擋部署
+  ui: { quick: false, run: async p => {
+    const r = await runScript(p, join(CORE, 'tools', 'ui-check.mjs'), [p.id, '--port', process.env.UI_PORT || '8771'], { echo: false }), lines = r.out.trim().split('\n');
+    const rows = lines.filter(l => /^[✓✗] /.test(l));
+    return { ok: r.code === 0, note: rows.map(l => l.replace(/^.*· /, '').split('  ').slice(0, 2).join(' ')).join(' ／ ') || `exit ${r.code}`, detail: r.code ? lines.filter(l => l.startsWith('✗')).concat(lines.slice(-5)) : [] };
+  } },
 };
 
 const split = cmd => cmd.match(/"[^"]*"|\S+/g).map(s => s.replace(/^"|"$/g, ''));

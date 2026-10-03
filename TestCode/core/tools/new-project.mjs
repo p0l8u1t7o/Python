@@ -13,7 +13,9 @@ if (existsSync(dest)) throw new Error(`已存在：${dest}`);
 
 cpSync(join(CORE, 'template'), dest, { recursive: true });
 const vars = { __ID__: id, __TITLE__: title, __SUMMARY__: summary || title, __URL__: encodeURIComponent(id) };
-const walk = d => { for (const e of readdirSync(d)) { const f = join(d, e); if (statSync(f).isDirectory()) walk(f); else if (/\.(js|mjs|json|html|css|md|bat)$/.test(e)) { let s = readFileSync(f, 'utf8'); for (const [k, v] of Object.entries(vars)) s = s.split(k).join(v); writeFileSync(f, s); } } };
+// 依檔案類型跳脫：JSON 字串（引號、反斜線）、HTML 文字（< > &）；範本的 index.html 版面骨架（#topbar／#side／#bottombar）只代換標題與說明
+const escape = { json: v => JSON.stringify(v).slice(1, -1), html: v => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') };
+const walk = d => { for (const e of readdirSync(d)) { const f = join(d, e); if (statSync(f).isDirectory()) walk(f); else if (/\.(js|mjs|json|html|css|md|bat)$/.test(e)) { const esc = escape[e.split('.').pop()] || (v => v); let s = readFileSync(f, 'utf8'); for (const [k, v] of Object.entries(vars)) s = s.split(k).join(esc(v)); writeFileSync(f, s); } } };
 walk(dest);
 console.log(`已建立 ${dest}
   開啟：node core/tools/serve.mjs "${id}"

@@ -19,6 +19,11 @@
 body.capture .viewer-tools,body.capture #pipFrame{display:none!important}
 @media(max-width:760px){.viewer-workspace #app #pipFrame{width:min(290px,calc(100vw - 24px),calc((100vh - 100px)*1.5))}.viewer-tools{left:12px;transform:none}.viewer-workspace #bottombar .ctl{flex-wrap:wrap}}
 
+/* 觸控平板（桌面版面）：加大點按目標 */
+.viewer-touch:not(.viewer-compact) #topbar button,.viewer-touch:not(.viewer-compact) #topbar select,.viewer-touch:not(.viewer-compact) #bottombar button,.viewer-touch:not(.viewer-compact) #bottombar select,.viewer-touch:not(.viewer-compact) #side button,.viewer-touch:not(.viewer-compact) #side select,.viewer-touch:not(.viewer-compact) #left button,.viewer-touch:not(.viewer-compact) #left select{min-height:40px}
+.viewer-touch:not(.viewer-compact) .viewer-tools button{min-width:40px;height:40px}
+.viewer-touch:not(.viewer-compact) #bottombar input[type=range]{min-height:32px}
+.viewer-touch:not(.viewer-compact) #bottombar input[type=checkbox]{width:22px;height:22px}
 #mobileNavToggle,#mobilePlaybackToggle,.mobile-panel-heading{display:none}
 /* Compact layout is shared by every station, including landscape phones. */
 .viewer-workspace.viewer-compact #app{height:100dvh}
@@ -32,6 +37,7 @@ body.capture .viewer-tools,body.capture #pipFrame{display:none!important}
 .viewer-compact.viewer-nav-open #topbar{height:auto;max-height:60dvh;overflow-y:auto;padding-bottom:12px;box-shadow:0 10px 30px #0008}
 .viewer-compact.viewer-nav-open #topbar #stations,.viewer-compact.viewer-nav-open #topbar .views{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0;padding:0;border:0;white-space:normal}
 .viewer-compact #topbar #stations button,.viewer-compact #topbar .views button{min-height:44px;font-size:13px;padding:8px 10px}
+.viewer-compact #topbar button:not(#mobileNavToggle),.viewer-compact #topbar select{min-height:44px}
 .viewer-compact #topbar .views select{font-size:16px;min-height:44px;max-width:100%;width:100%;margin:0}
 .viewer-compact .viewer-tools{left:8px;right:auto;transform:none;max-width:calc(100% - 16px);overflow-x:auto;gap:4px;padding:4px;z-index:51;scrollbar-width:none}
 .viewer-compact .viewer-tools button{min-width:40px;height:40px;font-size:20px;padding:4px}
@@ -45,6 +51,9 @@ body.capture .viewer-tools,body.capture #pipFrame{display:none!important}
 .viewer-compact #mobilePlaybackToggle{display:block;grid-area:1/4;position:sticky;top:0;min-width:44px;height:44px;padding:4px;background:#1a3547;color:#d8edf6;border:1px solid #416273;border-radius:7px;font-size:22px;z-index:2}
 .viewer-compact.viewer-playback-open #bottombar .ctl>*:not(#playBtn){display:flex;grid-column:1/-1;gap:10px;align-items:center;min-height:44px;font-size:14px;flex-wrap:wrap}
 .viewer-compact.viewer-playback-open #bottombar .stepRow{display:flex;grid-column:1/-1;flex-wrap:wrap;gap:6px;width:100%;min-width:0}
+/* 播放設定展開時：步驟列緊接在播放列下方（矮螢幕不必捲動就看得到），其餘設定排在後面且不撐滿整列 */
+.viewer-compact.viewer-playback-open #bottombar .stepRow{order:1}
+.viewer-compact.viewer-playback-open #bottombar .ctl>*:not(#playBtn){order:2;justify-self:start}
 .viewer-compact #bottombar .stepRow select{min-width:0;flex:1;width:0;font-size:16px;height:44px}
 .viewer-compact #bottombar .stepRow button{min-width:44px;min-height:44px}
 .viewer-compact #bottombar #cycleTime{display:none}
