@@ -69,3 +69,4 @@ Node 端由 `core/tools/loader.mjs` 解析相同的三種名稱，檢查程式�
   - favicon：`core/favicon.svg`，首頁、目錄頁、7 站與範本都連上。
   - 範本改為標準版面（viewer-workspace、look／extent、floor、標籤 priority），並修掉範本原本的靜態相撞（龍門 offset 300→400）；new-project 依檔案類型跳脫標題；`createTimeline` 補上 `stationStart`。
   - 桌面截圖：各站與第四輪前的 HEAD 逐張比對，差異 0；刻意改動只有 WPM 工件跟拍（原本同一格先跳播再切視角會空白）與 MGPC 手臂取景說明文字（原本壓在影像資訊框上，改到影像左下角）。
+  - 收尾：精簡版面打開側欄或電控面板時，viewer-workspace 以 `camera.setViewOffset` 把 3D 畫面中心移到沒被遮住的區域（直向往上、橫向往左），手機看電盤視角時機櫃不再被面板蓋住；桌面不受影響（截圖差異 0）。

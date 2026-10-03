@@ -10,6 +10,7 @@ export function createViewerWorkspace({camera, controls, canvas, resize, getFocu
   const touch = matchMedia('(pointer:coarse)').matches;
   let compact = compactQuery.matches;
   document.body.classList.toggle('viewer-compact', compact); document.body.classList.toggle('viewer-touch', touch);
+  const DRAWERS = ['side', 'left', 'electrical-inspector'];   // 精簡版面的抽屜（開啟時 uncover 讓出畫面）
   const app = $('app'), bar = document.createElement('div'); bar.className = 'viewer-tools'; bar.setAttribute('aria-label', '視窗與追隨控制'); app.append(bar);
   const button = (parent, icon, label, action) => {
     const b = document.createElement('button'); b.type = 'button'; b.textContent = icon; b.title = label; b.setAttribute('aria-label', label); b.onclick = action; parent.append(b); return b;
@@ -125,8 +126,25 @@ export function createViewerWorkspace({camera, controls, canvas, resize, getFocu
     bar.style.top = (headerBottom + (compact?4:10)) + 'px';
     app.style.setProperty('--viewer-top',(headerBottom+bar.getBoundingClientRect().height+12)+'px');
     if (moved) clampFrame(); else { frame.style.left = Math.max(12, left + 12) + 'px'; frame.style.top = (compact?headerBottom+bar.getBoundingClientRect().height+18:Math.max(190,headerBottom+60)) + 'px'; clampFrame(); }
-    resize();
+    resize(); uncover();
   }
+  // 精簡版面：抽屜（側欄、電控面板）蓋住畫布一部分時，把 3D 畫面的中心移到沒被蓋住的區域
+  // （手機直向的底部抽屜往上移、橫向手機的右側面板往左移）；抽屜收起或回到桌面版面時還原
+  function uncover() {
+    let dx = 0, dy = 0;
+    const c = canvas.getBoundingClientRect(), w = canvas.clientWidth, h = canvas.clientHeight;
+    if (compact) for (const el of DRAWERS.map($)) {
+      if (!el || el.hidden || getComputedStyle(el).display === 'none') continue;
+      const r = el.getBoundingClientRect(); if (!r.width || !r.height) continue;
+      if (r.width > c.width * .8) dy = Math.max(dy, Math.min(c.bottom, r.bottom) - Math.max(c.top, r.top));
+      else if (r.left > c.left + c.width * .3) dx = Math.max(dx, c.right - r.left);
+    }
+    if ((dx > 0 || dy > 0) && w && h) camera.setViewOffset(w, h, Math.max(0, dx) / 2, Math.max(0, dy) / 2, w, h);
+    else if (camera.view?.enabled) camera.clearViewOffset();
+  }
+  // 側欄與電控面板開關（hidden 屬性）時重算
+  new MutationObserver(list => { if (list.some(m => DRAWERS.includes(m.target.id) && (m.oldValue === null) !== !m.target.hasAttribute('hidden'))) layout(); })
+    .observe(app, { subtree: true, attributes: true, attributeFilter: ['hidden'], attributeOldValue: true });
   function sizeFrame() { frame.classList.toggle('expanded', expanded); expandButton.setAttribute('aria-pressed', String(expanded)); clampFrame(); }
   function clampFrame() {
     const b = frame.getBoundingClientRect(); if (!b.width) return;
