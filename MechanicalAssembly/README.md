@@ -62,7 +62,7 @@ npm.cmd run preview # 檢查靜態版本
 
 ## 原始資料覆蓋（2026-10-02）
 
-來源：`../TestCode/Temp/自動爆炸圖與拆圖CAD設計`（相對於專案根目錄；可用環境變數 `CAD_SOURCE_DIR` 改指其他位置，JS 經由 `scripts/lib/paths.js`、Python 腳本各自讀同一個變數）。所有原始檔保持原樣。
+來源：`cad-source/`（專案根目錄下，約 4.9 GB，不進版控；可用環境變數 `CAD_SOURCE_DIR` 改指其他位置，JS 經由 `scripts/lib/paths.js`、Python 腳本各自讀同一個變數）。所有原始檔保持原樣。
 
 已盤點 2,051 個非暫存檔，其中有 207 個 SLDASM、875 個 SLDPRT、79 個 STEP/STP、3 個 IGES、559 個 DWG/SLDDRW 與 296 個 PDF。原始資料內的 ZIP 為 2D 圖面與 PDF，未提供額外 3D 裝配。
 
@@ -134,10 +134,10 @@ npm.cmd run build
 
 ```powershell
 npm.cmd run dev   # 另開視窗
-node scripts/media/render-showcase.mjs --station=202401-BA00 --out="D:\Working Space\Python\TestCode\TEMP\videos\MechanicalAssembly-台車_1080p30.mp4"
+node scripts/media/render-showcase.mjs --station=202401-BA00 --out="output\MechanicalAssembly-台車_1080p30.mp4"
 ```
 
-以 Playwright 開啟工作台，透過 `window.studioAutomation` 以虛擬時鐘逐格指定狀態並算圖（GPU，1920×1080、30 fps），不受即時效能影響、不會掉格；畫面依序為片頭、組合外觀環繞、爆炸圖展開與環繞、收合、逐步組裝（字卡、箭頭、鏡頭跟隨）、片尾。以 NVENC（預設 `../TestCode/MilitaryGradePC/tools/bin/ffmpeg.exe`，可用 `--ffmpeg=` 指定）編碼 H.264。
+以 Playwright 開啟工作台，透過 `window.studioAutomation` 以虛擬時鐘逐格指定狀態並算圖（GPU，1920×1080、30 fps），不受即時效能影響、不會掉格；畫面依序為片頭、組合外觀環繞、爆炸圖展開與環繞、收合、逐步組裝（字卡、箭頭、鏡頭跟隨）、片尾。以 NVENC（預設 `tools/bin/ffmpeg.exe`，不進版控；沒有時用 PATH 上的 ffmpeg，也可用 `--ffmpeg=` 指定）編碼 H.264。
 
 防閃爍：地面固定先畫、預組步驟隱藏其他零件、進入組裝與預組情境切換時以上一格交叉淡化、不開 temporal AQ。輸出後解碼逐格比對亮度，`-verification.json` 記錄單格閃爍、黑畫面與變化最大的幾格，另產生 `-contact.jpg` 縮圖總覽。
 

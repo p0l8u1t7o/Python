@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "name": "SAT 晶片濕製程自動線",
-  "source": "D:\\Working Space\\Python\\TestCode\\Temp\\自動爆炸圖與拆圖CAD設計",
+  "source": "D:\\Working Space\\Python\\MechanicalAssembly\\cad-source",
   "counts": {
     "sldasm": 207,
     "sldprt": 875,

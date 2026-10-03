@@ -11,7 +11,9 @@ const arg = (name, fallback) =>
   process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3) ?? fallback;
 const station = arg("station", "202401-BA00");
 const out = path.resolve(arg("out", `output/${station}_1080p30.mp4`));
-const ffmpeg = arg("ffmpeg", path.resolve("../TestCode/MilitaryGradePC/tools/bin/ffmpeg.exe"));
+// 預設用本專案 tools/bin/ffmpeg.exe（不進版控），沒有時用 PATH 上的 ffmpeg
+const localFfmpeg = path.resolve("tools/bin/ffmpeg.exe");
+const ffmpeg = arg("ffmpeg", fs.existsSync(localFfmpeg) ? localFfmpeg : "ffmpeg");
 const url = arg("url", "http://127.0.0.1:6001/");
 const theme = arg("theme", "dark");
 const stepSeconds = Number(arg("step", "1.6"));

@@ -2,7 +2,7 @@
 from pathlib import Path
 import os, json, collections, re
 BASE = Path(__file__).resolve().parents[2]
-SOURCE = Path(os.environ.get('CAD_SOURCE_DIR') or BASE.parent / 'TestCode' / 'Temp' / '自動爆炸圖與拆圖CAD設計')
+SOURCE = Path(os.environ.get('CAD_SOURCE_DIR') or BASE / 'cad-source')
 files = sorted(p for p in SOURCE.rglob('*') if p.is_file() and not p.name.startswith('~$'))
 entries = [{'path': p.relative_to(SOURCE).as_posix(), 'name': p.name, 'bytes': p.stat().st_size, 'format': p.suffix.lower()[1:]} for p in files]
 stations = []

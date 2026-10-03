@@ -4,7 +4,14 @@
 
 目前程式更新、CAD 建庫、幾何測試、正式建置及**本檔列出的新版視覺與互動驗收均已完成**。2026-10-02 本次環境由 Browser 正式選用 Chrome，在原網址成功操作，未遭權限拒絕，沒有變更權限或改網址繞過。詳細結果、效能量測範圍與截圖索引見 `VALIDATION.md`。
 
-## 最新：搬家與資料夾整理（2026-10-02，Claude Code）
+## 最新：CAD 來源與 ffmpeg 搬進本專案（2026-10-04，Claude Code）
+
+- TestCode 搬成獨立庫 SimplePhysicsEngine，原 Python 庫移除 TestCode。
+- CAD 來源搬到本專案 `cad-source/`，編碼用的 ffmpeg／ffprobe 搬到 `tools/bin/`，兩者都不進版控。
+- 預設路徑已更新：`scripts/lib/paths.js`、`scripts/cad/*.py`、`scripts/media/render-showcase.mjs`（找不到 `tools/bin/ffmpeg.exe` 時改用 PATH 上的 ffmpeg）。`CAD_SOURCE_DIR`、`--ffmpeg=` 仍可覆寫。
+- 下方較早紀錄裡的 TestCode 路徑，是當時的位置。
+
+## 搬家與資料夾整理（2026-10-02，Claude Code）
 
 - 專案由 `TestCode/MechanicalAssembly` 搬到 `Python/MechanicalAssembly`。CAD 來源預設改為 `../TestCode/Temp/自動爆炸圖與拆圖CAD設計`，可用環境變數 `CAD_SOURCE_DIR` 覆寫（`scripts/lib/paths.js`；Python 腳本讀同一個變數）。
 - `src/` 依職責分成 `cad/`、`viewer/`、`planner/`（含 `client.js`、`worker.js`）、`project/`、`ui/`、`styles/`；`scripts/` 分成 `catalog/`（Node 建庫）、`cad/`（Python 解析與 SolidWorks COM）、`media/`、`lib/`；`tests/` 分成 `js/`、`python/`；`VALIDATION.md`、`WORK_PROGRESS.md` 移到 `docs/`。資料夾說明見 README「資料夾結構」。

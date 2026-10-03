@@ -8,5 +8,5 @@ export const projectRoot = path.resolve(
 );
 export const cadSource = path.resolve(
   projectRoot,
-  process.env.CAD_SOURCE_DIR || "../TestCode/Temp/自動爆炸圖與拆圖CAD設計",
+  process.env.CAD_SOURCE_DIR || "cad-source",
 );

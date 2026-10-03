@@ -8,3 +8,6 @@ __pycache__/
 public/models/
 output/
 public/vendor/
+# CAD 原始檔（使用者提供、約 4.9 GB）與編碼用 ffmpeg 只留本機
+cad-source/
+tools/bin/

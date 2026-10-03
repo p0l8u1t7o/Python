@@ -43,7 +43,7 @@ def streams(file):
         offset=end
 if __name__ == '__main__':
     base=Path(__file__).resolve().parents[2]
-    source=Path(os.environ.get('CAD_SOURCE_DIR') or base.parent/'TestCode'/'Temp'/'自動爆炸圖與拆圖CAD設計')
+    source=Path(os.environ.get('CAD_SOURCE_DIR') or base/'cad-source')
     output=base/'tmp'/'native-research'/'streams'
     output.mkdir(parents=True,exist_ok=True)
     for name in ['202401-FA00.SLDASM','202401-GA00.SLDASM','202401-JA00.SLDASM']:

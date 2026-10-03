@@ -13,7 +13,7 @@ from importlib.util import spec_from_file_location, module_from_spec
 spec=spec_from_file_location('native_blocks',Path(__file__).with_name('inspect-native.py'))
 blocks=module_from_spec(spec);spec.loader.exec_module(blocks)
 BASE=Path(__file__).resolve().parents[2]
-SOURCE=Path(os.environ.get('CAD_SOURCE_DIR') or BASE.parent/'TestCode'/'Temp'/'自動爆炸圖與拆圖CAD設計')
+SOURCE=Path(os.environ.get('CAD_SOURCE_DIR') or BASE/'cad-source')
 OUT=BASE/'public'/'models'/'native'
 SIG=struct.pack('<3I',4,8,2)
 IDENTITY=[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]
