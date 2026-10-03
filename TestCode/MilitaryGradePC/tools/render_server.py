@@ -20,7 +20,7 @@ CORE = ROOT.parent / 'core'          # 共用模組與 three.js：頁面的 impo
 
 
 class QuietHandler(http.server.SimpleHTTPRequestHandler):
-    """正確 MIME、停用快取；/core/ 對應到 TestCode/core。"""
+    """正確 MIME、停用快取；/core/ 對應到儲存庫根目錄的 core。"""
     extensions_map = {**http.server.SimpleHTTPRequestHandler.extensions_map,
                       '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
                       '.css': 'text/css; charset=utf-8', '.html': 'text/html; charset=utf-8', '.json': 'application/json; charset=utf-8'}

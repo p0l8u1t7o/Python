@@ -20,4 +20,4 @@ walk(dest);
 console.log(`已建立 ${dest}
   開啟：node core/tools/serve.mjs "${id}"
   檢查：node core/tools/check.mjs "${id}"
-  記得把 ${id}/docs/ 加進 TestCode/.gitignore（使用者提供的圖面與規劃文件只留本機）`);
+  記得把 /${id}/docs/ 加進根目錄 .gitignore（使用者提供的圖面與規劃文件只留本機）`);

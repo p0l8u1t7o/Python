@@ -1,0 +1,61 @@
+name: Check and publish 3D demos
+
+# 每個有 web/index.html 的子資料夾都是一個展示專案（說明在 project.json）。
+# PR 與推送都先跑快速檢查；推送到 main 且檢查通過才建置並發布到 GitHub Pages。
+# 網址配置與本機 node core/tools/serve.mjs 相同（/、/core/、/<專案>/）。
+# Pages 設定：Settings → Pages → Source 選 GitHub Actions。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # imports、determinism、layout、scene（干涉＋閃爍）、core 模型、各專案 checks.quick
+      - name: Quick checks
+        run: node core/tools/check.mjs --quick
+
+      - name: Build site
+        run: node core/tools/build-site.mjs _site
+
+      - name: Upload website
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: check
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v5

@@ -1,5 +1,5 @@
 // GitHub Pages 建置：網址配置與本機 serve.mjs 相同。
-//   node TestCode/core/tools/build-site.mjs <輸出資料夾，預設 _site>
+//   node core/tools/build-site.mjs <輸出資料夾，預設 _site>
 //   /index.html 首頁、/core/ 共用（不含 tools 與文件）、/<專案>/ 各專案 web/ 全部內容
 import { cpSync, mkdirSync, writeFileSync, existsSync, rmSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve, relative, sep } from 'node:path';
