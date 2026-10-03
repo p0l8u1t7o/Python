@@ -1,10 +1,15 @@
-// 焦點追隨與相機子畫面的互動檢查（core/ui/viewer-workspace.js 的 ◎ 追隨、相機視窗＋本專案的焦點選單與來源選單）。
+// 焦點追隨與相機子畫面的互動檢查（core/ui/viewer-workspace.js 的 ◎ 追隨、相機視窗與來源選單＋本專案的焦點選單）。
 // 只用 DevTools Protocol（Runtime.evaluate、Input.dispatchMouseEvent），可由 core/tools/cdp.mjs 的 openBrowser() 或 Browser 技能的 tab 呼叫：
 //   import { openBrowser } from '../../core/tools/cdp.mjs';
 //   const b = await openBrowser(); await b.goto('http://127.0.0.1:8770/ChemicalTankWashing/?pause');
 //   await runCameraReview(b, null, 'review/camera');
+// 直接執行（自行啟動本機伺服器與無頭瀏覽器，結果寫到 review/camera/camera-review.json）：
+//   node tools/review-camera.mjs [--port 8770]
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, dirname, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const SOURCE = '#pipFrame select[aria-label="相機來源"]';   // viewer-workspace.setSources 建立的來源選單
 
 export async function runCameraReview(cdp, tab, out) {
   mkdirSync(out, { recursive: true }); const checks = [];
@@ -16,7 +21,7 @@ export async function runCameraReview(cdp, tab, out) {
   const check = (name, ok, detail) => checks.push({ name, ok: !!ok, detail });
   const settle = () => evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(()=>r(true))))');
   const state = () => evaluate('({focus:sim.focus.enabled,target:sim.focus.target,camera:sim.camera.position.toArray(),look:sim.controls.target.toArray(),pip:sim.cameraWindow.state})');
-  const select = (id, value) => evaluate(`(()=>{const s=document.getElementById(${JSON.stringify(id)});s.value=${JSON.stringify(value)};s.dispatchEvent(new Event('change',{bubbles:true}));return s.value;})()`);
+  const select = (id, value) => evaluate(`(()=>{const s=document.querySelector(${JSON.stringify(id.startsWith('#') ? id : '#' + id)});s.value=${JSON.stringify(value)};s.dispatchEvent(new Event('change',{bubbles:true}));return s.value;})()`);
   const click = selector => evaluate(`(document.querySelector(${JSON.stringify(selector)}).click(),true)`);
   const byLabel = label => `[aria-label="${label}"]`;
   const rect = selector => evaluate(`document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect().toJSON()`);
@@ -72,16 +77,35 @@ export async function runCameraReview(cdp, tab, out) {
   const offByOption = !(await evaluate('sim.cameraWindow.visible'));
   await evaluate('(()=>{const c=document.getElementById("showPip");c.checked=true;c.dispatchEvent(new Event("change",{bubbles:true}));})()'); await settle();
   check('側欄「相機子畫面」勾選控制視窗', offByOption && await evaluate('sim.cameraWindow.visible'));
+  check('來源選單：自動＋三個來源', same(await evaluate(`[...document.querySelector(${JSON.stringify(SOURCE)}).options].map(o=>o.value)`), ['auto', 'label', 'decap', 'gripper']));
   for (const [source, name, t] of [['gripper', '清洗夾具'], ['label', '貼標相機'], ['decap', '桶口相機'], ['auto', '貼標相機', 0]]) {
     if (t != null) await evaluate(`sim.seekTo(${t})`);
-    await select('pipSource', source); await evaluate('sim.seekTo(sim.T)'); await settle();
+    await select(SOURCE, source); await evaluate('sim.seekTo(sim.T)'); await settle();
     check('相機來源 · ' + source, (await evaluate('document.getElementById("pipTitle").textContent')).includes(name));
   }
   // 自動切換：桶口相機取像後切到桶口相機
   const decapShot = await evaluate('sim.seq.tracks.decap.steps.find(s=>s.end.flash&&!s.initial.flash).start');
   await evaluate(`sim.seekTo(${decapShot + .5})`); await settle();
   check('自動切換到取像中的相機', (await evaluate('document.getElementById("pipTitle").textContent')).includes('桶口相機') && await evaluate('+document.querySelector(".vision-overlay").dataset.count>0'));
-  await select('pipSource', 'auto'); await evaluate('sim.seekTo(0);sim.setView("iso",true)');
+  await select(SOURCE, 'auto'); await evaluate('sim.seekTo(0);sim.setView("iso",true)');
   const report = { ok: checks.every(c => c.ok), checks };
   writeFileSync(join(out, 'camera-review.json'), JSON.stringify(report, null, 2)); return report;
+}
+
+// 直接執行：啟動 core 的本機伺服器與無頭瀏覽器，跑完整份檢查，並把主控台錯誤算進結果
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+  const { startServer } = await import('../../core/tools/serve.mjs');
+  const { openBrowser } = await import('../../core/tools/cdp.mjs');
+  const i = process.argv.indexOf('--port'), port = i > 0 ? +process.argv[i + 1] : 8770;
+  const server = await startServer({ port, quiet: true }), b = await openBrowser();
+  try {
+    if (!await b.goto(`http://127.0.0.1:${port}/ChemicalTankWashing/?pause`)) throw new Error('頁面未就緒 ' + b.errors.join(' | '));
+    const report = await runCameraReview(b, null, join(root, 'review/camera'));
+    report.consoleErrors = [...b.errors]; report.ok &&= !b.errors.length;
+    writeFileSync(join(root, 'review/camera/camera-review.json'), JSON.stringify(report, null, 2));
+    for (const c of report.checks) console.log(c.ok ? '✓' : '✗', c.name, c.ok ? '' : JSON.stringify(c.detail ?? ''));
+    console.log(report.ok ? `通過 ${report.checks.length} 項，無主控台錯誤` : `未通過；主控台錯誤 ${b.errors.length} 筆`, b.errors.slice(0, 5));
+    process.exitCode = report.ok ? 0 : 1;
+  } finally { await b.close(); server.close(); }
 }

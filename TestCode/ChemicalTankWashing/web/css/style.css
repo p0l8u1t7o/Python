@@ -68,10 +68,7 @@ select option{background:#172431}
 #timeline{grid-column:1;width:100%;accent-color:#69c8d0;cursor:pointer}
 .clock{grid-column:2;font-variant-numeric:tabular-nums;font-size:13px;color:var(--muted);text-align:right}
 
-/* 相機子畫面外框、拖曳與按鈕由 core/ui/viewer-workspace.css 提供；這裡只排來源選單 */
-#pipToolbar{flex:none;display:flex;align-items:center;gap:6px;padding:4px 8px;background:#101e2a;font-size:11px;color:var(--muted)}
-#pipToolbar label{display:flex;align-items:center;gap:6px}
-#pipToolbar select{font-size:11px;padding:2px 5px}
+/* 相機子畫面（外框、拖曳、按鈕、來源選單）全由 core/ui/viewer-workspace.js／.css 提供 */
 .focus-choice{display:flex;gap:5px;align-items:center;white-space:nowrap;font-size:12px;color:var(--muted)}
 .focusbar{grid-column:1/-1;display:flex;align-items:center;gap:8px;overflow-x:auto;scrollbar-width:thin}
 .focusbar button{white-space:nowrap}
@@ -81,7 +78,7 @@ select option{background:#172431}
 #loading{position:absolute;inset:0;display:grid;place-items:center;background:var(--bg);z-index:10;color:var(--muted);font-size:14px;letter-spacing:1px}
 #loading.hide{display:none}
 .label3d{font:10.5px var(--font);color:#dfe7f0;background:#10202be0;border:1px solid #49616d;padding:3px 8px;border-radius:6px;white-space:nowrap;
-  pointer-events:none;position:absolute;left:var(--canvas-left,0px);top:var(--canvas-top,152px);z-index:2}  /* 位置由 stage.updateLabels 以 transform 設定 */
+  pointer-events:none;position:absolute;z-index:2}  /* 位置（含畫布在頁面中的偏移）由 stage.updateLabels 以 transform 設定 */
 .label3d b{color:var(--accent)}
 .label3d.dim{background:#0b1a26d0;border-color:#5d8aa3;color:#b6e3ff}
 

@@ -50,7 +50,7 @@ function applyState(T) {
 
 // ---------------------------------------------------------------- UI
 const $ = id => document.getElementById(id);
-const ui = Object.fromEntries(['payload', 'speed', 'cycleTime', 'phase', 'equip', 'drums', 'tanks', 'checks', 'chkCount', 'showDims', 'showFence', 'showLabels', 'showCeiling', 'xray', 'stations', 'focusTarget', 'focusStatus', 'pipSource'].map(id => [id, $(id)]));
+const ui = Object.fromEntries(['payload', 'speed', 'cycleTime', 'phase', 'equip', 'drums', 'tanks', 'checks', 'chkCount', 'showDims', 'showFence', 'showLabels', 'showCeiling', 'xray', 'stations', 'focusTarget', 'focusStatus'].map(id => [id, $(id)]));
 function focusPosition(key) {
   if (key === 'gripper') return robot.tool.localToWorld(new THREE.Vector3(0, 80, ROBOT.grip * .65));
   if (key === 'agv') return agv.root.position.clone().add(new THREE.Vector3(0, 750, 0));
@@ -98,40 +98,45 @@ ui.xray.onchange = () => drums.forEach(d => d.setXray(ui.xray.checked));
 for (const type of ['input', 'change', 'click', 'keydown']) $('app').addEventListener(type, () => stage.invalidate(type === 'change'));
 
 // ---------------------------------------------------------------- 相機子畫面與焦點追隨（viewer-workspace）
-// 焦點目標由頂列「焦點」選單決定；◎（追隨焦點）跟著它移動。目標離線時保持視角不動。
+// 焦點目標由頂列「焦點」選單決定；◎（追隨焦點）跟著它移動。目標離線時 getFocus 回傳 null，viewer-workspace 保持視角不動。
 const FAR = 6000, FOCUS_OFFSET = new THREE.Vector3(-2200, 1800, 2400);
-let startOffset = FOCUS_OFFSET.clone();
 // 對準時的鏡頭偏移：離目標遠時拉近到預設偏移，已在附近則保留目前的觀看方向與距離
-function focusOffsetFor(key, p) {
-  const current = camera.position.clone().sub(controls.target);
-  if (!p || camera.position.distanceTo(controls.target) <= FAR) return current;
+function focusOffsetFor(key) {
+  if (camera.position.distanceTo(controls.target) <= FAR) return camera.position.clone().sub(controls.target);
   return key === 'gripper' ? gripperOffset() : FOCUS_OFFSET.clone();
 }
 function markFocusView() {
-  stage.goTo(camera.position.toArray(), controls.target.toArray(), true);   // 中止進行中的視角轉場
+  stage.cancelTween();
   selectedView = 'focus';
   document.querySelectorAll('.views button[data-view]').forEach(b => b.classList.remove('selected'));
 }
+let focusAbsent = false;   // 追隨中目標離線（桶已出線、尚未進場）
 const workspace = createViewerWorkspace({
   camera, controls, canvas, resize: stage.resize, focusNear: 100,
-  getFocus: () => focusPosition(ui.focusTarget.value) ?? controls.target.clone(),
-  // viewer-workspace 以固定陣列讀取偏移；這裡用可迭代物件交出開始追隨當下算好的偏移（見 onFocus）
-  focusOffset: { *[Symbol.iterator]() { yield* startOffset.toArray(); } },
-  onFocus() { startOffset = focusOffsetFor(ui.focusTarget.value, focusPosition(ui.focusTarget.value)); markFocusView(); },
+  getFocus: () => focusPosition(ui.focusTarget.value),
+  focusOffset: () => focusOffsetFor(ui.focusTarget.value).toArray(),
+  onFocus() { markFocusView(); focusAbsent = !focusPosition(ui.focusTarget.value); },
 });
-const followButton = $('followProduct');   // viewer-workspace 工具列的 ◎
+// 每次跳轉／每格：目標離線後重新出現時（例如倒退跳轉），viewer-workspace 不會自動移回，這裡平移視角回到目標、保留觀看方向與距離
+function followFocus() {
+  const p = workspace.following ? focusPosition(ui.focusTarget.value) : null;
+  if (p && focusAbsent) stage.shiftView(p.sub(controls.target));
+  focusAbsent = workspace.following && !p;
+  workspace.follow();
+}
 // 單次對準：追隨中則以新目標重新開始追隨
 function focusOnce() {
-  if (workspace.following) { workspace.stopFollowing(); followButton.click(); return; }
+  if (workspace.following) { workspace.startFollowing(); return; }
   const key = ui.focusTarget.value, p = focusPosition(key);
   markFocusView(); if (!p) return;
-  stage.goTo(p.clone().add(focusOffsetFor(key, p)).toArray(), p.toArray(), true);
+  stage.goTo(p.clone().add(focusOffsetFor(key)).toArray(), p.toArray(), true);
 }
 $('focusNow').onclick = focusOnce;
-ui.focusTarget.onchange = () => workspace.follow();
-function startFollow(key = ui.focusTarget.value) { ui.focusTarget.value = key; if (workspace.following) workspace.stopFollowing(); followButton.click(); }
+ui.focusTarget.onchange = followFocus;
+function startFollow(key = ui.focusTarget.value) { ui.focusTarget.value = key; workspace.startFollowing(); }
 
-// 子畫面來源：自動（依最近一次取像事件切換貼標／桶口相機）、指定相機或清洗夾具
+// 子畫面來源（viewer-workspace 的來源選單）：自動（依最近一次取像事件切換貼標／桶口相機）、指定相機或清洗夾具
+workspace.setSources([{ id: 'label', label: '貼標相機' }, { id: 'decap', label: '桶口相機' }, { id: 'gripper', label: '清洗夾具' }], { onChange: () => stage.invalidate() });
 const vision = createVisionOverlay(), gripperCam = new THREE.PerspectiveCamera(42, 1.5, 30, 25000);
 const ROI = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
 // 模擬檢測標記：畫面內各桶的 2" 與 3/4" 桶塞位置（取像後 4 秒內標示定位結果）
@@ -148,7 +153,7 @@ function bungMarks(fresh) {
   return out;
 }
 function renderPip() {
-  const T = player.T, source = ui.pipSource.value, gripper = source === 'gripper';
+  const T = player.T, source = workspace.source, gripper = source === 'gripper';
   const shot = shots.filter(s => s.start <= T).at(-1);
   const sensor = gripper ? gripperCam : source === 'decap' ? line.decapCam : source === 'label' ? line.labelCam : shot?.cam || line.labelCam;
   if (gripper) { const target = focusPosition('gripper'); gripperCam.position.copy(target).add(gripperOffset()); gripperCam.lookAt(target); }
@@ -166,7 +171,7 @@ function renderPip() {
 
 // ---------------------------------------------------------------- 播放列（core/ui/player.js）
 player = createPlayer({
-  total, speeds: [.25, 8], apply: applyState, onChange: () => workspace.follow(),
+  total, speeds: [.25, 8], apply: applyState, onChange: followFocus,
   events: seq.events.map(e => { const st = STATIONS.find(s => s.id === e.station); return { time: e.time, label: `${st.short} ${st.name} · ${e.label}` }; }),
 });
 const seekTo = t => player.seekTo(t);
@@ -196,12 +201,13 @@ function setView(name, instant = false) {
 }
 document.querySelectorAll('.views button[data-view]').forEach(b => b.onclick = () => setView(b.dataset.view));
 // 手動轉動視角時中止視角轉場
-controls.addEventListener('start', () => stage.goTo(camera.position.toArray(), controls.target.toArray(), true));
+controls.addEventListener('start', () => stage.cancelTween());
 
 // ---------------------------------------------------------------- 3D 標籤（stage.addLabel；位置函式回傳 null 時隱藏）
+// 設備標籤立在標示點上方（anchor 'above'，不遮住設備）；尺寸標註置中在尺寸線上
 const P = (x, y, z) => { const v = new THREE.Vector3(x, y, z); return () => v; };
 const showLabel = pos => () => ui.showLabels.checked ? pos() : null;
-const label = (html, pos) => stage.addLabel(html, showLabel(pos));
+const label = (html, pos) => stage.addLabel(html, showLabel(pos), '', { anchor: 'above' });
 label('<b>倉儲</b> 穿梭車密集架 212 桶', P(6000, 4000, 2700));
 label('<b>AGV</b> 平衡重式堆高', () => agv.root.position.clone().add(new THREE.Vector3(0, 2500, 0)));
 label('<b>S2</b> 棧板站＋龍門翻轉夾爪', P(4800, 3600, 9050));
@@ -215,13 +221,6 @@ label('<b>S0</b> 散桶入庫（捲門＋懸臂吊）', P(1500, 3500, INBOUND.z)
 label('裝填區（下一站）', P(11400, 1500, 14700));
 label('結構柱', P(COLUMN.x, 2600, COLUMN.z));
 for (const d of building.dimLabels) stage.addLabel(d.text, () => ui.showDims.checked ? d.pos : null, 'dim');
-// stage 以畫布左上角為原點擺放標籤；畫布在頂列下方，標籤層對齊畫布位置
-let labelOrigin = '';
-function placeLabels() {
-  const origin = `${canvas.offsetLeft}px ${canvas.offsetTop}px`;
-  if (origin !== labelOrigin) { labelOrigin = origin; $('app').style.setProperty('--canvas-left', canvas.offsetLeft + 'px'); $('app').style.setProperty('--canvas-top', canvas.offsetTop + 'px'); }
-  stage.updateLabels(true);
-}
 
 // ---------------------------------------------------------------- 面板更新
 function drawHud() {
@@ -259,8 +258,8 @@ function drawHud() {
 // ---------------------------------------------------------------- 繪製（stage.loop 只在有變化時呼叫）
 function draw() {
   washing.tick(player.T);
-  workspace.follow();
-  drawHud(); placeLabels();
+  followFocus();
+  drawHud(); stage.updateLabels(true);
   renderPip();
   workspace.renderOverview(renderer, scene);
 }
@@ -275,13 +274,13 @@ stage.loop(dt => player.update(dt), { render: draw });
 const pipFrame = $('pipFrame');
 const focus = {
   get enabled() { return workspace.following; }, get target() { return ui.focusTarget.value; },
-  start: startFollow, stop: () => workspace.stopFollowing(), snap: () => workspace.follow(), update: () => workspace.follow(), once: focusOnce,
+  start: startFollow, stop: () => workspace.stopFollowing(), snap: followFocus, update: followFocus, once: focusOnce,
 };
 const cameraWindow = {
   layout: () => dispatchEvent(new Event('resize')),
   get state() { const r = pipFrame.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height, expanded: pipFrame.classList.contains('expanded'), visible: !pipFrame.hidden }; },
   get viewport() { return $('pipImage').getBoundingClientRect(); },
-  get source() { return ui.pipSource.value; },
+  get source() { return workspace.source; },
   get visible() { return !pipFrame.hidden; },
 };
 exposeSim({

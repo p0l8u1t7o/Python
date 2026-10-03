@@ -185,7 +185,7 @@ node --import ../core/tools/register.mjs tools/verify-detail.mjs
 - **夾具特寫**：上方視角按鈕可直接看清接合與夾持結構。
 - **焦點**：在頂列「焦點」選清洗夾具、目前作業桶、第 1–4 桶、AGV 或龍門夾爪，按「對準焦點」單次對準，或按工具列 ◎ 持續追隨（追隨中換目標會平移過去）。追隨時仍可旋轉和縮放；再按 ◎ 或其他預設視角退出。桶離線時保留視角並顯示提示，倒退跳轉會恢復追隨。
 - **相機視窗**（共用 viewer-workspace）：拖曳標題列或用方向鍵移動；⛶ 放大／縮小、↗ 以獨立視窗顯示（跟隨主頁播放與跳轉）、× 隱藏，再按工具列 ▣ 或勾選側欄「相機子畫面」恢復。畫面左上角是模擬檢測標記（桶塞 ROI，可用「標記」按鈕關閉）。
-- **相機來源**：視窗內的「來源」選單可選自動切換（依最近一次取像事件切到貼標或桶口相機）、貼標相機、桶口相機或清洗夾具。即時畫面持續可用，檢測結果與桶塞定位標記只在觸發後顯示 4 秒，並標示為模擬訊號。窄螢幕時版面改為收合式選單與播放列。
+- **相機來源**：視窗內的「來源」選單（viewer-workspace `setSources`）可選自動切換（依最近一次取像事件切到貼標或桶口相機）、貼標相機、桶口相機或清洗夾具。即時畫面持續可用，檢測結果與桶塞定位標記只在觸發後顯示 4 秒，並標示為模擬訊號。窄螢幕時版面改為收合式選單與播放列。
 
 暫停且視角不變時停止重繪（共用舞台 `onDemand`，狀態改變時 `stage.invalidate`）；陰影只在重繪時更新，由主視角和子視窗共用。
 
@@ -195,7 +195,7 @@ node --import ../core/tools/register.mjs tools/verify-detail.mjs
 node --import ../core/tools/register.mjs tools/verify-gripper.mjs
 ```
 
-[夾具檢核](review/gripper-verification.json) 包含 15,098 個時間／事件取樣、101 個開合位置、10 項結構檢查、實際零件定向包圍盒及桶輪廓邊線取樣。未檢出設備干涉、穿桶或越界；夾具至 40 mm 圍籬框的取樣最小淨距約 9.96 mm，金屬至桶身約 1.61 mm。小間隙尚須計入製造公差與桶型變異，不能視為製造驗證。`tools/review-camera.mjs` 只用 DevTools Protocol，可由 `core/tools/cdp.mjs` 的 `openBrowser()` 或 Browser 工作階段呼叫 `runCameraReview(cdp, tab, outputDirectory)`；[互動報告](review/camera/camera-review.json) 記錄 29 項追隨及視窗操作測試，包含從全景選擇已離線目標時保留相機位置、相機來源與自動切換。
+[夾具檢核](review/gripper-verification.json) 包含 15,098 個時間／事件取樣、101 個開合位置、10 項結構檢查、實際零件定向包圍盒及桶輪廓邊線取樣。未檢出設備干涉、穿桶或越界；夾具至 40 mm 圍籬框的取樣最小淨距約 9.96 mm，金屬至桶身約 1.61 mm。小間隙尚須計入製造公差與桶型變異，不能視為製造驗證。`tools/review-camera.mjs` 只用 DevTools Protocol：直接執行 `node tools/review-camera.mjs [--port 8770]` 會自行啟動本機伺服器與無頭瀏覽器，也可由 `core/tools/cdp.mjs` 的 `openBrowser()` 或 Browser 工作階段呼叫 `runCameraReview(cdp, tab, outputDirectory)`；[互動報告](review/camera/camera-review.json) 記錄 30 項追隨及視窗操作測試（另計主控台錯誤），包含從全景選擇已離線目標時保留相機位置、相機來源選單與自動切換。
 
 另有 [480 × 800 視窗邊界測試](review/camera/responsive-review.json)，及實際 WebGL 畫布匯出的 [夾持特寫](review/camera/gripper-closed.png)、[張開](review/camera/gripper-open.png)、[倒置倒液](review/camera/gripper-inverted.png) 預覽。
 
@@ -213,9 +213,9 @@ node --import ../core/tools/register.mjs tools/verify-gripper.mjs
 | `core/geom/shapes.js`、`materials.js`、`hardware.js` | 材質表與基本形狀；倒角外殼、螺栓實例、馬達／法蘭／儀表等共用細節（其他專案也可用） |
 | `web/js/drum.js` | 200L 桶 |
 | `web/js/sequence.js` | 各設備與各桶的時間軌、交接推算、狀態取樣 |
-| `web/js/main.js` | 場景、面板、視角、3D 標籤、相機子畫面來源與焦點目標 |
+| `web/js/main.js` | 場景、面板、視角、3D 標籤、相機子畫面內容（依取像事件自動切換、桶塞標記）與焦點目標 |
 | `core/ui/stage.js`、`player.js` | 共用舞台（renderer、燈光、3D 標籤、視角轉場、按需重繪）、播放列 |
-| `core/ui/viewer-workspace.js`、`vision-overlay.js` | 相機子畫面（拖曳、放大、獨立視窗）、焦點追隨、模擬檢測標記 |
+| `core/ui/viewer-workspace.js`、`vision-overlay.js` | 相機子畫面（拖曳、放大、獨立視窗、來源選單）、焦點追隨、模擬檢測標記 |
 | `web/js/plant.js`、`project.js` | 建立全場設備並套用取樣狀態；`project.js` 是網頁與 core 統一檢查共用的專案介面 |
 | `tools/verify.mjs`、`browser-check.mjs` | 幾何驗證、瀏覽器檢查（全場干涉與重合面改由 `core/tools/check.mjs` 執行） |
 | `docs/planning.md` | 規劃說明（只留本機） |
