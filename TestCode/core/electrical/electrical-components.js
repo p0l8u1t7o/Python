@@ -102,8 +102,8 @@ export function populatePanel(panel,{profile,width,height}){
     box(g,'device DIN rail',[Math.max(total,80),35,5],[0,row.y,5.5]);
     for(const x of [-total*.4,total*.4])box(g,'rail fixing spacer',[12,14,3],[x,row.y,3.5]);
     box(g,'horizontal wire duct base',[width*.87,18,3],[0,bottom,8.8],black);   // 與直立線槽底板錯開 0.8 mm
-    for(let x=-width*.42;x<width*.42;x+=24)for(const dy of [-8,8])box(g,'duct comb',[10,2,24],[x,bottom+dy,20],black);
-    for(const x of [-width*.35,width*.35])box(g,'duct mounting spacer',[12,12,5],[x,bottom,4.5]);
+    {const lim=width*.45-19;for(let x=-lim;x<=lim;x+=24)for(const dy of [-8,8])box(g,'duct comb',[8,2,24],[x,bottom+dy,20],black);}   // 梳齒止於直立線槽指片內側；寬 8，側面不與上方元件機身齊平
+    for(const x of [-width*.30,width*.30])box(g,'duct mounting spacer',[12,12,5],[x,bottom,4.5]);   // 讓開 PE 接地柱（x −0.35w）
   }
   const terminalY=height*.3-15,pitch=Math.min(25,width/18);
   let index=0;

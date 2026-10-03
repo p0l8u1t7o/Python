@@ -40,7 +40,7 @@ export function installVideo({steps, sample, renderer, camera, controls, render,
     else if(sh.view==='outfeed'){p=v(2870,1750,1620);t=v(1830,1030,0);}
     else if(sh.view==='transfer'){p=v(x+1100,1900,2400);t=v(x,870,-120);}
     else if(sh.view==='robot'){p=v(x+950,1510,1450);t=v(x,970,-150);}
-    else if(sh.view==='flip'){p=v(1700,1510,1310);t=v(1000,1020,0);}
+    else if(sh.view==='flip'){p=v(1850,1510,1310);t=v(1150,1020,0);}   // S3 在 x=1150
     else if(sh.view==='bottom'){p=v(x+320,y+510,390);t=v(x,y,0);}
     else if(sh.view==='door'){
       const door=nb.doors.find(d=>sh.label.startsWith(d.def.id+' '));

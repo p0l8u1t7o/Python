@@ -5,9 +5,9 @@
   "report": [
     {
       "scenario": "V110-STND",
-      "samples": 6822,
+      "samples": 7196,
       "routes": 19,
-      "supports": 77,
+      "supports": 67,
       "carriers": 2,
       "feedthroughs": {
         "plates": 2,
@@ -20,9 +20,9 @@
     },
     {
       "scenario": "V110-RF",
-      "samples": 6822,
+      "samples": 7196,
       "routes": 19,
-      "supports": 77,
+      "supports": 67,
       "carriers": 2,
       "feedthroughs": {
         "plates": 2,
@@ -34,5 +34,686 @@
       }
     }
   ],
-  "failures": []
+  "failures": [
+    {
+      "key": "V110-STND/VISION / ring-light power/J2",
+      "time": 95.95,
+      "point": [
+        -365.11,
+        1267.02,
+        -351.75
+      ],
+      "obstacleLocal": [
+        [
+          94.96029831857163,
+          -29.30018571800855,
+          -21.427219639315354
+        ],
+        [
+          94.46890239771972,
+          -29.54783423555432,
+          -20.97989273632038
+        ]
+      ],
+      "obstacleBounds": [
+        [
+          -95,
+          -125,
+          -95
+        ],
+        [
+          95,
+          125,
+          95
+        ]
+      ],
+      "method": "expanded mesh bounds; potential interference"
+    },
+    {
+      "key": "V110-STND/VISION / ring-light power/shoulder-side",
+      "time": 96.05,
+      "point": [
+        -357.26,
+        1225.93,
+        -331.64
+      ],
+      "obstacleLocal": [
+        [
+          133.11684343014423,
+          97.5740518248324,
+          -48.40100777219601
+        ],
+        [
+          133.22556299751182,
+          96.93157289787746,
+          -48.68083268442837
+        ]
+      ],
+      "obstacleBounds": [
+        [
+          -145,
+          -95,
+          -110
+        ],
+        [
+          145,
+          95,
+          110
+        ]
+      ],
+      "method": "expanded mesh bounds; potential interference"
+    },
+    {
+      "key": "V110-STND/PROFILE / sensor data/J2",
+      "time": 96.05,
+      "point": [
+        -427.83,
+        1266.99,
+        -364.53
+      ],
+      "obstacleLocal": [
+        [
+          92.69323308925186,
+          27.377448767864962,
+          -30.686808292258775
+        ],
+        [
+          92.3242964704366,
+          27.787075004698636,
+          -30.64924215045687
+        ]
+      ],
+      "obstacleBounds": [
+        [
+          -95,
+          -125,
+          -95
+        ],
+        [
+          95,
+          125,
+          95
+        ]
+      ],
+      "method": "expanded mesh bounds; potential interference"
+    },
+    {
+      "key": "V110-STND/VISION / camera supply/J2",
+      "time": 96.1,
+      "point": [
+        -417.67,
+        1259.6,
+        -344.45
+      ],
+      "obstacleLocal": [
+        [
+          96.42640245849293,
+          10.346317706354682,
+          -19.488983463685372
+        ],
+        [
+          94.93594965446619,
+          9.709792796977524,
+          -20.118339158144977
+        ]
+      ],
+      "obstacleBounds": [
+        [
+          -95,
+          -125,
+          -95
+        ],
+        [
+          95,
+          125,
+          95
+        ]
+      ],
+      "method": "expanded mesh bounds; potential interference"
+    },
+    {
+      "key": "V110-STND/VISION / camera supply / clamp foot/J2",
+      "time": 96.1,
+      "point": [
+        -376.04,
+        1253.72,
+        -336.44
+      ],
+      "obstacleLocal": [
+        [
+          90.11048061724101,
+          -29.943898636377828,
+          -7.226961979794545
+        ],
+        [
+          89.86280169692954,
+          -30.348562100103475,
+          -8.981602482854635
+        ]
+      ],
+      "obstacleBounds": [
+        [
+          -95,
+          -125,
+          -95
+        ],
+        [
+          95,
+          125,
+          95
+        ]
+      ],
+      "method": "expanded mesh bounds; potential interference"
+    },
+    {
+      "key": "V110-STND/PROFILE / sensor data/shoulder-side",
+      "time": 96.15,
+      "point": [
+        -417.57,
+        1226.28,
+        -340.89
+      ],
+      "obstacleLocal": [
+        [
+          139.46122546847891,
+          97.59950872710328,
+          5.170076348689918
+        ],
+        [
+          139.2211629167366,
+          97.27541252235869,
+          5.547767649802836
+        ]
+      ],
+      "obstacleBounds": [
+        [
+          -145,
+          -95,
+          -110
+        ],
+        [
+          145,
+          95,
+          110
+        ]
+      ],
+      "method": "expanded mesh bounds; potential interference"
+    },
+    {
+      "key": "V110-STND/PROFILE / sensor data/upper-arm",
+      "time": 96.15,
+      "point": [
+        -420.85,
+        1222.71,
+        -344.56
+      ],
+      "obstacleLocal": [
+        [
+          67.76051108139575,
+          -257.7520690123615,
+          9.324680660932643
+        ],
+        [
+          67.36204615022018,
+          -257.81597331444937,
+          9.702157522682967
+        ]
+      ],
+      "obstacleBounds": [
+        [
+          -65,
+          -260,
+          -75
+        ],
+        [
+          65,
+          260,
+          75
+        ]
+      ],
+      "method": "expanded mesh bounds; potential interference"
+    },
+    {
+      "key": "V110-STND/PROFILE / sensor data / clamp foot/shoulder-side",
+      "time": 96.15,
+      "point": [
+        -417.18,
+        1226.06,
+        -336.46
+      ],
+      "obstacleLocal": [
+        [
+          155.66790530261048,
+          89.46185086705623,
+          5.2546864462585745
+        ],
+        [
+          143.38605921406287,
+          97.06149635849374,
+          3.9695230085197295
+        ]
+      ],
+      "obstacleBounds": [
+        [
+          -145,
+          -95,
+          -110
+        ],
+        [
+          145,
+          95,
+          110
+        ]
+      ],
+      "method": "expanded mesh bounds; potential interference"
+    },
+    {
+      "key": "V110-STND/ARM / upper protected section/shoulder-side",
+      "time": 164.6,
+      "point": [
+        489.71,
+        1230.95,
+        -588.45
+      ],
+      "obstacleLocal": [
+        [
+          -101.7189748536183,
+          101.95467216197153,
+          88.99999999999999
+        ],
+        [
+          -101.7189748536183,
+          101.95467216197153,
+          89.1435254248143
+        ]
+      ],
+      "obstacleBounds": [
+        [
+          -145,
+          -95,
+          -110
+        ],
+        [
+          145,
+          95,
+          110
+        ]
+      ],
+      "method": "expanded mesh bounds; potential interference"
+    },
+    {
+      "key": "V110-STND/PROFILE / sensor data / clamp foot/J2",
+      "time": 236.9,
+      "point": [
+        -420.42,
+        1248.27,
+        -333.51
+      ],
+      "obstacleLocal": [
+        [
+          96.73047083910424,
+          12.980388723188074,
+          5.095982744766048
+        ],
+        [
+          95.61481178814869,
+          12.592278539400153,
+          0.7537856779274534
+        ]
+      ],
+      "obstacleBounds": [
+        [
+          -95,
+          -125,
+          -95
+        ],
+        [
+          95,
+          125,
+          95
+        ]
+      ],
+      "method": "expanded mesh bounds; potential interference"
+    },
+    {
+      "key": "V110-RF/VISION / ring-light power/J2",
+      "time": 95.95,
+      "point": [
+        -365.11,
+        1267.02,
+        -351.75
+      ],
+      "obstacleLocal": [
+        [
+          94.96029831857163,
+          -29.30018571800855,
+          -21.427219639315354
+        ],
+        [
+          94.46890239771972,
+          -29.54783423555432,
+          -20.97989273632038
+        ]
+      ],
+      "obstacleBounds": [
+        [
+          -95,
+          -125,
+          -95
+        ],
+        [
+          95,
+          125,
+          95
+        ]
+      ],
+      "method": "expanded mesh bounds; potential interference"
+    },
+    {
+      "key": "V110-RF/VISION / ring-light power/shoulder-side",
+      "time": 96.05,
+      "point": [
+        -357.26,
+        1225.93,
+        -331.64
+      ],
+      "obstacleLocal": [
+        [
+          133.11684343014423,
+          97.5740518248324,
+          -48.40100777219601
+        ],
+        [
+          133.22556299751182,
+          96.93157289787746,
+          -48.68083268442837
+        ]
+      ],
+      "obstacleBounds": [
+        [
+          -145,
+          -95,
+          -110
+        ],
+        [
+          145,
+          95,
+          110
+        ]
+      ],
+      "method": "expanded mesh bounds; potential interference"
+    },
+    {
+      "key": "V110-RF/PROFILE / sensor data/J2",
+      "time": 96.05,
+      "point": [
+        -427.83,
+        1266.99,
+        -364.53
+      ],
+      "obstacleLocal": [
+        [
+          92.69323308925186,
+          27.377448767864962,
+          -30.686808292258775
+        ],
+        [
+          92.3242964704366,
+          27.787075004698636,
+          -30.64924215045687
+        ]
+      ],
+      "obstacleBounds": [
+        [
+          -95,
+          -125,
+          -95
+        ],
+        [
+          95,
+          125,
+          95
+        ]
+      ],
+      "method": "expanded mesh bounds; potential interference"
+    },
+    {
+      "key": "V110-RF/VISION / camera supply/J2",
+      "time": 96.1,
+      "point": [
+        -417.67,
+        1259.6,
+        -344.45
+      ],
+      "obstacleLocal": [
+        [
+          96.42640245849293,
+          10.346317706354682,
+          -19.488983463685372
+        ],
+        [
+          94.93594965446619,
+          9.709792796977524,
+          -20.118339158144977
+        ]
+      ],
+      "obstacleBounds": [
+        [
+          -95,
+          -125,
+          -95
+        ],
+        [
+          95,
+          125,
+          95
+        ]
+      ],
+      "method": "expanded mesh bounds; potential interference"
+    },
+    {
+      "key": "V110-RF/VISION / camera supply / clamp foot/J2",
+      "time": 96.1,
+      "point": [
+        -376.04,
+        1253.72,
+        -336.44
+      ],
+      "obstacleLocal": [
+        [
+          90.11048061724101,
+          -29.943898636377828,
+          -7.226961979794545
+        ],
+        [
+          89.86280169692954,
+          -30.348562100103475,
+          -8.981602482854635
+        ]
+      ],
+      "obstacleBounds": [
+        [
+          -95,
+          -125,
+          -95
+        ],
+        [
+          95,
+          125,
+          95
+        ]
+      ],
+      "method": "expanded mesh bounds; potential interference"
+    },
+    {
+      "key": "V110-RF/PROFILE / sensor data/shoulder-side",
+      "time": 96.15,
+      "point": [
+        -417.57,
+        1226.28,
+        -340.89
+      ],
+      "obstacleLocal": [
+        [
+          139.46122546847891,
+          97.59950872710328,
+          5.170076348689918
+        ],
+        [
+          139.2211629167366,
+          97.27541252235869,
+          5.547767649802836
+        ]
+      ],
+      "obstacleBounds": [
+        [
+          -145,
+          -95,
+          -110
+        ],
+        [
+          145,
+          95,
+          110
+        ]
+      ],
+      "method": "expanded mesh bounds; potential interference"
+    },
+    {
+      "key": "V110-RF/PROFILE / sensor data/upper-arm",
+      "time": 96.15,
+      "point": [
+        -420.85,
+        1222.71,
+        -344.56
+      ],
+      "obstacleLocal": [
+        [
+          67.76051108139575,
+          -257.7520690123615,
+          9.324680660932643
+        ],
+        [
+          67.36204615022018,
+          -257.81597331444937,
+          9.702157522682967
+        ]
+      ],
+      "obstacleBounds": [
+        [
+          -65,
+          -260,
+          -75
+        ],
+        [
+          65,
+          260,
+          75
+        ]
+      ],
+      "method": "expanded mesh bounds; potential interference"
+    },
+    {
+      "key": "V110-RF/PROFILE / sensor data / clamp foot/shoulder-side",
+      "time": 96.15,
+      "point": [
+        -417.18,
+        1226.06,
+        -336.46
+      ],
+      "obstacleLocal": [
+        [
+          155.66790530261048,
+          89.46185086705623,
+          5.2546864462585745
+        ],
+        [
+          143.38605921406287,
+          97.06149635849374,
+          3.9695230085197295
+        ]
+      ],
+      "obstacleBounds": [
+        [
+          -145,
+          -95,
+          -110
+        ],
+        [
+          145,
+          95,
+          110
+        ]
+      ],
+      "method": "expanded mesh bounds; potential interference"
+    },
+    {
+      "key": "V110-RF/ARM / upper protected section/shoulder-side",
+      "time": 164.6,
+      "point": [
+        489.71,
+        1230.95,
+        -588.45
+      ],
+      "obstacleLocal": [
+        [
+          -101.7189748536183,
+          101.95467216197153,
+          88.99999999999999
+        ],
+        [
+          -101.7189748536183,
+          101.95467216197153,
+          89.1435254248143
+        ]
+      ],
+      "obstacleBounds": [
+        [
+          -145,
+          -95,
+          -110
+        ],
+        [
+          145,
+          95,
+          110
+        ]
+      ],
+      "method": "expanded mesh bounds; potential interference"
+    },
+    {
+      "key": "V110-RF/PROFILE / sensor data / clamp foot/J2",
+      "time": 236.9,
+      "point": [
+        -420.42,
+        1248.27,
+        -333.51
+      ],
+      "obstacleLocal": [
+        [
+          96.73047083910424,
+          12.980388723188074,
+          5.095982744766048
+        ],
+        [
+          95.61481178814869,
+          12.592278539400153,
+          0.7537856779274534
+        ]
+      ],
+      "obstacleBounds": [
+        [
+          -95,
+          -125,
+          -95
+        ],
+        [
+          95,
+          125,
+          95
+        ]
+      ],
+      "method": "expanded mesh bounds; potential interference"
+    }
+  ]
 }

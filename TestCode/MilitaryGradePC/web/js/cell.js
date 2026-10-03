@@ -7,7 +7,8 @@ import { NB } from './notebook.js';
 import { block, cylinder, decal, tube } from '@core/geom/primitives.js';
 
 export const LAYOUT = {
-  stationX: [-2000, -1000, 0, 1000, 2000],   // S0 進料（堆料架）、S1 閉合外觀、S2 側邊護蓋、S3 翻面檢測、S4 出料（堆料架）
+  // S3 在 x=1150：S2 右側護蓋作業時手腕在 x≤約 680，翻轉治具左端（x≥695）不在手腕範圍內
+  stationX: [-2000, -1000, 0, 1150, 2000],   // S0 進料（堆料架）、S1 閉合外觀、S2 側邊護蓋、S3 翻面檢測、S4 出料（堆料架）
   stackerInX: -2000, stackerOutX: 2000,
   conveyorTop: 760,
   palletH: 40,
@@ -15,9 +16,11 @@ export const LAYOUT = {
   palletPitch: 110,                          // 堆疊間距（載具 40 + 機台 36 + 淨空）
   railZ: -560,
   flipLift: 210,
+  cradlePark: 100,                           // 翻轉治具待命高度：輸送期間停在上方 100 mm，讓出載具與筆電通道
   footOffset: 3.25,
   // S1 頂視取像頭：前側懸臂上的 Z 向滑軌；移入時穹頂光底緣在產品上方 80 mm，退出後讓手臂巡拍四側
-  s1PostZ: 850, s1HeadOut: 780, s1DomeGap: 80, s1DomeR: 200, s1BeamY: 2000,
+  // 立柱在 z=1050（1010～1090）：取像頭退到 780 時滑座（≤850）與穹頂光外緣（≤990）都在立柱前方
+  s1PostZ: 1050, s1HeadOut: 780, s1DomeGap: 80, s1DomeR: 200, s1BeamY: 2000,
 };
 
 const matFloor = new THREE.MeshStandardMaterial({ color: 0x1b2027, roughness: 0.95 });
@@ -52,9 +55,11 @@ export function createPallet(withClamps = true) {
   const clamps = [];
   if (withClamps) for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
     const cg = new THREE.Group(); cg.position.set(sx * 207.5, ph + 18 + LAYOUT.padH + LAYOUT.footOffset, sz * 82); pallet.add(cg);
-    const cylBody = box(26, 22, 20, matDark); cylBody.position.x = sx * 12; cg.add(cylBody);
+    // 氣缸本體放低（離載具框 2 mm、頂面低於護蓋下緣），以連接片帶動推桿：手臂在側門作業時工具不碰氣缸
+    const cylBody = box(32, 12, 20, matDark); cylBody.position.set(sx * 9, -27, 0); cg.add(cylBody);
     const rod = new THREE.Group(); cg.add(rod);
     const rodM = cyl(4, 40, matPin, 10); rodM.rotation.z = Math.PI / 2; rodM.position.x = -sx * 30; rod.add(rodM);
+    block(rod, [6, 26, 8], [-sx * 12, -14, 0], matDark);
     const pad = box(8, 18, 8, matPU); pad.name = 'pallet clamp pad'; pad.position.x = -sx * 52; rod.add(pad);
     clamps.push({ rod, sx });
   }
@@ -121,8 +126,9 @@ function createFlipCradle(x) {
   for (const sx of [-1, 1]) {
     const shaft = cyl(18, 180, matAlu); shaft.rotation.z = Math.PI / 2; shaft.position.set(sx * 300, 0, 0); rot.add(shaft);
     const arm = new THREE.Group(); arm.position.set(sx * 235, 0, 0); rot.add(arm);
-    const yoke = box(30, 40, 240, matDark); arm.add(yoke);
-    for (const sz of [-1, 1]) { const finger = box(50, 22, 10, matDark); finger.position.set(-sx * 20, 0, sz * 98); arm.add(finger); const pad = box(10, 20.6, 8.6, matPU); pad.name = 'cradle clamp pad'; pad.position.set(-sx * 48, 0, sz * 98); arm.add(pad); }
+    // 夾臂橫樑外移 46 mm（夾緊時 x≥235.5），避開載具四角側夾的氣缸本體（x≤232.5、z=±72～92）；指桿在 z=±95～103
+    const yoke = box(30, 40, 240, matDark); yoke.position.x = sx * 46; arm.add(yoke);
+    for (const sz of [-1, 1]) { const finger = box(85, 22, 8, matDark); finger.position.set(-sx * 2.5, 0, sz * 99); arm.add(finger); const pad = box(10, 20.6, 8.6, matPU); pad.name = 'cradle clamp pad'; pad.position.set(-sx * 48, 0, sz * 98); arm.add(pad); }
     arms.push({ arm, sx });
   }
   return { group: g, lift, rot, arms, keepout, setClamp(v) { for (const a of arms) a.arm.position.x = a.sx * (235 - v * 30.5); } };
@@ -154,7 +160,7 @@ export function createCell(scene) {
   }
   for(const z of [-170,170])for(const x of [x0+30,x1-30]){const r=cyl(30,38,matDark);r.rotation.x=Math.PI/2;r.position.set(x,top-28,z);g.add(r);}
   for(let x=x0+30;x<x1;x+=120)for(const z of [-201,201])block(g,[42,3,1],[x,top-30,z],matDark);
-  const drive=box(140,120,100,matBlue);drive.position.set(x1-90,top-90,265);g.add(drive);
+  const drive=box(140,120,100,matBlue);drive.position.set(x1-20,top-90,265);   // 驅動馬達放在輸送線末端外側，避開 S3 右立柱g.add(drive);
   const beltMarks=new THREE.Group();g.add(beltMarks);
   for(let x=x0+30;x<x1-100;x+=110)for(const z of [-170,170])block(beltMarks,[3,1.4,28],[x,top+6,z],matAlu);
 
@@ -242,9 +248,11 @@ export function createCell(scene) {
     }
   }
   cableTray(g,'CELL / segregated field wiring',[-2530,400,320],[2500,400,320],{width:58});
-  for(let x=x0+100;x<=x1-100;x+=600)if(Math.abs(x-1400)>60)support(g,'CELL / trough leg bracket',[x,389,195],[x,389,320],6);
-  cable(g,'S1 / rear-of-post feed',[[s1x,400,335],[s1x+240,600,910],[s1x+240,1900,910],[s1x+85,2090,750],[s1x+85,2090,390]],{radius:6,color:CABLE.sleeve,clips:9,backing:{offset:[20,0,0],feet:[[1,[s1x+40,600,LAYOUT.s1PostZ]],[2,[s1x+40,1900,LAYOUT.s1PostZ]],[4,[s1x+40,beamY+45,390]]],radius:8}});
-  cable(g,'RAIL / fixed supply',[[0,400,300],[-180,370,-350],[-180,90,-750],[0,30,railZ-220]],{radius:8,color:CABLE.sleeve,clips:5,backing:{offset:[0,-22,0],feet:[[0,[0,top-100,190]],[3,[0,6,railZ-130]]],radius:8}});
+  for(let x=x0+100;x<=x1-100;x+=600)if([LAYOUT.stationX[3]-380,LAYOUT.stationX[3]+380].every(px=>Math.abs(x-px)>60))support(g,'CELL / trough leg bracket',[x,389,195],[x,389,320],6);
+  cable(g,'S1 / rear-of-post feed',[[s1x,400,335],[s1x+240,600,LAYOUT.s1PostZ+60],[s1x+240,1900,LAYOUT.s1PostZ+60],[s1x+85,2090,LAYOUT.s1PostZ-100],[s1x+85,2090,390]],{radius:6,color:CABLE.sleeve,clips:9,backing:{offset:[20,0,0],feet:[[1,[s1x+40,600,LAYOUT.s1PostZ]],[2,[s1x+40,1900,LAYOUT.s1PostZ]],[4,[s1x+40,beamY+45,390]]],radius:8}});
+  // 滑軌供電：從前側線槽下到地面，沿滑軌前方地面繞過滑軌端部（x=-1460），再從後方接到拖鏈固定端；
+  // 不橫越滑座行程（舊路徑斜穿滑軌，滑座經過 x≈-180 時會撞線）
+  cable(g,'RAIL / fixed supply',[[0,400,300],[0,10,300],[0,10,railZ+180],[-1460,10,railZ+180],[-1460,10,railZ-290],[0,10,railZ-290],[0,30,railZ-246]],{radius:8,color:CABLE.sleeve,clips:0});
   const cabinet=cabinetShell(g,'CTRL / under-conveyor cabinet',{center:[-700,300,20],size:[460,600,440],entries:[{x:-150,z:180,hole:14},{x:150,z:180,hole:16},{x:0,z:180,hole:10}],thickness:12});
   const panel=controlPanel(g,'CTRL / drive and vision IO',{center:[-700,300,-150],width:410,height:460,backZ:-197,profile:'military'});
   const controller=robotController(g,{at:[-700,63,-145],floor:4});controllerLeads(g,controller,panel);

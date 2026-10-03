@@ -3,19 +3,23 @@ import * as THREE from 'three';
 import { finish } from '@core/geom/finish.js';
 import { block, cylinder, rounded, profile, decal } from '@core/geom/primitives.js';
 export const NB = { W: 300, D: 210, H: 36 };
+// 護蓋開度：100° 時門緣仍高於載具框 12 mm，鉤爪與壓頭在門緣作業不碰載具框
+export const DOOR_OPEN_DEG = 100;
 const material=(color,roughness=.7,metalness=.2)=>new THREE.MeshStandardMaterial({color,roughness,metalness});
 const body=material(0x242829),lid=material(0x393e3e),rubber=material(0x111416,.94,0),doorMat=material(0x252a2b),steel=material(0x8b9294,.32,.85),dark=material(0x080b0d),gold=material(0xd0aa53,.32,.8),blue=material(0x1476a3);
 for (const m of [body,lid,doorMat]) finish(m,'polymer',.025);
 finish(rubber,'polymer',.045); finish(steel,'metal',.008);
+// 側門（L/R）限制在 |z|≤74：避開四角護角（z 79～109）與載具 PU 承載墊（開門時門緣下垂）；
+// 後側門（B）限制在 27≤|x|≤124：避開護角（x≥126）與螢幕轉軸（x≤24）。夾墊只壓護角，不壓護蓋。
 const standard=[
-  {id:'D1',side:'L',u:-42,w:78,h:23,name:'HDMI / USB 3.1 ×2',ports:['hdmi','usb','usb'],icon:'HDMI   SS   SS'},
-  {id:'D2',side:'L',u:22,w:36,h:23,name:'AC 電源',ports:['ac'],icon:'DC IN'},
-  {id:'D3',side:'R',u:-12,w:46,h:23,name:'Type-C / 耳機麥克風',ports:['typec','audio'],icon:'USB-C   AUDIO'},
-  {id:'D4',side:'R',u:-65,w:50,h:23,name:'Smart Card',ports:['card'],icon:'SMART CARD'},
-  {id:'D5',side:'B',u:-77,w:100,h:23,name:'COM / 千兆網口',ports:['com','lan'],icon:'COM       LAN'},
-  {id:'BAT1',side:'L',u:67,w:48,h:23,name:'電池 1 封印',ports:['battery'],icon:'1   LOCK',sealed:true},
-  {id:'BAT2',side:'R',u:58,w:76,h:23,name:'電池 2 封印',ports:['battery'],icon:'2   LOCK',sealed:true},
-  {id:'HDD',side:'B',u:70,w:108,h:23,name:'HDD 保護門（不拆拔）',ports:['hdd'],icon:'HDD    LOCK'},
+  {id:'D1',side:'L',u:-39,w:70,h:23,name:'HDMI / USB 3.1 ×2',ports:['hdmi','usb','usb'],icon:'HDMI   SS   SS'},
+  {id:'D2',side:'L',u:15,w:32,h:23,name:'AC 電源',ports:['ac'],icon:'DC IN'},
+  {id:'D3',side:'R',u:-5,w:40,h:23,name:'Type-C / 耳機麥克風',ports:['typec','audio'],icon:'USB-C   AUDIO'},
+  {id:'D4',side:'R',u:-51,w:46,h:23,name:'Smart Card',ports:['card'],icon:'SMART CARD'},
+  {id:'D5',side:'B',u:-75,w:96,h:23,name:'COM / 千兆網口',ports:['com','lan'],icon:'COM       LAN'},
+  {id:'BAT1',side:'L',u:54,w:40,h:23,name:'電池 1 封印',ports:['battery'],icon:'1   LOCK',sealed:true},
+  {id:'BAT2',side:'R',u:46,w:56,h:23,name:'電池 2 封印',ports:['battery'],icon:'2   LOCK',sealed:true},
+  {id:'HDD',side:'B',u:75.5,w:96,h:23,name:'HDD 保護門（不拆拔）',ports:['hdd'],icon:'HDD    LOCK'},
 ];
 export const SKUS={'V110-STND':standard,'V110-RF':standard.map(d=>({...d}))};
 export let DOOR_DEFS=standard;
@@ -78,12 +82,12 @@ function makeDoor(def){
   if(def.side==='R'){group.position.set(NB.W/2+.5,3,def.u);group.rotation.y=Math.PI/2;}
   if(def.side==='B'){group.position.set(def.u,3,-NB.D/2-.5);group.rotation.y=Math.PI;}
   const api={def,group,hinge,latchPivot,portGroup,seal,cavity,open:0,latchUp:0,
-    set(open,latchUp){this.open=open;this.latchUp=latchUp;hinge.rotation.x=open*THREE.MathUtils.degToRad(115);latchPivot.position.y=def.h-2+3*latchUp;},
+    set(open,latchUp){this.open=open;this.latchUp=latchUp;hinge.rotation.x=open*THREE.MathUtils.degToRad(DOOR_OPEN_DEG);latchPivot.position.y=def.h-2+3*latchUp;},
     normalWorld(out=new THREE.Vector3()){return out.set(0,0,1).transformDirection(group.matrixWorld);},
     upWorld(out=new THREE.Vector3()){return out.set(0,1,0).transformDirection(group.matrixWorld);},
-    movingNormal(open,out=new THREE.Vector3()){const a=open*THREE.MathUtils.degToRad(115);return out.set(0,-Math.sin(a),Math.cos(a)).transformDirection(group.matrixWorld);},
+    movingNormal(open,out=new THREE.Vector3()){const a=open*THREE.MathUtils.degToRad(DOOR_OPEN_DEG);return out.set(0,-Math.sin(a),Math.cos(a)).transformDirection(group.matrixWorld);},
     latchWorld(out=new THREE.Vector3()){return latchPivot.getWorldPosition(out);},
-    edgeWorldAt(open,latch=1,out=new THREE.Vector3()){const a=open*THREE.MathUtils.degToRad(115),h=def.h-2+3*latch;return group.localToWorld(out.set(0,h*Math.cos(a)-4*Math.sin(a),h*Math.sin(a)+4*Math.cos(a)));},
+    edgeWorldAt(open,latch=1,out=new THREE.Vector3()){const a=open*THREE.MathUtils.degToRad(DOOR_OPEN_DEG),h=def.h-2+3*latch;return group.localToWorld(out.set(0,h*Math.cos(a)-4*Math.sin(a),h*Math.sin(a)+4*Math.cos(a)));},
     centerWorld(out=new THREE.Vector3()){return group.localToWorld(out.set(0,def.h/2,1));}
   };api.set(0,0);return api;
 }

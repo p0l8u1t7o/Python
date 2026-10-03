@@ -1,18 +1,26 @@
 import * as THREE from 'three';
-import { NB } from './notebook.js';
+import { NB, DOOR_OPEN_DEG } from './notebook.js';
 import { LAYOUT } from './cell.js';
 export const smooth=t=>t*t*t*(10+t*(-15+6*t)); // zero endpoint velocity and acceleration
 const clone=s=>JSON.parse(JSON.stringify(s));
 
 export function createSequence({nb,robot,apply}){
-  const base={palletX:-2000,lift:0,palletLift:0,flip:0,clamp:0,cradleClamp:0,cradleLift:0,inStackY:0,outStackY:0,inLift:0,outLift:0,pushIn:0,pushOut:550,inFork:1,outFork:1,located:false,s1Head:0,
+  const base={palletX:-2000,lift:0,palletLift:0,flip:0,clamp:0,cradleClamp:0,cradleLift:LAYOUT.cradlePark,inStackY:0,outStackY:0,inLift:0,outLift:0,pushIn:0,pushOut:550,inFork:1,outFork:1,located:false,s1Head:0,
     doors:nb.doors.map(()=>({open:0,latch:0})),force:0,zone:'free',flashTop:0,flashSn:0,flashTool:0,laserTool:0,seamLaser:-1,tower:'yellow',station:0,action:'',sub:''};
   const steps=[],stationStart=[0,0,0,0,0],top=LAYOUT.conveyorTop+6+LAYOUT.palletH+LAYOUT.padH+LAYOUT.footOffset;
   const down=new THREE.Vector3(0,-1,0),v=(x,y,z)=>new THREE.Vector3(x,y,z);
   const pose=(tcp,target,dir=down,rail=0)=>robot.poseFor(tcp,target,dir,rail);
-  // Raise the park TCP 200 mm above its former 1050 mm height so the complete
-  // side-mounted tool stays above J2 while the wrist folds into standby.
-  const park=x=>pose('cam',v(x,1250,-380),down,x);
+  // 偏軸 TCP（鉤爪、壓頭、線雷射）繞工具軸轉動，讓相機與環形光位於 TCP 正上方：
+  // 在門的高度作業時，環形光、鏡頭、輪廓儀不會壓到載具框、四角側夾與堆疊柱。
+  const TCP={cam:robot.tcpCam,hook:robot.tcpHook,press:robot.tcpPress,laser:robot.tcpLaser},RING=v(0,0,130);
+  const up=(tcp,target,dir,rail)=>{
+    const p=pose(tcp,target,dir,rail),o=RING.clone().sub(TCP[tcp].position),roll=Math.atan2(o.x,o.y);
+    const rotation=p.rotation.clone().multiply(new THREE.Quaternion().setFromAxisAngle(v(0,0,1),roll));
+    return {...p,rotation,origin:target.clone().sub(TCP[tcp].position.clone().applyQuaternion(rotation))};
+  };
+  // 待命位姿：TCP 在 y=1150、z=-220（離滑軌 340 mm）。手腕折疊 J5≈91°，
+  // 側裝工具在 J2 上方，手腕本體也不碰前臂端蓋（舊位姿 z=-380 時 J5≈115° 會自我干涉）。
+  const park=x=>({...pose('cam',v(x,1150,-220),down,x),fresh:true});
   let time=0,previous=clone(base),lastPose=park(-1000);
   function add(st,dur,action,sub,values={},motion=null,extra={}){
     if(!steps.some(s=>s.station===st))stationStart[st]=time;
@@ -35,6 +43,13 @@ export function createSequence({nb,robot,apply}){
     // Door world coordinates must be evaluated after installing this endpoint state.
     lastPose=destination;s.pose1=lastPose;
     steps.push(s);previous=end;time+=dur;return s;
+  }
+  // 在門的高度作業完後，先保持朝向垂直上升，再以關節插值轉位：避免 PTP 從低位掃過載具堆疊柱與皮帶
+  function liftAway(st,label){
+    if(lastPose.origin.y>=1000)return;
+    const from=lastPose;
+    add(st,1.2,'直線上升：'+label,'保持工具朝向，垂直上升 150 mm 後才轉腕',{force:0,flashTool:0,laserTool:0},
+      t=>({origin:from.origin.clone().add(v(0,150*smooth(t),0)),rotation:from.rotation.clone(),tcp:from.tcp,rail:from.rail}),{path:true});
   }
   function doorsAt(index,open,latch){const values=clone(previous.doors);values[index]={open,latch};return values;}
   const surface=(x,y,z,s)=>v(s.palletX+x,top+y+s.lift,z);
@@ -72,15 +87,17 @@ export function createSequence({nb,robot,apply}){
     add(1,.2,'關閉環形光','曝光完成',{flashTool:0});
   });
   add(1,2.8,'接縫掃描準備','工具退至上方，切換線雷射 TCP',{},()=>park(-1000));
-  add(1,2.4,'線雷射起點定位','QII §10.1：LCD cover / AB 接縫 Gap 與 Step ≤ 0.5 mm；實際 ROI 待確認',{},(t,s)=>pose('laser',surface(-125,36,-94,s),down,-1000));
-  add(1,5,'沿外蓋後緣掃描','保留輪廓與高度差；不將通用外觀表套用到所有接縫',{laserTool:1,seamLaser:1},(t,s)=>pose('laser',surface(-125+250*smooth(t),36,-94,s),down,-1000),{path:true,done:'seam'});
+  // 接縫掃描：雷射 TCP 在外蓋上方 8 mm（量測範圍 25 mm 內），比 TCP 低 5 mm 的鉤爪尖端不刮外蓋
+  add(1,2.4,'線雷射起點定位','QII §10.1：LCD cover / AB 接縫 Gap 與 Step ≤ 0.5 mm；實際 ROI 待確認',{},(t,s)=>pose('laser',surface(-125,44,-94,s),down,-1000));
+  add(1,5,'沿外蓋後緣掃描','保留輪廓與高度差；不將通用外觀表套用到所有接縫',{laserTool:1,seamLaser:1},(t,s)=>pose('laser',surface(-125+250*smooth(t),44,-94,s),down,-1000),{path:true,done:'seam'});
   add(1,2.8,'手臂退讓至安全高度','掃描完成、光源關閉；輸送許可等待手臂到位',{laserTool:0,seamLaser:-1},()=>park(0));
   add(1,3.5,'輸送至 S2','止擋下降後輸送，四角側夾保持夾緊',{palletX:0,located:false});
   add(2,.5,'S2 止擋定位','載具到位、相機配方與工單一致',{located:true});
   nb.doors.forEach((d,i)=>{
-    const def=d.def,rail=def.side==='L'?-350:def.side==='R'?350:-450;
-    // 面向手臂的護蓋（法線朝滑軌）：線雷射改由斜上方 15° 掃描，避免手腕超過 ±120°。
-    const N=()=>d.normalWorld(),dir=()=>N().negate(),laserDir=()=>{const l=dir();if(N().z<-.5)l.add(v(0,-Math.tan(15*Math.PI/180),0)).normalize();return l;},edge=(open,latch,offset=0)=>d.edgeWorldAt(open,latch).addScaledVector(N(),offset);
+    const def=d.def,rail=def.side==='L'?-350:def.side==='R'?575:-450;   // 右側門滑軌 575：手臂在門的正後方，前臂沿 z 伸出，不靠近 S3 翻轉治具
+    // 線雷射一律由斜上方 20° 掃描：面向手臂的護蓋避免手腕超過 ±120°；左右側護蓋讓 TCP 後方 105 mm 的輪廓儀抬高，不壓到載具框。
+    const N=()=>d.normalWorld(),dir=()=>N().negate(),laserDir=()=>dir().add(v(0,-Math.tan(20*Math.PI/180),0)).normalize(),edge=(open,latch,offset=0)=>d.edgeWorldAt(open,latch).addScaledVector(N(),offset);
+    liftAway(2,def.id+' 上方轉位');
     add(2,2.5,def.id+' 上方轉位',def.name+'｜在產品上方轉腕與滑軌移位',{},()=>park(rail));
     if(def.side==='R'){
       add(2,2,def.id+' 側面預備點','先在門面上方 300 mm 完成轉腕，避開 S3 立柱',{},()=>pose('cam',d.centerWorld().add(v(0,300,0)),dir(),rail));
@@ -89,27 +106,30 @@ export function createSequence({nb,robot,apply}){
     add(2,.5,def.id+' 門面取像',def.sealed?'封印與外觀檢查；本階段不拆拔模組':'確認門扣關閉、取得視覺修正位置',{flashTool:1},null,{exposure:true,done:def.sealed?def.id:null});
     add(2,.25,def.id+' 關閉取像光','曝光完成',{flashTool:0});
     if(def.sealed)return;
-    add(2,1.8,def.id+' 切換鉤爪 TCP','相機退離後鉤爪接近至門扣外 100 mm',{},()=>pose('hook',edge(0,0,100),dir(),rail));
-    add(2,3.6,def.id+' 減速接近門扣','100 → 6 mm；五次曲線峰值速度小於 50 mm/s',{zone:'slow'},()=>pose('hook',edge(0,0,6),dir(),rail));
-    add(2,.9,def.id+' 力控接觸','鉤尖接觸門扣；2 N 為工程模擬設定',{zone:'contact',force:2},()=>pose('hook',edge(0,0),dir(),rail),{contact:true});
-    add(2,.8,def.id+' 抬起門扣 3 mm','QII §12.1：先拉起門上邊沿，再打開',{doors:doorsAt(i,0,1),force:3},(t,s)=>pose('hook',edge(0,s.doors[i].latch),dir(),rail),{path:true,contact:true});
-    add(2,2.2,def.id+' 沿鉸鏈弧線開門','鉤尖跟隨同一門緣座標；示意開度 115°',{doors:doorsAt(i,1,1),force:2},(t,s)=>pose('hook',edge(s.doors[i].open,1),dir(),rail),{path:true,contact:true});
-    add(2,1.2,def.id+' 鉤爪脫離','沿外法線退出 100 mm，再切換相機',{force:0,zone:'slow'},()=>pose('hook',edge(1,1,100),dir(),rail));
+    add(2,1.8,def.id+' 切換鉤爪 TCP','相機退離後鉤爪接近至門扣外 100 mm',{},()=>up('hook',edge(0,0,100),dir(),rail));
+    add(2,3.6,def.id+' 減速接近門扣','100 → 6 mm；五次曲線峰值速度小於 50 mm/s',{zone:'slow'},()=>up('hook',edge(0,0,6),dir(),rail));
+    add(2,.9,def.id+' 力控接觸','鉤尖接觸門扣；2 N 為工程模擬設定',{zone:'contact',force:2},()=>up('hook',edge(0,0),dir(),rail),{contact:true});
+    add(2,.8,def.id+' 抬起門扣 3 mm','QII §12.1：先拉起門上邊沿，再打開',{doors:doorsAt(i,0,1),force:3},(t,s)=>up('hook',edge(0,s.doors[i].latch),dir(),rail),{path:true,contact:true});
+    add(2,2.2,def.id+' 沿鉸鏈弧線開門',`鉤尖跟隨同一門緣座標；示意開度 ${DOOR_OPEN_DEG}°`,{doors:doorsAt(i,1,1),force:2},(t,s)=>up('hook',edge(s.doors[i].open,1),dir(),rail),{path:true,contact:true});
+    add(2,1.2,def.id+' 鉤爪脫離','沿外法線退出 100 mm，再切換相機',{force:0,zone:'slow'},()=>up('hook',edge(1,1,100),dir(),rail));
     add(2,2.4,def.id+' 連接器對焦','相機工作距離 150 mm；曝光前等待到位',{},()=>pose('cam',d.centerWorld(),dir(),rail));
     add(2,.65,def.id+' 連接器取像','端子數量、異物、損 pin、門內麥拉；不執行通電介面測試',{flashTool:1},null,{exposure:true});
     add(2,.3,def.id+' 取像完成','關閉環形光',{flashTool:0});
-    add(2,2.2,def.id+' 返回開門邊緣','重新以鉤爪 TCP 對準護蓋上緣',{},()=>pose('hook',edge(1,1),dir(),rail));
-    add(2,2.2,def.id+' 保持門扣拉起並閉門','依 QII 關門順序：拉起上邊沿 → 關緊 → 按下鎖定',{doors:doorsAt(i,0,1),force:2,zone:'contact'},(t,s)=>pose('hook',edge(s.doors[i].open,1),dir(),rail),{path:true,contact:true});
-    add(2,1.2,def.id+' 鉤爪退出換壓頭','先退離再切換壓頭接觸點',{force:0,zone:'slow'},()=>pose('press',edge(0,1,18),dir(),rail));
-    add(2,.9,def.id+' 壓頭接觸門扣','PU 壓頭到位後才允許下壓鎖扣',{zone:'contact'},()=>pose('press',edge(0,1),dir(),rail),{contact:true});
-    add(2,1,def.id+' 按下鎖定','壓頭隨門扣下行；8 N 峰值為示意值，需實測校正',{doors:doorsAt(i,0,0)},(t,s)=>pose('press',edge(0,s.doors[i].latch),dir(),rail),{path:true,contact:true,forceCurve:t=>8*Math.sin(Math.PI*t)});
-    add(2,2.2,def.id+' 閉合量測定位','壓頭退出，切換線雷射至護蓋外表面',{force:0,zone:'free'},()=>pose('laser',d.centerWorld(),laserDir(),rail));
+    add(2,1.4,def.id+' 鉤爪預備','鉤爪 TCP 移到開啟的門緣外 100 mm',{},()=>up('hook',edge(1,1,100),dir(),rail));
+    add(2,2.2,def.id+' 返回開門邊緣','重新以鉤爪 TCP 對準護蓋上緣（直線減速接近）',{zone:'slow'},()=>up('hook',edge(1,1),dir(),rail));
+    add(2,2.2,def.id+' 保持門扣拉起並閉門','依 QII 關門順序：拉起上邊沿 → 關緊 → 按下鎖定',{doors:doorsAt(i,0,1),force:2,zone:'contact'},(t,s)=>up('hook',edge(s.doors[i].open,1),dir(),rail),{path:true,contact:true});
+    add(2,1.2,def.id+' 鉤爪退出換壓頭','先退離再切換壓頭接觸點',{force:0,zone:'slow'},()=>up('press',edge(0,1,18),dir(),rail));
+    add(2,.9,def.id+' 壓頭接觸門扣','PU 壓頭到位後才允許下壓鎖扣',{zone:'contact'},()=>up('press',edge(0,1),dir(),rail),{contact:true});
+    add(2,1,def.id+' 按下鎖定','壓頭隨門扣下行；8 N 峰值為示意值，需實測校正',{doors:doorsAt(i,0,0)},(t,s)=>up('press',edge(0,s.doors[i].latch),dir(),rail),{path:true,contact:true,forceCurve:t=>8*Math.sin(Math.PI*t)});
+    add(2,2.2,def.id+' 閉合量測定位','壓頭退出，切換線雷射至護蓋外表面',{force:0,zone:'free'},()=>up('laser',d.centerWorld(),laserDir(),rail));
     add(2,.7,def.id+' 閉合確認','外觀、鎖扣回位、膠條未外露；保留輪廓待配方判定',{laserTool:1},null,{done:def.id,exposure:true});
     add(2,.2,def.id+' 掃描關閉','準備下一個護蓋',{laserTool:0});
   });
+  liftAway(2,'手臂退出翻轉包絡');
   add(2,3,'手臂退出翻轉包絡','所有護蓋閉合，工具移到翻轉治具外上方',{force:0,zone:'free'},()=>park(1000));
-  add(2,3.5,'輸送至 S3','四角側夾保持夾緊，翻轉夾臂保持張開',{palletX:1000,located:false});
+  add(2,3.5,'輸送至 S3','四角側夾保持夾緊；翻轉治具停在上方、夾臂張開',{palletX:LAYOUT.stationX[3],located:false});
   add(3,.5,'S3 止擋定位','載具到位與翻轉軸原點確認',{located:true});
+  add(3,1.4,'翻轉治具下降',`夾臂張開，從待命高度下降 ${LAYOUT.cradlePark} mm 至夾持高度`,{cradleLift:0});
   add(3,.85,'翻轉夾臂先夾緊','PU 夾墊接触護角，夾持完成後才鬆開載具側夾',{cradleClamp:1});
   add(3,.7,'載具側夾鬆開','翻轉夾持仍保持，交接期間不失去約束',{clamp:0});
   add(3,1.8,`抬升 ${LAYOUT.flipLift} mm`,'清出定位銷、堆疊柱與旋轉掃掠包絡',{lift:LAYOUT.flipLift,cradleLift:LAYOUT.flipLift});
@@ -119,11 +139,12 @@ export function createSequence({nb,robot,apply}){
   photo(3,'SN 與警語',s=>lower(-5,-40,s),'依工單核對安規、SN、鈕扣電池警語；OS／CPU 位於閉合機內，待後續工位',{done:'labels'});
   photo(3,'外露 Docking 接點',s=>lower(-82,61,s),'實機照片為外露接點，直接檢查翹 pin／損 pin／異物；無底面開蓋動作',{done:'dock'});
   for(const [i,x,z] of [[0,-108,60],[1,75,52],[2,-60,-72],[3,85,-73]])photo(3,'螺絲／腳墊區域 '+(i+1),s=>lower(x,z,s),'QII §16：檢查螺絲頭十字 R 角；照片建模數量不代替 BOM',{done:i===3?'screws':null});
-  add(3,3,'相機退離翻轉治具','確認工具已離開旋轉包絡，再解除旋轉軸煞車',{},()=>park(1000));
+  add(3,3,'相機退離翻轉治具','確認工具已離開旋轉包絡，再解除旋轉軸煞車',{},()=>park(1100));
   add(3,2.8,'翻回 0°','護蓋保持閉合，夾臂保持夾持',{flip:0});
   add(3,1.8,'下降至載具承載墊','平順下降，落座後才重新夾緊',{lift:0,cradleLift:0});
   add(3,.7,'載具四角側夾夾緊','承載墊落座、定位到位',{clamp:1});
   add(3,.85,'翻轉夾臂鬆開','載具側夾完成後解除翻轉夾持',{cradleClamp:0},null,{done:'return'});
+  add(3,1.4,'翻轉治具上升',`夾臂張開上升 ${LAYOUT.cradlePark} mm，讓出輸送通道`,{cradleLift:LAYOUT.cradlePark});
   add(3,2.8,'手臂回待命位置','工具退回後開放 S4 輸送',{},()=>park(0));
   add(3,2.4,'輸送至 S4','出料區到位，等待彙整判定',{palletX:1450,located:false});
   add(4,1,'彙整第一階段結果','模擬 OK／NG 與影像索引；MES 尚未連接',{located:true},null,{done:'judge'});

@@ -59,7 +59,8 @@ export function createRobot() {
   const j3disc = cyl(72, 72, 200, matJoint); j3disc.rotation.x = Math.PI / 2; j.j3.add(j3disc);
   const elbow = box(150, L.foreOffset + 60, 120, matArm); elbow.position.y = L.foreOffset / 2; j.j3.add(elbow);
   const foreArm = box(L.fore - L.wrist1 + 30, 100, 110, matArm); foreArm.position.set((L.fore - L.wrist1 - 30) / 2, L.foreOffset, 0); j.j3.add(foreArm);   // 前臂沿 +X，J4 軸高於 J3 軸 foreOffset
-  const foreCap = cyl(60, 60, 120, matArm); foreCap.rotation.x = Math.PI / 2; foreCap.position.set(L.fore - L.wrist1, L.foreOffset, 0); j.j3.add(foreCap);
+  // 前臂端蓋縮到前臂寬度內（z ±52、半徑 56），手腕大角度折疊時不碰
+  const foreCap = cyl(56, 56, 104, matArm); foreCap.rotation.x = Math.PI / 2; foreCap.position.set(L.fore - L.wrist1, L.foreOffset, 0); j.j3.add(foreCap);
   armDress(j,L,{upperDepth:76,foreDepth:56,large:true});
   decal(j.j2,80,160,[0,220,76],[0,0,0],['6 AXIS','VISION','QC CELL'],{color:'#444c55',center:true});
   for(const joint of [j.j2,j.j3])for(let k=0;k<6;k++)cylinder(joint,4,3,[45*Math.cos(k*Math.PI/3),45*Math.sin(k*Math.PI/3),104],matRail,'z',6);
@@ -248,7 +249,8 @@ export function createRobot() {
     jointCache.set(pose,c);return c;
   }
   function reach(pose){const c=solveJoints(pose);return {position:c.position,angle:c.angle};}
-  function plan(poses){let ref=null;for(const pose of poses)ref=solveJoints(pose,ref);}
+  // 待命位姿（fresh）不沿用上一個解的參考：避免偏軸工具繞軸轉動後，把 J6 圈數與手腕翻轉帶進待命姿態
+  function plan(poses){let ref=null;for(const pose of poses)ref=solveJoints(pose,pose.fresh?null:ref);}
   function poseFor(tcp,target,dir,rail=0){const rotation=new THREE.Quaternion().setFromRotationMatrix(frameFor(dir));return {origin:target.clone().sub(tcps[tcp].position.clone().applyQuaternion(rotation)),rotation,rail,tcp};}
   function setGoal(pose){goal.joints=null;goal.refPose=pose.ref||null;goal.tcp=pose.tcp;goal.quaternion.copy(pose.rotation);goal.dir.set(0,0,1).applyQuaternion(pose.rotation);goal.target.copy(pose.origin).add(tcps[pose.tcp].position.clone().applyQuaternion(pose.rotation));goal.rail=pose.rail;}
   function setPose(pose){
