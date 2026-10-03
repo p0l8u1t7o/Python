@@ -123,6 +123,18 @@ exposeSim({ seekTo, setView, views, total, play, pause, get T() { return T; } })
 - `loop(tick, { render })`：多畫面專案（主畫面＋相機子畫面＋疊圖）傳自己的整格繪製；不傳則只畫主畫面。
 - 錄影：`?movie` 時在 main.js 呼叫 `installMovie({...})`（`core/movie/movie.js`），各站的取樣、追焦、細節重播設定寫在專案裡；`tools/movie-export/prepare.py` 只建網站副本。
 
+## 統一寫法（新專案與既有專案都照這個）
+
+| 項目 | 用法 |
+|---|---|
+| 形狀與材質 | `@core/geom/shapes.js`（block／cylinder／rod…，陣列參數）＋`@core/geom/materials.js` 的 `MAT`。常見材質（鋼、鋁、烤漆、黑件、指示燈）用 MAT，產品專屬外觀才在專案自建 |
+| 排程 | 單一手臂依序作業：`createStepSequence`（`@core/anim/sequence.js`）；多台設備並行：`createTimeline`（`@core/anim/track.js`）。兩者都提供 `events`、`stationStart`、`total` |
+| 播放列 | `createPlayer`（`@core/ui/player.js`）綁定標準元素 `playBtn／restartBtn／speed／speedVal／timeline／clock／stepSelect／previous／next`，事件選單用排程的 `events` |
+| 3D 標籤 | `stage.addLabel(html, getPos, cls)`，每格 `stage.updateLabels(show)` |
+| 視角 | `VIEWS = { 名稱: [位置, 注視點] 或 () => [...] }`，切換用 `stage.goTo(位置, 注視點, instant)` |
+| 相機子畫面與焦點追隨 | `createViewerWorkspace`（`@core/ui/viewer-workspace.js`） |
+| window.sim | `exposeSim({ seekTo, setView, views, total, play, pause, … })` |
+
 ## 檢查
 
 ```powershell
