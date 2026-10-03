@@ -24,15 +24,15 @@ export const LAYOUT = {
   s1PostZ: 1050, s1HeadOut: 780, s1DomeGap: 80, s1DomeR: 200, s1BeamY: 2000,
 };
 
-// 常見材質用共用材質表 MAT（鋁、皮帶、鋼、黑件、警示黃、PU、藍色烤漆、螢幕）；
-// 本站專屬外觀留在這裡：深色地面、灰色結構框、相機外殼、穹頂光擴散罩、拋光定位銷
+// 常見材質用共用材質表 MAT（鋁擠型結構框、鋁、皮帶、鋼、黑件、警示黃、PU、藍色烤漆、螢幕、拋光銷）；
+// 本站專屬外觀留在這裡：深色地面、相機外殼、穹頂光擴散罩
 const matFloor = new THREE.MeshStandardMaterial({ color: 0x1b2027, roughness: 0.95 });
-const matFrame = new THREE.MeshStandardMaterial({ color: 0x6b7480, roughness: 0.5, metalness: 0.6 });
+const matFrame = MAT.frame;
 const matAlu = MAT.alu, matBelt = MAT.belt, matPallet = MAT.steel, matDark = MAT.black;
 const matCam   = new THREE.MeshStandardMaterial({ color: 0x2c3138, roughness: 0.4, metalness: 0.5 });
 const matDome  = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.9, side: THREE.DoubleSide });
 const matYellow = MAT.yellow, matPU = MAT.pu, matBlue = MAT.steelBlue;
-const matPin   = new THREE.MeshStandardMaterial({ color: 0xd0d5da, roughness: 0.3, metalness: 0.9 });
+const matPin   = MAT.chrome;
 
 function box(w, h, d, mat) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.castShadow = true; m.receiveShadow = true; return m; }
 function cyl(r, h, mat, seg = 24) { const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, seg), mat); m.castShadow = true; m.receiveShadow = true; return m; }

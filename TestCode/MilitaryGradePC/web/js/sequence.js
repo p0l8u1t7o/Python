@@ -1,20 +1,21 @@
-// 單台循環的動作序列：通用的步驟排程（起訖快照、插值、stationStart、total、events）由 core 的 createStepSequence 處理，
-// 本檔只加上本站專屬的一層：手臂位姿（每步起訖位姿、PTP／直線、偏軸 TCP 轉向、低位退離）、護蓋開度插值與力值曲線。
+// 單台循環的動作序列：通用的步驟排程（起訖快照、插值、護蓋開度等巢狀陣列插值、stationStart、total、events）由 core 的 createStepSequence 處理，
+// 本檔只加上本站專屬的一層：手臂位姿（每步起訖位姿、PTP／直線、偏軸 TCP 轉向、低位退離）與力值曲線。
 import * as THREE from 'three';
 import { createStepSequence } from '@core/anim/sequence.js';
 import { smooth } from '@core/anim/track.js';
 import { NB, DOOR_OPEN_DEG } from './notebook.js';
 import { LAYOUT } from './cell.js';
 export { smooth };   // 五次 S 曲線（起訖速度、加速度為 0）；project.js、main.js 沿用
-const clone=s=>JSON.parse(JSON.stringify(s));
 // 開關量：步驟開始時切換，不插值（force 另由 forceCurve 覆寫）
 const DISCRETE=['station','flashTool','flashTop','flashSn','laserTool','seamLaser','force'];
 
 export function createSequence({nb,robot,apply}){
   const base={palletX:-2000,lift:0,palletLift:0,flip:0,clamp:0,cradleClamp:0,cradleLift:LAYOUT.cradlePark,inStackY:0,outStackY:0,inLift:0,outLift:0,pushIn:0,pushOut:550,inFork:1,outFork:1,located:false,s1Head:0,
     doors:nb.doors.map(()=>({open:0,latch:0})),force:0,zone:'free',flashTop:0,flashSn:0,flashTool:0,laserTool:0,seamLaser:-1,tower:'yellow',station:0,action:'',sub:''};
-  // apply 由本層呼叫（要在建立步驟前先算終點位姿與退離判斷），core 不重複套用
-  const seq=createStepSequence({base,discrete:DISCRETE,ease:smooth,stations:[0,1,2,3,4]});
+  // nested：護蓋 doors（[{open,latch}]）逐項插值。core 每加一步就把終點狀態套用到場景，接著用終點場景算這一步的終點位姿
+  //（護蓋、載具的世界座標要在套用終點狀態後才正確）
+  const seq=createStepSequence({base,discrete:DISCRETE,ease:smooth,stations:[0,1,2,3,4],nested:true,
+    apply(end,s){apply(end);s.pose1=s.motion?s.motion(1,end):s.pose0;s.ptp=!s.path&&!s.contact&&end.zone==='free';}});
   const {steps,stationStart}=seq,top=LAYOUT.conveyorTop+6+LAYOUT.palletH+LAYOUT.padH+LAYOUT.footOffset;
   const down=new THREE.Vector3(0,-1,0),v=(x,y,z)=>new THREE.Vector3(x,y,z);
   const pose=(tcp,target,dir=down,rail=0)=>robot.poseFor(tcp,target,dir,rail);
@@ -32,25 +33,24 @@ export function createSequence({nb,robot,apply}){
   let lastPose=park(-1000);
   // 與 core add 相同的參數，另加 motion(t, state)：手臂位姿路徑（null＝維持上一步的位姿）
   function add(st,dur,action,sub,values={},motion=null,extra={}){
-    // 預先組出終點狀態（與 core add 的結果相同），套用到場景後才能算護蓋座標與終點位姿
-    const end=clone(seq.state);
-    for(const [key,value] of Object.entries(values))end[key]=clone(value);
-    end.station=st;end.action=action;end.sub=sub;
-    apply(end);const destination=motion?motion(1,end):lastPose;
     // Before rotating a low tool, withdraw along its existing optical/tool
     // axis. Camera poses already have 150 mm working distance; extra outward
     // travel there would enter the neighboring flip motor. The shorter laser
     // and contact TCPs need this withdrawal before turning away.
-    if(motion&&!extra.path&&!extra.contact&&!extra.retracted&&end.zone==='free'&&lastPose.tcp!=='cam'&&lastPose.origin.y<1000&&lastPose.rotation.angleTo(destination.rotation)>.2){
-      const from=lastPose,away=from.origin.clone().addScaledVector(v(0,0,1).applyQuaternion(from.rotation),-120);
-      add(st,1.4,'直線退離：'+action,'保持工具朝向，沿法線退出 120 mm 後才轉腕',{zone:'slow',force:0,flashTool:0,laserTool:0},
-        t=>({origin:from.origin.clone().lerp(away,smooth(t)),rotation:from.rotation.clone(),tcp:from.tcp,rail:from.rail}),{path:true});
-      return add(st,dur,action,sub,{...values,zone:'free'},motion,{...extra,retracted:true});
+    // 先用 peek 預覽終點狀態，套用到場景後算出終點位姿，再決定要不要先插一步直線退離
+    const end=seq.peek(values);
+    if(motion&&!extra.path&&!extra.contact&&!extra.retracted&&end.zone==='free'&&lastPose.tcp!=='cam'&&lastPose.origin.y<1000){
+      Object.assign(end,{station:st,action,sub});apply(end);
+      if(lastPose.rotation.angleTo(motion(1,end).rotation)>.2){
+        const from=lastPose,away=from.origin.clone().addScaledVector(v(0,0,1).applyQuaternion(from.rotation),-120);
+        add(st,1.4,'直線退離：'+action,'保持工具朝向，沿法線退出 120 mm 後才轉腕',{zone:'slow',force:0,flashTool:0,laserTool:0},
+          t=>({origin:from.origin.clone().lerp(away,smooth(t)),rotation:from.rotation.clone(),tcp:from.tcp,rail:from.rail}),{path:true});
+        return add(st,dur,action,sub,{...values,zone:'free'},motion,{...extra,retracted:true});
+      }
     }
+    // core add 套用終點狀態並算出 pose1、ptp（見上方 apply）
     const s=seq.add(st,dur,action,sub,values,{pose0:lastPose,motion,...extra});
-    s.ptp=!s.path&&!s.contact&&end.zone==='free';
-    // Door world coordinates must be evaluated after installing this endpoint state.
-    lastPose=destination;s.pose1=lastPose;
+    lastPose=s.pose1;
     return s;
   }
   // 在門的高度作業完後，先保持朝向垂直上升，再以關節插值轉位：避免 PTP 從低位掃過載具堆疊柱與皮帶
@@ -60,7 +60,7 @@ export function createSequence({nb,robot,apply}){
     add(st,1.2,'直線上升：'+label,'保持工具朝向，垂直上升 150 mm 後才轉腕',{force:0,flashTool:0,laserTool:0},
       t=>({origin:from.origin.clone().add(v(0,150*smooth(t),0)),rotation:from.rotation.clone(),tcp:from.tcp,rail:from.rail}),{path:true});
   }
-  function doorsAt(index,open,latch){const values=clone(seq.state.doors);values[index]={open,latch};return values;}
+  function doorsAt(index,open,latch){const values=seq.peek().doors;values[index]={open,latch};return values;}   // peek() 回傳目前終點狀態的複本
   const surface=(x,y,z,s)=>v(s.palletX+x,top+y+s.lift,z);
   const lower=(x,z,s)=>v(s.palletX+x,top+s.lift+NB.H,-z);
   const photo=(st,label,point,sub,extra={})=>{
@@ -168,10 +168,9 @@ export function createSequence({nb,robot,apply}){
 
   // Choose nearby equivalent wrist solutions in sequence order before seeking.
   robot.plan(steps.flatMap(s=>[s.pose0,s.pose1]));
-  // core sample 給出插值後的狀態；本層補上護蓋（巢狀陣列）插值、力值曲線、套用場景與手臂位姿
+  // core sample 給出插值後的狀態（含護蓋開度）；本層補上力值曲線、套用場景與手臂位姿
   function sample(sec){
     const {state,step:s,index:idx,u:t,e}=seq.sample(sec);
-    state.doors=s.end.doors.map((d,i)=>({open:THREE.MathUtils.lerp(s.initial.doors[i].open,d.open,e),latch:THREE.MathUtils.lerp(s.initial.doors[i].latch,d.latch,e)}));
     state.force=s.forceCurve?s.forceCurve(t):state.force;
     apply(state);
     const destination=s.motion?s.motion(t,state):s.pose1;

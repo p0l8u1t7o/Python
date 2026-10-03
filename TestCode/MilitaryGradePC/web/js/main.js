@@ -49,7 +49,7 @@ const [zoneSlow, zoneSlowE, zoneKeep] = project.zones;
 let trailCount = 0;
 function pushTrail(p) { if (trailCount >= trailN) { trailPos.copyWithin(0, 3); trailCount = trailN - 1; } trailPos.set([p.x, p.y, p.z], trailCount * 3); trailCount++; trailGeo.attributes.position.needsUpdate = true; trailGeo.setDrawRange(0, trailCount); }
 
-// 3D 標籤（stage.addLabel；標籤掛在 #app，畫布有上方工具列的位移，原點每格對齊畫布左上角）
+// 3D 標籤（stage.addLabel；畫布在頁面中的位移由 stage 處理）
 const sName = ['<b>S0</b> 進料升降堆料架', '<b>S1</b> 閉合外觀站', '<b>S2</b> 側邊護蓋站', '<b>S3</b> 翻面檢測站', '<b>S4</b> 出料升降堆料架'];
 LAYOUT.stationX.forEach((x, i) => stage.addLabel(sName[i], () => new THREE.Vector3(x, LAYOUT.conveyorTop + (i === 0 || i === 4 ? 1100 : 330), 0)));
 stage.addLabel('DENSO VM-60B1＋第七軸滑軌', () => new THREE.Vector3(robot.q.rail, 250, LAYOUT.railZ));
@@ -57,16 +57,10 @@ stage.addLabel('頂視 20MP＋穹頂光', () => cell.topCamPos.clone().add(new T
 stage.addLabel('SN 條碼讀取器', () => cell.snReaderPos.clone().add(new THREE.Vector3(0, -70, 0)));
 stage.addLabel('翻轉夾持治具', () => new THREE.Vector3(LAYOUT.stationX[3] + 380, 1560, -270));
 stage.addLabel('力覺末端', () => robot.getTcpWorld('cam').add(new THREE.Vector3(0, 90, 0)));
-let labelOrigin = '';
-function updateLabels(show) {
-  const origin = canvas.offsetLeft + ',' + canvas.offsetTop;
-  if (origin !== labelOrigin) { labelOrigin = origin; for (const l of stage.labels) { l.el.style.left = canvas.offsetLeft + 'px'; l.el.style.top = canvas.offsetTop + 'px'; } }
-  stage.updateLabels(show);
-}
 
 const ui=Object.fromEntries(['action','substep','forceBar','forceVal','zoneDot','zoneTxt','checklist','chkCount','playBtn','speed','showZone','showPath','progBar','sku','signals','poseError','phase','result','exportBtn','showGuards','showLabels','cycleTime'].map(id=>[id,document.getElementById(id)]));
 // T 由播放列（player）推進；S／current 為目前取樣結果
-let S,T=0,current,waiting=0,fault='',curStation=-1,ready=false,quiet=false,tickTime=null;
+let S,T=0,current,waiting=0,fault='',curStation=-1,ready=false,quiet=false;
 const CAPTURE=qp.has('capture');
 // 時間 → 場景一律經由 project：apply（跳播，手臂直接到位）或 sample（播放，手臂由 robot.update 追上）
 function go(c){current=c;S=c.state;return c;}
@@ -89,13 +83,11 @@ const views={
   top:[[0,5300,500],[0,750,0]],product:[[310,1120,360],[0,835,0]],door:[[-480,990,470],[-130,850,0]]
 };
 let selectedView='iso',viewDoorId='';
-// 停止視角轉場（追隨焦點、手臂取景時相機不再被轉場拉走）
-const stopCamera=()=>stage.goTo(camera.position.toArray(),controls.target.toArray(),true);
 function setView(name,instant=false){
   workspace.stopFollowing(); setElectricalCutaway(scene,name==='electrical');
   if(!views[name]&&name!=='sensor')return;selectedView=name;controls.enabled=name!=='sensor';
   document.querySelectorAll('.views button').forEach(b=>b.classList.toggle('selected',b.dataset.view===name));
-  if(name==='sensor'){stopCamera();return;}
+  if(name==='sensor'){stage.cancelTween();return;}   // 手臂取景：相機不再被轉場拉走
   let [p,t]=views[name].map(a=>new THREE.Vector3(...a));
   if(name==='door'||name==='product'){p.x+=S.palletX;t.x+=S.palletX;p.y+=S.lift;t.y+=S.lift;}
   if(name==='door'){
@@ -114,8 +106,8 @@ document.querySelectorAll('.views button').forEach(b=>b.onclick=()=>{
 });
 // 跳到時間 sec（手臂直接到位、清除到位等待與 TCP 軌跡）；播放列、站別按鈕與 window.sim 共用
 const seekTo=sec=>player.seekTo(sec);
-// 開始播放：播放列在終點按播放時會把時間歸零，這裡同步把場景跳回起點
-function play(){player.play();fault='';waiting=0;if(player.T!==T)seekTo(player.T);}
+// 開始播放：清除故障與到位等待（播放列在終點按播放時會自己跳回起點）
+function play(){fault='';waiting=0;player.play();}
 document.querySelectorAll('#stations .st').forEach(b=>b.onclick=()=>{seekTo(stationStart[+b.dataset.st]);if(['product','door'].includes(selectedView))setView(selectedView,true);});
 function exportReport(){
   const report={mode:'SIMULATION',workOrder:'RMK12608372',sku:SKU,sn:'DEMO-0001',time:T,plannedCycle:total,result:T>=stationStart[4]?ui.result.value:'PENDING',
@@ -148,7 +140,7 @@ function drawHud(){
   document.querySelectorAll('#stations .st').forEach(b=>b.classList.toggle('active',+b.dataset.st===S.station));
   // 時間軸、時鐘、步驟選單由播放列更新；這裡只畫進度條
   ui.progBar.style.width=T/total*100+'%';
-  updateLabels(ui.showLabels.checked&&selectedView!=='sensor');
+  stage.updateLabels(ui.showLabels.checked&&selectedView!=='sensor');
   document.getElementById('diagnostics').textContent=JSON.stringify({time:T,total,step:current.index,station:S.station,action:S.action,poseError:e,force,playing,waiting,fault,doors:S.doors,flip:S.flip,lift:S.lift,clamp:S.clamp,cradleClamp:S.cradleClamp});
 }
 // 完整一格：面板、主畫面（或手臂鏡頭全幅）、相機子畫面與疊圖（跳播、截圖、錄影直接呼叫；stage.loop 每格也用它繪製）
@@ -169,47 +161,43 @@ function render(){
   renderer.setViewport(0,0,w,h);hidden.forEach((o,i)=>o.visible=visible[i]);
 }
 const workspace=createViewerWorkspace({camera,controls,canvas,resize:stage.resize,focusOccluders:[cell.occluders],getFocus:()=>carrier.getWorldPosition(new THREE.Vector3()),
-  focusOffset:[-360,340,470],onFocus:()=>{setElectricalCutaway(scene,false);stopCamera();selectedView='focus';controls.enabled=true;document.querySelectorAll('.views button').forEach(b=>b.classList.remove('selected'));}});
+  focusOffset:[-360,340,470],onFocus:()=>{setElectricalCutaway(scene,false);stage.cancelTween();selectedView='focus';controls.enabled=true;document.querySelectorAll('.views button').forEach(b=>b.classList.remove('selected'));}});
 const electrical=createElectricalInspector({scene,camera,controls,canvas,onEnter:()=>setView('electrical',true),onExit:()=>setView('iso',true),title:'MilitaryGradePC'});
 
 // ---------------------------------------------------------------- 播放列（core/ui/player.js）
-// 事件選單用排程的 events；跳播走 project.apply（手臂直接到位），播放中由 tick 推進時間並以 project.sample 取樣，
-// 步驟終點等待手臂到位（robot.update 追上目標）才進下一步。
+// 事件選單用排程的 events。跳播（seek）走 project.apply（手臂直接到位）；連續播放由 advance 推進時間（步驟終點等手臂到位、
+// NG 與到位逾時停住），apply 以 project.sample 取樣並讓手臂以限速追上目標。
+let stepDt=0,seeking=false;   // stepDt：本子步的模擬時間（advance 給 apply 的手臂追蹤用）；seeking：這次 apply 是否為跳播
 const player=createPlayer({total,qp,
   events:sequence.events.map(e=>({...e,label:`S${e.station} · ${e.label}`})),
-  apply(t){
-    T=t;if(tickTime!=null)return go(project.sample(tickTime));
-    waiting=0;fault='';trailCount=0;trailGeo.setDrawRange(0,0);
-    return go(project.apply(t,{capture:CAPTURE}));
-  },
-  onChange(){if(ready&&!quiet&&tickTime==null)render();}});
-// 播放鍵：播放列先切換播放／暫停（終點時把時間歸零），這裡再清除故障並同步場景（必須在 createPlayer 之後註冊）
-ui.playBtn.addEventListener('click',()=>{fault='';waiting=0;if(player.playing&&player.T!==T)seekTo(player.T);});
-function tick(dt){
-  // Work at bounded substeps, so changing playback speed changes every axis equally.
-  if(!player.playing)return;
-  if(S.station===4&&ui.result.value==='NG'){fault='NG · 停留 S4 等待人工覆判';player.pause();return;}
-  const e=robot.error(),s=current.step,end=s.start+s.dur;
-  const blocked=(T>=end-1e-7||(s.contact&&e.position>3))&&(e.position>1.5||e.angle>3||e.rail>2);
-  if(blocked){waiting+=dt;if(waiting>12){fault='到位逾時 · 請檢查 TCP 姿態';player.pause();}}
-  else{
+  advance(t,dt){
+    stepDt=dt;
+    if(S.station===4&&ui.result.value==='NG'){fault='NG · 停留 S4 等待人工覆判';return null;}
+    const e=robot.error(),s=current.step,end=s.start+s.dur;
+    const blocked=(t>=end-1e-7||(s.contact&&e.position>3))&&(e.position>1.5||e.angle>3||e.rail>2);
+    if(blocked){waiting+=dt;if(waiting>12){fault='到位逾時 · 請檢查 TCP 姿態';return null;}return t;}
     waiting=0;
-    if(T>=total-1e-7){
-      // 步驟時間累加的捨入誤差：停在終點前不到 1e-7 s 時補到 total，播放列顯示完成、再按播放從頭開始
-      if(T<total){tickTime=total;try{player.seekTo(total);}finally{tickTime=null;}}
-      player.pause();
-    }else{
-      // 到達步驟終點時停在終點前一點取樣（仍屬本步驟），等手臂到位後才跨入下一步
-      const next=T>=end-1e-7?Math.min(total,end+1e-6):Math.min(end,T+dt);
-      tickTime=next>=end-1e-7&&next<=end?Math.max(s.start,end-1e-8):next;
-      try{player.seekTo(next);}finally{tickTime=null;}
-    }
-  }
-  robot.update(dt);
-}
+    // 已在步驟終點且到位：跨入下一步（最後一步則播完）；否則最多推進到步驟終點。
+    // 最後一步的終點先停在 total 前一點，等手臂到位後才結束播放
+    if(t>=end-1e-7)return Math.min(total,end+1e-6);
+    const next=Math.min(end,t+dt);
+    return next>=total-1e-9?total-1e-8:next;
+  },
+  apply(t,{seek}){
+    T=t;seeking=seek;
+    if(seek){waiting=0;fault='';trailCount=0;trailGeo.setDrawRange(0,0);return go(project.apply(t,{capture:CAPTURE}));}
+    // 連續播放：停在步驟終點時取樣終點前一點（仍屬本步驟），等手臂到位才跨入下一步；手臂以限速追上目標
+    const s=current.step,end=s.start+s.dur,at=t<total&&t>=end-1e-7&&t<=end?Math.max(s.start,end-1e-8):t;
+    const c=go(project.sample(at));robot.update(stepDt);return c;
+  },
+  // 跳播後重繪（連續播放由 stage.loop 每格繪製；錄影取樣時不重繪）
+  onChange(){if(ready&&!quiet&&seeking)render();}});
+// 播放鍵：清除故障與到位等待（播放列自己處理播放／暫停與終點歸零）
+ui.playBtn.addEventListener('click',()=>{fault='';waiting=0;});
 // stage.loop 每格：frameTick(dt) → controls.update() → render()（主畫面＋相機子畫面＋疊圖）
 function frameTick(dt){
-  const speed=+ui.speed.value||1,n=Math.max(1,Math.ceil(dt*speed/.025));for(let k=0;k<n;k++)tick(dt*speed/n);
+  // 以不超過 25 ms 的子步推進，改變播放速度時各軸等比例變快
+  const n=Math.max(1,Math.ceil(dt*player.speed/.025));for(let k=0;k<n;k++)player.update(dt/n);
   if(player.playing&&ui.showPath.checked)pushTrail(robot.getTcpWorld(robot.goal.tcp));
   const d=nb.doors.find(d=>S.action.startsWith(d.def.id+' '));if(selectedView==='door'&&d&&d.def.id!==viewDoorId)setView('door');
 }
