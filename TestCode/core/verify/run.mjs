@@ -30,7 +30,8 @@ for (const v of variants) {
   runs.push({ variant: v.name, params: v.params, ...r });
 }
 const result = variants.length === 1 ? runs[0] : { ok: runs.every(r => r.ok), variants: runs };
-result.seconds = +((Date.now() - t0) / 1000).toFixed(1);
+// 耗時只印在終端機、不寫進 review（提交的報告只在結果改變時才有差異）
+const seconds = +((Date.now() - t0) / 1000).toFixed(1);
 mkdirSync(join(dir, 'review'), { recursive: true });
 const name = { scene: 'scene-verification', determinism: 'determinism', layout: 'layout-checks' }[check];
 writeFileSync(join(dir, 'review', name + '.json'), JSON.stringify(result, null, 2));
@@ -52,4 +53,5 @@ for (const r of runs) {
     for (const f of r.failures) console.log('  ✗', f.group || '', f.name, f.value ?? '', f.note ?? '');
   }
 }
+console.log(`（${seconds} s）`);
 process.exit(result.ok ? 0 : 1);
