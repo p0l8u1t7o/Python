@@ -2,18 +2,18 @@
   "report": [
     {
       "sku": "V110-STND",
-      "steps": 227,
-      "cycle": 329.75,
-      "maxError": 0.042392746119378766,
-      "maxAngle": 0.0021696884682043125,
-      "worst": "D4 減速接近門扣"
+      "steps": 241,
+      "cycle": 347.74999999999983,
+      "maxError": 0.033402925499198974,
+      "maxAngle": 0.0027421304943440667,
+      "worst": "D2 抬起門扣 3 mm"
     },
     {
       "sku": "V110-STND",
       "continuous": true,
-      "time": 329.75,
-      "elapsed": 341.84999999996296,
-      "maxContactError": 0.07992495635032891
+      "time": 347.74999999999983,
+      "elapsed": 362.4499999999442,
+      "maxContactError": 0.07992468952529677
     },
     {
       "sku": "V110-STND",
@@ -21,18 +21,18 @@
     },
     {
       "sku": "V110-RF",
-      "steps": 227,
-      "cycle": 329.75,
-      "maxError": 0.042392746119378766,
-      "maxAngle": 0.0021696884682043125,
-      "worst": "D4 減速接近門扣"
+      "steps": 241,
+      "cycle": 347.74999999999983,
+      "maxError": 0.033402925499198974,
+      "maxAngle": 0.0027421304943440667,
+      "worst": "D2 抬起門扣 3 mm"
     },
     {
       "sku": "V110-RF",
       "continuous": true,
-      "time": 329.75,
-      "elapsed": 337.5250000001322,
-      "maxContactError": 0.07995144555686265
+      "time": 347.74999999999983,
+      "elapsed": 357.7562500002058,
+      "maxContactError": 0.07999949205315166
     },
     {
       "sku": "V110-RF",

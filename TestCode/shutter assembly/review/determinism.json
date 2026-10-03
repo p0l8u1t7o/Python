@@ -5,7 +5,7 @@
       "variant": "預設",
       "params": {},
       "ok": true,
-      "objects": 1697,
+      "objects": 1701,
       "samples": 40,
       "failures": []
     },
@@ -15,10 +15,9 @@
         "ng": true
       },
       "ok": true,
-      "objects": 1701,
+      "objects": 1705,
       "samples": 40,
       "failures": []
     }
-  ],
-  "seconds": 1.9
+  ]
 }

@@ -4,6 +4,5 @@
   "ok": true,
   "objects": 2006,
   "samples": 40,
-  "failures": [],
-  "seconds": 0.2
+  "failures": []
 }

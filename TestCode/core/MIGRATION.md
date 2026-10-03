@@ -25,11 +25,11 @@ Node 端由 `core/tools/loader.mjs` 解析相同的三種名稱，檢查程式�
 | P0 基準 | 遷移前各專案原有檢查紀錄＋各視角截圖，作為逐一比對的依據 | 完成 |
 | P1 骨架 | `core/vendor`、`loader.mjs`、統一伺服器 `serve.mjs`、`project.json`、importmap、移除 7 份 vendor／three-loader／serve.py、Pages 建置改用 `build-site.mjs` | 完成 d1392707 |
 | P2 共用模組 | 根目錄 `tools/` 共用檔與手動複製檔移入 core；`detail.js`（A／A+／B）、`kinematics.js`（A／B）合併；移除 sync 腳本與無用檔 | 完成 03b6af01 |
-| P3 標準介面＋統一檢查 | 各專案 `web/js/project.js` 提供 `createProject()`；`window.sim` 標準化；core 檢查：全場干涉、重合面閃爍、倒序一致、瀏覽器載入與截圖；`core/tools/check.mjs` 依 `project.json` 一併執行專案自有檢查 | core 與化學桶完成 95578342；其餘 6 專案進行中 |
-| P4 修正發現 | 各專案依新檢查修正閃爍與干涉 | |
-| P5 渲染與 UI 共用 | `core/ui/stage.js`（renderer、對數深度、陰影、環境光、縮放、3D 標籤）；影片匯出改用掛鉤，不再字串修補 `main.js` | `stage.js`／`player.js`／`track.js` 完成 2595b72f；既有專案套用待 P3 後 |
-| P6 模型庫 | 手臂（FANUC R-2000iC、DENSO VS-068／VM-60B1／COBOTTA PRO 900／HSR065）、AGV、桶、圍籬、電控櫃、輸送、相機等移入 `core/models`；目錄頁 | 架構＋輸送線／龍門／標準件＋目錄頁＋models 檢查完成 73d5d9f9；手臂等待抽出 |
-| P7 新專案範本與文件 | `core/template` ＋ `new-project.mjs`；README | 範本與 new-project 完成 2595b72f／73d5d9f9 |
+| P3 標準介面＋統一檢查 | 各專案 `web/js/project.js` 提供 `createProject()`；`window.sim` 標準化；core 檢查：全場干涉、重合面閃爍、倒序一致、空間檢核；`check.mjs` 依 `project.json` 執行專案自有檢查；情境（variants）與分模組門檻 | 完成（7 專案） |
+| P4 修正發現 | 各專案依新檢查修正閃爍與干涉 | 完成：7 專案 scene 全 0（PCB S1／S3 改懸臂、MGPC 加步驟並移 S3，均經使用者決定） |
+| P5 渲染與 UI 共用 | `core/ui/stage.js`、`player.js`；錄影改用 `?movie` 掛鉤（`core/movie`） | 完成：7 專案改用 createStage＋exposeSim，截圖逐張差異 0 |
+| P6 模型庫 | 手臂、AGV、桶、輸送、龍門、標準件移入 `core/models`；目錄頁 | 完成：12 個模型（FANUC R-2000iC、DENSO VS-068／VM-60B1／COBOTTA PRO 900／HSR065、AGV、200L 桶、輸送線、龍門、4 標準件） |
+| P7 新專案範本與文件 | `core/template` ＋ `new-project.mjs`；README | 完成 |
 
 ## 比對方式
 
@@ -45,3 +45,8 @@ Node 端由 `core/tools/loader.mjs` 解析相同的三種名稱，檢查程式�
   - 兩套基本形狀並存：`primitives.js`（block／cylinder／decal…）與 `parts.js`（MAT／box／cyl／plate…）。統一留到 P6 模型庫時決定。
 - 2026-10-03 P3（95578342）：`core/verify/{scene,determinism,run,dom-stub}.mjs`；化學桶改用 `project.js`，舊的 `tools/verify-scene.mjs` 退役。dom-stub 讓瀏覽器才有的文字牌也進檢查，抓到「取桶位／放回位」牌在夾爪路徑上（已移到輸送架下方）。其餘 6 專案由平行代理各自完成 project.js、main.js 接上、修正 scene 發現。
 - 2026-10-03 P5／P6／P7 先行（2595b72f、73d5d9f9、27b9886a）：stage／player／track、範本與 new-project、模型庫（輸送線、龍門、標準件）＋目錄頁＋models 檢查；Pages 不再發布 verify 與 review。範本產生的專案通過全部 core 檢查；檢查也抓到範本初稿的 2 組重合面與龍門原點超出行程。
+- 2026-10-03 收尾：
+  - 檢查規則修正：`bodyOf` 為 null 時「同一剛體」誤放行（固定件之間、頂層移動件對固定件），修正後各專案抓到大量真問題並全部處理；另加曲面／開孔擠出件頂點複核、線材端點與小型配線五金規則、自轉件歸屬、快取（MGPC 由 2 小時以上降到 90 秒）。
+  - 部署前快速檢查加入 scene（干涉＋閃爍）。
+  - 已知待實機確認：PCB S1／S3 相機與 S2 Y 軌間隙 1.75 mm；MGPC 週期 329.75 → 347.75 s。
+  - 待延伸：各專案的 3D 標籤、視角轉場仍是自己的寫法（行為與 stage 版略有不同）；兩套基本形狀（primitives／parts）並存。

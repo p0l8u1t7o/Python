@@ -2,8 +2,7 @@
   "variant": "預設",
   "params": {},
   "ok": true,
-  "objects": 1974,
+  "objects": 1978,
   "samples": 40,
-  "failures": [],
-  "seconds": 0.8
+  "failures": []
 }
