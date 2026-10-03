@@ -33,10 +33,12 @@ for(const recipe of Object.values(RECIPES)){
 const {createSim:createCopper}=await import('../../PCB-CopperAssembly/web/js/sim.js');
 const {copperResults}=await import('../../PCB-CopperAssembly/web/js/vision-results.js');
 const c=createCopper(new THREE.Scene()),{plan,machine:M,boards}=c;
+// PCB 散熱板站改用共用時間軌後：曝光步驟用 steps（start＋dur，舊為 segs 的 t1）、逐顆紀錄在 log（舊為 events），兩種都相容
+const flashEnd=tr=>{const s=(tr.steps||tr.segs).find(s=>s.flash);return s.t1??s.start+s.dur;};
 for(const H of ['A','B']){
   for(const type of ['feed','up','down']){
     const tr=type==='feed'?plan.feeders[H].tr:plan.heads[H].tr;
-    const t=type==='up'?plan.events.find(e=>e.type==='upcam'&&e.H===H).t:tr.segs.find(s=>s.flash).t1-.001;
+    const t=type==='up'?(plan.log||plan.events).find(e=>e.type==='upcam'&&e.H===H).t:flashEnd(tr)-.001;
     c.apply(t);const r=copperResults(type+H,t,plan,M,boards);
     const camera=type==='feed'?M.feeders[H].cam.cam:type==='up'?M.upCams[H].cam:M.heads[H].downCam.cam;
     check(r.marks.some(m=>projectRegion(m.points,camera,600,400)),type+H+' has a visible exposure target');
@@ -45,7 +47,7 @@ for(const H of ['A','B']){
   }
 }
 for(const src of ['s1','s3']){
-  const t=plan[src].tr.segs.find(s=>s.flash).t1-.001;c.apply(t);
+  const t=flashEnd(plan[src].tr)-.001;c.apply(t);
   const r=copperResults(src,t,plan,M,boards),cam=M.scanners[src.toUpperCase()].cam.cam;
   check(r.marks.some(m=>projectRegion(m.points,cam,600,400)),src+' ROI follows the correct conveyor board');
   c.apply(0);check(copperResults(src,0,plan,M,boards).marks.every(m=>m.status==='preview'),'scan no premature pass');

@@ -9,8 +9,9 @@ import { createVisionOverlay } from '@core/ui/vision-overlay.js';
 import { ssdResults } from './vision-results.js';
 const vision = createVisionOverlay();
 import { createStage, exposeSim } from '@core/ui/stage.js';
+import { createPlayer } from '@core/ui/player.js';
 import { createProject, resolveRecipe } from './project.js';
-import { smooth, STATIONS, SPEC } from './sequence.js';
+import { STATIONS, SPEC } from './sequence.js';
 import { RECIPES } from './recipes.js';
 import { LAYOUT } from './cell.js';
 import { cameraSource, stationPreviewTime, SENSOR_ASPECT } from './camera-view.js';
@@ -62,9 +63,14 @@ const trailGeo = new THREE.BufferGeometry(); trailGeo.setAttribute('position', n
 const trail = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({ color: 0x7fd4ff, transparent: true, opacity: 0.7 })); scene.add(trail);
 function pushTrail(p) { if (trailCount >= trailN) { trailPos.copyWithin(0, 3); trailCount = trailN - 1; } trailPos.set([p.x, p.y, p.z], trailCount * 3); trailCount++; trailGeo.attributes.position.needsUpdate = true; trailGeo.setDrawRange(0, trailCount); }
 
-// 3D 標籤
-const labels = [];
-function addLabel(text, getPos) { const el = document.createElement('div'); el.className = 'label3d'; el.innerHTML = text; document.getElementById('app').appendChild(el); labels.push({ el, getPos }); }
+// 3D 標籤（共用舞台的標籤層；畫布不在 #app 左上角，標籤層依畫布位置平移）
+const addLabel = (html, getPos) => stage.addLabel(html, getPos);
+let labelOffset = '';
+function updateLabels(show) {
+  const off = `${canvas.offsetLeft},${canvas.offsetTop}`;
+  if (off !== labelOffset) { labelOffset = off; for (const l of stage.labels) Object.assign(l.el.style, { left: canvas.offsetLeft + 'px', top: canvas.offsetTop + 'px' }); }
+  stage.updateLabels(show);
+}
 const top = LAYOUT.conveyorTop;
 addLabel('<b>DENSO</b> VS-068', () => new THREE.Vector3(...LAYOUT.robot).add(new THREE.Vector3(0, 120, -110)));
 addLabel(INSERT === 'bar' ? '8 頭整排壓墊（獨立彈簧）' : '單點彈簧壓頭（快拆）', () => robot.getTcpWorld('press').add(new THREE.Vector3(0, 50, 0)));
@@ -78,14 +84,12 @@ addLabel('RC8A／PLC／IPC', () => new THREE.Vector3(0, 700, -240));
 // 站別按鈕
 STATIONS.forEach((name, i) => { const b = document.createElement('button'); b.className = 'st'; b.dataset.st = i; b.innerHTML = `<span class="idx">S${i}</span>${name}`; ui.stations.appendChild(b); });
 
-// ---------------------------------------------------------------- 時間軸
-let S, playing = !qp.has('pause'), T = 0, speed = 1, current, waiting = 0, fault = '', curStation = -1;
+// ---------------------------------------------------------------- 時間軸（時間與播放狀態在 createPlayer，見下方）
+let S, T = 0, current, waiting = 0, fault = '', curStation = -1, player;
 // 流程取樣（不移動手臂關節）；跳播用 project.apply（取樣＋手臂直接到位）
 function sample(t) { current = project.sample(t); S = current.state; return current; }
 const total = sequence.total, stationStart = sequence.stationStart, shots = sequence.shots;
-ui.timeline.max = total;
 ui.cycleTime.textContent = `規劃 ${total.toFixed(1)} s／盤（含一次補壓）＋到位等待 · ${product.ids.length} 顆 · 拍 ${shots.length} 張`;
-sequence.steps.forEach((s, i) => { const opt = document.createElement('option'); opt.value = i; opt.textContent = `S${s.station} · ${s.action}`; ui.stepSelect.appendChild(opt); });
 const stub = recipe.stubborn.id, shotOf = Object.fromEntries(shots.flatMap((g, k) => g.map(c => [c.id, k])));
 const label = ids => ids.length > 1 ? `${ids[0]}–${ids[ids.length - 1]}` : ids[0];
 const has = id => c => c.has(id);
@@ -115,33 +119,32 @@ const views = {
   product: () => { const p=product.root.position.clone().add(new THREE.Vector3(0,recipe.pallet.t,0)); const d=Math.max(recipe.pallet.w,recipe.pallet.d); return [p.clone().add(new THREE.Vector3(-d*.48,d*.95,d*.85)).toArray(),p.toArray()]; },
   leads: () => { const c=product.conns[focusId], p=product.leadPoint(focusId); const offset=(c.T.w<10 ? new THREE.Vector3(4,5,14) : new THREE.Vector3(9,7,20)).applyAxisAngle(new THREE.Vector3(0,1,0),c.rot*Math.PI/180); return [p.clone().add(offset).toArray(),p.toArray()]; },
 };
-let selectedView = 'iso', camAnim = null;
+let selectedView = 'iso';
+// 視角轉場交給共用舞台（stage.goTo）；轉場時間與原本相同（約 0.7 s）
 function setView(name, instant = false) {
   workspace.stopFollowing(); setElectricalCutaway(scene,name==='electrical');
   if (!views[name]) return; selectedView = name;
   lastProductPosition.copy(product.root.position);
   camera.near=name==='leads' ? .15 : 2; camera.updateProjectionMatrix();
-  const [p, t] = views[name]().map(a => new THREE.Vector3(...a));
-  if (instant) { camAnim = null; camera.position.copy(p); controls.target.copy(t); camera.lookAt(t); controls.update(); }
-  else camAnim = { p0: camera.position.clone(), t0: controls.target.clone(), p, t, u: 0 };
+  const [p, t] = views[name]();
+  stage.goTo(p, t, instant, 1 / 1.4);
   document.querySelectorAll('.views button').forEach(b => b.classList.toggle('selected', b.dataset.view === name));
 }
 document.querySelectorAll('.views button').forEach(b => b.onclick = () => setView(b.dataset.view));
-function seekTo(sec, snap = true) {
-  T = Number.isFinite(sec) ? THREE.MathUtils.clamp(sec, 0, total) : 0;
-  if (snap) { current = project.apply(T); S = current.state; } else sample(T);
-  waiting = 0; fault = ''; trailCount = 0; trailGeo.setDrawRange(0, 0);
-  ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放'; render();
+// 跳播（播放列、站別按鈕、sim.seekTo）：流程取樣＋手臂直接到位，清除到位等待與故障；
+// 播放中由 tick 推進（advancing）：只取樣流程，手臂由 robot.update 限速追蹤，停在步驟終點等手臂到位才進下一步
+let advancing = false;
+function applyTime(t) {
+  T = t;
+  if (advancing) { const s = current.step, end = s.start + s.dur; sample(t >= end - 1e-7 && t <= end ? Math.max(s.start, end - 1e-8) : t); }
+  else { current = project.apply(T); S = current.state; waiting = 0; fault = ''; trailCount = 0; trailGeo.setDrawRange(0, 0); }
+  return current;
 }
-ui.playBtn.onclick = () => { if (T >= total || fault) seekTo(fault ? T : 0); playing = !playing; fault = ''; waiting = 0; ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放'; };
-ui.restartBtn.onclick = () => seekTo(0);
-ui.previous.onclick = () => { playing = false; seekTo(sequence.steps[Math.max(0, current.index - 1)].start); };
-ui.next.onclick = () => { playing = false; seekTo(sequence.steps[Math.min(sequence.steps.length - 1, current.index + 1)].start); };
-ui.stepSelect.onchange = () => { playing = false; seekTo(sequence.steps[+ui.stepSelect.value].start); };
-ui.timeline.oninput = () => { playing = false; seekTo(+ui.timeline.value); };
-ui.speed.oninput = () => { speed = +ui.speed.value; ui.speedVal.textContent = speed.toFixed(2).replace(/0$/, '') + '×'; };
-ui.result.onchange = () => { st.opts.ngHold = ui.result.value === 'NG'; seekTo(T); };
-ui.stations.querySelectorAll('.st').forEach(b => b.onclick = () => seekTo(stationPreviewTime(sequence, +b.dataset.st)));
+// 按播放時：故障後從原處重新到位、播完則從頭（在 player 自己的處理之前執行）
+function resume() { if (fault || T >= total) player.seekTo(fault ? T : 0); fault = ''; waiting = 0; }
+ui.playBtn.addEventListener('click', () => { if (!player.playing) resume(); });
+ui.result.onchange = () => { st.opts.ngHold = ui.result.value === 'NG'; player.seekTo(T); };
+ui.stations.querySelectorAll('.st').forEach(b => b.onclick = () => player.seekTo(stationPreviewTime(sequence, +b.dataset.st)));
 
 // 接頭狀態格（依配方的排）
 const unitEls = {}, maxCols = Math.max(...rowsOf.map(([, ids]) => ids.length));
@@ -180,7 +183,7 @@ const useGlobalView = () => cameraSource(S, current.step, arrived()) === 'global
 function drawHud() {
   const e = robot.error(), ps = st.state, force = ps.force;
   // 取像閃光、力值顏色、ROI 框、三色燈（與 project.apply 同一份）
-  project.show(current, { time: T, playing, fault });
+  project.show(current, { time: T, playing: player.playing, fault });
   const ids = S.flashTool > 0 ? shotIds() : [];
   const last = shotIds();
   const globalView = useGlobalView();
@@ -190,7 +193,7 @@ function drawHud() {
     : last.length ? (S.flashTool > 0 ? '取像中　' : '最近取像　') + last.map(id => { const g = ps.gap[id], ok = g <= recipe.gapLimit; return `<span class="${ok ? 'ok' : 'ng'}">${id} ${g.toFixed(2)} mm ${ok ? 'OK' : 'NG'}</span>`; }).join('　') : '<span>—</span>';
   cell.occluders.visible = ui.showGuards.checked; trail.visible = ui.showPath.checked;
   ui.action.textContent = S.action; ui.substep.textContent = S.sub;
-  ui.phase.textContent = fault || (T >= total ? 'COMPLETE · 本盤完成' : waiting > 0 ? '等待手臂到位' : playing ? 'AUTO · 執行中' : 'HOLD · 暫停'); ui.phase.classList.toggle('fault', !!fault);
+  ui.phase.textContent = fault || (T >= total ? 'COMPLETE · 本盤完成' : waiting > 0 ? '等待手臂到位' : player.playing ? 'AUTO · 執行中' : 'HOLD · 暫停'); ui.phase.classList.toggle('fault', !!fault);
   ui.forceBar.style.width = Math.min(100, force / SPEC.forceLimit * 100) + '%'; ui.forceVal.textContent = force.toFixed(1) + ' N';
   ui.zoneTxt.textContent = S.zone === 'contact' ? '接觸 · ≤ 40 mm/s・模擬力值' : S.zone === 'slow' ? '減速接近 · ≤ 120 mm/s' : '自由移動 / 工位保持';
   ui.zoneDot.className = 'dot ' + (S.zone === 'contact' ? 'contact' : S.zone === 'slow' ? 'slow' : '');
@@ -207,14 +210,13 @@ function drawHud() {
   let done = 0; [...ui.checklist.children].forEach((li, i) => { const d = checklist[S.station][i][1](current.completed); li.classList.toggle('done', d); li.querySelector('.box').textContent = d ? '✓' : ''; if (d) done++; });
   ui.chkCount.textContent = done + ' / ' + checklist[S.station].length;
   ui.stations.querySelectorAll('.st').forEach(b => { const i = +b.dataset.st; b.classList.toggle('active', i === S.station); b.classList.toggle('done', i < S.station || T >= total); });
-  ui.timeline.value = T; ui.stepSelect.value = current.index; ui.progBar.style.width = T / total * 100 + '%';
-  ui.clock.textContent = `${Math.floor(T / 60).toString().padStart(2, '0')}:${(T % 60).toFixed(1).padStart(4, '0')}`;
-  for (const l of labels) { const p = l.getPos().project(camera), visible = ui.showLabels.checked && p.z < 1 && Math.abs(p.x) < .98 && Math.abs(p.y) < .83; l.el.style.display = visible ? 'block' : 'none'; if (visible) { l.el.style.left = canvas.offsetLeft + (p.x * .5 + .5) * canvas.clientWidth + 'px'; l.el.style.top = canvas.offsetTop + (-p.y * .5 + .5) * canvas.clientHeight + 'px'; } }
-  document.getElementById('diagnostics').textContent = JSON.stringify({ recipe: RECIPE_KEY, insert: INSERT, time: T, total, step: current.index, station: S.station, action: S.action, poseError: e, force, playing, waiting, fault, gaps: ps.gap, lift: S.lift, stop: S.stop });
+  ui.progBar.style.width = T / total * 100 + '%';   // 時間軸、時鐘、步驟選單由 player 更新
+  updateLabels(ui.showLabels.checked);
+  document.getElementById('diagnostics').textContent = JSON.stringify({ recipe: RECIPE_KEY, insert: INSERT, time: T, total, step: current.index, station: S.station, action: S.action, poseError: e, force, playing: player.playing, waiting, fault, gaps: ps.gap, lift: S.lift, stop: S.stop });
 }
 // 主畫面以外的每格工作：面板、產品追隨、電控狀態、相機子畫面（子畫面畫進離屏目標，不動主畫布）
 function prepareFrame() {
-  drawHud(); workspace.follow();electrical.update({time:T,playing,action:S.action,motion:true,vision:!!(S.flashTool||S.flashTop||S.flashUp||S.flashDown||S.flashSn)});
+  drawHud(); workspace.follow();electrical.update({time:T,playing:player.playing,action:S.action,motion:true,vision:!!(S.flashTool||S.flashTop||S.flashUp||S.flashDown||S.flashSn)});
   renderer.setScissorTest(false); renderer.setViewport(0,0,canvas.clientWidth,canvas.clientHeight);
   const hidden=[cell.occluders,trail,...project.roiBoxes],visible=hidden.map(o=>o.visible); hidden.forEach(o=>o.visible=false);
   const exposure=renderer.toneMappingExposure;renderer.toneMappingExposure=.88;
@@ -228,48 +230,52 @@ function render() { prepareFrame(); workspace.renderOverview(renderer,scene); }
 const workspace=createViewerWorkspace({camera,controls,canvas,resize:stage.resize,focusOccluders:[cell.occluders],
   getFocus:()=>product.root.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0,recipe.pallet.t+5,0)),
   focusOffset:[-recipe.pallet.w*.55,recipe.pallet.w*.85,recipe.pallet.d*.95],
-  onFocus:()=>{setElectricalCutaway(scene,false);camAnim=null;selectedView='focus';document.querySelectorAll('.views button').forEach(b=>b.classList.remove('selected'));}});
+  onFocus:()=>{setElectricalCutaway(scene,false);stage.goTo(camera.position.toArray(),controls.target.toArray(),true);selectedView='focus';document.querySelectorAll('.views button').forEach(b=>b.classList.remove('selected'));}});
 const electrical=createElectricalInspector({scene,camera,controls,canvas,onEnter:()=>setView('electrical',true),onExit:()=>setView('iso',true),title:'RobotArmPressSSD'});
 const lastProductPosition = product.root.position.clone();
+const speed = () => +ui.speed.value || 1;   // player 依網址參數與滑桿設定
+// 播放中每個子步：到位判斷（手臂未到位就停在步驟終點等待，逾時判故障）→ 推進時間 → 手臂限速追蹤
 function tick(dt) {
-  if (!playing) return;
-  if (st.opts.ngHold && current.completed.has('recheck')) { fault = `NG · ${stub} 補壓後仍未貼合，停線待人工確認`; playing = false; ui.playBtn.textContent = '▶ 播放'; return; }
+  if (!player.playing) return;
+  if (st.opts.ngHold && current.completed.has('recheck')) { fault = `NG · ${stub} 補壓後仍未貼合，停線待人工確認`; player.pause(); return; }
   const e = robot.error(), s = current.step, end = s.start + s.dur;
   const blocked = (T >= end - 1e-7 || (s.contact && e.position > 2)) && (e.position > 1 || e.angle > 1);
-  if (blocked) { waiting += dt; if (waiting > 8) { fault = '到位逾時 · 請檢查 TCP 姿態'; playing = false; ui.playBtn.textContent = '▶ 播放'; } }
+  if (blocked) { waiting += dt; if (waiting > 8) { fault = '到位逾時 · 請檢查 TCP 姿態'; player.pause(); } }
   else {
     waiting = 0;
-    if (T >= total - 1e-7) { playing = false; ui.playBtn.textContent = '▶ 播放'; }
-    else { T = T >= end - 1e-7 ? Math.min(total, end + 1e-6) : Math.min(end, T + dt); sample(T >= end - 1e-7 && T <= end ? Math.max(s.start, end - 1e-8) : T); }
+    if (T >= total - 1e-7) player.pause();
+    else { advancing = true; try { player.seekTo(T >= end - 1e-7 ? Math.min(total, end + 1e-6) : Math.min(end, T + dt)); } finally { advancing = false; } }
   }
   robot.update(dt);
 }
-// stage.loop 每格：frameTick(dt) → controls.update() → 主畫面 renderer.render(scene, camera)
+// stage.loop 每格：視角轉場 → frameTick(dt) → controls.update() → 主畫面 renderer.render(scene, camera)
 function frameTick(dt) {
-  const n = Math.max(1, Math.ceil(dt * speed / .01)); for (let k = 0; k < n; k++) tick(dt * speed / n);
+  const n = Math.max(1, Math.ceil(dt * speed() / .01)); for (let k = 0; k < n; k++) tick(dt * speed() / n);
   if (selectedView==='product'||selectedView==='leads') {
     const delta=product.root.position.clone().sub(lastProductPosition);
     camera.position.add(delta); controls.target.add(delta);
-    if(camAnim) for(const key of ['p0','t0','p','t']) camAnim[key].add(delta);
   }
   lastProductPosition.copy(product.root.position);
-  if (playing && ui.showPath.checked) pushTrail(robot.getTcpWorld(robot.goal.tcp));
-  if (camAnim) { camAnim.u = Math.min(1, camAnim.u + dt * 1.4); camera.position.lerpVectors(camAnim.p0, camAnim.p, smooth(camAnim.u)); controls.target.lerpVectors(camAnim.t0, camAnim.t, smooth(camAnim.u)); if (camAnim.u === 1) camAnim = null; }
+  if (player.playing && ui.showPath.checked) pushTrail(robot.getTcpWorld(robot.goal.tcp));
   prepareFrame();
   // 主畫面接著由 stage 繪製；產品追隨（◎）時與 workspace.renderOverview 相同，暫時隱藏外罩（下一格 drawHud 依勾選還原）
   if (workspace.following) cell.occluders.visible = false;
 }
-current = project.apply(0); S = current.state; setView('iso', true); stage.resize(); ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放';
-exposeSim({ seekTo, views: Object.keys(views), project, pause() { playing = false; ui.playBtn.textContent = '▶ 播放'; }, play() { playing = true; ui.playBtn.textContent = '⏸ 暫停'; }, get state() { return S; }, robot, total, stationStart, steps: sequence.steps, setView, recipe: RECIPE_KEY, insert: INSERT });
-if (qp.has('st')) { playing = false; const station = THREE.MathUtils.clamp(+qp.get('st') || 0, 0, STATIONS.length - 1); seekTo(qp.has('t') ? stationStart[station] + (+qp.get('t') || 0) : stationPreviewTime(sequence, station)); }
-if (qp.has('step')) { playing = false; seekTo(sequence.steps[THREE.MathUtils.clamp(+qp.get('step') || 0, 0, sequence.steps.length - 1)].start + (+qp.get('t') || 0)); }
+// 播放列（共用 createPlayer）：時間、播放／暫停、重播、速度、時間軸、時鐘、步驟選單與上一步／下一步；
+// 跳播走 applyTime（手臂直接到位）並立即重畫一格（截圖與檢查直接呼叫 sim.seekTo）
+player = createPlayer({ total, apply: applyTime, events: sequence.events.map(ev => ({ ...ev, label: `S${ev.station} · ${ev.label}` })),
+  onChange: () => { if (!advancing && player) render(); } });   // 建立時的第一次跳播不重畫（最後統一 render）
+setView('iso', true); stage.resize();
+exposeSim({ seekTo: player.seekTo, views: Object.keys(views), project, pause: player.pause, play() { resume(); player.play(); }, get state() { return S; }, get T() { return T; }, get playing() { return player.playing; }, robot, total, stationStart, steps: sequence.steps, events: sequence.events, setView, recipe: RECIPE_KEY, insert: INSERT });
+if (qp.has('st')) { player.pause(); const station = THREE.MathUtils.clamp(+qp.get('st') || 0, 0, STATIONS.length - 1); player.seekTo(qp.has('t') ? stationStart[station] + (+qp.get('t') || 0) : stationPreviewTime(sequence, station)); }
+if (qp.has('step')) { player.pause(); player.seekTo(sequence.steps[THREE.MathUtils.clamp(+qp.get('step') || 0, 0, sequence.steps.length - 1)].start + (+qp.get('t') || 0)); }
 if (qp.has('view')) setView(qp.get('view'), true);
-if (qp.has('cam')) { const a = qp.get('cam').split(',').map(Number); if (a.length === 6 && a.every(Number.isFinite)) { camera.position.set(...a.slice(0, 3)); controls.target.set(...a.slice(3)); controls.update(); } }
+if (qp.has('cam')) { const a = qp.get('cam').split(',').map(Number); if (a.length === 6 && a.every(Number.isFinite)) stage.goTo(a.slice(0, 3), a.slice(3), true); }
 document.getElementById('loading').classList.add('hide'); render(); stage.loop(frameTick);   // ?movie 時 stage 不啟動迴圈
 
 // ---------------------------------------------------------------- 展示影片（?movie）：依絕對時間逐格取樣，與 project.apply 同一路徑
 if (qp.has('movie')) {
-  playing = false; ui.playBtn.textContent = '▶ 播放';
+  player.pause();
   const { installMovie } = await import('@core/movie/movie.js');
   installMovie({ project: 'RobotArmPressSSD', scene, renderer, camera, controls, render, setView, total, steps: sequence.steps,
     sample(t) { T = t; current = project.apply(t); S = current.state; },

@@ -63,10 +63,10 @@ node ../core/tools/serve.mjs RobotArmPressSSD --no-open
 - `?recipe=ssd35-usbc`、`?insert=single`（整排機種改單點比較）、`?result=NG`
 - `?pause&st=3&view=inspect`（直接看取像）；加 `t` 時仍以站別起點加秒數精確定位。
 - `?pause&st=2&view=leads&focus=A1`、`?pause&st=2&view=product`
-- `?shadow=0`、`cam=x,y,z,tx,ty,tz`
+- `?shadow=0`、`cam=x,y,z,tx,ty,tz`、`speed=2`（播放速度）、`t=秒`（未給 `st`／`step` 時為絕對時間）
 - `?pause&movie`：展示影片模式。不跑一般畫面迴圈，改由 `core/movie/movie.js` 的 `installMovie` 依絕對時間逐格取樣（與 `project.apply` 同一路徑），提供預覽、鏡頭檢查與「輸出完整影片」。
 
-主控台：`window.sim.seekTo(sec)`、`pause()`、`play()`、`setView(name)`、`steps`。
+主控台：`window.sim.seekTo(sec)`、`pause()`、`play()`、`setView(name)`、`steps`、`events`、`T`、`playing`。
 
 ## 建模
 
@@ -101,10 +101,10 @@ node ../core/tools/serve.mjs RobotArmPressSSD --no-open
 | `core/geom/surfaces.js` | 離線生成編織／金屬／PCB 材質，以及靜態網格合併（與快門站共用） |
 | `web/js/cell.js` | 輸送段（後軌基準、前軌調寬）、止擋、頂升、全局相機、底櫃、外罩 |
 | `web/js/robot.js` | VS-068、共用末端工具（快拆壓頭、斜視相機）、關節規劃；IK 用 `core/robot/kinematics.js` |
-| `web/js/sequence.js` | 由配方產生流程、拍攝分組、接頭狀態與力值計算 |
+| `web/js/sequence.js` | 由配方產生流程、拍攝分組、接頭狀態與力值計算。步驟、快照插值、`stationStart`、`total`、`events` 用共用步驟序列 `core/anim/sequence.js` 的 `createStepSequence`；本檔只加手臂姿態層（起訖姿態、`motion`、PTP 依關節角度重算時間後以同一份終點快照重建序列、接觸／接近限速） |
 | `web/js/station.js` | 組裝整站並套用狀態（畫面與驗證共用） |
 | `web/js/project.js` | 專案介面 `createProject`：依配方／壓墊建整站、ROI 框與流程；`apply(t)` 把流程狀態、手臂姿態、燈號與 ROI 放到時間 t。`main.js` 與 core 統一檢查共用 |
-| `web/js/main.js` | 配方選單、接頭狀態、相機子畫面、紀錄匯出、`?movie` 錄影掛勾（物件與時間狀態取自 `project.js`）。renderer、相機、軌道控制、環境光與燈光、畫面迴圈用共用舞台 `core/ui/stage.js` 的 `createStage`；作業區局部光（含陰影）在 main.js 另建 |
+| `web/js/main.js` | 配方選單、接頭狀態、相機子畫面、紀錄匯出、`?movie` 錄影掛勾（物件與時間狀態取自 `project.js`）。renderer、相機、軌道控制、環境光與燈光、畫面迴圈用共用舞台 `core/ui/stage.js` 的 `createStage`；作業區局部光（含陰影）在 main.js 另建。播放列用 `core/ui/player.js` 的 `createPlayer`（時間、播放／暫停、速度、時間軸、步驟選單、上一步／下一步）；手臂限速追蹤與「停在步驟終點等手臂到位、逾時判故障」留在本檔的 tick。3D 標籤用 `stage.addLabel`、視角轉場用 `stage.goTo`；常用材質（框架、黑件、烤漆、工具鋼、PU、鏡頭玻璃）取 `core/geom/materials.js` 的 `MAT` |
 | `tools/verify.mjs` | 全配方驗證 |
 
 ## 驗證

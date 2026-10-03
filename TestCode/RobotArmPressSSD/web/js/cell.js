@@ -7,6 +7,7 @@ import {cabinetShell,controlPanel,entryGland,panelFeed} from '@core/electrical/e
 import { cable, cableTray, support, CABLE } from '@core/electrical/cable-routing.js';
 import { block, cylinder, decal, screw } from '@core/geom/shapes.js';
 import { microTexture } from '@core/geom/surfaces.js';
+import { MAT } from '@core/geom/materials.js';
 
 export const LAYOUT = {
   conveyorTop: 900,                   // SMT 輸送面（載盤底面）
@@ -26,13 +27,14 @@ export function palletPlacement(recipe) {
   return { x: LAYOUT.stopFace - w / 2, z: LAYOUT.rearInner + d / 2, frontInner: LAYOUT.rearInner + d + 2 };
 }
 
-const matFrame = new THREE.MeshStandardMaterial({ color: 0x6b7480, roughness: 0.5, metalness: 0.6 });
+// 常用材質取共用表（core/geom/materials.js）；拉絲鋁軌、綠色輸送皮帶、鍍鉻銷、PC 外罩、深色展場地面為本站外觀，留在這裡
+const matFrame = MAT.steel;       // 型材框架、橫樑、立柱
+const matDark  = MAT.black;       // 黑色件（氣缸、感測器座、相機本體）
+const matCab   = MAT.cabinet;     // 機台底櫃烤漆
+const matBlue  = MAT.steelBlue;   // 藍色烤漆（皮帶驅動、感測器）
+const matYellow= MAT.yellow;      // 地面標線、按鈕座
 const matAlu   = new THREE.MeshStandardMaterial({ color: 0xb9c0c8, roughness: 0.4, metalness: 0.8, bumpMap: microTexture('brushed'), bumpScale: .025 });
 const matBelt  = new THREE.MeshStandardMaterial({ color: 0x2e7d56, roughness: 0.75 });
-const matDark  = new THREE.MeshStandardMaterial({ color: 0x1e2226, roughness: 0.5, metalness: 0.4 });
-const matCab   = new THREE.MeshStandardMaterial({ color: 0xd9dcdf, roughness: 0.6, metalness: 0.2 });
-const matBlue  = new THREE.MeshStandardMaterial({ color: 0x2f5f9e, roughness: 0.5, metalness: 0.4 });
-const matYellow= new THREE.MeshStandardMaterial({ color: 0xf2b21b, roughness: 0.6 });
 const matPin   = new THREE.MeshStandardMaterial({ color: 0xd0d5da, roughness: 0.3, metalness: 0.9 });
 const matPC    = new THREE.MeshPhysicalMaterial({ color: 0xcfe3ff, roughness: 0.1, transmission: 0.3, transparent: true, opacity: 0.12, depthWrite: false, side: THREE.DoubleSide });
 const matFloor = new THREE.MeshStandardMaterial({ color: 0x1b2027, roughness: 0.95 });
@@ -107,7 +109,7 @@ export function createCell(scene, recipe) {
   ko(block(g, [30, h - 80 - (gy + 90), 30], [gx, (h - 80 + gy + 90) / 2, gz], matFrame), '全局相機吊桿');
   const gcam = new THREE.Group(); gcam.position.set(gx, gy, gz); g.add(gcam);
   ko(block(gcam, [44, 47, 34], [0, 60, 0], matDark), '全局相機');
-  ko(cylinder(gcam, 16, 36, [0, 18, 0], new THREE.MeshStandardMaterial({ color: 0x1c1f23, roughness: 0.4, metalness: 0.5 }), 'y', 20), '全局相機鏡頭');
+  ko(cylinder(gcam, 16, 36, [0, 18, 0], MAT.black, 'y', 20), '全局相機鏡頭');
   const gLightMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.05 });
   for (const s of [-1, 1]) ko(block(gcam, [260, 12, 30], [0, 20, s * 70], gLightMat), '全局光源');
   const gFlash = new THREE.SpotLight(0xffffff, 0, 1400, 0.45, 0.5, 1); gFlash.target.position.set(0, -800, 0); gcam.add(gFlash, gFlash.target);
@@ -126,7 +128,7 @@ export function createCell(scene, recipe) {
   block(occ, [2 * ex, 900, 2], [0, 510, z1], matPC);
   for (const x of [-ex, ex]) { block(occ, [2, h - 980, z1 - z0], [x, 980 + (h - 980) / 2, (z0 + z1) / 2], matPC); block(occ, [2, 780, z1 - z0], [x, 450, (z0 + z1) / 2], matPC); }
   block(occ, [60, 22, 30], [ex - 120, 1520, z1 + 18], matDark); decal(occ, 70, 14, [ex - 120, 1545, z1 + 34], [0, 0, 0], '前門互鎖', { center: true });
-  block(g, [210, 150, 16], [ex - 150, 1300, z1 + 12], new THREE.MeshStandardMaterial({ color: 0x0c1a2b, emissive: 0x1f4f8f, emissiveIntensity: 0.55 }));
+  block(g, [210, 150, 16], [ex - 150, 1300, z1 + 12], MAT.screen);
   decal(g, 190, 125, [ex - 150, 1300, z1 + 21], [0, 0, 0], ['USB 壓合站', recipe.short, 'SIMULATION'], { bg: '#102635', color: '#65d7b8' });
   cylinder(g, 22, 12, [ex - 150, 1150, z1 + 10], matYellow, 'z'); cylinder(g, 15, 18, [ex - 150, 1150, z1 + 20], new THREE.MeshStandardMaterial({ color: 0xd53730 }), 'z');
   const tower = new THREE.Group(); tower.position.set(ex - 80, h + 40, z0 + 80); g.add(tower);

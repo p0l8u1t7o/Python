@@ -1,16 +1,20 @@
 // 由配方自動產生的單盤流程：進板定位 → 全局定位 → 壓合 → 相機檢查 → 補壓判定 → 出板
-// 狀態由步驟起點快照＋絕對時間求值，任意倒退／跳站都能重建。
+// 步驟、狀態快照、插值、stationStart、total 與 events 由共用步驟序列（core/anim/sequence.js）提供；
+// 本檔只放本站的規劃（分組、壓合／取像順序）與手臂姿態層（pose0／pose1、motion、PTP 重算時間、接觸速度）。
 import * as THREE from 'three';
+import { createStepSequence } from '@core/anim/sequence.js';
+import { smooth } from '@core/anim/track.js';
 import { CONNECTOR_TYPES } from './recipes.js';
 import { tiltForLift, liftForTilt, gapForTilt } from './product.js';
 import { LAYOUT, palletPlacement } from './cell.js';
 import { TOOL } from './robot.js';
 
-export const smooth = t => t * t * t * (10 + t * (-15 + 6 * t)); // 起停速度與加速度為零
+export { smooth }; // 起停速度與加速度為零（舊呼叫端相容）
 export const STATIONS = ['進板定位', '全局定位', '壓合', '相機檢查', '補壓判定', '出板'];
+// 步驟開始時立即切換、不插值的鍵
+export const DISCRETE = ['station', 'flashTool', 'belt', 'globalShot', 'detected'];
 export const SPEC = { forceLimit: 60, fovSpan: 72 }; // 力上限 N；一張照片內接頭中心的最大跨距 mm（視野約 93 mm）
 const PAD_K = 2.5, SEAT_F = 2.0; // 壓頭彈簧 N/mm、單顆接頭壓回所需力 N（示意）
-const clone = s => JSON.parse(JSON.stringify(s));
 
 /** 由狀態算出每顆接頭的翹起角、間隙、壓頭壓縮量與力值（主程式與驗證共用） */
 export function productState(s, recipe, { ngHold = false } = {}) {
@@ -52,7 +56,6 @@ export function createSequence({ robot, product, apply, recipe, insert = recipe.
   const place = palletPlacement(recipe), px = place.x, gap0 = LAYOUT.flowGap;
   const base = { palletX: px - gap0, prevX: px + gap0, nextX: px - gap0 - 900, stop: 0, lift: 0, located: false, belt: 0, globalShot: 0, detected: 0,
     pressIds: [], pressH: 120, seated: {}, fixed: 0, flashTool: 0, shot: '', zone: 'free', station: 0, action: '', sub: '' };
-  const steps = [], stationStart = Array(STATIONS.length).fill(0);
   const v = (x, y, z) => new THREE.Vector3(x, y, z);
   const byId = Object.fromEntries(recipe.connectors.map(c => [c.id, c]));
   const yawOf = id => product.pointing(id).negate();                 // 工具 +Y 朝板內 → 相機從板內側看銀腳
@@ -64,17 +67,14 @@ export function createSequence({ robot, product, apply, recipe, insert = recipe.
   const park = () => pose('press', v(0, LAYOUT.conveyorTop + 200, -260), v(0, 0, 1));
   const pressMotion = ids => (t, s) => pose('press', mean(ids.map(id => product.pressPoint(id))).add(v(0, s.pressH, 0)), yawOf(ids[0]));
   const camMotion = ids => () => pose('cam', mean(ids.map(id => product.leadPoint(id))), yawOf(ids[0]));
-  let time = 0, previous = clone(base), lastPose = park();
-  function add(st, dur, action, sub, values = {}, motion = null, extra = {}) {
-    if (!steps.some(s => s.station === st)) stationStart[st] = time;
-    const initial = clone(previous), end = clone(initial);
-    for (const [key, value] of Object.entries(values)) end[key] = clone(value);
-    end.station = st; end.action = action; end.sub = sub;
-    const s = { station: st, start: time, dur, action, sub, initial, end, pose0: lastPose, motion, ...extra };
-    s.ptp = !s.path && !s.contact && end.zone === 'free';
-    apply(end); lastPose = motion ? motion(1, end) : lastPose; s.pose1 = lastPose;
-    steps.push(s); previous = end; time += dur; return s;
-  }
+  // 第一輪（規劃）：共用步驟序列在建立每步時套用終點狀態，這裡順便記下手臂起訖姿態
+  // （motion(1, end) 依套用後的載盤位置求壓點／取像點，終點姿態即下一步的起點）
+  let lastPose = park();
+  const planned = createStepSequence({ base, discrete: DISCRETE, stations: STATIONS, ease: smooth, apply(end, s) {
+    s.pose0 = lastPose; s.ptp = !s.path && !s.contact && end.zone === 'free';
+    apply(end); lastPose = s.motion ? s.motion(1, end) : lastPose; s.pose1 = lastPose;
+  } });
+  const add = (st, dur, action, sub, values = {}, motion = null, extra = {}) => planned.add(st, dur, action, sub, values, { motion, ...extra });
   const { lines, shots, barRows } = planGroups(recipe);
   const useBar = insert === 'bar' && barRows.length > 0;
   const label = ids => ids.length > 1 ? `${ids[0]}–${ids[ids.length - 1]}` : ids[0];
@@ -139,24 +139,17 @@ export function createSequence({ robot, product, apply, recipe, insert = recipe.
   add(5, 2.0, '出板', '送往下游（迴焊爐）', { palletX: px + gap0, belt: 1, located: false }, null, { done: 'out' });
   add(5, .2, '單盤循環完成', '下一盤已在上游等待', { belt: 0 });
 
-  robot.plan(steps.flatMap(s => [s.pose0, s.pose1]));
-  // PTP 步驟時間依關節角度差重算（至少為原排定值），再重排各步起點
-  time = 0; stationStart.fill(0);
-  const seen = new Set();
-  for (const s of steps) {
-    if (s.ptp) s.dur = Math.max(s.dur, Math.ceil(robot.ptpTime(s.pose0, s.pose1) * 20) / 20);
-    if (!seen.has(s.station)) { seen.add(s.station); stationStart[s.station] = time; }
-    s.start = time; time += s.dur;
-  }
-  const DISCRETE = new Set(['station', 'flashTool', 'belt', 'globalShot', 'detected']);
+  robot.plan(planned.steps.flatMap(s => [s.pose0, s.pose1]));
+  // 第二輪：PTP 步驟時間依關節角度差重算（至少為原排定值），以修正後的時間重建同一份序列
+  // （終點快照原樣帶入，起點、stationStart、total、events 由共用序列重排）
+  const seq = createStepSequence({ base, discrete: DISCRETE, stations: STATIONS, ease: smooth });
+  for (const { station, dur, action, sub, end, start, initial, ...extra } of planned.steps)
+    seq.add(station, extra.ptp ? Math.max(dur, Math.ceil(robot.ptpTime(extra.pose0, extra.pose1) * 20) / 20) : dur, action, sub, end, extra);
+  const steps = seq.steps;
+
+  /** 取樣：共用序列給狀態與所在步驟，這裡把狀態套到設備並設定手臂目標（不移動關節；播放時由 robot.update 限速追蹤） */
   function sample(sec) {
-    sec = Number.isFinite(sec) ? THREE.MathUtils.clamp(sec, 0, time) : 0;
-    const index = steps.findIndex(s => sec < s.start + s.dur), idx = index < 0 ? steps.length - 1 : index, s = steps[idx];
-    const t = THREE.MathUtils.clamp((sec - s.start) / s.dur, 0, 1), e = smooth(t), state = clone(s.initial);
-    for (const [key, value] of Object.entries(s.end)) {
-      if (typeof value === 'number' && typeof s.initial[key] === 'number' && !DISCRETE.has(key)) state[key] = THREE.MathUtils.lerp(s.initial[key], value, e);
-      else state[key] = value;
-    }
+    const { state, step: s, index: idx, u: t, e } = seq.sample(sec);
     apply(state);
     const destination = s.motion ? s.motion(t, state) : s.pose1;
     // 自由移位走關節插值（PTP）；接近、接觸、回升走直線
@@ -167,5 +160,5 @@ export function createSequence({ robot, product, apply, recipe, insert = recipe.
     const completed = new Set(steps.slice(0, idx).map(x => x.done).filter(Boolean)); if (t === 1 && s.done) completed.add(s.done);
     return { state, step: s, index: idx, t, completed };
   }
-  return { sample, steps, total: time, stationStart, base, shots, useBar, barRows };
+  return { sample, steps, total: seq.total, stationStart: seq.stationStart, events: seq.events, base, shots, useBar, barRows };
 }

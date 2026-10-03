@@ -5,13 +5,15 @@ import * as THREE from 'three';
 import { createVS068, VS068_MAT, JOINTS, JOINT_SPEED } from '@core/models/robots/denso-vs068.js';
 import { cable, CABLE } from '@core/electrical/cable-routing.js';
 import { bevelBox, block, cylinder, decal, screw, tube } from '@core/geom/shapes.js';
+import { MAT } from '@core/geom/materials.js';
 
 const matArmD  = VS068_MAT.dark;
 const matJoint = VS068_MAT.joint;
-const matTool  = new THREE.MeshStandardMaterial({ color: 0x9aa3ad, roughness: 0.35, metalness: 0.75 });
-const matAnod  = new THREE.MeshStandardMaterial({ color: 0x3b4149, roughness: 0.4, metalness: 0.6 });
-const matPU    = new THREE.MeshStandardMaterial({ color: 0xd9a441, roughness: 0.9 });
-const matGlass = new THREE.MeshPhysicalMaterial({ color: 0x8fb8ff, roughness: 0.05, transmission: 0.6, transparent: true, opacity: 0.8 });
+// 常用材質取共用表（core/geom/materials.js）；力值環與相機光源會在執行時改顏色／亮度，各自建立
+const matTool  = MAT.steel;       // 工具本體、彈簧
+const matAnod  = MAT.steelDark;   // 陽極處理件（力感測器、快拆介面）
+const matPU    = MAT.pu;          // PU 壓墊
+const matGlass = MAT.glass;       // 鏡頭玻璃
 const D2R = Math.PI / 180;
 
 function cyl(r1, r2, h, mat, seg = 32) { const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r2, h, seg), mat); m.castShadow = m.receiveShadow = true; return m; }
