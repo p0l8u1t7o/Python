@@ -5,8 +5,7 @@ import { routingLegend } from '@core/electrical/cable-routing.js';
 routingLegend();
 // 主程式：場景、時間軸（動作序列）、UI、相機子畫面（上視遠心相機／手臂下視相機）
 import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { createStage, exposeSim } from '@core/ui/stage.js';
 import { createVisionOverlay } from '@core/ui/vision-overlay.js';
 import { createProject } from './project.js';
 import { smooth, STATIONS, SPEC, OFFSETS } from './sequence.js';
@@ -20,34 +19,22 @@ const vision = createVisionOverlay();
 const qp = new URLSearchParams(location.search);
 const NG = qp.get('result') === 'NG';
 
-// ---------------------------------------------------------------- 場景
+// ---------------------------------------------------------------- 場景（共用舞台 core/ui/stage.js）
+// 畫面迴圈仍由本檔管理：每格要畫 HUD、主畫面與相機子畫面（多次 render），stage.loop 只會畫一次主相機
 const canvas = document.getElementById('c');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: qp.get('aa') !== '0', powerPreference: 'high-performance', logarithmicDepthBuffer: qp.get('logdepth') !== '0' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.shadowMap.enabled = qp.get('shadow') !== '0'; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0d1117);
-scene.fog = new THREE.Fog(0x0d1117, 5000, 11000);
-const pmrem = new THREE.PMREMGenerator(renderer);
-const environmentRoom = new RoomEnvironment(renderer);
-environmentRoom.traverse(o => { if (o.isPointLight) o.intensity = 220; });
-scene.environment = pmrem.fromScene(environmentRoom, 0.04).texture;
-environmentRoom.dispose(); pmrem.dispose();
-
-const camera = new THREE.PerspectiveCamera(40, 1, 2, 20000);
-const controls = new OrbitControls(camera, canvas);
-controls.enableDamping = true; controls.dampingFactor = 0.08; controls.maxPolarAngle = Math.PI * 0.49; controls.minDistance = 3; controls.maxDistance = 7000;
-
-scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x2a2f36, 0.6));
-const sun = new THREE.DirectionalLight(0xffffff, 1.5); sun.position.set(-1500, 3200, 1800);
-sun.castShadow = renderer.shadowMap.enabled; sun.shadow.mapSize.set(2048, 2048);
-Object.assign(sun.shadow.camera, { left: -1200, right: 1200, top: 1200, bottom: -1200, near: 500, far: 8000 }); sun.shadow.bias = -0.00004; sun.shadow.normalBias = .08;
-scene.add(sun);
-const fill = new THREE.DirectionalLight(0x9fb8ff, 0.5); fill.position.set(1800, 1500, -1800); scene.add(fill);
-// 作業區局部光：治具與相機附近的小零件需要細緻陰影
+const stage = createStage({
+  canvas, qp, exposure: 1.05, background: 0x0d1117, fog: [5000, 11000],
+  logDepth: true,                                   // ?logdepth=0 可關
+  envLight: 220, envBlur: .04,                      // RoomEnvironment 點光強度
+  camera: { fov: 40, near: 2, far: 20000 },
+  controls: { enableDamping: true, dampingFactor: .08, maxPolarAngle: Math.PI * .49, minDistance: 3, maxDistance: 7000 },
+  hemi: { sky: 0xbfd4ff, ground: 0x2a2f36, intensity: .6 },
+  sun: { color: 0xffffff, intensity: 1.5, position: [-1500, 3200, 1800], target: [0, 0, 0],
+    shadow: { mapSize: 2048, camera: { left: -1200, right: 1200, top: 1200, bottom: -1200, near: 500, far: 8000 }, bias: -.00004, normalBias: .08 } },
+  fill: { color: 0x9fb8ff, intensity: .5, position: [1800, 1500, -1800] },
+});
+const { renderer, scene, camera, controls } = stage;
+// 作業區局部光：治具與相機附近的小零件需要細緻陰影（stage 的 extraLights 不含陰影與 target，故在此自建）
 const taskLight = new THREE.DirectionalLight(0xfff5e7, 1.2);
 taskLight.position.set(-25, 994, 120); taskLight.target.position.set(0, 929, 80);
 taskLight.castShadow = renderer.shadowMap.enabled; taskLight.shadow.mapSize.set(2048, 2048);
@@ -225,8 +212,7 @@ function drawHud() {
   for (const l of labels) { const p = l.getPos().project(camera), vis = ui.showLabels.checked && p.z < 1 && Math.abs(p.x) < .98 && Math.abs(p.y) < .9; l.el.style.display = vis ? 'block' : 'none'; if (vis) { l.el.style.left = canvas.offsetLeft + (p.x * .5 + .5) * canvas.clientWidth + 'px'; l.el.style.top = canvas.offsetTop + (-p.y * .5 + .5) * canvas.clientHeight + 'px'; } }
   document.getElementById('diagnostics').textContent = JSON.stringify({ time: T, total, step: current.index, station: S.station, action: S.action, poseError: e, force, playing, waiting, fault, loc: S.loc, view: S.view, shot: S.shot });
 }
-function resize() { const w = canvas.clientWidth, h = canvas.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
-window.addEventListener('resize', resize);
+const resize = stage.resize;   // stage 已掛視窗 resize 事件
 function render() {
   drawHud(); workspace.follow();electrical.update({time:T,playing,action:S.action,motion:true,vision:!!(S.flashTool||S.flashTop||S.flashUp||S.flashDown||S.flashSn)});
   taskLight.target.position.copy(st.pose('base').p); taskLight.position.copy(st.pose('base').p).add(V(-25,65,40));
@@ -241,7 +227,7 @@ function render() {
 const workspace=createViewerWorkspace({camera,controls,canvas,resize,focusOccluders:[cell.occluders],getFocus:()=>st.pose('base').p,
   focusOffset:[-24,35,42],focusNear:.1,onFocus:()=>{setElectricalCutaway(scene,false);camAnim=null;selectedView='focus';document.querySelectorAll('.views button').forEach(b=>b.classList.remove('selected'));}});
 const electrical=createElectricalInspector({scene,camera,controls,canvas,onEnter:()=>setView('electrical',true),onExit:()=>setView('iso',true),title:'shutter assembly'});
-const clock = new THREE.Clock();
+const clock = stage.clock;
 const lastBase = new THREE.Vector3();
 function tick(dt) {
   if (!playing) return;
@@ -269,10 +255,31 @@ function frame() {
   controls.update(); render();
 }
 current = project.apply(0); S = current.state; lastBase.copy(st.pose('base').p); setView('iso', true); resize(); ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放';
-window.sim = { seekTo, views: Object.keys(views), pause() { playing = false; ui.playBtn.textContent = '▶ 播放'; }, play() { playing = true; ui.playBtn.textContent = '⏸ 暫停'; }, get state() { return S; }, robot, total, stationStart, steps: sequence.steps, setView, ng: NG, trays: TRAYS, scara: SCARA, part: PART };
+exposeSim({ seekTo, views: Object.keys(views), pause() { playing = false; ui.playBtn.textContent = '▶ 播放'; }, play() { playing = true; ui.playBtn.textContent = '⏸ 暫停'; }, get state() { return S; }, robot, total, stationStart, steps: sequence.steps, setView, ng: NG, trays: TRAYS, scara: SCARA, part: PART });
 if (qp.has('st')) { playing = false; const station = THREE.MathUtils.clamp(+qp.get('st') || 0, 0, STATIONS.length - 1); seekTo(qp.has('t') ? stationStart[station] + (+qp.get('t') || 0) : stationPreviewTime(sequence, station)); }
 if (qp.has('step')) { playing = false; seekTo(sequence.steps[THREE.MathUtils.clamp(+qp.get('step') || 0, 0, sequence.steps.length - 1)].start + (+qp.get('t') || 0)); }
 if (qp.has('time')) { playing = false; seekTo(+qp.get('time')); }
 if (qp.has('view')) setView(qp.get('view'), true);
 if (qp.has('cam')) { const a = qp.get('cam').split(',').map(Number); if (a.length === 6 && a.every(Number.isFinite)) { camera.position.set(...a.slice(0, 3)); controls.target.set(...a.slice(3)); controls.update(); } }
-document.getElementById('loading').classList.add('hide'); render(); frame();
+document.getElementById('loading').classList.add('hide'); render();
+if (!qp.has('movie')) frame();
+else {
+  // 錄影（?movie）：不跑畫面迴圈，由 core/movie/movie.js 依絕對時間逐格驅動
+  playing = false; ui.playBtn.textContent = '▶ 播放';
+  const { installMovie } = await import('@core/movie/movie.js');
+  installMovie({
+    project: 'shutter assembly', scene, renderer, camera, controls, render, setView, total,
+    steps: sequence.steps,
+    // 與檢查相同的 project.apply 路徑（流程狀態 → 手臂 snap → 零件就位）
+    sample(t) { T = t; current = project.apply(t); S = current.state; },
+    // 鏡頭焦點：手上的零件；手上沒有就看本步驟要去拿的零件，再沒有就看本體
+    focus: () => {
+      const held = Object.entries(S.loc).find(([, loc]) => /^T[123]$/.test(loc));
+      if (held) return st.pose(held[0]).p;
+      const next = current.step.end.loc;
+      const pick = Object.keys(next).find(id => /^T[123]$/.test(next[id]));
+      return pick ? st.pose(pick).p : st.pose('base').p;
+    },
+    offset: [-130, 200, 270],
+  });
+}

@@ -112,7 +112,7 @@ GitHub 首頁與五專案發布設定：[static.yml](../tools/github-pages/stati
 | `web/js/sequence.js` | 單顆組裝流程、料件偏移與補正、時間重排、狀態取樣 |
 | `web/js/station.js` | 組裝整站、依歸屬擺放零件（畫面與驗證共用） |
 | `web/js/project.js` | 專案介面 `createProject({ scene })`：建立整站與流程，`apply(t)` 把整個場景放到時間 t；網頁與 core 統一檢查共用（`?result=NG` 對應 `ng: true`） |
-| `web/js/main.js` | 場景燈光、UI、相機子畫面、紀錄匯出；設備與時間軸取自 `project.js` |
+| `web/js/main.js` | renderer、場景、相機、軌道控制、環境光與主要燈光由共用舞台 `createStage`（`core/ui/stage.js`）建立，本檔只傳差異（霧、RoomEnvironment 點光 220、陰影範圍、縮放距離）；作業區局部光（跟隨本體、細緻陰影）與畫面迴圈（HUD＋主畫面＋相機子畫面多次繪製）仍在本檔。UI、紀錄匯出；設備與時間軸取自 `project.js`；`window.sim` 由 `exposeSim` 提供。網址 `?movie` 時不跑畫面迴圈，改由 `core/movie/movie.js` 的 `installMovie` 依絕對時間逐格錄影（取樣走 `project.apply`，鏡頭跟著手上的零件） |
 | `web/js/vision-results.js` | 相機標記（孔位、疊片、銷位、成品） |
 | `tools/verify.mjs`、`verify-physics.mjs`、`verify-product-detail.mjs` | 專案自有驗證（流程、物理、產品細節） |
 | `tools/build_cost_estimate.py` | 產生成本試算表 |
