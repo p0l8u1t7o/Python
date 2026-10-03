@@ -125,7 +125,6 @@ button,select{font-family:var(--font)}select,button{color:var(--fg);background:#
 .checklist li .box{margin-top:3px}.label3d{font-size:10px;background:#10202be0;border-color:#49616d}
 body.capture #c{height:calc(100% - 132px)}body.capture #bottombar{display:none}
 @media(max-width:1100px){#topbar{grid-template-columns:1fr;height:150px;grid-template-rows:48px 40px 42px}#stations{grid-row:2}.views{grid-row:3}.brand .title{font-size:17px}#side{top:160px;width:280px}#c{top:156px;width:calc(100% - 300px);height:calc(100% - 305px)}#bottombar{right:312px}#cycleTime{display:none}.views{gap:4px}.views button{padding:6px 9px}}
-@media(max-width:760px){#topbar{padding:5px 10px}.views{overflow:auto}.views select{min-width:150px}.brand .sub{font-size:10px}#stations{gap:4px}#stations .st{padding:6px;font-size:10px}#side{width:225px}#c{width:calc(100% - 239px)}#bottombar{right:251px}.ctl{gap:6px}.ctl .chk{display:none}}
 #movie{position:fixed;inset:0;z-index:100;background:#080f18;display:flex;align-items:center;justify-content:center}#movieCanvas{width:100%;height:100%;object-fit:contain}#movieControls{position:absolute;left:20px;bottom:8px;display:flex;gap:18px;align-items:center;font:12px var(--font);color:#b8d3e0;background:#0b1629e8;padding:8px 14px;border-radius:6px}#movieControls button{font-size:12px}
 
 /* ---- 殼體量測機：量測表、托盤圖、取像子畫面 ---- */
@@ -155,21 +154,17 @@ body.capture #c{height:calc(100% - 132px)}body.capture #bottombar{display:none}
 .resultRow{align-items:center}
 .views{overflow-x:auto;scrollbar-width:thin}.views button{white-space:nowrap;flex-shrink:0}
 .views,#stations{color-scheme:dark;scrollbar-color:#486170 #172431}
-@media(max-width:760px){
- #topbar{height:128px;grid-template-rows:36px 36px 38px}.brand .title{font-size:13px}.brand .sub{display:none}
- #stations{overflow-x:auto;white-space:nowrap}#stations .st{flex-shrink:0}.views button{font-size:11px;padding:5px 8px}
- #c{top:134px;width:100%;height:calc(100% - 300px)}
- #side{top:174px;bottom:160px;right:10px;width:min(310px,calc(100% - 20px));z-index:10;background:#10202bf5}
- #bottombar{left:8px;right:8px;bottom:8px;padding:8px;min-height:128px}
- #detailNote{top:138px;bottom:auto;left:8px;font-size:10px;max-width:calc(100% - 62px);padding:5px 7px}
-}
+/* 矮視窗的桌面版面（非觸控、寬 > 900 px）；手機橫向由 core 精簡版面接手，所以限定 body:not(.viewer-compact) */
 @media(max-height:520px){
- #topbar{height:92px;padding:3px 10px;grid-template-columns:1fr;grid-template-rows:22px 28px 32px}
- .brand .title{font-size:13px}.brand .sub{display:none}#stations{grid-row:2;overflow:auto;white-space:nowrap}#stations .st{padding:3px 7px;flex-shrink:0;font-size:10px}
- .views{grid-row:3;gap:4px}.views button{padding:3px 7px;font-size:10px}.views select{font-size:10px}
- #c{top:98px;width:100%;height:calc(100% - 177px)}
- #side{top:98px;right:8px;bottom:80px;width:290px;z-index:10;background:#10202bf5}
- #bottombar{left:8px;right:8px;bottom:5px;min-height:0;padding:5px 10px;gap:4px;grid-template-rows:30px 25px}
- #bottombar .stepRow{display:none}#bottombar .clock{grid-row:2}
- #detailNote{top:102px;bottom:auto;left:8px;font-size:10px;max-width:calc(100% - 65px);padding:3px 7px}
+ body:not(.viewer-compact) #topbar{height:92px;padding:3px 10px;grid-template-columns:1fr;grid-template-rows:22px 28px 32px}
+ body:not(.viewer-compact) .brand .title{font-size:13px}body:not(.viewer-compact) .brand .sub{display:none}
+ body:not(.viewer-compact) #stations{grid-row:2;overflow:auto;white-space:nowrap}body:not(.viewer-compact) #stations .st{padding:3px 7px;flex-shrink:0;font-size:10px}
+ body:not(.viewer-compact) .views{grid-row:3;gap:4px}body:not(.viewer-compact) .views button{padding:3px 7px;font-size:10px}body:not(.viewer-compact) .views select{font-size:10px}
+ body:not(.viewer-compact) #c{top:98px;width:100%;height:calc(100% - 177px)}
+ body:not(.viewer-compact) #side{top:98px;right:8px;bottom:80px;width:290px;z-index:10;background:#10202bf5}
+ body:not(.viewer-compact) #bottombar{left:8px;right:8px;bottom:5px;min-height:0;padding:5px 10px;gap:4px;grid-template-rows:30px 25px}
+ body:not(.viewer-compact) #bottombar .stepRow{display:none}body:not(.viewer-compact) #bottombar .clock{grid-row:2}
+ body:not(.viewer-compact) #detailNote{top:102px;bottom:auto;left:8px;font-size:10px;max-width:calc(100% - 65px);padding:3px 7px}
 }
+/* 精簡版面（core viewer-workspace）：細節說明移到畫布左上、工具列下方，避開底部播放列與側欄抽屜 */
+.viewer-compact #detailNote{top:calc(var(--viewer-top,108px) + 6px);bottom:auto;left:8px;padding:5px 7px}

@@ -147,6 +147,14 @@ node ../core/tools/run.mjs WorkpieceMeasurement tools/verify.mjs
 
 這是離散取樣的模型檢查，不是實機安全或公差認證。3D 畫面與干涉檢查用同一份機構資料（`web/js/spec.js`）。`verify.mjs` 不檢查底櫃、外罩、HMI 與光束示意，這些由下面的統一檢查涵蓋。
 
+### 光源、地面與小螢幕（2026-10-03，第四輪）
+
+- 光源：`createStage({ look: 'studio' })`。曝光 .94、灰藍背景 0x202a34、主光／補光／輪廓光的顏色與強度（1.4／.5／.65，輪廓光 0xffead2 在 [700, 2100, -500]）都和 look 相同，改由 look 提供；本站只寫霧、相機與控制範圍、主光位置與陰影（`mapSize` 依視窗寬度 4096／2048）、補光位置。燈位與陰影範圍沿用原本手調值，不用 `extent` 推算（推算的燈位與陰影範圍不同，會改變畫面）。
+- 地面：`project.js` 改用 `@core/geom/environment.js` 的 `floor()`，但保留本站自己的展示地面：100 m 見方、0x29323a 粉體塗裝紋理（`material` 傳入），邊緣隱入霧中；格線 6 m、100 mm 一格、0x2a3644／0x1c2530，預設隱藏（`?grid` 顯示）。不是 core 預設的深色地坪。
+- 小螢幕：≤900 px、觸控平板與手機橫向由 core 精簡版面接手（☰ 製程與視角、⚙ 播放設定、◨ 側欄抽屜可捲到底）。`style.css` 刪掉兩段只在精簡版面下生效的 `max-width:760px` 舊規則；`max-height:520px` 那段只留給非觸控的矮視窗（`body:not(.viewer-compact)`），手機橫向不再多出一列空的播放列；精簡版面的細節說明改放在畫布左上、工具列下方。900～1100 px 的桌面規則保留。
+- 全景已依畫面比例取景，先除掉 stage 窄畫面拉遠的倍數（`stage.fitScale`），手機直向不會拉遠兩次；桌面倍數為 1，畫面不變。
+- 3D 標籤（`?labels` 或勾「顯示設備標籤」）：通道 A 線掃、DD 夾頭、移載、上共焦、θ 平台環座、入料托盤設 `priority: 2`，小螢幕避讓時優先保留。
+
 ### 統一檢查（共用框架）
 
 ```powershell
@@ -174,10 +182,11 @@ node ../core/tools/check.mjs WorkpieceMeasurement     # 在本資料夾；在 Te
 | `web/js/sequence.js` | 逐步流程（建在 `core/anim/sequence.js` 的 `createStepSequence` 上）、限速反推時間、由時間取樣狀態 |
 | `web/js/collision.js` | 間隙計算 |
 | `web/js/product.js` | 工件（依剖面車出） |
-| `web/js/project.js` | 專案介面：建地面與機台，`apply(t)` 把整個場景放到時間 t（main.js 與統一檢查共用） |
+| `web/js/project.js` | 專案介面：建地面（共用 `floor()`，本站展示地面材質）與機台，`apply(t)` 把整個場景放到時間 t（main.js 與統一檢查共用） |
 | `web/js/machine.js` | 機台、托盤、移載、光束示意 |
 | `web/js/camera-sim.js` | 取像模擬（畫進共用相機視窗） |
-| `web/js/main.js` | 舞台設定（`core/ui/stage.js` 的 `createStage`：曝光、背景與霧、相機、控制範圍、主光陰影、補光與輪廓光）、播放列（`core/ui/player.js`）、視角、介面、紀錄匯出、`?movie` 錄影掛勾（場景與時間狀態取自 `project.js`） |
+| `web/css/style.css` | 桌面版面、側欄卡片、量測表與托盤圖；≤900 px／觸控的精簡版面由 `core/ui/viewer-workspace.css` 處理 |
+| `web/js/main.js` | 舞台設定（`core/ui/stage.js` 的 `createStage`：`look: 'studio'` 給配色與燈光強度，本站另給霧、相機、控制範圍、主光位置與陰影、補光位置）、播放列（`core/ui/player.js`）、視角、介面、紀錄匯出、`?movie` 錄影掛勾（場景與時間狀態取自 `project.js`） |
 | `tools/verify.mjs` | 流程／幾何／運動驗證 |
 | `tools/update_cost_estimate.mjs` | 更新成本試算表並核對公式 |
 | `web/js/control-plan.js` | 3D 電盤／圖面共用元件與 I/O 清單 |

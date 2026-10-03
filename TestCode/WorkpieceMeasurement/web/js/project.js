@@ -5,6 +5,7 @@ import { SPECS, SCENARIOS, measurement } from './spec.js';
 import { createSequence } from './sequence.js';
 import { createMachine } from './machine.js';
 import { surfaceTexture } from './render-finishes.js';
+import { floor as floorPlane } from '@core/geom/environment.js';
 
 // 固定機構依 spec.js 的 id 分工位：底座（花崗岩、X 軸、梭台軸）、ST1、ST2
 const BASE = new Set(['granite', 'xaxis', 'shuttleIn', 'shuttleOut']);
@@ -24,10 +25,13 @@ export function createProject({ scene, headless = false, spec = 'B', scenario = 
   const s = SPECS[specId], sc = SCENARIOS[scenarioId], m = measurement(s, scenarioId);
 
   // ---------------------------------------------------------------- 地面（非實體：不列入干涉）
+  // 共用 floor()：100 m 見方的展示地面（灰藍粉體塗裝紋理，邊緣隱入霧中）＋ 6 m、100 mm 格的格線（預設隱藏，?grid 顯示）
   const floorFinish = surfaceTexture('powder').clone(); floorFinish.repeat.set(240, 240); floorFinish.needsUpdate = true;
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(100000, 100000), new THREE.MeshStandardMaterial({ color: 0x29323a, roughness: .86, roughnessMap: floorFinish, metalness: 0 }));
-  floor.name = 'floor'; floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
-  const grid = new THREE.GridHelper(6000, 60, 0x2a3644, 0x1c2530); grid.name = 'grid'; grid.position.y = 0.5; grid.visible = false; scene.add(grid);
+  const { mesh: floor, grid } = floorPlane(scene, {
+    size: [100000, 100000], material: new THREE.MeshStandardMaterial({ color: 0x29323a, roughness: .86, roughnessMap: floorFinish, metalness: 0 }),
+    gridSize: 6000, cell: 100, grid: [0x2a3644, 0x1c2530],
+  });
+  grid.visible = false;
 
   // ---------------------------------------------------------------- 機台與動作序列
   const machine = createMachine(scene, s);

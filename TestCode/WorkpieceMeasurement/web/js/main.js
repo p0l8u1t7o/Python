@@ -14,17 +14,17 @@ const specId = SPECS[qp.get('spec')] ? qp.get('spec') : 'B', scenarioId = SCENAR
 
 // ---------------------------------------------------------------- 場景
 const canvas = document.getElementById('c');
-// 共用舞台：此處只傳與預設不同的值（曝光、背景與霧、相機與控制範圍、主光陰影、補光、輪廓光）
+// 共用舞台：外觀用 look 'studio'（曝光、灰藍背景、主光／補光／輪廓光的顏色與強度，輪廓光位置即預設 [700, 2100, -500]）；
+// 此處只傳與預設不同的值（霧、相機與控制範圍、主光位置與陰影、補光位置）。燈位與陰影範圍沿用原本手調值，不用 extent 推算
 const stage = createStage({
-  canvas, qp, exposure: .94, background: 0x202a34, fog: [4500, 16000], logDepth: true,
+  canvas, qp, look: 'studio', fog: [4500, 16000],
   camera: { fov: 38, near: 2, far: 20000 },
   controls: { minDistance: 8, maxDistance: 6000, maxPolarAngle: Math.PI },   // 維持原本不限仰角（共用預設為 0.49π）
   sun: {
-    color: 0xffffff, intensity: 1.4, position: [-900, 2600, 1400], target: [0, 900, 0],
+    position: [-900, 2600, 1400], target: [0, 900, 0],
     shadow: { mapSize: innerWidth > 900 ? 4096 : 2048, camera: { left: -700, right: 700, top: 700, bottom: -700, near: 300, far: 5000 }, bias: -0.0001, normalBias: 0.4 },
   },
-  fill: { color: 0x9fb8ff, intensity: .5, position: [1200, 1500, -1500] },
-  extraLights: [{ color: 0xffead2, intensity: .65, position: [700, 2100, -500] }],   // 輪廓光
+  fill: { position: [1200, 1500, -1500] },
 });
 const { renderer, scene, camera, controls } = stage;
 
@@ -42,15 +42,15 @@ const reload = (k, v) => { const q = new URLSearchParams(location.search); q.set
 ui.specSel.onchange = () => reload('spec', ui.specSel.value); ui.result.onchange = () => reload('result', ui.result.value);
 ui.specName.textContent = `${s.name} · 配方 ${s.recipe}`; ui.specNote.textContent = `${s.note}。工件採圖面尺寸、設備為規劃包絡；量測值、缺陷與節拍為模擬示意，待樣品與 POC 校正。`;
 
-// 3D 標籤（共用舞台的 addLabel；畫布在頁面中的偏移由舞台處理）
-const V = (x, y, z) => new THREE.Vector3(x, y, z), addLabel = (html, pos) => stage.addLabel(html, pos);
-addLabel('<b>A</b> 4K 線掃＋1.5× 遠心', V(X1 + DIR_A[0] * 150, YA + 30, DIR_A[2] * 150));
+// 3D 標籤（共用舞台的 addLabel；畫布在頁面中的偏移由舞台處理）。priority 2：兩站主設備、移載與入料，小螢幕避讓時優先保留
+const V = (x, y, z) => new THREE.Vector3(x, y, z), addLabel = (html, pos, priority = 0) => stage.addLabel(html, pos, '', { priority });
+addLabel('<b>A</b> 4K 線掃＋1.5× 遠心', V(X1 + DIR_A[0] * 150, YA + 30, DIR_A[2] * 150), 2);
 addLabel('<b>B</b> 0.5× 雙遠心鏡頭', V(X1 - 150, YA + 28, 0)); addLabel('<b>B</b> 遠心平行背光', V(X1 + 80, YA + 24, 0));
-addLabel('<b>C</b> 口部端面（經中空軸）', V(X1, YM + 250, 0)); addLabel('DD 中空軸馬達＋三爪 PEEK 夾頭', V(X1, YM + 78, 40));
-addLabel('RGB 三角度線光源', V(X1 - 20, YA + 22, 48)); addLabel('移載：X 軸＋Z 軸＋貼靠氣缸＋側向真空吸嘴', V(-60, Y0 + 210, -160));
-addLabel(`上共焦 ${s.upper}`, V(X2, YS + s.wd + 90, 0)); addLabel('下共焦 CL-S015（參考距離 15 mm）', V(X2, Y0 + 50, 80));
-addLabel(`空心軸 θ 平台＋${s.ring} 薄環座`, V(X2 - 40, YS + 8, 40)); addLabel('C 型架（R 軸微動台）', V(300, Y0 + 370, 0));
-addLabel('入料托盤', V(TRAYS.IN.cx, YT + 25, 40)); addLabel('OK', V(TRAYS.OK.cx, YT + 25, 40)); addLabel('NG1', V(TRAYS.NG1.cx, YT + 25, 40)); addLabel('NG2', V(TRAYS.NG2.cx, YT + 25, 40));
+addLabel('<b>C</b> 口部端面（經中空軸）', V(X1, YM + 250, 0)); addLabel('DD 中空軸馬達＋三爪 PEEK 夾頭', V(X1, YM + 78, 40), 2);
+addLabel('RGB 三角度線光源', V(X1 - 20, YA + 22, 48)); addLabel('移載：X 軸＋Z 軸＋貼靠氣缸＋側向真空吸嘴', V(-60, Y0 + 210, -160), 2);
+addLabel(`上共焦 ${s.upper}`, V(X2, YS + s.wd + 90, 0), 2); addLabel('下共焦 CL-S015（參考距離 15 mm）', V(X2, Y0 + 50, 80));
+addLabel(`空心軸 θ 平台＋${s.ring} 薄環座`, V(X2 - 40, YS + 8, 40), 2); addLabel('C 型架（R 軸微動台）', V(300, Y0 + 370, 0));
+addLabel('入料托盤', V(TRAYS.IN.cx, YT + 25, 40), 2); addLabel('OK', V(TRAYS.OK.cx, YT + 25, 40)); addLabel('NG1', V(TRAYS.NG1.cx, YT + 25, 40)); addLabel('NG2', V(TRAYS.NG2.cx, YT + 25, 40));
 addLabel('花崗岩平台 620 × 430 × 42', V(-200, Y0 + 6, 205));
 
 STATIONS.forEach((name, i) => { const b = document.createElement('button'); b.className = 'st'; b.dataset.st = i; b.innerHTML = `<span class="idx">S${i}</span>${name}`; ui.stations.appendChild(b); });
@@ -72,8 +72,10 @@ const checklist = [
 ];
 
 // 視角：[相機位置, 注視點] 或依目前狀態計算的函式（全景依機台外廓與畫面比例取景、工件跟拍依工件位置）
+// 全景已依畫面比例取景，先除掉舞台窄畫面拉遠的倍數（goTo 會再乘回），手機直向才不會拉遠兩次；桌面倍數為 1
+const isoFrame = () => { const [p, t] = overviewFrame(machine.root, camera), k = 1 / stage.fitScale; return [p.map((v, i) => t[i] + (v - t[i]) * k), t]; };
 const VIEWS = {
-  iso: () => overviewFrame(machine.root, camera), top: [[0, 2050, 1], [0, 900, 0]],
+  iso: isoFrame, top: [[0, 2050, 1], [0, 900, 0]],
   st1: [[X1 - 105, YA + 60, -150], [X1 + 5, YA - 2, 5]], chuck: () => [[X1 - 38, YM + 6, -40], [X1, YM - s.len / 2, 0]],
   st2: [[X2 - 110, YS + 170, 300], [X2 + 10, YS + 25, 0]], seat: () => [[X2 - 40, YS + 26, -46], [X2, YS + s.len / 2, 0]],
   trays: [[-240, YT + 190, 260], [-160, YT, 0]],
@@ -94,6 +96,7 @@ function setView(name, instant = false) {
   machine.details.setMode(name === 'electrical' ? 'cutaway' : name === 'xray' ? 'xray' : 'shell');
   const [p, t] = typeof VIEWS[name] === 'function' ? VIEWS[name]() : VIEWS[name];
   stage.goTo(p, t, instant, VIEW_TWEEN);
+  lastPart.copy(machine.partWorld());                // 視角以目前工件位置為準（同一格先跳播再切視角時，跟拍不把跳播位移算進去）
   document.querySelectorAll('.views button').forEach(b => b.classList.toggle('selected', b.dataset.view === name));
   ui.detailNote.hidden = !['chuck', 'seat', 'part', 'electrical', 'xray', 'wiring', 'carriers', 'fibers'].includes(name);
   ui.detailNote.textContent = { chuck: `夾頭特寫 · 夾持帶只在杯口 1.5 mm\n吸嘴由後方爪間空隙伸入，貼靠中心距底面 1.8 mm`, seat: `環座特寫 · ${s.ring} 內孔 Ø${s.ringBore}\n下感測器由空心軸內向上量外底面，上感測器穿過杯口量內底面`, part: `工件跟拍 · Ø${s.od} × ${s.len} mm，實際尺寸` }[name] || '';
