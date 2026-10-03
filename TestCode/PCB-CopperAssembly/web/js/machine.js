@@ -117,10 +117,13 @@ export function createMachine(scene) {
   const scanners = {};
   for (const [key, i] of [['S1', 1], ['S3', 3]]) {
     const x0 = ST[i];
-    // Cantilever the inner end; its posts must stay outside S2's full-width moving beams.
-    for (const dx of (key==='S1'?[-250,90]:[-90,250])) { ko(block(g,[40,600,40],[x0+dx,1120,-260],matFrame),key+'立柱');ko(block(g,[40,600,40],[x0+dx,1120,260],matFrame),key+'立柱');block(g,[30,30,550],[x0+dx,1420,0],matAlu); }
+    // 完全懸臂：兩根 Z 軌與立柱都在外側（離 S2 較遠的一側），橫樑從外側伸到板面上方；
+    // 相機車掃描 x0 ± 131、外側原點 ±175（車體 ±35），都不跨過任何 Z 軌，內側也沒有立柱擋到 S2 雙龍門。
+    const out=key==='S1'?-1:1, RAILS=[230,300], ZC=330;   // Z 軌與 Z 向拖鏈離站中心的距離
+    for (const d of RAILS) { const x=x0+out*d; ko(block(g,[40,600,40],[x,1120,-260],matFrame),key+'立柱');ko(block(g,[40,600,40],[x,1120,260],matFrame),key+'立柱');block(g,[30,30,550],[x,1420,0],matAlu); }
     const beam = new THREE.Group(); g.add(beam);
-    block(beam, [540, 40, 50], [x0, 1450, 0], matAlu);
+    block(beam, [590, 40, 50], [x0+out*25, 1450, 0], matAlu);                     // 外端 x0∓320 越過外側 Z 軌，內端 x0±270
+    for (const d of RAILS) block(beam,[34,16,70],[x0+out*d,1430,0],matDark);   // 橫樑在兩根外側 Z 軌上的滑塊
     const car = new THREE.Group(); beam.add(car);
     block(car, [70, 90, 70], [0, 1410, 0], matDark);
     block(car,[20,140,20],[0,1300,0],matAlu);
@@ -128,20 +131,19 @@ export function createMachine(scene) {
     decal(g,150,24,[x0,1525,0],[0,0,0],key==='S1'?'S1 基板視覺定位':'S3 放置後檢查',{bg:'#122d3c',color:'#9fd8ff',center:true});
     scanners[key] = { beam, car, cam, x0 };
     const scanX=carrier(beam,key+' / camera X carrier',{origin:[x0,1488,0],min:-180,max:180,radius:35,width:24,pitch:14});
-    const scanZ=carrier(g,key+' / camera Z carrier',{origin:[x0+(key==='S1'?-290:290),1600,0],axis:[0,0,1],min:-180,max:180,radius:35,width:24,pitch:14});
-    const out=key==='S1'?-1:1;
+    const scanZ=carrier(g,key+' / camera Z carrier',{origin:[x0+out*ZC,1600,0],axis:[0,0,1],min:-180,max:180,radius:35,width:24,pitch:14});
     cable(car,key+' / camera vertical lead',[[0,1558,0],[0,1575,-55],[0,1500,-60],[0,1400,-60],[0,1275,-42]],{radius:3,color:CABLE.signal,clips:4,backing:{offset:[out*18,0,0],feet:[[2,[out*18,1455,-35]],[4,[out*10,1275,-10]]]}});
     for(const dx of [-120,160])support(beam,key+' / carrier standoff',[x0+dx,1470,0],[x0+dx,1477,0]);
     // 進線在拖鏈側邊（z +30）下降，再橫向接入固定端：相機車在固定端另一側時，上層鏈節與活動端不會掃過線材
-    cable(beam,key+' / axis junction',[[x0+(key==='S1'?-290:290),1670,0],[x0+(key==='S1'?-40:40),1685,0],[x0,1685,30],[x0,1488,30],[x0,1488,0]],{radius:3,color:CABLE.signal,backing:{path:[[x0+(key==='S1'?-290:290),1670,18],[x0+(key==='S1'?-40:40),1685,18],[x0,1685,48],[x0,1488,48]],feet:[[0,[x0+(key==='S1'?-260:260),1470,0]],[3,[x0,1470,18]]]}});
-    for(const z of [40,190]){support(g,key+' / fixed scan guide foot',[x0+out*265,1420,z],[x0+out*290,1420,z],6);support(g,key+' / fixed scan guide mount',[x0+out*290,1420,z],[x0+out*290,1589,z],6);}
+    cable(beam,key+' / axis junction',[[x0+out*ZC,1670,0],[x0+out*40,1685,0],[x0,1685,30],[x0,1488,30],[x0,1488,0]],{radius:3,color:CABLE.signal,backing:{path:[[x0+out*ZC,1670,18],[x0+out*40,1685,18],[x0,1685,48],[x0,1488,48]],feet:[[0,[x0+out*300,1470,0]],[3,[x0,1470,18]]]}});
+    for(const z of [40,190]){support(g,key+' / fixed scan guide foot',[x0+out*315,1420,z],[x0+out*ZC,1420,z],6);support(g,key+' / fixed scan guide mount',[x0+out*ZC,1420,z],[x0+out*ZC,1589,z],6);}
     routingUpdates.push(()=>{scanX.set(car.position.x-x0);scanZ.set(beam.position.z);});
   }
 
   // ---- S2 雙龍門放置 ----
   for (const s of [-1, 1]) {
     for (const z of [-470, 470]) ko(block(g, [70, G.beamY - 850, 70], [s * G.railX, (G.beamY + 850) / 2 - 50, z], matFrame), 'S2 立柱');   // 立柱頂＝Y 軌底
-    ko(block(g, [70, 60, 1010], [s * G.railX, G.beamY - 20, 0], matAlu), 'S2 Y 軌');
+    ko(block(g, [50, 60, 1010], [s * G.railX, G.beamY - 20, 0], matAlu), 'S2 Y 軌');   // 50 寬（中心線不變）：S1／S3 相機拍最內側一欄時留出間隙
   }
   const heads = {};
   for (const H of ['A', 'B']) {
