@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {smooth,filterTargets,atFrame} from './camera-path.mjs';
+import {smooth,filterTargets,atFrame} from '../../core/movie/camera-path.mjs';
 
 test('a workpiece handoff is smoothed without overshoot or a one-frame jump',()=>{
   const raw=Array.from({length:100},(_,i)=>[i<50?0:1000,700,20]);

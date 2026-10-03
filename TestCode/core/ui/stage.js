@@ -22,7 +22,8 @@ export function createStage({
   onDemand = false,                                             // true：靜止時不重繪（需在狀態改變時呼叫 invalidate）
   preserveDrawingBuffer = qp.has('shot'),
 } = {}) {
-  const useLog = qp.has('logdepth') ? qp.get('logdepth') !== '0' : logDepth;
+  // 錄影（?movie）一律用對數深度：4K 取樣的細線與遠景不閃
+  const useLog = qp.has('logdepth') ? qp.get('logdepth') !== '0' : qp.has('movie') || logDepth;
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: qp.get('aa') !== '0', powerPreference: 'high-performance', logarithmicDepthBuffer: useLog, preserveDrawingBuffer });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.shadowMap.enabled = qp.get('shadow') !== '0'; renderer.shadowMap.type = THREE.PCFSoftShadowMap;

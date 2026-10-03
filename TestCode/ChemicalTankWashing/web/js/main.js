@@ -1,7 +1,6 @@
 // 主程式：場景、依絕對時間套用各設備狀態、側欄面板、視角與相機子畫面。
 import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { createStage, exposeSim } from '@core/ui/stage.js';
 import { RACK, COLUMN, UPRIGHT, DECAP, BOOTH, WASTE, layoutChecks, ROBOT, LABEL, LYING, INBOUND, PAYLOAD, payloadAt } from './layout.js';
 import { MAT, D2R, smooth } from '@core/geom/parts.js';
 import { applyPlant } from './plant.js';
@@ -11,29 +10,21 @@ import { finishMaterials } from '@core/geom/hardware.js';
 import { createFocusTracking, createCameraWindow } from '@core/ui/view-controls.js';
 
 const qp = new URLSearchParams(location.search);
-// ---------------------------------------------------------------- 場景
+// ---------------------------------------------------------------- 場景（共用舞台 core/ui/stage.js；畫面迴圈仍由本檔管理：子畫面與按需重繪）
 const canvas = document.getElementById('c');
 // 對數深度緩衝：場景 15 m、細節到 mm，一般深度緩衝會讓貼地的分區、標線互搶深度而閃爍
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', logarithmicDepthBuffer: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.shadowMap.enabled = qp.get('shadow') !== '0'; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const stage = createStage({
+  canvas, qp, exposure: .86, logDepth: true,
+  camera: { fov: 40, near: 100, far: 150000 },
+  controls: { maxPolarAngle: Math.PI * .495, minDistance: 400, maxDistance: 70000 },
+  hemi: { sky: 0xcfe0ff, ground: 0x30363d, intensity: .55 },
+  sun: { intensity: 1.7, position: [-3000, 17000, 4000], target: [5000, 0, 8000], shadow: { mapSize: 4096, camera: { left: -11000, right: 11000, top: 11000, bottom: -11000, near: 2000, far: 40000 }, bias: -.0003, normalBias: 3 } },
+  fill: { color: 0x9fb8ff, intensity: .45, position: [16000, 9000, 22000] },
+});
+const { renderer, scene, camera, controls } = stage, sun = stage.lights.sun;
 renderer.shadowMap.autoUpdate = false;
-renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMappingExposure = .86;
 finishMaterials(renderer);
-const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0d1117);
-const pmrem = new THREE.PMREMGenerator(renderer), room = new RoomEnvironment(renderer);
-scene.environment = pmrem.fromScene(room, .04).texture; room.dispose(); pmrem.dispose();
 // r160 的環境反射強度設在材質 envMapIntensity（finishMaterials）。
-const camera = new THREE.PerspectiveCamera(40, 1, 100, 150000);
-const controls = new OrbitControls(camera, canvas);
-controls.enableDamping = true; controls.dampingFactor = .08; controls.maxPolarAngle = Math.PI * .495; controls.minDistance = 400; controls.maxDistance = 70000;
-scene.add(new THREE.HemisphereLight(0xcfe0ff, 0x30363d, .55));
-const sun = new THREE.DirectionalLight(0xffffff, 1.7); sun.position.set(-3000, 17000, 4000); sun.target.position.set(5000, 0, 8000);
-sun.castShadow = renderer.shadowMap.enabled; sun.shadow.mapSize.set(4096, 4096);
-Object.assign(sun.shadow.camera, { left: -11000, right: 11000, top: 11000, bottom: -11000, near: 2000, far: 40000 });
-sun.shadow.bias = -.0003; sun.shadow.normalBias = 3; scene.add(sun, sun.target);
-const fill = new THREE.DirectionalLight(0x9fb8ff, .45); fill.position.set(16000, 9000, 22000); scene.add(fill);
 
 // ---------------------------------------------------------------- 物件（與 core 統一檢查共用 project.js）
 const project = createProject({ scene });
@@ -251,4 +242,4 @@ if (qp.has('dims')) { ui.showDims.checked = true; building.dims.visible = true; 
 if (qp.has('cam')) { const a = qp.get('cam').split(',').map(Number); if (a.length === 6) { camera.position.set(...a.slice(0, 3)); controls.target.set(...a.slice(3)); controls.update(); } }
 document.getElementById('loading').classList.add('hide');
 frame();
-window.sim = { seekTo, setView, views: Object.keys(VIEWS), play() { playing = true; }, pause() { playing = false; }, get T() { return T; }, seq, get state() { return S; }, robot, total, focus, cameraWindow, camera, controls, focusPosition };
+exposeSim({ seekTo, setView, views: Object.keys(VIEWS), play() { playing = true; }, pause() { playing = false; }, get T() { return T; }, seq, get state() { return S; }, robot, total, focus, cameraWindow, camera, controls, focusPosition });

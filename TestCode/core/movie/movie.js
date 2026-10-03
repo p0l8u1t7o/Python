@@ -1,9 +1,11 @@
 import * as THREE from 'three';
 import {smooth,filterTargets,atFrame} from './camera-path.mjs';
 
-/** One absolute-time renderer for preview, audit and recording. */
+/** One absolute-time renderer for preview, audit and recording.
+ *  各專案在 main.js 以 ?movie 呼叫：installMovie({ project, scene, renderer, camera, controls, render, setView, total, steps, sample, focus, offset, detailShots, electricalMode, keepGuards })。
+ *  網頁本身的畫面迴圈在 ?movie 時不啟動（core/ui/stage.js 已處理；未用 stage 的專案在自己的迴圈開頭判斷）。 */
 export async function installMovie({project,scene,renderer,camera,controls,render,setView,total,steps,sample,focus,offset,detailShots=[],electricalMode,keepGuards=false}) {
-  const setElectricalMode=electricalMode||(await import('./electrical-cabinet.js')).setElectricalMode;
+  const setElectricalMode=electricalMode||(await import('@core/electrical/electrical-cabinet.js')).setElectricalMode;
   const W=1920,H=1080,FPS=30,SSAA=2,shots=[];
   const acid=project==='AutomaticAcid-BaseTitration',pcb=project==='PCB-CopperAssembly';
   const names={'AutomaticAcid-BaseTitration':'自動酸鹼滴定','MilitaryGradePC':'軍規電腦檢測','PCB-CopperAssembly':'PCB 散熱板組裝','RobotArmPressSSD':'SSD USB 銀腳壓合','shutter assembly':'快門葉片與上蓋組裝','WorkpieceMeasurement':'杯體加工件 AOI＋共焦量測'};
@@ -155,7 +157,7 @@ export async function installMovie({project,scene,renderer,camera,controls,rende
     if(activeMode!==mode){setElectricalMode(scene,mode,false);activeMode=mode;}
     camera.position.copy(v.p);controls.target.copy(v.target);camera.lookAt(v.target);
     camera.near=Math.max(2,Math.min(8,v.p.distanceTo(v.target)/250));
-    camera.aspect=W/H;camera.updateProjectionMatrix();render();return v;
+    camera.aspect=W/H;camera.updateProjectionMatrix();(scene.children.forEach(o=>{if(o.type==='Box3Helper')o.visible=false;}),render());return v;
   }
   const transition=document.createElement('canvas');transition.width=W;transition.height=H;
   const transitionContext=transition.getContext('2d',{alpha:false});
