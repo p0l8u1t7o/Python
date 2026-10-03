@@ -51,6 +51,8 @@ node ../core/tools/serve.mjs AutomaticAcid-BaseTitration --no-open
 
 網址參數：`?t=600&pause&view=sampler`、`?mode=omnis`、`?speed=30`、`?shadow=0`；主控台：`window.sim.seekTo(sec)`、`setView(name)`、`plan`。
 
+展示影片：開 `?pause&movie`，`main.js` 不跑一般迴圈，改載入 `core/movie/movie.js` 的 `installMovie`（逐格取樣排程、秤重步驟對準天平秤盤、其餘跟隨目前的杯／瓶），頁面下方出現影片預覽與輸出按鈕；此時舞台強制開對數深度。
+
 ## 檔案
 
 | 檔案 | 用途 |
@@ -61,7 +63,7 @@ node ../core/tools/serve.mjs AutomaticAcid-BaseTitration --no-open
 | `web/js/plan.js` | 手臂動作序列（逐步計算 PTP 與直線移動時間）、轉盤與滴定排程、樣品表與通訊紀錄 |
 | `web/js/sim.js` | 把排程在任一時間的狀態套到場景（畫面與驗證共用） |
 | `web/js/project.js` | 專案介面 `createProject({ scene })`：建立場景、`apply(t)` 套到時間 t，並提供 core 全場檢查的設定（非實體物件、設備分工位、逐條說明的允許接觸）；`main.js` 與 core 檢查共用同一份場景 |
-| `web/js/main.js` | 燈光、相機、時間軸、樣品表、滴定曲線、交握訊號、通訊紀錄、匯出；場景物件取自 `project.js` |
+| `web/js/main.js` | renderer、場景、相機、軌道控制、環境光與主要燈光由共用舞台 `core/ui/stage.js` 的 `createStage` 建立（只傳本站的曝光、霧、燈光參數；滴定杯補光有自己的陰影相機，留在本檔）；畫面迴圈用 `stage.loop`，`window.sim` 用 `exposeSim`；另有時間軸、樣品表、滴定曲線、交握訊號、通訊紀錄、匯出；場景物件取自 `project.js` |
 | `tools/verify.mjs` | 排程與幾何驗證 |
 
 ## 驗證

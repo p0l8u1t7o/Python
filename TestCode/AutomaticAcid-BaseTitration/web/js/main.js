@@ -9,28 +9,24 @@ import { createVisionOverlay } from '@core/ui/vision-overlay.js';
 import { liquidResults } from './vision-results.js';
 const vision = createVisionOverlay();
 const fullProcessVision = createVisionOverlay();
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { createStage, exposeSim } from '@core/ui/stage.js';
 import { createProject } from './project.js';
 import { ST, Y0, SAMPLES, TITRANT, ANALYTE, smooth } from './layout.js';
 
-const qp = new URLSearchParams(location.search);
+// 共用舞台（core/ui/stage.js）：參數與原本手寫的 renderer／燈光完全相同，畫面不變
 const canvas = document.getElementById('c');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: qp.get('aa') !== '0', powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.shadowMap.enabled = qp.get('shadow') !== '0'; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0; renderer.outputColorSpace = THREE.SRGBColorSpace;
-const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0d1117); scene.fog = new THREE.Fog(0x0d1117, 6000, 14000);
-const room=new RoomEnvironment(renderer),pmrem=new THREE.PMREMGenerator(renderer);
-room.traverse(o=>{if(o.isPointLight)o.intensity=240;});
-scene.environment=pmrem.fromScene(room,.04).texture;room.dispose();pmrem.dispose();
-const camera = new THREE.PerspectiveCamera(40, 1, 2, 30000);
-const controls = new OrbitControls(camera, canvas); controls.enableDamping = true; controls.dampingFactor = 0.08; controls.maxPolarAngle = Math.PI * 0.49; controls.minDistance = 30; controls.maxDistance = 9000;
-scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x2a2f36, 0.6));
-const sun = new THREE.DirectionalLight(0xfff8ef, 1.25); sun.position.set(-1400, 3600, 2000); sun.castShadow = qp.get('shadow') !== '0'; sun.shadow.mapSize.set(2048, 2048);
-Object.assign(sun.shadow.camera, { left: -1800, right: 1800, top: 1800, bottom: -1800, near: 500, far: 9000 }); sun.shadow.bias = -0.0003; scene.add(sun);
-sun.shadow.normalBias=.08;
-const fill = new THREE.DirectionalLight(0x9fb8ff, 0.5); fill.position.set(1800, 1500, -1800); scene.add(fill);
+const stage = createStage({
+  canvas, exposure: 1.0, background: 0x0d1117, fog: [6000, 14000],
+  logDepth: false,                                   // 原本未開對數深度；?movie 時由 stage 強制開啟
+  envLight: 240,                                     // RoomEnvironment 點光強度
+  camera: { fov: 40, near: 2, far: 30000 },
+  controls: { minDistance: 30, maxDistance: 9000 },  // 阻尼 .08、仰角上限 .49π 為 stage 預設
+  sun: { color: 0xfff8ef, intensity: 1.25, position: [-1400, 3600, 2000], target: [0, 0, 0],
+    shadow: { mapSize: 2048, camera: { left: -1800, right: 1800, top: 1800, bottom: -1800, near: 500, far: 9000 }, bias: -0.0003, normalBias: .08 } },
+  fill: { color: 0x9fb8ff, intensity: 0.5, position: [1800, 1500, -1800] },
+});
+const { renderer, scene, camera, controls, qp } = stage;
+// 滴定杯補光：有自己的投影目標與陰影相機，stage 的 extraLights 無法表達，留在這裡
 const cupLight=new THREE.DirectionalLight(0xfffbf3,.5);cupLight.position.set(590,1530,260);cupLight.target.position.set(810,990,60);
 cupLight.castShadow=renderer.shadowMap.enabled;cupLight.shadow.mapSize.set(1024,1024);
 Object.assign(cupLight.shadow.camera,{left:-130,right:130,top:180,bottom:-180,near:50,far:1000});
@@ -234,8 +230,6 @@ function drawHud() {
   for (const l of labels) { const p = l.pos.clone().project(camera), vis = ui.showLabels.checked && p.z < 1 && Math.abs(p.x) < .98 && Math.abs(p.y) < .9; l.el.style.display = vis ? 'block' : 'none'; if (vis) { const r = canvas.getBoundingClientRect(); l.el.style.left = r.left + (p.x * .5 + .5) * r.width + 'px'; l.el.style.top = r.top + (-p.y * .5 + .5) * r.height + 'px'; } }
   $('diagnostics').textContent = JSON.stringify({ T, total, step: f.step.label, act: s.act });
 }
-function resize() { const w = canvas.clientWidth, h = canvas.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
-window.addEventListener('resize', resize);
 let focusItem='beaker0';
 function activeProduct(){
   const touched=info?.step.touch?.find(id=>/^(beaker|bottle)/.test(id));
@@ -245,18 +239,21 @@ function activeProduct(){
   return lab.items[focusItem].getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0,35,0));
 }
 const processCamera=new THREE.PerspectiveCamera(38,1.5,.5,10000);
-function render() {
-  drawHud();workspace.follow();electrical.update({time:T,playing,action:info?.step.label,motion:!info?.step.idle,vision:false});workspace.renderOverview(renderer,scene);
+// 一格畫面分三段：主畫面前（HUD、跟隨、電控）、主畫面、主畫面後（疊圖與製程相機）
+function beforeMain() { drawHud();workspace.follow();electrical.update({time:T,playing,action:info?.step.label,motion:!info?.step.idle,vision:false}); }
+// 完整一格（跳播、切換模式、錄影都用這個）
+function render() { beforeMain(); workspace.renderOverview(renderer,scene); afterMain(); }
+function afterMain() {
+  camera.updateMatrixWorld();   // 疊圖投影要用這一格的相機（迴圈中主畫面在 stage 內最後才畫）
   if(['meniscus','titration','liquid','bottles','balance','decap','pipette','sampler','follow'].includes(visionView)) fullProcessVision.draw(camera,canvas.getBoundingClientRect(),liquidResults(lab,info,T,visionView)); else fullProcessVision.hide();
   const p=activeProduct();processCamera.position.copy(p).add(new THREE.Vector3(-150,180,230));processCamera.lookAt(p);processCamera.updateMatrixWorld(true);
   workspace.renderCamera({renderer,scene,camera:processCamera,vision,title:'製程觀察 · 液面示意（虛擬相機）',result:'跟隨目前處理的樣品，非實拍量測',marks:liquidResults(lab,info,T,info.sampler.job&&info.step.idle?'titration':visionView)});
 }
-const workspace=createViewerWorkspace({camera,controls,canvas,resize,getFocus:activeProduct,
+const workspace=createViewerWorkspace({camera,controls,canvas,resize:stage.resize,getFocus:activeProduct,
   focusOffset:[-150,180,230],focusNear:.5,onFocus:()=>{setElectricalCutaway(scene,false);camAnim=null;liquidTrack=null;follow=false;visionView='focus';document.querySelectorAll('.views button').forEach(b=>b.classList.remove('selected'));}});
 const electrical=createElectricalInspector({scene,camera,controls,canvas,onEnter:()=>setView('electrical',true),onExit:()=>setView('iso',true),title:'AutomaticAcid-BaseTitration'});
-const clock = new THREE.Clock();
-function frame() {
-  requestAnimationFrame(frame); const dt = Math.min(clock.getDelta(), 0.05);
+// 每格：時間推進、視角轉場、跟隨 → HUD 與疊圖 → stage 做 controls.update() 與主畫面渲染
+function tick(dt) {
   if (playing) {
     const idle = info?.step.idle && ui.autoSpeed.checked;
     T += dt * +ui.speed.value * (idle ? 10 : 1);
@@ -264,11 +261,27 @@ function frame() {
   }
   if (camAnim) { camAnim.u = Math.min(1, camAnim.u + dt * 1.4); camera.position.lerpVectors(camAnim.p0, camAnim.p, smooth(camAnim.u)); controls.target.lerpVectors(camAnim.t0, camAnim.t, smooth(camAnim.u)); if (camAnim.u === 1) camAnim = null; }
   if (follow) followCam(dt);
-  controls.update(); render();
+  camera.lookAt(controls.target);   // 與 controls.update() 的朝向一致，讓本格疊圖對齊
+  beforeMain(); afterMain();
 }
-setView(qp.get('view') || 'iso', true); resize(); ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放';
+setView(qp.get('view') || 'iso', true); stage.resize(); ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放';
 if (qp.has('speed')) ui.speed.value = qp.get('speed');
 if (qp.has('t')) { pause(); T = +qp.get('t') || 0; }
 if (qp.get('view') === 'follow') { project.apply(T); project.robot.getTcpWorld('grip', _tcp); controls.target.copy(_tcp); camera.position.copy(_tcp).add(new THREE.Vector3(260, 420, 620)); }
-window.sim = { plan, seekTo, get T() { return T; }, setView, views: [...Object.keys(views), 'meniscus', 'follow'], total, play, pause };
-$('loading').classList.add('hide'); render(); frame();
+exposeSim({ plan, seekTo, get T() { return T; }, setView, views: [...Object.keys(views), 'meniscus', 'follow'], total, play, pause });
+$('loading').classList.add('hide'); render();
+stage.loop(tick);   // ?movie 時 stage 不啟動迴圈，由錄影程式逐格驅動
+
+// ---------------------------------------------------------------- 錄影（?movie）：core/movie/movie.js 逐格取樣並呼叫 render()
+if (qp.has('movie')) {
+  pause();
+  const { installMovie } = await import('@core/movie/movie.js');
+  installMovie({
+    project: 'AutomaticAcid-BaseTitration', scene, renderer, camera, controls, render, setView, total,
+    steps: plan.steps,
+    sample(t) { T = t; info = project.apply(T); },
+    // 秤重相關步驟對準天平秤盤，其餘跟隨目前處理的杯／瓶
+    focus: () => { const bal = /天平|秤重|歸零|讀重|推把/.test(info.step.label); if (bal) return new THREE.Vector3(ST.balance.x, Y0 + ST.balance.pan + 45, ST.balance.z); return activeProduct(); },
+    offset: [-420, 470, 680],
+  });
+}
