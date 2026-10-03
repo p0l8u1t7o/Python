@@ -1,10 +1,13 @@
 // 單顆組裝流程：本體上料 → 定位取像 → 小葉片 ×2 → 大葉片 ×2 → 上蓋壓合 → 檢查下料
-// 狀態由步驟起點快照＋絕對時間求值，任意倒退／跳站都能重建（與 RobotArmPressSSD 相同做法）。
+// 排程本體用 core 的步驟序列（@core/anim/sequence.js：快照、插值、stationStart、total、events），
+// 本檔只負責規劃（取放料動作拆解、PTP 時間依關節速度延長、NG 疊片剔除）與 SCARA 手臂姿態。
 import * as THREE from 'three';
+import { createStepSequence } from '@core/anim/sequence.js';
+import { smooth } from '@core/anim/track.js';
 import { LAYOUT, NEST_SEAT, pocket } from './cell.js';
 import { PART, BLADES, bladeSeat } from './product.js';
 
-export const smooth = t => t * t * t * (10 + t * (-15 + 6 * t)); // 起停速度與加速度為零
+export { smooth };   // 起停速度與加速度為零（main.js 沿用）
 export const STATIONS = ['本體上料', '定位取像', '小葉片', '大葉片', '上蓋壓合', '檢查下料'];
 export const SPEC = {
   k: 9,                     // 本循環用到抽屜 A 的第 10 格（前 9 顆已完成、放回原格）
@@ -49,18 +52,25 @@ export function createSequence({ robot, apply, ng = false }) {
     t1: 0, t2: 0, t3: 1, open: 1, clamp: 0, baseShift: 0, float: 1, press: 0, drop: 0, vac: 0, flashUp: 0, flashDown: 0, view: 'down', shot: '',
     zone: 'free', station: 0, action: '', sub: '',
   };
-  const steps = [], stationStart = Array(STATIONS.length).fill(0);
+  // station、閃光、真空在步驟開始時切換；其餘數值由 core 以五次 S 曲線插值
+  const seq = createStepSequence({ base, discrete: ['station', 'flashUp', 'flashDown', 'vac'], stations: STATIONS });
+  const steps = seq.steps;
   const P = (tcp, p, yaw = 0) => robot.poseFor(tcp, p, yaw);
   const at = (p, y) => v(p.x, y, p.z);
   const lin = (d, speed) => Math.max(0.04, Math.ceil(1.875 * Math.abs(d) / speed * 100) / 100);
-  let time = 0, previous = clone(base), lastPose = P('T3', at(pocket('base', SPEC.k - 1), T));
+  let lastPose = P('T3', at(pocket('base', SPEC.k - 1), T)), loc = clone(base.loc);
+  /**
+   * 加一步：pose 為該步驟終點的 TCP 目標（null＝不動）。
+   * 關節解依步驟順序以前一解為參考求出（逐步規劃，等同整段 robot.plan），
+   * PTP 步驟的時間再依各軸最高速延長到 0.05 s 的倍數。
+   */
   function add(st, dur, action, sub, values = {}, pose = null, extra = {}) {
-    const initial = clone(previous), end = clone(initial);
-    for (const [key, value] of Object.entries(values)) end[key] = key === 'loc' ? { ...initial.loc, ...value } : clone(value);
-    end.station = st; end.action = action; end.sub = sub;
-    const s = { station: st, start: time, dur, action, sub, initial, end, pose0: lastPose, pose1: pose || lastPose, ...extra };
+    if (values.loc) values = { ...values, loc: loc = { ...loc, ...values.loc } };   // 零件歸屬只列有變的件
+    const s = { pose0: lastPose, pose1: pose || lastPose, ...extra };
     s.ptp = !!pose && !s.path && !s.contact;
-    lastPose = s.pose1; steps.push(s); previous = end; time += dur; return s;
+    robot.plan([s.pose0, s.pose1]);
+    if (s.ptp) dur = Math.max(dur, Math.ceil(robot.ptpTime(s.pose0, s.pose1) * 20) / 20);
+    lastPose = s.pose1; return seq.add(st, dur, action, sub, values, s);
   }
   /** 取料：移至上方（PTP）→ 下降 → 減速接近 → 吸取／夾取 → 上升 */
   function pick(st, tcp, label, where, yaw, id, grabText, tools) {
@@ -153,33 +163,20 @@ export function createSequence({ robot, apply, ng = false }) {
   place(5, 'T3', `料盤 #${SPEC.k + 1}（放回原格）`, pBase, 0, 'base', '放開成品', 'out');
   steps[steps.length - 1].done = 'out';
 
-  // ---- 關節規劃與時間重排 ----
-  robot.plan(steps.flatMap(s => [s.pose0, s.pose1]));
-  time = 0; stationStart.fill(0);
-  const seen = new Set();
-  for (const s of steps) {
-    if (s.ptp) s.dur = Math.max(s.dur, Math.ceil(robot.ptpTime(s.pose0, s.pose1) * 20) / 20);
-    if (!seen.has(s.station)) { seen.add(s.station); stationStart[s.station] = time; }
-    s.start = time; time += s.dur;
-  }
-  const DISCRETE = new Set(['station', 'flashUp', 'flashDown', 'vac']);
+  // ---- 取樣：core 給狀態插值，本檔補上兩個例外與手臂姿態 ----
   function sample(sec) {
-    sec = Number.isFinite(sec) ? THREE.MathUtils.clamp(sec, 0, time) : 0;
-    const index = steps.findIndex(s => sec < s.start + s.dur), idx = index < 0 ? steps.length - 1 : index, s = steps[idx];
-    const t = THREE.MathUtils.clamp((sec - s.start) / s.dur, 0, 1), e = smooth(t), state = clone(s.initial);
-    for (const [key, value] of Object.entries(s.end)) {
-      if (typeof value === 'number' && typeof s.initial[key] === 'number' && !DISCRETE.has(key)) state[key] = THREE.MathUtils.lerp(s.initial[key], value, key==='drop'?t:e);
-      else state[key] = clone(value);
-    }
+    const r = seq.sample(sec), { state, step: s, index, u: t, e } = r;
     // 零件的歸屬在該步驟完成時才改變（吸取／放開的瞬間），位置因此連續
     if (t < 1) state.loc = clone(s.initial.loc);
+    // NG 料自由落下：drop 隨時間線性（station.js 再換算成拋物線高度）
+    state.drop = s.initial.drop + (s.end.drop - s.initial.drop) * t;
     // 自由移位走關節插值（PTP）；下降、接近、上升走直線
     const p = s.path ? { tcp: s.pose1.tcp, target: s.pose0.target.clone().lerp(s.pose1.target, e), yaw: s.pose1.yaw, ref: s.pose0 }
       : s.ptp ? { ptp: { from: s.pose0, to: s.pose1, e } } : s.pose1;
     robot.setPose(p); robot.goal.speed = s.contact ? 60 : 2000;
     apply(state);
-    const completed = new Set(steps.slice(0, idx).map(x => x.done).filter(Boolean)); if (t === 1 && s.done) completed.add(s.done);
-    return { state, step: s, index: idx, t, completed };
+    const completed = new Set(steps.slice(0, index).map(x => x.done).filter(Boolean)); if (t === 1 && s.done) completed.add(s.done);
+    return { ...r, t, completed };
   }
-  return { sample, steps, total: time, stationStart, base, slots: S };
+  return { sample, steps, total: seq.total, stationStart: seq.stationStart, events: seq.events, base, slots: S };
 }

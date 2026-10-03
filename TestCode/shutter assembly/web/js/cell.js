@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import {controlPanel,entryGland,panelFeed} from '@core/electrical/electrical-cabinet.js';
 import { cable, cableTray, support, CABLE } from '@core/electrical/cable-routing.js';
 import { block, cylinder, decal, screw } from '@core/geom/shapes.js';
+import { MAT } from '@core/geom/materials.js';
 import { microTexture, batchStatic } from '@core/geom/surfaces.js';
 import { PART, createBase, createBlade, createCover, createAssembly } from './product.js';
 
@@ -43,10 +44,6 @@ function jitter(i, k) { const h = Math.sin(i * 12.9898 + k * 78.233) * 43758.545
 const matFrame = new THREE.MeshStandardMaterial({ color: 0x6b7480, roughness: 0.5, metalness: 0.6 });
 const matAlu = new THREE.MeshStandardMaterial({ color: 0xb9c0c8, roughness: 0.38, metalness: 0.8, bumpMap: microTexture('brushed'), bumpScale: .02 });
 const matPlate = new THREE.MeshStandardMaterial({ color: 0x8a939c, roughness: 0.45, metalness: 0.7, bumpMap: microTexture('brushed'), bumpScale: .015 });
-const matDark = new THREE.MeshStandardMaterial({ color: 0x1e2226, roughness: 0.5, metalness: 0.4 });
-const matCab = new THREE.MeshStandardMaterial({ color: 0xd9dcdf, roughness: 0.6, metalness: 0.2 });
-const matBlue = new THREE.MeshStandardMaterial({ color: 0x2f5f9e, roughness: 0.5, metalness: 0.4 });
-const matYellow = new THREE.MeshStandardMaterial({ color: 0xf2b21b, roughness: 0.6 });
 const matESDmat = new THREE.MeshStandardMaterial({ color: 0x2d6b56, roughness: 0.9 });
 const matNest = new THREE.MeshStandardMaterial({ color: 0x2b3038, roughness: 0.35, metalness: 0.55 });
 const matPOM = new THREE.MeshStandardMaterial({ color: 0xe8e4d8, roughness: 0.6 });
@@ -54,7 +51,6 @@ const matTray = new THREE.MeshPhysicalMaterial({ color: 0xcfe6f2, roughness: 0.1
 const matTrayEdge = new THREE.MeshStandardMaterial({ color: 0x9fc4d6, roughness: 0.3, transparent: true, opacity: 0.55 });
 const matPC = new THREE.MeshPhysicalMaterial({ color: 0xcfe3ff, roughness: 0.1, transmission: 0.3, transparent: true, opacity: 0.12, depthWrite: false, side: THREE.DoubleSide });
 const matFloor = new THREE.MeshStandardMaterial({ color: 0x1b2027, roughness: 0.95 });
-const matGlass = new THREE.MeshPhysicalMaterial({ color: 0x9fc6ff, roughness: 0.05, transmission: 0.7, transparent: true, opacity: 0.5 });
 
 /**
  * @param k 本循環使用的本體格號（0 起算）；ng 示意疊片時大葉片多用一格
@@ -66,15 +62,15 @@ export function createCell(scene, { k = 9, ng = false } = {}) {
 
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(9000, 6000), matFloor); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; g.add(floor);
   const grid = new THREE.GridHelper(9000, 45, 0x2c3540, 0x222a33); grid.position.y = 0.5; g.add(grid);
-  for (const z of [1100, -1000]) block(g, [3600, 1, 40], [0, 1, z], matYellow);
+  for (const z of [1100, -1000]) block(g, [3600, 1, 40], [0, 1, z], MAT.yellow);
 
   // ---- 機台：底櫃（RC8A／PLC／視覺 IPC）＋ 20 mm 台面 ----
   const { x: ex, z0, z1, h } = LAYOUT.encl;
   g.userData.electricalEnclosure={min:[-ex+4,4,z0+4],max:[ex-4,top-20,z1-4]};
   // Cabinet is a shell: leave physical volume for the camera and controller.
-  for(const x of [-ex+2,ex-2])block(g,[4,top-20,z1-z0],[x,(top-20)/2,(z0+z1)/2],matCab).userData.electricalCover=true;
-  for(const z of [z0+2,z1-2]){const wall=block(g,[2*ex-8,top-20,4],[0,(top-20)/2,z],matCab);if(z>0)wall.userData.electricalCover=true;}
-  block(g,[2*ex,4,z1-z0],[0,2,(z0+z1)/2],matCab);
+  for(const x of [-ex+2,ex-2])block(g,[4,top-20,z1-z0],[x,(top-20)/2,(z0+z1)/2],MAT.cabinet).userData.electricalCover=true;
+  for(const z of [z0+2,z1-2]){const wall=block(g,[2*ex-8,top-20,4],[0,(top-20)/2,z],MAT.cabinet);if(z>0)wall.userData.electricalCover=true;}
+  block(g,[2*ex,4,z1-z0],[0,2,(z0+z1)/2],MAT.cabinet);
   const portPlate=(w,d,y,h,cx,cz,r,mat)=>{
     const s=new THREE.Shape();s.moveTo(-w/2,-d/2);s.lineTo(w/2,-d/2);s.lineTo(w/2,d/2);s.lineTo(-w/2,d/2);s.closePath();
     const hole=new THREE.Path();hole.absarc(LAYOUT.upCam.x-cx,-(LAYOUT.upCam.z-cz),r,0,Math.PI*2,true);s.holes.push(hole);
@@ -88,13 +84,13 @@ export function createCell(scene, { k = 9, ng = false } = {}) {
   };
   portPlate(2*ex,z1-z0,top-20,20,0,(z0+z1)/2,21,matPlate).name='table-optical-port';
   const doorDetails=new THREE.Group();doorDetails.userData.electricalCover=true;g.add(doorDetails);
-  for (const x of [-480, -160, 160, 480]) block(doorDetails, [300, 640, 2], [x, 400, z1 + 1], matCab);
+  for (const x of [-480, -160, 160, 480]) block(doorDetails, [300, 640, 2], [x, 400, z1 + 1], MAT.cabinet);
   for (const x of [-480, -160, 160, 480]) {
     // Cabinet seams, flush latches and ventilation below the moving workspace.
     // 縫條前緣離門板 1 mm（< 0.6 mm 會與門板面深度互搶而閃爍）
-    for(const side of [-1,1]) block(doorDetails,[1.5,640,1],[x+side*150,400,z1+2.5],matDark);
-    block(doorDetails,[9,64,8],[x+119,455,z1+6],matDark);
-    for(let i=0;i<7;i++) block(doorDetails,[95,3,.7],[x,180+i*12,z1+2.3],matDark);
+    for(const side of [-1,1]) block(doorDetails,[1.5,640,1],[x+side*150,400,z1+2.5],MAT.black);
+    block(doorDetails,[9,64,8],[x+119,455,z1+6],MAT.black);
+    for(let i=0;i<7;i++) block(doorDetails,[95,3,.7],[x,180+i*12,z1+2.3],MAT.black);
   }
   decal(doorDetails,560,80,[0,700,z1+3.7],[0,0,0],['RC8A 手臂控制器 · KV-X PLC · 視覺 IPC','SIMULATION'],{bg:'#102635',color:'#65d7b8'});
   // 中央 ESD 墊（治具與相機區）
@@ -117,8 +113,8 @@ export function createCell(scene, { k = 9, ng = false } = {}) {
   // 側推夾緊：+x、+z 兩支微型氣缸＋POM 推塊，把本體推靠 −x／−z 基準邊
   const clampX = new THREE.Group(), clampZ = new THREE.Group(); nest.add(clampX, clampZ);
   // 氣缸底面埋入治具座 0.5 mm：與推塊底面錯開 0.8 mm，避免重合面閃爍
-  ko(block(nest, [16, 6, 10], [X1 + W + 8, N.floor + 2.5, -3], matBlue), '夾緊氣缸 X');
-  ko(block(nest, [10, 6, 16], [4.5, N.floor + 2.5, Z1 + W + 8], matBlue), '夾緊氣缸 Z');
+  ko(block(nest, [16, 6, 10], [X1 + W + 8, N.floor + 2.5, -3], MAT.steelBlue), '夾緊氣缸 X');
+  ko(block(nest, [10, 6, 16], [4.5, N.floor + 2.5, Z1 + W + 8], MAT.steelBlue), '夾緊氣缸 Z');
   // 推塊高 925.3～927.7：上蓋 +x 側卡勾壓合到底時底端約在 927.8，推塊頂面須低於它（原本 927.9 會頂到卡勾）
   ko(block(clampX, [6 + W, 2.4, 5.4], [NEST_PUSH.x + (6 + W) / 2, N.floor + 1.5, -3], matPOM),'推塊 X');
   ko(block(clampZ, [5.4, 2.4, 6 + W], [4.5, N.floor + 1.5, NEST_PUSH.z + (6 + W) / 2], matPOM),'推塊 Z');
@@ -132,13 +128,13 @@ export function createCell(scene, { k = 9, ng = false } = {}) {
     const s=new THREE.Shape();s.absarc(0,0,outer,0,Math.PI*2,false);
     const hole=new THREE.Path();hole.absarc(0,0,inner,0,Math.PI*2,true);s.holes.push(hole);
     const geo=new THREE.ExtrudeGeometry(s,{depth:height,bevelEnabled:false,curveSegments:32});geo.rotateX(-Math.PI/2);
-    const m=new THREE.Mesh(geo,matDark);m.position.y=y-height/2;m.name=name;uc.add(m);return m;
+    const m=new THREE.Mesh(geo,MAT.black);m.position.y=y-height/2;m.name=name;uc.add(m);return m;
   };
   ko(sleeve(30,18,12,top+6,'上視環形光'),'上視環形光');
   const ringLed = new THREE.Mesh(new THREE.TorusGeometry(24, 2, 8, 40), ringMat); ringLed.rotation.x = Math.PI / 2; ringLed.position.y = top + 12.2; uc.add(ringLed);
-  cylinder(uc, 18, 1, [0, top + 12.3, 0], matGlass, 'y', 32);
+  cylinder(uc, 18, 1, [0, top + 12.3, 0], MAT.glass, 'y', 32);
   sleeve(20,16,90,top-70,'telecentric-barrel');
-  block(uc, [44, 44, 50], [0, top - 140, 0], matDark);                // 相機
+  block(uc, [44, 44, 50], [0, top - 140, 0], MAT.black);                // 相機
   for(const side of [-1,1]){
     support(g,'UPCAM / camera cradle',[U.x+side*22,top-140,U.z],[U.x+side*50,top-140,U.z],4);
     support(g,'UPCAM / cradle hanger',[U.x+side*50,top-140,U.z],[U.x+side*50,top-20,U.z],4);
@@ -150,8 +146,8 @@ export function createCell(scene, { k = 9, ng = false } = {}) {
   upCam.position.set(U.x, top + 13, U.z); upCam.up.set(0, 0, -1); upCam.lookAt(U.x, U.focus, U.z); g.add(upCam);
   // 離子風嘴：對準相機上方的吸嘴，消除葉片靜電
   const ion = new THREE.Group(); ion.name = 'ionizer'; ion.position.set(U.x - 75, top, U.z); g.add(ion);
-  ko(block(ion, [16, 40, 16], [0, 20, 0], matCab), '離子風嘴');
-  ko(cylinder(ion, 4, 18, [12, 36, 0], matDark, 'x', 12), '離子風嘴噴頭');
+  ko(block(ion, [16, 40, 16], [0, 20, 0], MAT.cabinet), '離子風嘴');
+  ko(cylinder(ion, 4, 18, [12, 36, 0], MAT.black, 'x', 12), '離子風嘴噴頭');
   decal(ion, 14, 6, [0, 28, 8.7], [0, 0, 0], 'ION', { color: '#2c5f86', center: true });
 
   // ---- NG 盒 ----
@@ -169,10 +165,10 @@ export function createCell(scene, { k = 9, ng = false } = {}) {
     block(dg, [w, 5, len], [X, top + 2.5, (dz0 + dz1) / 2], matAlu);
     for (const side of [-1, 1]) {
       ko(block(dg, [6, 26, len], [X + side * (w / 2 - 3), top + 13, (dz0 + dz1) / 2], matAlu), `抽屜 ${name} 側壁`);
-      block(dg, [12, 14, len + 40], [X + side * (w / 2 + 8), top - 6, (dz0 + dz1) / 2 - 20], matDark);   // 滑軌（頂面高出台面 1 mm：原本與台面同高而閃爍）
+      block(dg, [12, 14, len + 40], [X + side * (w / 2 + 8), top - 6, (dz0 + dz1) / 2 - 20], MAT.black);   // 滑軌（頂面高出台面 1 mm：原本與台面同高而閃爍）
     }
     ko(block(dg, [w, 26, 6], [X, top + 13, dz0 + 3], matAlu), `抽屜 ${name} 後壁`);
-    const front = block(dg, [w + 20, 90, 18], [X, top + 20, dz1 + 9], matCab); front.name = `抽屜 ${name} 面板`; keepout.push(front);
+    const front = block(dg, [w + 20, 90, 18], [X, top + 20, dz1 + 9], MAT.cabinet); front.name = `抽屜 ${name} 面板`; keepout.push(front);
     block(dg, [140, 12, 14], [X, top + 30, dz1 + 26], matFrame);
     decal(dg, 120, 26, [X - 70 * s * 0, top + 52, dz1 + 18.8], [0, 0, 0], `抽屜 ${name}`, { bg: '#102635', color: '#9fd8ff', center: true });
     const lamp = cylinder(dg, 6, 4, [X + 120, top + 52, dz1 + 19], new THREE.MeshStandardMaterial({ color: 0x333333, emissive: 0x3dd68c, emissiveIntensity: 0 }), 'z', 18);
@@ -226,10 +222,10 @@ export function createCell(scene, { k = 9, ng = false } = {}) {
   block(occ, [2 * ex, h - top, 2], [0, (h + top) / 2, z0], matPC);
   block(occ, [2 * ex, h - top - 130, 2], [0, (h + top + 130) / 2, z1], matPC);
   for (const x of [-ex, ex]) block(occ, [2, h - top, z1 - z0], [x, (h + top) / 2, (z0 + z1) / 2], matPC);
-  block(occ, [60, 22, 30], [0, 1500, z1 + 18], matDark); decal(occ, 70, 14, [0, 1525, z1 + 34], [0, 0, 0], '前門互鎖', { center: true });
-  block(g, [210, 150, 16], [ex - 150, 1250, z1 + 12], new THREE.MeshStandardMaterial({ color: 0x0c1a2b, emissive: 0x1f4f8f, emissiveIntensity: 0.55 }));
+  block(occ, [60, 22, 30], [0, 1500, z1 + 18], MAT.black); decal(occ, 70, 14, [0, 1525, z1 + 34], [0, 0, 0], '前門互鎖', { center: true });
+  block(g, [210, 150, 16], [ex - 150, 1250, z1 + 12], MAT.screen);
   decal(g, 190, 125, [ex - 150, 1250, z1 + 21], [0, 0, 0], ['快門組裝站', 'HSR065 · 雙抽屜', 'SIMULATION'], { bg: '#102635', color: '#65d7b8' });
-  cylinder(g, 22, 12, [ex - 150, 1110, z1 + 10], matYellow, 'z'); cylinder(g, 15, 18, [ex - 150, 1110, z1 + 20], new THREE.MeshStandardMaterial({ color: 0xd53730 }), 'z');
+  cylinder(g, 22, 12, [ex - 150, 1110, z1 + 10], MAT.yellow, 'z'); cylinder(g, 15, 18, [ex - 150, 1110, z1 + 20], new THREE.MeshStandardMaterial({ color: 0xd53730 }), 'z');
   const tower = new THREE.Group(); tower.position.set(ex - 80, h + 40, z0 + 80); g.add(tower);
   cylinder(tower, 8, 80, [0, 0, 0], matFrame);
   const towerLamps = {};

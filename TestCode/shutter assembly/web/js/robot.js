@@ -4,14 +4,12 @@
 import * as THREE from 'three';
 import { cable, CABLE } from '@core/electrical/cable-routing.js';
 import { block, cylinder, decal, screw, tube } from '@core/geom/shapes.js';
+import { MAT } from '@core/geom/materials.js';
 import { createHSR065, HSR065, HSR065_MAT, JOINTS, wrapPi, fk as armFk, ik as armIk } from '@core/models/robots/denso-hsr065.js';
 import { PART } from './product.js';
 
 const D2R = Math.PI / 180;
 const { armDark: matArmD, joint: matJoint, shaft: matShaft } = HSR065_MAT;
-const matTool = new THREE.MeshStandardMaterial({ color: 0x9aa3ad, roughness: 0.35, metalness: 0.75 });
-const matAnod = new THREE.MeshStandardMaterial({ color: 0x3b4149, roughness: 0.4, metalness: 0.6 });
-const matBlueAnod = new THREE.MeshStandardMaterial({ color: 0x2f5f9e, roughness: 0.45, metalness: 0.5 });
 const matPad = new THREE.MeshStandardMaterial({ color: 0x3a3f33, roughness: 0.95 });         // 導電 PU／多孔陶瓷吸盤面
 const matESD = new THREE.MeshStandardMaterial({ color: 0x2c2c2c, roughness: 0.85 });         // ESD PEEK 夾指
 const matGlass = new THREE.MeshPhysicalMaterial({ color: 0x8fb8ff, roughness: 0.05, transmission: 0.6, transparent: true, opacity: 0.8 });
@@ -41,11 +39,11 @@ export function createRobot() {
   const armParts = arm.armParts;
   // ---- 工具頭（隨 J4 旋轉，裝在法蘭下）----
   const tool = arm.flange; tool.name = 'tool';
-  const plate = block(tool, [108, 8, 100], [0, -14, -18], matTool); plate.name = 'tool-plate';
+  const plate = block(tool, [108, 8, 100], [0, -14, -18], MAT.steel); plate.name = 'tool-plate';
   for (const x of [-46, 46]) for (const z of [-60, 24]) screw(tool, [x, -9.7, z], 2.2);
   decal(tool, 40, 10, [0, -9.3, 20], [-Math.PI / 2, 0, 0], 'EOAT', { color: '#2b3540', center: true });
   const slides = {}, contact = [];
-  function slide(key, bodyColor = matBlueAnod) {
+  function slide(key, bodyColor = MAT.steelBlue) {
     const { x, z } = TOOL[key], g = new THREE.Group(); g.position.set(x, 0, z); tool.add(g);
     block(g, [20, 40, 22], [0, -38, 0], bodyColor);                // 氣動滑台本體
     const move = new THREE.Group(); g.add(move); slides[key] = move;
@@ -53,9 +51,9 @@ export function createRobot() {
   }
   // T1 葉片吸嘴：真空管、軟性緩衝、多孔吸盤（長 5 mm、寬 1.4 mm）
   const t1 = slide('T1');
-  cylinder(t1, 4, 24, [0, -66, 0], matTool, 'y', 16);
+  cylinder(t1, 4, 24, [0, -66, 0], MAT.steel, 'y', 16);
   const t1shaft = cylinder(t1, 1.8, 10, [0, -83, 0], matShaft, 'y', 16);
-  const t1body = cylinder(t1, 2.6, 6, [0, -85, 0], matAnod, 'y', 16);
+  const t1body = cylinder(t1, 2.6, 6, [0, -85, 0], MAT.steelDark, 'y', 16);
   // Below the white plate, only a narrow vacuum stem fits behind the blade.
   // The former 5.2 mm collar obscured the real contour in the up-camera image.
   const t1stem = cylinder(t1, .45, 8.8, [0, -92.4, 0], matShaft, 'y', 16);
@@ -69,34 +67,34 @@ export function createRobot() {
   contact.push(t1tip, t1stem, t1shaft, t1body);
   // T2：外框均壓背板＋四個真空接觸墊，避開上蓋的沖孔。
   const t2 = slide('T2');
-  cylinder(t2, 9, 6, [0, -61, 0], matAnod, 'y', 24);                // 荷重元
+  cylinder(t2, 9, 6, [0, -61, 0], MAT.steelDark, 'y', 24);                // 荷重元
   decal(t2, 10, 3, [0, -61, 9.05], [0, 0, 0], 'LOAD', { color: '#d6e1ea', center: true });
   cylinder(t2, 3, 16, [0, -72, 0], matShaft, 'y', 12);
   const t2springs = [];
-  for (const [sx, sz] of [[-6, -6], [6, -6], [-6, 6], [6, 6]]) { const s = cylinder(t2, 1.3, 10, [sx, -83, sz], matTool, 'y', 10); t2springs.push(s); }
+  for (const [sx, sz] of [[-6, -6], [6, -6], [-6, 6], [6, 6]]) { const s = cylinder(t2, 1.3, 10, [sx, -83, sz], MAT.steel, 'y', 10); t2springs.push(s); }
   const frame = new THREE.Group(); t2.add(frame);
-  block(frame, [20, 3, 19], [0, -89.5, 0], matAnod);
+  block(frame, [20, 3, 19], [0, -89.5, 0], MAT.steelDark);
   const fw = 17.8, fd = 16.8, band = 2.6, fy = -96.5, fh = 3;
   for (const [w, d, x, z] of [[fw, band, 0, -(fd - band) / 2], [fw, band, 0, (fd - band) / 2], [band, fd - 2 * band, -(fw - band) / 2, 0], [band, fd - 2 * band, (fw - band) / 2, 0]]) {
-    block(frame, [w, 1, d], [x, fy + 1, z], matAnod);
+    block(frame, [w, 1, d], [x, fy + 1, z], MAT.steelDark);
   }
   for(const x of PART.coverPads.x) for(const z of PART.coverPads.z) {
     const pad = block(frame, [PART.coverPads.w, fh, PART.coverPads.d], [x, fy, z], matPad);
     pad.name = 'T2-vacuum-pad'; contact.push(pad);
   }
-  block(frame, [4, 4, 4], [0, -93, 0], matAnod);
+  block(frame, [4, 4, 4], [0, -93, 0], MAT.steelDark);
   function setCompliance(mm) {
     frame.position.y=mm;
     for(const spring of t2springs) { spring.scale.y=(10-mm)/10;spring.position.y=-83+mm/2; }
   }
   // T3 本體夾爪：平行夾爪，ESD 夾指夾本體 ±z 側面
-  const t3 = slide('T3', matAnod);
-  block(t3, [26, 14, 18], [0, -65, 0], matBlueAnod);
+  const t3 = slide('T3', MAT.steelDark);
+  block(t3, [26, 14, 18], [0, -65, 0], MAT.steelBlue);
   decal(t3, 16, 5, [0, -65, 9.7], [0, 0, 0], 'GRIP', { color: '#d6e1ea', center: true });
   const fingers = [];
   for (const s of [-1, 1]) {
     const f = new THREE.Group(); t3.add(f);
-    block(f, [8, 4, 3], [0, -73, 0], matAnod);
+    block(f, [8, 4, 3], [0, -73, 0], MAT.steelDark);
     const tip = block(f, [6, 26, TOOL.fingerT], [0, -85, 0], matESD); contact.push(tip);
     fingers.push({ group: f, side: s });
   }

@@ -4,11 +4,13 @@ import { createViewerWorkspace } from '@core/ui/viewer-workspace.js';
 import { routingLegend } from '@core/electrical/cable-routing.js';
 routingLegend();
 // 主程式：場景、時間軸（動作序列）、UI、相機子畫面（上視遠心相機／手臂下視相機）
+// 舞台、3D 標籤、視角轉場用 core/ui/stage.js；播放列用 core/ui/player.js（本站另加「等手臂到位才前進」的播放推進）
 import * as THREE from 'three';
 import { createStage, exposeSim } from '@core/ui/stage.js';
+import { createPlayer } from '@core/ui/player.js';
 import { createVisionOverlay } from '@core/ui/vision-overlay.js';
 import { createProject } from './project.js';
-import { smooth, STATIONS, SPEC, OFFSETS } from './sequence.js';
+import { STATIONS, SPEC, OFFSETS } from './sequence.js';
 import { LAYOUT, NEST_SEAT, TRAYS } from './cell.js';
 import { BLADES, PART } from './product.js';
 import { TOOL, SCARA } from './robot.js';
@@ -45,7 +47,7 @@ scene.add(taskLight, taskLight.target);
 // ---------------------------------------------------------------- 物件（與 core 統一檢查共用 project.js）
 const project = createProject({ scene, ng: NG });
 const { st, cell, robot, sequence } = project;
-const ui = Object.fromEntries(['action', 'substep', 'forceBar', 'forceVal', 'forceLim', 'zoneDot', 'zoneTxt', 'checklist', 'chkCount', 'playBtn', 'restartBtn', 'speed', 'speedVal', 'showPath', 'progBar', 'clock', 'timeline', 'stepSelect', 'previous', 'next', 'signals', 'poseError', 'phase', 'result', 'exportBtn', 'showGuards', 'showLabels', 'showPip', 'cycleTime', 'units', 'okCount', 'pipFrame', 'pipResult', 'pipTitle', 'stations', 'drawerNote'].map(id => [id, document.getElementById(id)]));
+const ui = Object.fromEntries(['action', 'substep', 'forceBar', 'forceVal', 'forceLim', 'zoneDot', 'zoneTxt', 'checklist', 'chkCount', 'playBtn', 'speed', 'showPath', 'progBar', 'signals', 'poseError', 'phase', 'result', 'exportBtn', 'showGuards', 'showLabels', 'showPip', 'cycleTime', 'units', 'okCount', 'pipFrame', 'pipResult', 'pipTitle', 'stations', 'drawerNote'].map(id => [id, document.getElementById(id)]));
 ui.result.value = NG ? 'NG' : 'OK';
 ui.result.onchange = () => { const q = new URLSearchParams(location.search); q.set('result', ui.result.value); q.delete('step'); q.delete('st'); location.search = q.toString(); };
 ui.forceLim.textContent = `設定 ${SPEC.pressForce} N・上限 ${SPEC.forceLimit} N`;
@@ -57,33 +59,30 @@ const trailGeo = new THREE.BufferGeometry(); trailGeo.setAttribute('position', n
 const trail = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({ color: 0x7fd4ff, transparent: true, opacity: 0.7 })); scene.add(trail);
 function pushTrail(p) { if (trailCount >= trailN) { trailPos.copyWithin(0, 3); trailCount = trailN - 1; } trailPos.set([p.x, p.y, p.z], trailCount * 3); trailCount++; trailGeo.attributes.position.needsUpdate = true; trailGeo.setDrawRange(0, trailCount); }
 
-// 3D 標籤
-const labels = [];
-function addLabel(text, getPos) { const el = document.createElement('div'); el.className = 'label3d'; el.innerHTML = text; document.getElementById('app').appendChild(el); labels.push({ el, getPos }); }
+// 3D 標籤（stage.addLabel；位置每格由 stage.updateLabels 更新）
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
-addLabel('<b>DENSO</b> HSR065 SCARA', () => V(...LAYOUT.robot).add(V(0, 420, -40)));
-addLabel('T1 葉片吸嘴', () => robot.getTcpWorld('T1').add(V(0, 60, 0)));
-addLabel('T2 上蓋吸盤＋荷重元', () => robot.getTcpWorld('T2').add(V(0, 75, 0)));
-addLabel('T3 本體夾爪', () => robot.getTcpWorld('T3').add(V(0, 60, 0)));
-addLabel('下視相機 5MP', () => robot.getTcpWorld('cam').add(V(0, 95, 0)));
-addLabel('上視遠心相機', () => V(LAYOUT.upCam.x, LAYOUT.table + 30, LAYOUT.upCam.z));
-addLabel('組裝治具（基準邊＋推塊夾緊）', () => V(LAYOUT.nest.x, LAYOUT.nest.top + 20, LAYOUT.nest.z));
-addLabel('離子風嘴', () => V(LAYOUT.upCam.x - 75, LAYOUT.table + 60, LAYOUT.upCam.z));
-addLabel('NG 盒', () => V(LAYOUT.ngBin.x, LAYOUT.ngBin.top + 15, LAYOUT.ngBin.z));
-addLabel('抽屜 A · 供料中', () => V(-LAYOUT.drawerX, LAYOUT.table + 60, 0));
-addLabel('抽屜 B · 待命可換盤', () => V(LAYOUT.drawerX, LAYOUT.table + 60, 0));
-addLabel('RC8A／PLC／視覺 IPC', () => V(0, 700, LAYOUT.encl.z1 + 10));
+stage.addLabel('<b>DENSO</b> HSR065 SCARA', () => V(...LAYOUT.robot).add(V(0, 420, -40)));
+stage.addLabel('T1 葉片吸嘴', () => robot.getTcpWorld('T1').add(V(0, 60, 0)));
+stage.addLabel('T2 上蓋吸盤＋荷重元', () => robot.getTcpWorld('T2').add(V(0, 75, 0)));
+stage.addLabel('T3 本體夾爪', () => robot.getTcpWorld('T3').add(V(0, 60, 0)));
+stage.addLabel('下視相機 5MP', () => robot.getTcpWorld('cam').add(V(0, 95, 0)));
+stage.addLabel('上視遠心相機', () => V(LAYOUT.upCam.x, LAYOUT.table + 30, LAYOUT.upCam.z));
+stage.addLabel('組裝治具（基準邊＋推塊夾緊）', () => V(LAYOUT.nest.x, LAYOUT.nest.top + 20, LAYOUT.nest.z));
+stage.addLabel('離子風嘴', () => V(LAYOUT.upCam.x - 75, LAYOUT.table + 60, LAYOUT.upCam.z));
+stage.addLabel('NG 盒', () => V(LAYOUT.ngBin.x, LAYOUT.ngBin.top + 15, LAYOUT.ngBin.z));
+stage.addLabel('抽屜 A · 供料中', () => V(-LAYOUT.drawerX, LAYOUT.table + 60, 0));
+stage.addLabel('抽屜 B · 待命可換盤', () => V(LAYOUT.drawerX, LAYOUT.table + 60, 0));
+stage.addLabel('RC8A／PLC／視覺 IPC', () => V(0, 700, LAYOUT.encl.z1 + 10));
 
-// 站別按鈕
+// 站別按鈕（跳到該站第一次取像，讓相機子畫面有內容）
 STATIONS.forEach((name, i) => { const b = document.createElement('button'); b.className = 'st'; b.dataset.st = i; b.innerHTML = `<span class="idx">S${i}</span>${name}`; ui.stations.appendChild(b); });
+ui.stations.querySelectorAll('.st').forEach(b => b.onclick = () => { player.pause(); player.seekTo(stationPreviewTime(sequence, +b.dataset.st)); });
 
 // ---------------------------------------------------------------- 時間軸
-let S, playing = !qp.has('pause'), T = 0, speed = 1, current, waiting = 0, fault = '', curStation = -1;
+let S, T = 0, current, waiting = 0, fault = '', curStation = -1, player = null;
 const total = project.total, stationStart = sequence.stationStart;
-ui.timeline.max = total;
 const shots = sequence.steps.filter(s => s.exposure).length;
 ui.cycleTime.textContent = `規劃 ${total.toFixed(1)} s／顆＋到位等待 · 取像 ${shots} 次${NG ? ' · 含一次疊片剔除重取' : ''}`;
-sequence.steps.forEach((s, i) => { const opt = document.createElement('option'); opt.value = i; opt.textContent = `S${s.station} · ${s.action}`; ui.stepSelect.appendChild(opt); });
 const has = id => c => c.has(id);
 const bladeItems = list => list.flatMap(b => [[`${b.name} 上視對位（偏移補正）`, has('shot' + b.id)], [`${b.name} 套入 ${b.pivot} 樞軸銷＋撥桿銷`, has('place' + b.id)]]);
 const checklist = [
@@ -108,34 +107,28 @@ const views = {
   trays: () => [[-390, 1180, 40], [-390, 912, -305]],
   top: () => [[0, 2300, -80], [0, 900, -100]],
 };
-let selectedView = 'iso', camAnim = null;
+let selectedView = 'iso';
 const followBase = () => selectedView === 'part';
 function setView(name, instant = false) {
   workspace.stopFollowing(); setElectricalCutaway(scene,name==='electrical');
   if (!views[name]) return; selectedView = name;
   camera.near = name === 'part' ? 0.1 : name === 'nest' || name === 'upcam' ? 0.5 : 2; camera.updateProjectionMatrix();
   lastBase.copy(st.pose('base').p);
-  const [p, t] = views[name]().map(a => V(...a));
-  if (instant) { camAnim = null; camera.position.copy(p); controls.target.copy(t); camera.lookAt(t); controls.update(); }
-  else camAnim = { p0: camera.position.clone(), t0: controls.target.clone(), p, t, u: 0 };
+  const [p, t] = views[name]();
+  stage.goTo(p, t, instant, 1 / 1.4);
   document.querySelectorAll('.views button').forEach(b => b.classList.toggle('selected', b.dataset.view === name));
 }
 document.querySelectorAll('.views button').forEach(b => b.onclick = () => setView(b.dataset.view));
-function seekTo(sec, snap = true) {
-  T = Number.isFinite(sec) ? THREE.MathUtils.clamp(sec, 0, total) : 0;
-  // 跳播：整個場景由 project.apply(T) 決定（與檢查相同）；snap=false 只換流程狀態、手臂保持原姿態
-  if (snap) current = project.apply(T); else { current = sequence.sample(T); st.sync(); }
+// 跳播（拖曳、選步驟、上一步／下一步、跳站、sim.seekTo）：整個場景由 project.apply(T) 決定（與檢查相同）；
+// snap=false 只換流程狀態、手臂保持原姿態
+let snapSeek = true, ticking = false;
+function jump(t) {
+  T = t;
+  if (snapSeek) current = project.apply(T); else { current = sequence.sample(T); st.sync(); }
   S = current.state; waiting = 0; fault = ''; trailCount = 0; trailGeo.setDrawRange(0, 0);
-  ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放'; render();
+  return current;
 }
-ui.playBtn.onclick = () => { if (T >= total || fault) seekTo(fault ? T : 0); playing = !playing; fault = ''; waiting = 0; ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放'; };
-ui.restartBtn.onclick = () => seekTo(0);
-ui.previous.onclick = () => { playing = false; seekTo(sequence.steps[Math.max(0, current.index - 1)].start); };
-ui.next.onclick = () => { playing = false; seekTo(sequence.steps[Math.min(sequence.steps.length - 1, current.index + 1)].start); };
-ui.stepSelect.onchange = () => { playing = false; seekTo(sequence.steps[+ui.stepSelect.value].start); };
-ui.timeline.oninput = () => { playing = false; seekTo(+ui.timeline.value); };
-ui.speed.oninput = () => { speed = +ui.speed.value; ui.speedVal.textContent = speed.toFixed(2).replace(/0$/, '') + '×'; };
-ui.stations.querySelectorAll('.st').forEach(b => b.onclick = () => { playing = false; seekTo(stationPreviewTime(sequence, +b.dataset.st)); });
+function seekTo(sec, snap = true) { snapSeek = snap; try { player.seekTo(sec); } finally { snapSeek = true; } render(); }
 
 // 零件狀態格
 const UNITS = [{ id: 'base', name: '本體' }, ...BLADES.map(b => ({ id: b.id, name: b.name })), { id: 'cover', name: '上蓋' }, ...(NG ? [{ id: 'L2x', name: '疊片（剔除）' }] : [])];
@@ -185,6 +178,7 @@ function drawHud() {
   const src = cameraSource(S);
   ui.pipTitle.textContent = src === 'up' ? '上視遠心相機 · 5MP · 0.35× · 視野 24 × 20 mm（模擬）' : '手臂下視相機 · 5MP · 20 mm · WD 57 mm（模擬）';
   ui.pipResult.innerHTML = pipText(src, src === 'up' ? S.flashUp > 0 : S.flashDown > 0);
+  const playing = player.playing;
   cell.tower.set(fault ? 'red' : NG && current.completed.has('judgeNG') && !current.completed.has('reject') ? 'yellow' : T >= total - 1e-6 ? 'green' : playing ? 'green' : 'yellow');
   cell.occluders.visible = ui.showGuards.checked; trail.visible = ui.showPath.checked;
   ui.action.textContent = S.action; ui.substep.textContent = S.sub;
@@ -207,14 +201,14 @@ function drawHud() {
   let done = 0; [...ui.checklist.children].forEach((li, i) => { const d = checklist[S.station][i][1](current.completed); li.classList.toggle('done', d); li.querySelector('.box').textContent = d ? '✓' : ''; if (d) done++; });
   ui.chkCount.textContent = done + ' / ' + checklist[S.station].length;
   ui.stations.querySelectorAll('.st').forEach(b => { const i = +b.dataset.st; b.classList.toggle('active', i === S.station); b.classList.toggle('done', i < S.station || T >= total); });
-  ui.timeline.value = T; ui.stepSelect.value = current.index; ui.progBar.style.width = T / total * 100 + '%';
-  ui.clock.textContent = `${Math.floor(T / 60).toString().padStart(2, '0')}:${(T % 60).toFixed(1).padStart(4, '0')}`;
-  for (const l of labels) { const p = l.getPos().project(camera), vis = ui.showLabels.checked && p.z < 1 && Math.abs(p.x) < .98 && Math.abs(p.y) < .9; l.el.style.display = vis ? 'block' : 'none'; if (vis) { l.el.style.left = canvas.offsetLeft + (p.x * .5 + .5) * canvas.clientWidth + 'px'; l.el.style.top = canvas.offsetTop + (-p.y * .5 + .5) * canvas.clientHeight + 'px'; } }
+  // 時間軸、時鐘、步驟選單由播放列（createPlayer）更新
+  ui.progBar.style.width = T / total * 100 + '%';
+  stage.updateLabels(ui.showLabels.checked);
   document.getElementById('diagnostics').textContent = JSON.stringify({ time: T, total, step: current.index, station: S.station, action: S.action, poseError: e, force, playing, waiting, fault, loc: S.loc, view: S.view, shot: S.shot });
 }
 const resize = stage.resize;   // stage 已掛視窗 resize 事件
 function render() {
-  drawHud(); workspace.follow();electrical.update({time:T,playing,action:S.action,motion:true,vision:!!(S.flashTool||S.flashTop||S.flashUp||S.flashDown||S.flashSn)});
+  drawHud(); workspace.follow();electrical.update({time:T,playing:player.playing,action:S.action,motion:true,vision:!!(S.flashTool||S.flashTop||S.flashUp||S.flashDown||S.flashSn)});
   taskLight.target.position.copy(st.pose('base').p); taskLight.position.copy(st.pose('base').p).add(V(-25,65,40));
   renderer.setScissorTest(false);renderer.setViewport(0,0,canvas.clientWidth,canvas.clientHeight);workspace.renderOverview(renderer,scene);
   const src=cameraSource(S),shooting=src==='up'?S.flashUp>0:S.flashDown>0;
@@ -225,47 +219,64 @@ function render() {
   renderer.toneMappingExposure=exposure;hidden.forEach((o,i)=>o.visible=visible[i]);
 }
 const workspace=createViewerWorkspace({camera,controls,canvas,resize,focusOccluders:[cell.occluders],getFocus:()=>st.pose('base').p,
-  focusOffset:[-24,35,42],focusNear:.1,onFocus:()=>{setElectricalCutaway(scene,false);camAnim=null;selectedView='focus';document.querySelectorAll('.views button').forEach(b=>b.classList.remove('selected'));}});
+  focusOffset:[-24,35,42],focusNear:.1,onFocus:()=>{setElectricalCutaway(scene,false);stage.goTo(camera.position.toArray(),controls.target.toArray(),true);selectedView='focus';document.querySelectorAll('.views button').forEach(b=>b.classList.remove('selected'));}});
 const electrical=createElectricalInspector({scene,camera,controls,canvas,onEnter:()=>setView('electrical',true),onExit:()=>setView('iso',true),title:'shutter assembly'});
-const clock = stage.clock;
 const lastBase = new THREE.Vector3();
+
+// ---------------------------------------------------------------- 播放
+// 播放列（core/ui/player.js）負責按鈕、時間軸、步驟選單與上一步／下一步；拖曳與跳播走 jump（project.apply，手臂直接到位）。
+// 連續播放由本站自己推進：手臂以實際限速追蹤目標，步驟結束或接近／接觸中偏離時「等到位」才前進，等超過 5 秒判定逾時。
+player = createPlayer({
+  total, apply: t => ticking ? current : jump(t),
+  events: sequence.events.map(e => ({ time: e.time, label: `S${e.station} · ${e.label}` })),
+});
+// 播放鍵：從故障停住處恢復時手臂重新到位；已播完則從頭開始
+ui.playBtn.addEventListener('click', () => {
+  if (!player.playing) return;
+  if (fault) seekTo(T); else if (T >= total - 1e-6) seekTo(0);
+  waiting = 0;
+});
 function tick(dt) {
-  if (!playing) return;
   const e = robot.error(), s = current.step, end = s.start + s.dur;
   const blocked = (T >= end - 1e-7 || ((s.contact || s.near) && e.position > .5)) && (e.position > .05 || e.angle > .2);
-  if (blocked) { waiting += dt; if (waiting > 5) { fault = '到位逾時 · 請檢查 TCP 位置'; playing = false; ui.playBtn.textContent = '▶ 播放'; } }
+  if (blocked) { waiting += dt; if (waiting > 5) { fault = '到位逾時 · 請檢查 TCP 位置'; player.pause(); } }
   else {
     waiting = 0;
-    if (T >= total - 1e-7) { playing = false; ui.playBtn.textContent = '▶ 播放'; }
+    if (T >= total - 1e-7) player.pause();
     else { T = T >= end - 1e-7 ? Math.min(total, end + 1e-6) : Math.min(end, T + dt); current = sequence.sample(T >= end - 1e-7 && T <= end ? Math.max(s.start, end - 1e-8) : T); S = current.state; }
   }
   robot.update(dt); st.sync();
 }
-function frame() {
-  requestAnimationFrame(frame); const dt = Math.min(clock.getDelta(), .05);
-  const n = Math.max(1, Math.ceil(dt * speed / .005)); for (let k = 0; k < n; k++) tick(dt * speed / n);
+function frame(dt) {
+  if (Math.abs(player.T - T) > 1e-9) jump(player.T);   // 播放列自行把時間歸零（播完後按播放）
+  if (player.playing) {
+    const span = dt * (+ui.speed.value || 1), n = Math.max(1, Math.ceil(span / .005));
+    for (let k = 0; k < n && player.playing; k++) tick(span / n);
+    ticking = true; try { player.seekTo(T); } finally { ticking = false; }   // 只更新播放列顯示
+  }
+  // 產品近看：視角跟著本體移動（視角轉場進行中由 stage 接管）
   if (followBase()) {
     const p = st.pose('base').p, delta = p.clone().sub(lastBase);
     camera.position.add(delta); controls.target.add(delta);
-    if (camAnim) for (const key of ['p0', 't0', 'p', 't']) camAnim[key].add(delta);
   }
   lastBase.copy(st.pose('base').p);
-  if (playing && ui.showPath.checked) pushTrail(robot.getTcpWorld(robot.goal.tcp));
-  if (camAnim) { camAnim.u = Math.min(1, camAnim.u + dt * 1.4); camera.position.lerpVectors(camAnim.p0, camAnim.p, smooth(camAnim.u)); controls.target.lerpVectors(camAnim.t0, camAnim.t, smooth(camAnim.u)); if (camAnim.u === 1) camAnim = null; }
-  controls.update(); render();
+  if (player.playing && ui.showPath.checked) pushTrail(robot.getTcpWorld(robot.goal.tcp));
+  return true;
 }
-current = project.apply(0); S = current.state; lastBase.copy(st.pose('base').p); setView('iso', true); resize(); ui.playBtn.textContent = playing ? '⏸ 暫停' : '▶ 播放';
-exposeSim({ seekTo, views: Object.keys(views), pause() { playing = false; ui.playBtn.textContent = '▶ 播放'; }, play() { playing = true; ui.playBtn.textContent = '⏸ 暫停'; }, get state() { return S; }, robot, total, stationStart, steps: sequence.steps, setView, ng: NG, trays: TRAYS, scara: SCARA, part: PART });
-if (qp.has('st')) { playing = false; const station = THREE.MathUtils.clamp(+qp.get('st') || 0, 0, STATIONS.length - 1); seekTo(qp.has('t') ? stationStart[station] + (+qp.get('t') || 0) : stationPreviewTime(sequence, station)); }
-if (qp.has('step')) { playing = false; seekTo(sequence.steps[THREE.MathUtils.clamp(+qp.get('step') || 0, 0, sequence.steps.length - 1)].start + (+qp.get('t') || 0)); }
-if (qp.has('time')) { playing = false; seekTo(+qp.get('time')); }
+lastBase.copy(st.pose('base').p); setView('iso', true);
+exposeSim({ seekTo, views: Object.keys(views), pause: player.pause, play: player.play, get state() { return S; }, get T() { return T; }, robot, total, stationStart, steps: sequence.steps, events: sequence.events, setView, ng: NG, trays: TRAYS, scara: SCARA, part: PART });
+if (qp.has('st')) { player.pause(); const station = THREE.MathUtils.clamp(+qp.get('st') || 0, 0, STATIONS.length - 1); seekTo(qp.has('t') ? stationStart[station] + (+qp.get('t') || 0) : stationPreviewTime(sequence, station)); }
+if (qp.has('step')) { player.pause(); seekTo(sequence.steps[THREE.MathUtils.clamp(+qp.get('step') || 0, 0, sequence.steps.length - 1)].start + (+qp.get('t') || 0)); }
+if (qp.has('time')) { player.pause(); seekTo(+qp.get('time')); }
 if (qp.has('view')) setView(qp.get('view'), true);
-if (qp.has('cam')) { const a = qp.get('cam').split(',').map(Number); if (a.length === 6 && a.every(Number.isFinite)) { camera.position.set(...a.slice(0, 3)); controls.target.set(...a.slice(3)); controls.update(); } }
-document.getElementById('loading').classList.add('hide'); render();
-if (!qp.has('movie')) frame();
-else {
+if (qp.has('cam')) { const a = qp.get('cam').split(',').map(Number); if (a.length === 6 && a.every(Number.isFinite)) stage.goTo(a.slice(0, 3), a.slice(3), true); }
+document.getElementById('loading').classList.add('hide');
+// 畫面迴圈交給 stage（?movie 時 stage 不跑迴圈）；每格自訂繪製：HUD、主畫面、相機子畫面
+stage.loop(frame, { render });
+render();
+if (qp.has('movie')) {
   // 錄影（?movie）：不跑畫面迴圈，由 core/movie/movie.js 依絕對時間逐格驅動
-  playing = false; ui.playBtn.textContent = '▶ 播放';
+  player.pause();
   const { installMovie } = await import('@core/movie/movie.js');
   installMovie({
     project: 'shutter assembly', scene, renderer, camera, controls, render, setView, total,
