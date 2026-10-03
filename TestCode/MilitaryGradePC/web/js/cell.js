@@ -5,6 +5,7 @@ import {cabinetShell,controlPanel,entryGland,panelFeed} from '@core/electrical/e
 import { cable, cableTray, carrier, support, CABLE } from '@core/electrical/cable-routing.js';
 import { NB } from './notebook.js';
 import { block, cylinder, decal, tube } from '@core/geom/shapes.js';
+import { MAT } from '@core/geom/materials.js';
 
 export const LAYOUT = {
   // S3 在 x=1150：S2 右側護蓋作業時手腕在 x≤約 680，翻轉治具左端（x≥695）不在手腕範圍內
@@ -23,18 +24,15 @@ export const LAYOUT = {
   s1PostZ: 1050, s1HeadOut: 780, s1DomeGap: 80, s1DomeR: 200, s1BeamY: 2000,
 };
 
+// 常見材質用共用材質表 MAT（鋁、皮帶、鋼、黑件、警示黃、PU、藍色烤漆、螢幕）；
+// 本站專屬外觀留在這裡：深色地面、灰色結構框、相機外殼、穹頂光擴散罩、拋光定位銷
 const matFloor = new THREE.MeshStandardMaterial({ color: 0x1b2027, roughness: 0.95 });
 const matFrame = new THREE.MeshStandardMaterial({ color: 0x6b7480, roughness: 0.5, metalness: 0.6 });
-const matAlu   = new THREE.MeshStandardMaterial({ color: 0xb9c0c8, roughness: 0.35, metalness: 0.8 });
-const matBelt  = new THREE.MeshStandardMaterial({ color: 0x23272c, roughness: 0.9 });
-const matPallet= new THREE.MeshStandardMaterial({ color: 0x9aa4ae, roughness: 0.4, metalness: 0.7 });
-const matDark  = new THREE.MeshStandardMaterial({ color: 0x1e2226, roughness: 0.5, metalness: 0.4 });
+const matAlu = MAT.alu, matBelt = MAT.belt, matPallet = MAT.steel, matDark = MAT.black;
 const matCam   = new THREE.MeshStandardMaterial({ color: 0x2c3138, roughness: 0.4, metalness: 0.5 });
 const matDome  = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.9, side: THREE.DoubleSide });
-const matYellow= new THREE.MeshStandardMaterial({ color: 0xf2b21b, roughness: 0.6 });
+const matYellow = MAT.yellow, matPU = MAT.pu, matBlue = MAT.steelBlue;
 const matPin   = new THREE.MeshStandardMaterial({ color: 0xd0d5da, roughness: 0.3, metalness: 0.9 });
-const matPU    = new THREE.MeshStandardMaterial({ color: 0xd9a441, roughness: 0.9 });
-const matBlue  = new THREE.MeshStandardMaterial({ color: 0x2f5f9e, roughness: 0.5, metalness: 0.4 });
 
 function box(w, h, d, mat) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.castShadow = true; m.receiveShadow = true; return m; }
 function cyl(r, h, mat, seg = 24) { const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, seg), mat); m.castShadow = true; m.receiveShadow = true; return m; }
@@ -89,7 +87,7 @@ function createStacker(x, dir) {
   const rodM = cyl(6, 200, matPin, 12); rodM.rotation.z = Math.PI / 2; rodM.position.x = dir * 135; rod.add(rodM);
   const plate = box(10, 40, 120, matPU); plate.position.x = dir * 240; rod.add(plate);
   // 操作面板
-  const hmi = box(160, 110, 14, new THREE.MeshStandardMaterial({ color: 0x0c1a2b, emissive: 0x1f4f8f, emissiveIntensity: 0.6 })); hmi.position.set(0, 1500, D / 2 + 10); g.add(hmi);
+  const hmi = box(160, 110, 14, MAT.screen); hmi.position.set(0, 1500, D / 2 + 10); g.add(hmi);
   const forks=[];
   for(const sz of [-1,1]){
     // 托叉 24 mm 寬、z=±140～164：承托載具前後框，與堆疊柱（z=±113～137）錯開
@@ -228,7 +226,7 @@ export function createCell(scene) {
     const lc = box(30, 900, 30, matYellow); lc.position.set(x, 450, 900); occ.add(lc);
   }
   const cab = box(600, 1800, 500, matDark); cab.position.set(-3300, 900, -300); occ.add(cab);
-  const screen = box(500, 300, 20, new THREE.MeshStandardMaterial({ color: 0x0c1a2b, emissive: 0x1f4f8f, emissiveIntensity: 0.5 })); screen.position.set(-3300, 1350, -40); occ.add(screen);
+  const screen = box(500, 300, 20, MAT.screen); screen.position.set(-3300, 1350, -40); occ.add(screen);
 
   // Frame fasteners, levelling feet, pneumatic service unit and electrical panel details.
   for(let x=x0+100;x<x1;x+=600)for(const z of [-170,170]){cylinder(g,8,35,[x,25,z],matPin);cylinder(g,27,8,[x,7,z],matDark);}

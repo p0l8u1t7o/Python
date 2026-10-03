@@ -5,13 +5,15 @@ import * as THREE from 'three';
 import { createVM60B1, VM60B1_MAT, JOINTS, JOINT_SPEED } from '@core/models/robots/denso-vm60b1.js';
 import { cable, carrier, support, CABLE } from '@core/electrical/cable-routing.js';
 import { cylinder, decal } from '@core/geom/shapes.js';
+import { MAT } from '@core/geom/materials.js';
 
-const matArmD  = new THREE.MeshStandardMaterial({ color: 0x2f3439, roughness: 0.5, metalness: 0.3 });
+// 立座、滑座、相機本體與滑軌用共用手臂模型的材質（與 VM-60B1 同色）；工具金屬與 PU 用 MAT，鏡片與雷射窗留在本站
+const matArmD  = VM60B1_MAT.dark;
 const matJoint = VM60B1_MAT.joint;
-const matRail  = new THREE.MeshStandardMaterial({ color: 0x8d949c, roughness: 0.4, metalness: 0.7 });
-const matTool  = new THREE.MeshStandardMaterial({ color: 0x3b4149, roughness: 0.4, metalness: 0.6 });
+const matRail  = VM60B1_MAT.bolt;
+const matTool  = MAT.steelDark;
 const matGlass = new THREE.MeshPhysicalMaterial({ color: 0x8fb8ff, roughness: 0.05, metalness: 0, transmission: 0.6, transparent: true, opacity: 0.8 });
-const matPU    = new THREE.MeshStandardMaterial({ color: 0xd9a441, roughness: 0.9 });
+const matPU    = MAT.pu;
 const matLaser = new THREE.MeshStandardMaterial({ color: 0xff2020, emissive: 0xff2020, emissiveIntensity: 1.5 });
 
 const D2R = Math.PI / 180;

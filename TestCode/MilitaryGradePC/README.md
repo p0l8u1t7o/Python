@@ -32,8 +32,8 @@ node ../core/tools/serve.mjs MilitaryGradePC --no-open
 
 ## 操作
 
-- 站別按鈕跳至 S0–S4；下方下拉選單列出完整動作步驟（含退離與取像預備點），搭配前後步與時間滑桿查看交接過程。
-- 播放／暫停會同步控制所有軸，支援 0.25–4×；單台完成後停止，按播放或重播重新開始。
+- 站別按鈕跳至 S0–S4；下方下拉選單列出完整動作步驟（`時間 S站 · 動作`，含退離與取像預備點），搭配前後步與時間滑桿查看交接過程。前一步在步驟中途時先回到本步起點。
+- 播放／暫停會同步控制所有軸，支援 0.25–4×；單台完成後停止，按播放從頭開始，按重播回到起點並播放。
 - 全景、堆料架、手臂、護蓋特寫、翻面、俯視、產品特寫；護蓋視角會隨目前門的位置改變。滑鼠可自由旋轉縮放。
 - 右側顯示設備訊號、TCP 位置／姿態誤差、模擬力值與檢驗清單。曝光與動作銜接等待手臂到位，逾時會停止並顯示原因。
 - 下方可顯示 TCP 路徑與參考包絡；右側可顯示／隱藏圍籬、控制櫃及設備標籤。
@@ -42,7 +42,7 @@ node ../core/tools/serve.mjs MilitaryGradePC --no-open
 - `V110-RF` 保留為非本工單的擴充示意，不冒充 G7-STND 配置。
 
 測試網址：`?pause&st=2&view=product`、`?pause&step=43&view=door`；`cam=x,y,z,tx,ty,tz` 可指定鏡頭。
-主控台支援 `window.sim.jump(st, view, off)`、`seekTo(sec)`、`setView(name, instant)`、`pause()`、`play()`；`window.sim.views` 列出視角名稱，`window.sim.steps` 列出步驟起點。
+主控台支援 `window.sim.jump(st, view, off)`、`seekTo(sec)`、`setView(name, instant)`、`pause()`、`play()`；`window.sim.views` 列出視角名稱，`window.sim.steps` 列出步驟起點，`window.sim.events` 為排程事件（`{ time, dur, label, sub, station }`），`window.sim.player` 為播放列。`?t=秒` 可直接跳到該時間（與 `?st` 併用時為站內位移）。
 - `?pause&movie`：展示影片模式。不跑一般畫面迴圈，改由 `core/movie/movie.js` 的 `installMovie` 依絕對時間逐格取樣（與 `project.apply` 同一路徑），鏡頭追焦載具，提供預覽、鏡頭檢查與「輸出完整影片」。本站自己的 1080p 影片輸出（`?capture=1`）照舊，見下方「MP4 影片與再次輸出」。
 
 ## 建模與運動
@@ -61,12 +61,12 @@ node ../core/tools/serve.mjs MilitaryGradePC --no-open
 |---|---|
 | `web/js/notebook.js` | 產品、介面、封印與 SKU |
 | `core/geom/shapes.js` | 幾何、可讀文字貼圖、配線共用元件（各專案共用） |
-| `web/js/cell.js` | 載具、進出料、輸送與翻轉設備 |
+| `web/js/cell.js` | 載具、進出料、輸送與翻轉設備；鋁、鋼、黑件、皮帶、警示黃、PU、藍色烤漆、螢幕用共用材質表 `core/geom/materials.js` 的 `MAT`，深色地面、灰色結構框、相機外殼、穹頂擴散罩、拋光定位銷與三色燈留在本檔 |
 | `core/models/robots/denso-vm60b1.js` | DENSO VM-60B1 手臂本體（共用模型）：基座、連桿、關節 j1～j6、手臂線材保護段、法蘭工具安裝座、限位、關節速度、IK 參數與幾何初始解；模型目錄 `/core/catalog/` 可預覽 |
 | `web/js/robot.js` | 本站部分：第七軸滑軌與拖鏈、600 mm 立座、力覺末端（F/T、相機＋環形光、鉤爪／壓頭、線雷射）、TCP、逆解選解、PTP 與位姿快取；手臂本體取自共用模型 |
-| `web/js/sequence.js` | 第一階段逐步流程、時間、狀態快照 |
+| `web/js/sequence.js` | 第一階段逐步流程。通用排程（起訖快照、插值、`stationStart`、`total`、`events`）用 core 的 `createStepSequence`；本檔只加手臂位姿層（每步起訖位姿、PTP／直線、偏軸 TCP 轉向、低位先退離）、護蓋開度插值與力值曲線 |
 | `web/js/project.js` | 專案介面 `createProject`：建立全部設備、產品與動作序列，`apply(t)` 把場景放到時間 t；網頁與 core 統一檢查共用 |
-| `web/js/main.js` | 控制、到位等待、紀錄匯出、手臂鏡頭子畫面、`?movie` 錄影掛勾與 `?capture=1` 影片輸出（場景物件由 `project.js` 建立）。renderer、相機、軌道控制、環境光與燈光（含跟隨載具的特寫陰影光）、畫面迴圈用共用舞台 `core/ui/stage.js` 的 `createStage`；`window.sim` 由 `exposeSim` 提供 |
+| `web/js/main.js` | 控制、到位等待、紀錄匯出、手臂鏡頭子畫面、`?movie` 錄影掛勾與 `?capture=1` 影片輸出（場景物件由 `project.js` 建立）。renderer、相機、軌道控制、環境光與燈光（含跟隨載具的特寫陰影光）、畫面迴圈、3D 標籤（`stage.addLabel`／`updateLabels`）與視角轉場（`stage.goTo`）用共用舞台 `core/ui/stage.js`；播放、重播、速度、時間軸、時鐘、步驟選單與前後步用 `core/ui/player.js` 的 `createPlayer`（事件取自 `sequence.events`），本檔只在播放中逐步推進時間並在步驟終點等待手臂到位；`window.sim` 由 `exposeSim` 提供 |
 | `docs/phase1-scope.md` | 文件依據與範圍映射 |
 | `docs/cost-estimate.xlsx` | 元件選型與成本估算（預算級） |
 | `tools/verify.mjs` | 狀態／幾何／運動驗證 |
