@@ -1,5 +1,13 @@
 [
   {
+    "id": "fanuc-r2000ic",
+    "name": "FANUC R-2000iC/165F 六軸手臂",
+    "ok": true,
+    "meshes": 32,
+    "dynamic": [],
+    "zfight": []
+  },
+  {
     "id": "denso-vs068",
     "name": "DENSO VS-068 六軸手臂",
     "ok": true,

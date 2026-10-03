@@ -6,5 +6,6 @@ import { motor, sensor, foot, gauge } from './hardware.js';
 import * as agvForklift from './agv-forklift.js';
 import * as drum200l from './drum-200l.js';
 import * as densoVs068 from './robots/denso-vs068.js';
+import * as fanucR2000 from './robots/fanuc-r2000ic.js';
 
-export const MODELS = [densoVs068, conveyor, gantry, agvForklift, drum200l, motor, sensor, foot, gauge];
+export const MODELS = [fanucR2000, densoVs068, conveyor, gantry, agvForklift, drum200l, motor, sensor, foot, gauge];
