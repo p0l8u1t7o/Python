@@ -1,6 +1,7 @@
 // 工業設備共用細節；毫米制，固定種子貼圖，離線與 Node 驗證皆可用。
 import * as THREE from 'three';
-import { MAT, box, cyl, rod, plate } from './parts.js';
+import { block, cylinder, plate, rod } from './shapes.js';
+import { MAT } from './materials.js';
 
 const housingCache = new Map();
 export function housing(parent, w, h, d, material, x = 0, y = 0, z = 0, radius = 12) {
@@ -57,37 +58,37 @@ export function bolts(parent, positions, r = 9, axis = 'y') {
   mesh.castShadow = mesh.receiveShadow = true; parent.add(mesh); return mesh;
 }
 export function foot(parent, x, z, size = 160) {
-  box(parent, size, 16, size, MAT.steelDark, x, 8, z);
+  block(parent, [size, 16, size], [x, 8, z], MAT.steelDark);
   bolts(parent, [-1, 1].flatMap(a => [-1, 1].map(b => [x + a * size * .32, 22, z + b * size * .32])), 10);
 }
 export function motor(parent, x, y, z, scale = 1, yaw = 0) {
   const g = new THREE.Group(); g.position.set(x, y, z); g.rotation.y = yaw; g.scale.setScalar(scale); parent.add(g);
   housing(g, 180, 140, 160, MAT.steelDark, 0, -10, -90, 10);
-  cyl(g, 75, 240, MAT.steelBlue, 0, 0, 100, 'z');
-  for (let i = 0; i < 8; i++) cyl(g, 80, 7, MAT.steelBlue, 0, 0, i * 23 + 12, 'z', 20);
-  cyl(g, 76, 30, MAT.black, 0, 0, 238, 'z');
-  box(g, 70, 40, 75, MAT.black, 0, 88, 100);
+  cylinder(g, 75, 240, [0, 0, 100], MAT.steelBlue, 'z', 28);
+  for (let i = 0; i < 8; i++) cylinder(g, 80, 7, [0, 0, i * 23 + 12], MAT.steelBlue, 'z', 20);
+  cylinder(g, 76, 30, [0, 0, 238], MAT.black, 'z', 28);
+  block(g, [70, 40, 75], [0, 88, 100], MAT.black);
   return g;
 }
 export function flange(parent, x, y, z, r = 45, axis = 'y') {
-  cyl(parent, r, 18, MAT.steel, x, y, z, axis);
+  cylinder(parent, r, 18, [x, y, z], MAT.steel, axis, 28);
   const pts = Array.from({ length: 6 }, (_, i) => { const a = i * Math.PI / 3, u = Math.cos(a) * r * .75, v = Math.sin(a) * r * .75; return axis === 'x' ? [x + 12, y + u, z + v] : axis === 'z' ? [x + u, y + v, z + 12] : [x + u, y + 12, z + v]; });
   bolts(parent, pts, 5, axis);
 }
 export function gauge(parent, x, y, z) {
-  cyl(parent, 48, 26, MAT.steel, x, y, z, 'z'); cyl(parent, 41, 2, MAT.cap, x, y, z - 14, 'z');
+  cylinder(parent, 48, 26, [x, y, z], MAT.steel, 'z', 28); cylinder(parent, 41, 2, [x, y, z - 14], MAT.cap, 'z', 28);
   rod(parent, [x, y, z - 17], [x - 23, y + 22, z - 17], 2.5, MAT.red, 6);
 }
 export function sensor(parent, x, y, z, yaw = 0) {
   const g = new THREE.Group(); g.position.set(x, y, z); g.rotation.y = yaw; parent.add(g);
-  box(g, 36, 58, 32, MAT.black); cyl(g, 10, 3, MAT.red, 0, 0, -17, 'z', 12);
-  box(g, 50, 5, 50, MAT.steel, 0, -32, 5); return g;
+  block(g, [36, 58, 32], [0, 0, 0], MAT.black); cylinder(g, 10, 3, [0, 0, -17], MAT.red, 'z', 12);
+  block(g, [50, 5, 50], [0, -32, 5], MAT.steel); return g;
 }
 export function cabinetDetails(parent, x0, z0, x1, z1, h) {
   const x = (x0 + x1) / 2, w = x1 - x0;
-  box(parent, w - 24, h - 70, 3, MAT.alu, x, h / 2, z0 - 2);
-  box(parent, 12, 130, 18, MAT.black, x1 - 65, h * .55, z0 - 12);
-  for (const y of [h * .25, h * .75]) box(parent, 22, 65, 14, MAT.steelDark, x0 + 32, y, z0 - 9);
-  for (let k = 0; k < 8; k++) box(parent, w * .45, 6, 4, MAT.black, x, 130 + k * 17, z0 - 5);
+  block(parent, [w - 24, h - 70, 3], [x, h / 2, z0 - 2], MAT.alu);
+  block(parent, [12, 130, 18], [x1 - 65, h * .55, z0 - 12], MAT.black);
+  for (const y of [h * .25, h * .75]) block(parent, [22, 65, 14], [x0 + 32, y, z0 - 9], MAT.steelDark);
+  for (let k = 0; k < 8; k++) block(parent, [w * .45, 6, 4], [x, 130 + k * 17, z0 - 5], MAT.black);
   plate(parent, ['⚡ 400 V'], 150, 90, [x1 - 120, h - 350, z0 - 7], Math.PI, { bg: '#f4c542', fg: '#161a20' });
 }

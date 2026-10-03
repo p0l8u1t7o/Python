@@ -5,7 +5,7 @@ import {cabinetShell,controlPanel,entryGland,panelFeed} from '@core/electrical/e
 import { cable, cableTray, carrier, support, CABLE } from '@core/electrical/cable-routing.js';
 import { finish } from '@core/geom/finish.js';
 import { perforated } from '@core/geom/perforated.js';
-import { block, cylinder, decal, tube } from '@core/geom/primitives.js';
+import { block, cylinder, decal, tube } from '@core/geom/shapes.js';
 import { Y0, BENCH, ST, BEAKER, BOTTLES, CAP, PIPETTE, SAMPLES } from './layout.js';
 import { glass, glassRim, liquidMaterial, glassVessel, glassBottle, graduations, createLiquid, rim, screw, flowLine, tipFillHeight } from './render-details.js';
 

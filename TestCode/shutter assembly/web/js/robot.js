@@ -3,7 +3,7 @@
 // 世界座標：x 向右、y 向上、z 朝作業員。工具本地：原點在花鍵軸法蘭，y 向上（工具在 −y），隨 J4 轉動。單位 mm。
 import * as THREE from 'three';
 import { cable, CABLE } from '@core/electrical/cable-routing.js';
-import { block, cylinder, decal, screw, tube } from '@core/geom/primitives.js';
+import { block, cylinder, decal, screw, tube } from '@core/geom/shapes.js';
 import { createHSR065, HSR065, HSR065_MAT, JOINTS, wrapPi, fk as armFk, ik as armIk } from '@core/models/robots/denso-hsr065.js';
 import { PART } from './product.js';
 

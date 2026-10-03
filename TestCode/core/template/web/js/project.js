@@ -2,7 +2,8 @@
 // 範例：輸送帶把工件送到取料位，龍門 Z 軸下降夾取，移到出料台放下。
 // 輸送線與龍門取自共用模型庫（core/models，目錄頁 /core/catalog/）；專案特有的東西（出料台、工件）在這裡建。
 import * as THREE from 'three';
-import { MAT, box, plate } from '@core/geom/parts.js';
+import { block, plate } from '@core/geom/shapes.js';
+import { MAT } from '@core/geom/materials.js';
 import { sensor } from '@core/geom/hardware.js';
 import { createTimeline } from '@core/anim/track.js';
 import { create as createConveyor } from '@core/models/conveyor.js';
@@ -29,7 +30,7 @@ export function createProject({ scene }) {
 
   // ---- 出料台
   const table = new THREE.Group(); table.name = 'table'; scene.add(table);
-  box(table, 400, L.place.top, 400, MAT.steelBlue, L.place.x, L.place.top / 2, L.place.z);
+  block(table, [400, L.place.top, 400], [L.place.x, L.place.top / 2, L.place.z], MAT.steelBlue);
 
   // ---- 龍門（共用模型）：樑在輸送線北側，夾爪伸到輸送線中心
   const gantry = createGantry({ span: g.span, height: g.height, offset: g.offset, grip: pl });
@@ -37,7 +38,7 @@ export function createProject({ scene }) {
 
   // ---- 工件
   const part = new THREE.Group(); part.name = 'part'; scene.add(part);
-  box(part, pl, ph, pw, MAT.pu, 0, ph / 2, 0);
+  block(part, [pl, ph, pw], [0, ph / 2, 0], MAT.pu);
 
   plate(scene, ['取料位'], 260, 70, [L.pick.x, 30, c.z + c.width / 2 + 120], 0);
 

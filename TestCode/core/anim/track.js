@@ -10,6 +10,8 @@
 //   const st = tl.sample(T);                                 // { robot: {...}, conveyor: {...} }
 export const smooth = t => t * t * t * (10 + t * (-15 + 6 * t));   // 五次 S 曲線：起訖速度、加速度皆為 0
 export const linear = t => t;
+export const lerp = (a, b, t) => a + (b - a) * t;
+export const clamp01 = t => Math.max(0, Math.min(1, t));
 
 export class Track {
   constructor(name, base) { this.name = name; this.base = { ...base }; this.state = { ...base }; this.steps = []; this.t = 0; }

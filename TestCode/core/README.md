@@ -7,7 +7,7 @@ TestCode 底下每個有 `web/index.html` 的資料夾都是一個展示專案�
 | 路徑 | 內容 |
 |---|---|
 | `vendor/` | three.js r160（`three.module.js`）與 addons，全站只有這一份 |
-| `geom/` | 基本形狀與細節：`primitives.js`（block／cylinder／decal／tube／bevelBox／screw…）、`parts.js`（MAT 材質表、box／cyl／rod／pipe／plate…）、`hardware.js`（倒角外殼、螺栓、腳座、馬達、感測器…）、`finish.js`、`surfaces.js`、`perforated.js` |
+| `geom/` | `shapes.js`（統一形狀：block／blockBetween／cylinder／rod／tube／pipe／profile／rounded／bevelBox／screw／decal／plate／floorText）、`materials.js`（共用材質表 MAT）、`hardware.js`（倒角外殼、螺栓、腳座、馬達、感測器…）、`finish.js`、`surfaces.js`、`perforated.js` |
 | `robot/` | `kinematics.js`：6 軸阻尼最小平方 IK（參數可調） |
 | `models/` | 共用模型庫：每個模型有 `meta`（名稱、分類、可調參數、可動狀態、用法）與 `create(params) → { root, set(state) }`，在 `models/index.js` 登記；目錄頁 `/core/catalog/` 可預覽與調參 |
 | `catalog/` | 模型目錄頁（發布在 Pages） |
@@ -41,7 +41,7 @@ node core/tools/new-project.mjs MyStation "我的工作站" "首頁卡片上的�
 </script>
 ```
 
-程式中寫 `import { box } from '@core/geom/parts.js'`。Node 端用 `core/tools/register.mjs` 解析相同名稱：
+程式中寫 `import { block, cylinder } from '@core/geom/shapes.js'`、`import { MAT } from '@core/geom/materials.js'`。Node 端用 `core/tools/register.mjs` 解析相同名稱：
 
 ```powershell
 node --import ../core/tools/register.mjs tools/verify.mjs      # 在專案資料夾

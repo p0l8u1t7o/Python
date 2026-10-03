@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { cable, armDress, CABLE } from '../../electrical/cable-routing.js';
 import { createIK } from '../../robot/kinematics.js';
-import { decal, bevelBox, screw } from '../../geom/primitives.js';
+import { bevelBox, decal, screw } from '../../geom/shapes.js';
 
 const D2R = Math.PI / 180;
 export const JOINTS = ['j1', 'j2', 'j3', 'j4', 'j5', 'j6'];

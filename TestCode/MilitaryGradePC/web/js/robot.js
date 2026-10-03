@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { createVM60B1, VM60B1_MAT, JOINTS, JOINT_SPEED } from '@core/models/robots/denso-vm60b1.js';
 import { cable, carrier, support, CABLE } from '@core/electrical/cable-routing.js';
-import { cylinder, decal } from '@core/geom/primitives.js';
+import { cylinder, decal } from '@core/geom/shapes.js';
 
 const matArmD  = new THREE.MeshStandardMaterial({ color: 0x2f3439, roughness: 0.5, metalness: 0.3 });
 const matJoint = VM60B1_MAT.joint;

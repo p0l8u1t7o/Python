@@ -2,7 +2,8 @@
 // 車寬固定 1000 mm（輪、輪轂、門架位置依此配置）；車長、門架高、貨叉長、載物點可調。
 // 原用於 ChemicalTankWashing（200L 桶棧板倉儲）。
 import * as THREE from 'three';
-import { MAT, box, cyl, D2R } from '../geom/parts.js';
+import { D2R, block, cylinder } from '../geom/shapes.js';
+import { MAT } from '../geom/materials.js';
 import { bolts, housing } from '../geom/hardware.js';
 
 export const meta = {
@@ -28,35 +29,35 @@ export function create(p = {}) {
   housing(root, P.rear + 150, 1000, P.halfW * 2, MAT.agv, (-P.rear + 150) / 2, 650, 0, 35);
   // 配重比車身寬 12 mm、後退 6 mm、底面低 4 mm：與車身外殼不共面，避免深度互搶閃爍
   housing(root, 320, 944, P.halfW * 2 + 12, MAT.agvDark, -P.rear + 154, 618, 0, 35);
-  box(root, 900, 30, 700, MAT.agvDark, -650, 1165, 0);
-  const beaconMat = MAT.amber.clone(); cyl(root, 55, 110, beaconMat, -650, 1235, 0);
-  for (const s of [-1, 1]) cyl(root, 200, 160, MAT.black, 0, 200, s * 400, 'z');
-  cyl(root, 160, 140, MAT.black, -1250, 160, 0, 'z');
-  for (const [x, z] of [[160, -460], [160, 460], [-P.rear + 30, -460], [-P.rear + 30, 460]]) cyl(root, 45, 70, MAT.yellow, x, 300, z);
-  box(root, 20, 120, 600, MAT.screen, -P.rear - 5, 900, 0);
+  block(root, [900, 30, 700], [-650, 1165, 0], MAT.agvDark);
+  const beaconMat = MAT.amber.clone(); cylinder(root, 55, 110, [-650, 1235, 0], beaconMat, 'y', 28);
+  for (const s of [-1, 1]) cylinder(root, 200, 160, [0, 200, s * 400], MAT.black, 'z', 28);
+  cylinder(root, 160, 140, [-1250, 160, 0], MAT.black, 'z', 28);
+  for (const [x, z] of [[160, -460], [160, 460], [-P.rear + 30, -460], [-P.rear + 30, 460]]) cylinder(root, 45, 70, [x, 300, z], MAT.yellow, 'y', 28);
+  block(root, [20, 120, 600], [-P.rear - 5, 900, 0], MAT.screen);
   // 門架：外柱固定，內柱在叉面超過 1400 後隨之伸出
   const [m0, m1] = P.mast;
-  for (const s of [-1, 1]) box(root, m1 - m0, P.mastLowered, 90, MAT.steelDark, (m0 + m1) / 2, P.mastLowered / 2 + 60, s * 400);
-  box(root, m1 - m0 + 10, 100, 890, MAT.steelDark, (m0 + m1) / 2, P.mastLowered + 10, 0);
+  for (const s of [-1, 1]) block(root, [m1 - m0, P.mastLowered, 90], [(m0 + m1) / 2, P.mastLowered / 2 + 60, s * 400], MAT.steelDark);
+  block(root, [m1 - m0 + 10, 100, 890], [(m0 + m1) / 2, P.mastLowered + 10, 0], MAT.steelDark);
   const inner = new THREE.Group(); root.add(inner);
-  for (const s of [-1, 1]) box(inner, 70, P.mastLowered - 100, 70, MAT.steel, (m0 + m1) / 2 + 20, P.mastLowered / 2 + 60, s * 320);
-  box(inner, 70, 70, 710, MAT.steel, (m0 + m1) / 2 + 20, P.mastLowered + 5, 0);      // 底面高於外柱頂橫樑底面 5 mm，不共面
+  for (const s of [-1, 1]) block(inner, [70, P.mastLowered - 100, 70], [(m0 + m1) / 2 + 20, P.mastLowered / 2 + 60, s * 320], MAT.steel);
+  block(inner, [70, 70, 710], [(m0 + m1) / 2 + 20, P.mastLowered + 5, 0], MAT.steel);      // 底面高於外柱頂橫樑底面 5 mm，不共面
   const carriage = new THREE.Group(); root.add(carriage);
-  box(carriage, 36, 520, 900, MAT.steelDark, m1 + 15, 210, 0);                       // 背面在 m1 − 3：不與載運中棧板的後緣共面
-  for (let k = 0; k < 5; k++) box(carriage, 24, 600, 24, MAT.steelDark, m1 + 20, 790, -360 + k * 180);
-  box(carriage, 30, 30, 900, MAT.steelDark, m1 + 20, P.backrest, 0);
+  block(carriage, [36, 520, 900], [m1 + 15, 210, 0], MAT.steelDark);                       // 背面在 m1 − 3：不與載運中棧板的後緣共面
+  for (let k = 0; k < 5; k++) block(carriage, [24, 600, 24], [m1 + 20, 790, -360 + k * 180], MAT.steelDark);
+  block(carriage, [30, 30, 900], [m1 + 20, P.backrest, 0], MAT.steelDark);
   for (const s of [-1, 1]) {
-    box(carriage, P.forkEnd - P.forkStart, 45, 120, MAT.steelDark, (P.forkStart + P.forkEnd) / 2, -23.5, s * 275);   // 叉面略低於棧板面板底，不共面
-    box(carriage, 45, 450, 120, MAT.steelDark, m1 + 64, 200, s * 275);              // 叉柄掛在托架板前方，不與托架板共面
+    block(carriage, [P.forkEnd - P.forkStart, 45, 120], [(P.forkStart + P.forkEnd) / 2, -23.5, s * 275], MAT.steelDark);   // 叉面略低於棧板面板底，不共面
+    block(carriage, [45, 450, 120], [m1 + 64, 200, s * 275], MAT.steelDark);              // 叉柄掛在托架板前方，不與托架板共面
   }
   // 載物點：棧板原點（底面中心）＝叉面 − deck
   const carry = new THREE.Object3D(); carry.position.set(P.palletX, -P.deck, 0); carriage.add(carry);
   const hubs = [];
-  for (const s of [-1, 1]) { const hub = cyl(root, 100, 12, MAT.steel, 0, 200, s * 492, 'z', 24); hubs.push(hub); bolts(root, Array.from({ length: 6 }, (_, k) => [65 * Math.cos(k * Math.PI / 3), 200 + 65 * Math.sin(k * Math.PI / 3), s * 503]), 9, 'z'); }
-  for (let i = 0; i < 9; i++) box(root, 480, 9, 4, MAT.black, -900, 430 + i * 35, -502);
-  cyl(root, 62, 55, MAT.black, -1150, 1230, 0); cyl(root, 58, 20, MAT.screen, -1150, 1268, 0);
-  const liftRod = cyl(root, 27, 1, MAT.steel, 280, 400, 0);
-  cyl(root, 52, 950, MAT.black, 280, 520, 0);
+  for (const s of [-1, 1]) { const hub = cylinder(root, 100, 12, [0, 200, s * 492], MAT.steel, 'z', 24); hubs.push(hub); bolts(root, Array.from({ length: 6 }, (_, k) => [65 * Math.cos(k * Math.PI / 3), 200 + 65 * Math.sin(k * Math.PI / 3), s * 503]), 9, 'z'); }
+  for (let i = 0; i < 9; i++) block(root, [480, 9, 4], [-900, 430 + i * 35, -502], MAT.black);
+  cylinder(root, 62, 55, [-1150, 1230, 0], MAT.black, 'y', 28); cylinder(root, 58, 20, [-1150, 1268, 0], MAT.screen, 'y', 28);
+  const liftRod = cylinder(root, 27, 1, [280, 400, 0], MAT.steel, 'y', 28);
+  cylinder(root, 52, 950, [280, 520, 0], MAT.black, 'y', 28);
   return {
     root, carry, params: P,
     set({ x = 0, z = 0, yaw = 0, fork = 0, moving = false, time = 0 } = {}) {

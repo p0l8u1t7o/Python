@@ -1,6 +1,7 @@
 // 滾筒輸送線（參數化）：長度、寬度、高度、滾筒間距；state.s 為滾筒轉動距離（mm），用來表現輸送中。
 import * as THREE from 'three';
-import { MAT, box, cyl } from '../geom/parts.js';
+import { block, cylinder } from '../geom/shapes.js';
+import { MAT } from '../geom/materials.js';
 import { foot } from '../geom/hardware.js';
 
 export const meta = {
@@ -21,15 +22,15 @@ export function create(p = {}) {
   const P = { ...Object.fromEntries(Object.entries(meta.params).map(([k, v]) => [k, v.value])), ...p };
   const root = new THREE.Group(); root.name = 'conveyor';
   const top = P.height, frameH = 150, side = P.width / 2 + 25;
-  for (const s of [-1, 1]) box(root, P.length, frameH, 50, MAT.steel, 0, top - P.roller - frameH / 2 + 20, s * side);
+  for (const s of [-1, 1]) block(root, [P.length, frameH, 50], [0, top - P.roller - frameH / 2 + 20, s * side], MAT.steel);
   const legs = Math.max(2, Math.ceil(P.length / 1500) + 1);
   for (let i = 0; i < legs; i++) {
     const x = -P.length / 2 + 80 + i * (P.length - 160) / (legs - 1);
-    for (const s of [-1, 1]) { const h = top - P.roller - frameH + 20; box(root, 60, h, 60, MAT.steelDark, x, h / 2, s * side); foot(root, x, s * side, 120); }
+    for (const s of [-1, 1]) { const h = top - P.roller - frameH + 20; block(root, [60, h, 60], [x, h / 2, s * side], MAT.steelDark); foot(root, x, s * side, 120); }
   }
   const rollers = [];
   for (let x = -P.length / 2 + P.pitch / 2; x <= P.length / 2 - P.pitch / 2 + 1e-6; x += P.pitch) {
-    const r = cyl(root, P.roller, P.width, MAT.roller, x, top - P.roller, 0, 'z', 20); rollers.push(r);
+    const r = cylinder(root, P.roller, P.width, [x, top - P.roller, 0], MAT.roller, 'z', 20); rollers.push(r);
   }
   return {
     root, params: P, top,

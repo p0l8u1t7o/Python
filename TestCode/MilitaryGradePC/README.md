@@ -60,7 +60,7 @@ node ../core/tools/serve.mjs MilitaryGradePC --no-open
 | 檔案 | 用途 |
 |---|---|
 | `web/js/notebook.js` | 產品、介面、封印與 SKU |
-| `core/geom/primitives.js` | 幾何、可讀文字貼圖、配線共用元件（各專案共用） |
+| `core/geom/shapes.js` | 幾何、可讀文字貼圖、配線共用元件（各專案共用） |
 | `web/js/cell.js` | 載具、進出料、輸送與翻轉設備 |
 | `core/models/robots/denso-vm60b1.js` | DENSO VM-60B1 手臂本體（共用模型）：基座、連桿、關節 j1～j6、手臂線材保護段、法蘭工具安裝座、限位、關節速度、IK 參數與幾何初始解；模型目錄 `/core/catalog/` 可預覽 |
 | `web/js/robot.js` | 本站部分：第七軸滑軌與拖鏈、600 mm 立座、力覺末端（F/T、相機＋環形光、鉤爪／壓頭、線雷射）、TCP、逆解選解、PTP 與位姿快取；手臂本體取自共用模型 |

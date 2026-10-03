@@ -5,7 +5,7 @@ import {robotController,controllerLeads} from '@core/electrical/electrical-compo
 import * as THREE from 'three';
 import {cabinetShell,controlPanel,entryGland,panelFeed} from '@core/electrical/electrical-cabinet.js';
 import { cable, cableTray, support, CABLE } from '@core/electrical/cable-routing.js';
-import { block, cylinder, decal, screw } from '@core/geom/primitives.js';
+import { block, cylinder, decal, screw } from '@core/geom/shapes.js';
 import { microTexture } from '@core/geom/surfaces.js';
 
 export const LAYOUT = {

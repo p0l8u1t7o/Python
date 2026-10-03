@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import { cable, armDress, CABLE } from '../../electrical/cable-routing.js';
 import { createIK } from '../../robot/kinematics.js';
-import { cylinder, decal } from '../../geom/primitives.js';
+import { cylinder, decal } from '../../geom/shapes.js';
 
 const D2R = Math.PI / 180;
 

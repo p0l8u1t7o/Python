@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { createVS068, VS068_MAT, JOINTS, JOINT_SPEED } from '@core/models/robots/denso-vs068.js';
 import { cable, CABLE } from '@core/electrical/cable-routing.js';
-import { block, cylinder, decal, bevelBox, screw, tube } from '@core/geom/primitives.js';
+import { bevelBox, block, cylinder, decal, screw, tube } from '@core/geom/shapes.js';
 
 const matArmD  = VS068_MAT.dark;
 const matJoint = VS068_MAT.joint;

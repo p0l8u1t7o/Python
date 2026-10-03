@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { cable, CABLE } from '@core/electrical/cable-routing.js';
 import { createCobottaPro900, MAT as ARM_MAT, JOINTS } from '@core/models/robots/denso-cobotta-pro900.js';
-import { block, cylinder, decal } from '@core/geom/primitives.js';
+import { block, cylinder, decal } from '@core/geom/shapes.js';
 
 const matTool  = ARM_MAT.tool;
 const matAnod  = new THREE.MeshStandardMaterial({ color: 0x3b4149, roughness: 0.4, metalness: 0.6 });

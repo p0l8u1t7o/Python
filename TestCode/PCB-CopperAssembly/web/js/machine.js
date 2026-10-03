@@ -5,7 +5,7 @@ import {cabinetShell,controlPanel,entryGland,panelFeed} from '@core/electrical/e
 import { cable, cableTray, carrier, support, CABLE } from '@core/electrical/cable-routing.js';
 import { finish } from '@core/geom/finish.js';
 import { perforated } from '@core/geom/perforated.js';
-import { block, cylinder, decal } from '@core/geom/primitives.js';
+import { block, cylinder, decal } from '@core/geom/shapes.js';
 import { LAYOUT, PRODUCT, HOLES, BOARD_TOP } from './layout.js';
 import { createCoin } from './board.js';
 

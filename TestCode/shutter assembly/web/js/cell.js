@@ -4,7 +4,7 @@ import {robotController,controllerLeads,electricalDevice} from '@core/electrical
 import * as THREE from 'three';
 import {controlPanel,entryGland,panelFeed} from '@core/electrical/electrical-cabinet.js';
 import { cable, cableTray, support, CABLE } from '@core/electrical/cable-routing.js';
-import { block, cylinder, decal, screw } from '@core/geom/primitives.js';
+import { block, cylinder, decal, screw } from '@core/geom/shapes.js';
 import { microTexture, batchStatic } from '@core/geom/surfaces.js';
 import { PART, createBase, createBlade, createCover, createAssembly } from './product.js';
 

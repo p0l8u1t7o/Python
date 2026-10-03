@@ -2,7 +2,7 @@
 // 座標：產品根節點在載盤底面中心；單位 mm。尺寸為照片目測或假設，實際以圖面校正。
 import * as THREE from 'three';
 import { finish } from '@core/geom/finish.js';
-import { block, decal, cylinder, rounded } from '@core/geom/primitives.js';
+import { block, cylinder, decal, rounded } from '@core/geom/shapes.js';
 import { microTexture, pcbSurface, batchStatic } from '@core/geom/surfaces.js';
 import { CONNECTOR_TYPES } from './recipes.js';
 

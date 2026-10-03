@@ -1,7 +1,8 @@
 // 洗桶區建築：地坪、牆、門窗、柱、分區標線、樓高與尺寸標註。
 import * as THREE from 'three';
 import { ROOM, OUTLINE, DOORS, COLUMN, AISLE, AGV, FOOTPRINTS, WALKWAYS, FILLING, SHUTTLE_BAY, WASTE, RACK, AGV_TURNS, agvSweep, pointInPolygon, doorSwing, ROBOT, rackBlocks, FENCE, INBOUND, INBOUND_AREA, inboundArcPoses } from './layout.js';
-import { MAT, box, rod, floorText } from '@core/geom/parts.js';
+import { block, floorText, rod } from '@core/geom/shapes.js';
+import { MAT } from '@core/geom/materials.js';
 
 const line = (pts, color, opacity = 1) => {
   const g = new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(...p)));
@@ -42,8 +43,8 @@ export function createBuilding(scene) {
     for (const [h, mat, y] of [[ROOM.H, MAT.wall, ROOM.H / 2], [160, MAT.wallBase, 80]]) {
       if (ax === 0 && bx === 0 && Math.min(az, bz) < INBOUND.door[0] && Math.max(az, bz) > INBOUND.door[1]) {
         const low = Math.min(az, bz), high = Math.max(az, bz), [d0, d1] = INBOUND.door;
-        for (const [za, zb] of [[low, d0], [d1, high]]) box(group, ROOM.wall, h, zb - za, mat, nx * ROOM.wall / 2, y, (za + zb) / 2);
-        if (h === ROOM.H) box(group, ROOM.wall, ROOM.H - 2600, d1 - d0, mat, nx * ROOM.wall / 2, (ROOM.H + 2600) / 2, (d0 + d1) / 2);
+        for (const [za, zb] of [[low, d0], [d1, high]]) block(group, [ROOM.wall, h, zb - za], [nx * ROOM.wall / 2, y, (za + zb) / 2], mat);
+        if (h === ROOM.H) block(group, [ROOM.wall, ROOM.H - 2600, d1 - d0], [nx * ROOM.wall / 2, (ROOM.H + 2600) / 2, (d0 + d1) / 2], mat);
       } else {
         const w = new THREE.Mesh(new THREE.BoxGeometry(L + ROOM.wall, h, ROOM.wall), mat);
         w.position.set(mx + nx * ROOM.wall / 2, y, mz + nz * ROOM.wall / 2); w.rotation.y = yaw; w.receiveShadow = true; group.add(w);
@@ -51,7 +52,7 @@ export function createBuilding(scene) {
     }
   }
   // 更衣室西牆與南牆（輪廓以外）
-  box(group, ROOM.wall, ROOM.H, 3820, MAT.wall, -2150, ROOM.H / 2, 6610);
+  block(group, [ROOM.wall, ROOM.H, 3820], [-2150, ROOM.H / 2, 6610], MAT.wall);
   // 樓高輪廓線
   group.add(line([...OUTLINE, OUTLINE[0]].map(([x, z]) => [x, ROOM.H, z]), 0x8fb6c8, .55));
   const ceiling = new THREE.Mesh(new THREE.ShapeGeometry(shape), new THREE.MeshBasicMaterial({ color: 0x9fc3d6, transparent: true, opacity: .07, side: THREE.DoubleSide, depthWrite: false }));
@@ -60,7 +61,7 @@ export function createBuilding(scene) {
   // 門（門扇以 30° 半開示意）＋開啟範圍
   for (const d of DOORS) {
     const w = d.x1 - d.x0;
-    const leaf = box(group, w, 2100, 45, MAT.door, 0, 1050, 0);
+    const leaf = block(group, [w, 2100, 45], [0, 1050, 0], MAT.door);
     const hinge = new THREE.Group(); hinge.position.set(d.x0, 0, d.z); group.add(hinge); hinge.add(leaf); leaf.position.x = w / 2;
     hinge.rotation.y = -d.dir * 30 * Math.PI / 180;
     const pts = []; for (let i = 0; i <= 24; i++) { const a = i / 24 * Math.PI / 2; pts.push([d.x0 + w * Math.cos(a), 6, d.z + d.dir * w * Math.sin(a)]); }
@@ -68,12 +69,12 @@ export function createBuilding(scene) {
     const s = doorSwing(d); zone(group, s, 0xffd27a, .08, 2);
   }
   // 窗（東牆一段、南牆五樘）
-  box(group, 30, 1500, 5400, MAT.window, ROOM.W + 105, 1650, 7250);
-  for (const x of [-1600, 400, 2400, 7200, 9800]) box(group, 1700, 1500, 30, MAT.window, x + 850, 1650, ROOM.D + 105);
+  block(group, [30, 1500, 5400], [ROOM.W + 105, 1650, 7250], MAT.window);
+  for (const x of [-1600, 400, 2400, 7200, 9800]) block(group, [1700, 1500, 30], [x + 850, 1650, ROOM.D + 105], MAT.window);
   // 柱
-  box(group, COLUMN.size, ROOM.H, COLUMN.size, MAT.column, COLUMN.x, ROOM.H / 2, COLUMN.z);
+  block(group, [COLUMN.size, ROOM.H, COLUMN.size], [COLUMN.x, ROOM.H / 2, COLUMN.z], MAT.column);
   // 柱面 AGV 充電櫃
-  { const [x0, z0, x1, z1, h] = FOOTPRINTS.charger; box(group, x1 - x0, h, z1 - z0, MAT.cabinet, (x0 + x1) / 2, h / 2, (z0 + z1) / 2); box(group, 120, 120, 6, MAT.green, (x0 + x1) / 2, h - 200, z1 + 3); }
+  { const [x0, z0, x1, z1, h] = FOOTPRINTS.charger; block(group, [x1 - x0, h, z1 - z0], [(x0 + x1) / 2, h / 2, (z0 + z1) / 2], MAT.cabinet); block(group, [120, 120, 6], [(x0 + x1) / 2, h - 200, z1 + 3], MAT.green); }
 
   // 分區
   const zones = new THREE.Group(); group.add(zones);

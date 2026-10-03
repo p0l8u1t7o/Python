@@ -209,7 +209,7 @@ node --import ../core/tools/register.mjs tools/verify-gripper.mjs
 | `web/js/line.js` | 棧板站、龍門、V 槽滾輪輸送、貼標讀碼、翻桶機、開蓋站、立放直線輸送、圍籬、控制櫃 |
 | `web/js/robot.js`、`gripper.js` | R-2000iC/165F、完整清洗夾具；IK 用 `core/robot/kinematics.js` |
 | `web/js/washing.js` | 沖洗站、雙噴槍、真空泵、集液、四槽、泵與配管流向 |
-| `core/geom/parts.js`、`core/geom/hardware.js` | 材質表與基本形狀；倒角外殼、螺栓實例、馬達／法蘭／儀表等共用細節（其他專案也可用） |
+| `core/geom/shapes.js`、`materials.js`、`hardware.js` | 材質表與基本形狀；倒角外殼、螺栓實例、馬達／法蘭／儀表等共用細節（其他專案也可用） |
 | `web/js/drum.js` | 200L 桶 |
 | `web/js/sequence.js` | 各設備與各桶的時間軌、交接推算、狀態取樣 |
 | `web/js/main.js` | 場景、面板、視角、相機子畫面 |

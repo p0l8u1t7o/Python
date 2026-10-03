@@ -1,7 +1,7 @@
 // Reference reconstruction, millimetres. Positions are estimates, not OEM CAD.
 import * as THREE from 'three';
 import { finish } from '@core/geom/finish.js';
-import { block, cylinder, rounded, profile, decal } from '@core/geom/primitives.js';
+import { block, cylinder, decal, profile, rounded } from '@core/geom/shapes.js';
 export const NB = { W: 300, D: 210, H: 36 };
 // 護蓋開度：100° 時門緣仍高於載具框 12 mm，鉤爪與壓頭在門緣作業不碰載具框
 export const DOOR_OPEN_DEG = 100;

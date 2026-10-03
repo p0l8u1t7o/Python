@@ -1,7 +1,8 @@
 // 兩軸龍門（X 橫移＋Z 升降）附平行夾爪（參數化）。state：x（沿樑位置）、y（夾爪中心高度）、jaw（0 夾緊～1 張開）。
 // Z 軸穿過導向座以 userData.guide／on 標記，core 全場檢查會視為滑動配合。
 import * as THREE from 'three';
-import { MAT, box } from '../geom/parts.js';
+import { block } from '../geom/shapes.js';
+import { MAT } from '../geom/materials.js';
 import { foot, motor } from '../geom/hardware.js';
 
 export const meta = {
@@ -26,18 +27,18 @@ export function create(p = {}) {
   const P = { ...Object.fromEntries(Object.entries(meta.params).map(([k, v]) => [k, v.value])), ...p };
   const root = new THREE.Group(); root.name = 'gantry';
   const H = P.height;
-  for (const x of [-P.span / 2 - 190, P.span / 2 + 190]) { box(root, 80, H, 80, MAT.steelOrange, x, H / 2, 0); foot(root, x, 0, 160); }
-  box(root, P.span + 460, 100, 100, MAT.steelOrange, 0, H + 50, 0);
+  for (const x of [-P.span / 2 - 190, P.span / 2 + 190]) { block(root, [80, H, 80], [x, H / 2, 0], MAT.steelOrange); foot(root, x, 0, 160); }
+  block(root, [P.span + 460, 100, 100], [0, H + 50, 0], MAT.steelOrange);
   const carriage = new THREE.Group(); root.add(carriage);
-  box(carriage, 160, 160, 120, MAT.steelDark, 0, H + 50, 110);
+  block(carriage, [160, 160, 120], [0, H + 50, 110], MAT.steelDark);
   motor(carriage, 0, H + 180, 110, .6);
   // Z 軸導向座：從台車前緣（z 150）伸到 Z 軸外側（offset + 30）
-  const bracket = box(carriage, 100, 80, P.offset + 30 - 150, MAT.steelDark, 0, H - 20, (150 + P.offset + 30) / 2);
+  const bracket = block(carriage, [100, 80, P.offset + 30 - 150], [0, H - 20, (150 + P.offset + 30) / 2], MAT.steelDark);
   bracket.userData.guide = 'gantry-z';
   const zAxis = new THREE.Group(); zAxis.userData.on = 'gantry-z'; zAxis.position.z = P.offset; carriage.add(zAxis);   // 原點＝夾爪中心
-  box(zAxis, 50, P.stroke, 50, MAT.alu, 0, 75 + P.stroke / 2, 0);
-  box(zAxis, P.grip + 100, 30, 90, MAT.steelDark, 0, 75, 0);
-  const jaws = [-1, 1].map(() => box(zAxis, 20, 120, 80, MAT.yellow, 0, 0, 0));
+  block(zAxis, [50, P.stroke, 50], [0, 75 + P.stroke / 2, 0], MAT.alu);
+  block(zAxis, [P.grip + 100, 30, 90], [0, 75, 0], MAT.steelDark);
+  const jaws = [-1, 1].map(() => block(zAxis, [20, 120, 80], [0, 0, 0], MAT.yellow));
   return {
     root, params: P,
     set({ x = 0, y = H - 500, jaw = 1 } = {}) {

@@ -3,7 +3,7 @@
 // 局部座標：原點在底座底面中心，y 向上；J1＝J2＝0 時手臂伸向 +z。角度 rad、長度 mm。
 import * as THREE from 'three';
 import { cable, carrier, support, CABLE } from '../../electrical/cable-routing.js';
-import { block, cylinder, decal, bevelBox, screw, tube } from '../../geom/primitives.js';
+import { bevelBox, block, cylinder, decal, screw, tube } from '../../geom/shapes.js';
 
 const D2R = Math.PI / 180;
 

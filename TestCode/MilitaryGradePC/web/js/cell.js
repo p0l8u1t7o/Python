@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import {cabinetShell,controlPanel,entryGland,panelFeed} from '@core/electrical/electrical-cabinet.js';
 import { cable, cableTray, carrier, support, CABLE } from '@core/electrical/cable-routing.js';
 import { NB } from './notebook.js';
-import { block, cylinder, decal, tube } from '@core/geom/primitives.js';
+import { block, cylinder, decal, tube } from '@core/geom/shapes.js';
 
 export const LAYOUT = {
   // S3 在 x=1150：S2 右側護蓋作業時手腕在 x≤約 680，翻轉治具左端（x≥695）不在手腕範圍內

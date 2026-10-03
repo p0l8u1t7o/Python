@@ -1,7 +1,8 @@
 // 200 L 閉口 HDPE 桶：本體（L 環、兩道滾箍）、2" 與 3/4" 螺塞、識別標籤、桶內液量。共用模型，原用於 ChemicalTankWashing。
 // 局部座標：原點在桶中心，+Y 為桶頂；2" 螺塞在 +X、3/4" 在 −X。
 import * as THREE from 'three';
-import { MAT, HAS_DOM, box } from '../geom/parts.js';
+import { HAS_DOM, block } from '../geom/shapes.js';
+import { MAT } from '../geom/materials.js';
 
 // 規格（mm、kg）：R 本體半徑、envelopeR 含滾箍外徑、H 總高、bungR 螺塞距中心、big／small 為 2" 與 3/4" 螺塞
 export const DRUM = { R: 292.5, envelopeR: 298, H: 935, bungR: 200, big: { r: 36, h: 24, hole: 27 }, small: { r: 18, h: 18, hole: 12 }, kg: 8.5 };
@@ -66,7 +67,7 @@ export function createDrum(id) {
     lip.rotation.x = -Math.PI / 2; lip.position.set(x, CAP_Y, 0); root.add(lip);
     const hole = new THREE.Mesh(holeGeo, MAT.hole); hole.rotation.x = -Math.PI / 2; hole.position.set(x, CAP_Y + .5, 0); hole.visible = false; root.add(hole);
     const cap = new THREE.Mesh(capGeo, MAT.cap); cap.castShadow = true; cap.position.set(x, CAP_Y + capGeo.parameters.height / 2, 0); root.add(cap);
-    for (const side of [-1, 1]) box(cap, key === 'big' ? 48 : 23, 5, 5, MAT.cap, 0, capGeo.parameters.height / 2 + 2, side * (key === 'big' ? 9 : 5));
+    for (const side of [-1, 1]) block(cap, [key === 'big' ? 48 : 23, 5, 5], [0, capGeo.parameters.height / 2 + 2, side * (key === 'big' ? 9 : 5)], MAT.cap);
     parts[key] = { cap, hole };
   }
   const tex = labelTexture(id);

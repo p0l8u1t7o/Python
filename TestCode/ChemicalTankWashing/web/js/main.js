@@ -2,7 +2,9 @@
 import * as THREE from 'three';
 import { createStage, exposeSim } from '@core/ui/stage.js';
 import { RACK, COLUMN, UPRIGHT, DECAP, BOOTH, WASTE, layoutChecks, ROBOT, LABEL, LYING, INBOUND, PAYLOAD, payloadAt } from './layout.js';
-import { MAT, D2R, smooth } from '@core/geom/parts.js';
+import { D2R } from '@core/geom/shapes.js';
+import { MAT } from '@core/geom/materials.js';
+import { smooth } from '@core/anim/track.js';
 import { applyPlant } from './plant.js';
 import { createProject } from './project.js';
 import { STATIONS, DRUM_IDS, IN_IDS, DRUM_KEYS, SPRAY_S, SPRAY_SINGLE_S } from './sequence.js';

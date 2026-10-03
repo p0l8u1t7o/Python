@@ -1,15 +1,16 @@
 // 穿梭車密集架、棧板、架上桶槽（靜態以 InstancedMesh 繪製）、示範車道與穿梭車。
 import * as THREE from 'three';
 import { RACK, PALLET, DRUM, lanePositions } from './layout.js';
-import { MAT, box, plate, rod, cyl } from '@core/geom/parts.js';
+import { block, cylinder, plate, rod } from '@core/geom/shapes.js';
+import { MAT } from '@core/geom/materials.js';
 import { foot } from '@core/geom/hardware.js';
 import { createDrumInstances } from './drum.js';
 
 // 塑膠棧板：上板＋三條沿 Z 的底樑（叉子由 Z 向插入，兩側底樑落在穿梭車軌道上）
 export function createPallet(empty = false) {
   const g = new THREE.Group(), mat = empty ? MAT.palletEmpty : MAT.pallet;
-  box(g, PALLET.W, 30, PALLET.W, mat, 0, PALLET.H - 15, 0);
-  for (const x of [-550, 0, 550]) box(g, 100, PALLET.H - 30, PALLET.W, mat, x, (PALLET.H - 30) / 2, 0);
+  block(g, [PALLET.W, 30, PALLET.W], [0, PALLET.H - 15, 0], mat);
+  for (const x of [-550, 0, 550]) block(g, [100, PALLET.H - 30, PALLET.W], [x, (PALLET.H - 30) / 2, 0], mat);
   return g;
 }
 const rand = seed => () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
@@ -26,14 +27,14 @@ export function createStorage(scene, makeDrum) {
     const xs = [[RACK.lanes[lanes[0]] - half, front(lanes[0])], ...lanes.map((l, k) => [RACK.lanes[l] + half, Math.max(front(l), k + 1 < lanes.length ? front(lanes[k + 1]) : 0)])];
     for (const [x, f] of xs) {
       const zs = framesTo(f);
-      for (const z of zs) { box(group, 90, RACK.topBeam, 90, MAT.steelBlue, x, RACK.topBeam / 2, z); foot(group, x, z, 130); }
+      for (const z of zs) { block(group, [90, RACK.topBeam, 90], [x, RACK.topBeam / 2, z], MAT.steelBlue); foot(group, x, z, 130); }
       for (let k = 0; k < zs.length - 1; k++) for (let y = 430; y < 3100; y += 1330) rod(group, [x, y, zs[k]], [x, y + 980, zs[k + 1]], 12, MAT.steel, 8);
-      for (let k = 0; k < zs.length - 1; k++) box(group, 40, 40, zs[k + 1] - zs[k], MAT.steelBlue, x, RACK.topBeam - 300, (zs[k] + zs[k + 1]) / 2);
+      for (let k = 0; k < zs.length - 1; k++) block(group, [40, 40, zs[k + 1] - zs[k]], [x, RACK.topBeam - 300, (zs[k] + zs[k + 1]) / 2], MAT.steelBlue);
     }
-    for (const l of lanes) for (const z of [RACK.zBack, front(l) - 50]) box(group, RACK.pitch + 90, 120, 70, MAT.steelBlue, RACK.lanes[l], RACK.topBeam - 60, z);
+    for (const l of lanes) for (const z of [RACK.zBack, front(l) - 50]) block(group, [RACK.pitch + 90, 120, 70], [RACK.lanes[l], RACK.topBeam - 60, z], MAT.steelBlue);
     for (const i of lanes) for (const y of RACK.levels) for (const s of [-1, 1]) {
-      box(group, 80, 105, front(i) - RACK.zBack, MAT.steelOrange, RACK.lanes[i] + s * 600, y - 52, (RACK.zBack + front(i)) / 2);
-      box(group, 60, 220, 60, MAT.steelOrange, RACK.lanes[i] + s * 650, y + 60, front(i) - 30);   // 入口導引
+      block(group, [80, 105, front(i) - RACK.zBack], [RACK.lanes[i] + s * 600, y - 52, (RACK.zBack + front(i)) / 2], MAT.steelOrange);
+      block(group, [60, 220, 60], [RACK.lanes[i] + s * 650, y + 60, front(i) - 30], MAT.steelOrange);   // 入口導引
     }
     for (const i of lanes) plate(group, [`第 ${i + 1} 道`], 520, 130, [RACK.lanes[i], RACK.topBeam + 90, front(i) - 10], 0, { w: 512, h: 128 });
   }
@@ -75,10 +76,10 @@ export function createStorage(scene, makeDrum) {
   }
   // 穿梭車（無線遙控型，在軌道下緣行走，頂升 40 mm 搬運棧板）
   const shuttle = new THREE.Group(); group.add(shuttle);
-  box(shuttle, 1000, 120, 1080, MAT.yellow, 0, -80, 0);
-  for (const x of [-480, 480]) for (const z of [-400, 400]) cyl(shuttle, 45, 35, MAT.black, x, -70, z, "x", 16);
-  box(shuttle, 900, 16, 980, MAT.steelDark, 0, -12, 0);
-  for (const s of [-1, 1]) box(shuttle, 30, 60, 200, MAT.red, s * 505, -95, 520);
+  block(shuttle, [1000, 120, 1080], [0, -80, 0], MAT.yellow);
+  for (const x of [-480, 480]) for (const z of [-400, 400]) cylinder(shuttle, 45, 35, [x, -70, z], MAT.black, "x", 16);
+  block(shuttle, [900, 16, 980], [0, -12, 0], MAT.steelDark);
+  for (const s of [-1, 1]) block(shuttle, [30, 60, 200], [s * 505, -95, 520], MAT.red);
   // 其他兩層的穿梭車停在各自車道後端（示意；換道由 AGV 搬運）
   for (const [l, v, p] of RACK.shuttles) if (v !== RACK.demo.level) { const s = shuttle.clone(); s.position.set(RACK.lanes[l], RACK.levels[v], RACK.pos[p]); group.add(s); }
   const laneX = RACK.lanes[RACK.demo.lane], laneY = RACK.levels[RACK.demo.level];

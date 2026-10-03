@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { RACK, PALLET, DRUM, AGV, FORK, AISLE, PALLET_STATION, GANTRY, LYING, LABEL, UPENDER, UPRIGHT, DECAP, BOOTH, WASTE, INBOUND, WEIGH, AIR_KNIFE } from './layout.js';
 import { jibPoint, jibTarget, DOLLY_H } from './inbound.js';
-import { D2R } from '@core/geom/parts.js';
+import { D2R } from '@core/geom/shapes.js';
 import { Track, smooth } from '@core/anim/track.js';
 import { JOINTS, SPEED } from './robot.js';
 

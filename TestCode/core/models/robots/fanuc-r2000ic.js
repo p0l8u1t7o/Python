@@ -6,7 +6,8 @@
 // 工具掛在 arm.flange（法蘭面中心，軸向 +X）；IK 解算器見 arm.createSolver。
 import * as THREE from 'three';
 import { createIK } from '../../robot/kinematics.js';
-import { MAT, box, cyl, D2R } from '../../geom/parts.js';
+import { D2R, block, cylinder } from '../../geom/shapes.js';
+import { MAT } from '../../geom/materials.js';
 import { bolts, housing } from '../../geom/hardware.js';
 
 export const K = { j2h: 670, j1x: 312, upper: 1075, foreOff: 225, fore: 1280, wrist: 175, flange: 40 };
@@ -21,41 +22,41 @@ export const IK_OPTIONS = { weight: 400, iterations: 30, lambda: [20, 4], step: 
 export function createArm({ name = 'robot' } = {}) {
   const root = new THREE.Group(); root.name = name;
   const j = {};
-  box(root, 1000, 60, 1000, MAT.fanucDark, 0, 30, 0);
-  cyl(root, 400, 300, MAT.fanuc, 0, 210, 0, 'y', 36);
+  block(root, [1000, 60, 1000], [0, 30, 0], MAT.fanucDark);
+  cylinder(root, 400, 300, [0, 210, 0], MAT.fanuc, 'y', 36);
   j.j1 = new THREE.Group(); root.add(j.j1);
-  cyl(j.j1, 360, 300, MAT.fanuc, 0, 470, 0, 'y', 36);
-  cyl(j.j1, 270, 600, MAT.fanuc, K.j1x, K.j2h, 0, 'z', 32);
-  cyl(j.j1, 150, 240, MAT.fanucDark, K.j1x, K.j2h, -400, 'z', 20);
-  box(j.j1, 420, 300, 380, MAT.fanuc, 60, 560, 0);
+  cylinder(j.j1, 360, 300, [0, 470, 0], MAT.fanuc, 'y', 36);
+  cylinder(j.j1, 270, 600, [K.j1x, K.j2h, 0], MAT.fanuc, 'z', 32);
+  cylinder(j.j1, 150, 240, [K.j1x, K.j2h, -400], MAT.fanucDark, 'z', 20);
+  block(j.j1, [420, 300, 380], [60, 560, 0], MAT.fanuc);
   j.j2 = new THREE.Group(); j.j2.position.set(K.j1x, K.j2h, 0); j.j1.add(j.j2);
   housing(j.j2, 320, K.upper - 200, 300, MAT.fanuc, 0, K.upper / 2, 120, 28);
-  cyl(j.j2, 230, 280, MAT.fanuc, 0, 0, 160, 'z', 28);
-  cyl(j.j2, 210, 380, MAT.fanuc, 0, K.upper, 100, 'z', 28);
-  box(j.j2, 140, 700, 120, MAT.fanucDark, -170, 453, 260);                                  // 平衡器
+  cylinder(j.j2, 230, 280, [0, 0, 160], MAT.fanuc, 'z', 28);
+  cylinder(j.j2, 210, 380, [0, K.upper, 100], MAT.fanuc, 'z', 28);
+  block(j.j2, [140, 700, 120], [-170, 453, 260], MAT.fanucDark);                                  // 平衡器
   j.j3 = new THREE.Group(); j.j3.position.set(0, K.upper, 0); j.j2.add(j.j3);
   housing(j.j3, 620, 440, 360, MAT.fanuc, -120, 150, -60, 30);
-  for (const [y, z] of [[90, -150], [250, -150], [170, 40]]) cyl(j.j3, 85, 220, MAT.fanucDark, -500, y, z, 'x', 18);
+  for (const [y, z] of [[90, -150], [250, -150], [170, 40]]) cylinder(j.j3, 85, 220, [-500, y, z], MAT.fanucDark, 'x', 18);
   housing(j.j3, K.fore - 300 - 180, 250, 250, MAT.fanuc, (180 + K.fore - 300) / 2, K.foreOff, 0, 22);
   j.j4 = new THREE.Group(); j.j4.position.set(K.fore - 300, K.foreOff, 0); j.j3.add(j.j4);
-  cyl(j.j4, 150, 200, MAT.fanuc, 100, 0, 0, 'x', 28);
-  for (const s of [-1, 1]) box(j.j4, 160, 160, 40, MAT.fanuc, 230, 0, s * 115);
+  cylinder(j.j4, 150, 200, [100, 0, 0], MAT.fanuc, 'x', 28);
+  for (const s of [-1, 1]) block(j.j4, [160, 160, 40], [230, 0, s * 115], MAT.fanuc);
   j.j5 = new THREE.Group(); j.j5.position.set(300, 0, 0); j.j4.add(j.j5);
-  cyl(j.j5, 115, 190, MAT.fanuc, 0, 0, 0, 'z', 24);
-  cyl(j.j5, 105, 150, MAT.fanuc, 85, 0, 0, 'x', 24);
+  cylinder(j.j5, 115, 190, [0, 0, 0], MAT.fanuc, 'z', 24);
+  cylinder(j.j5, 105, 150, [85, 0, 0], MAT.fanuc, 'x', 24);
   j.j6 = new THREE.Group(); j.j6.position.set(K.wrist, 0, 0); j.j5.add(j.j6);
-  cyl(j.j6, 100, K.flange, MAT.fanucDark, K.flange / 2, 0, 0, 'x', 24);
+  cylinder(j.j6, 100, K.flange, [K.flange / 2, 0, 0], MAT.fanucDark, 'x', 24);
   // 工具安裝點：法蘭面中心，局部 +X 為法蘭軸向
   const flange = new THREE.Object3D(); flange.name = 'flange'; flange.position.x = K.flange; j.j6.add(flange);
 
   // 鑄件端蓋、基座錨栓、檢修蓋與氣缸接頭，跟隨各自關節。
   bolts(root, [-1, 1].flatMap(x => [-1, 1].map(z => [x * 420, 68, z * 420])), 24);
   for (const [parent, x, y, z, radius] of [[j.j2, 0, 0, 310, 155], [j.j2, 0, K.upper, 300, 140], [j.j5, 0, 0, 102, 80]]) {
-    cyl(parent, radius, 12, MAT.steelDark, x, y, z, 'z');
+    cylinder(parent, radius, 12, [x, y, z], MAT.steelDark, 'z', 28);
     bolts(parent, Array.from({ length: 8 }, (_, k) => [x + Math.cos(k * Math.PI / 4) * radius * .78, y + Math.sin(k * Math.PI / 4) * radius * .78, z + 12]), 9, 'z');
   }
-  box(j.j2, 170, 460, 5, MAT.fanucDark, 0, K.upper / 2, 274);
-  for (let i = 0; i < 6; i++) box(j.j3, 6, 120, 3, MAT.black, -340 + i * 40, 180, -242);
+  block(j.j2, [170, 460, 5], [0, K.upper / 2, 274], MAT.fanucDark);
+  for (let i = 0; i < 6; i++) block(j.j3, [6, 120, 3], [-340 + i * 40, 180, -242], MAT.black);
 
   const q = { j1: 0, j2: 0, j3: 0, j4: 0, j5: 0, j6: 0 };   // rad
   function apply() {
@@ -171,7 +172,7 @@ export const meta = {
 export function create(p = {}) {
   const P = { ...Object.fromEntries(Object.entries(meta.params).map(([k, v]) => [k, v.value])), ...p };
   const root = new THREE.Group(); root.name = 'fanuc-r2000ic';
-  if (P.pedestal > 0) box(root, 1100, P.pedestal, 1100, MAT.steelDark, 0, P.pedestal / 2, 0);
+  if (P.pedestal > 0) block(root, [1100, P.pedestal, 1100], [0, P.pedestal / 2, 0], MAT.steelDark);
   const arm = createArm({ name: 'arm' }); arm.root.position.y = P.pedestal; root.add(arm.root); arm.apply();
   return {
     root, arm,
