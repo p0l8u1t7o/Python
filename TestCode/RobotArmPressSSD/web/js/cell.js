@@ -6,8 +6,7 @@ import * as THREE from 'three';
 import {cabinetShell,controlPanel,entryGland,panelFeed} from '@core/electrical/electrical-cabinet.js';
 import { cable, cableTray, support, CABLE } from '@core/electrical/cable-routing.js';
 import { block, cylinder, decal, screw } from '@core/geom/shapes.js';
-import { microTexture } from '@core/geom/surfaces.js';
-import { MAT } from '@core/geom/materials.js';
+import { MAT, finished } from '@core/geom/materials.js';
 
 export const LAYOUT = {
   conveyorTop: 900,                   // SMT 輸送面（載盤底面）
@@ -27,15 +26,15 @@ export function palletPlacement(recipe) {
   return { x: LAYOUT.stopFace - w / 2, z: LAYOUT.rearInner + d / 2, frontInner: LAYOUT.rearInner + d + 2 };
 }
 
-// 常用材質取共用表（core/geom/materials.js）；拉絲鋁軌、綠色輸送皮帶、鍍鉻銷、PC 外罩、深色展場地面為本站外觀，留在這裡
-const matFrame = MAT.steel;       // 型材框架、橫樑、立柱
+// 常用材質取共用表（core/geom/materials.js）；綠色輸送皮帶、PC 外罩、深色展場地面為本站外觀，留在這裡
+const matFrame = MAT.frame;       // 鋁擠型框架、橫樑、立柱
 const matDark  = MAT.black;       // 黑色件（氣缸、感測器座、相機本體）
 const matCab   = MAT.cabinet;     // 機台底櫃烤漆
 const matBlue  = MAT.steelBlue;   // 藍色烤漆（皮帶驅動、感測器）
 const matYellow= MAT.yellow;      // 地面標線、按鈕座
-const matAlu   = new THREE.MeshStandardMaterial({ color: 0xb9c0c8, roughness: 0.4, metalness: 0.8, bumpMap: microTexture('brushed'), bumpScale: .025 });
+const matAlu   = finished(MAT.alu, 'metal');   // 拉絲鋁：軌道、壓邊、頂升支撐板
 const matBelt  = new THREE.MeshStandardMaterial({ color: 0x2e7d56, roughness: 0.75 });
-const matPin   = new THREE.MeshStandardMaterial({ color: 0xd0d5da, roughness: 0.3, metalness: 0.9 });
+const matPin   = MAT.chrome;      // 拋光銷：橫向導桿、止擋銷
 const matPC    = new THREE.MeshPhysicalMaterial({ color: 0xcfe3ff, roughness: 0.1, transmission: 0.3, transparent: true, opacity: 0.12, depthWrite: false, side: THREE.DoubleSide });
 const matFloor = new THREE.MeshStandardMaterial({ color: 0x1b2027, roughness: 0.95 });
 

@@ -63,14 +63,8 @@ const trailGeo = new THREE.BufferGeometry(); trailGeo.setAttribute('position', n
 const trail = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({ color: 0x7fd4ff, transparent: true, opacity: 0.7 })); scene.add(trail);
 function pushTrail(p) { if (trailCount >= trailN) { trailPos.copyWithin(0, 3); trailCount = trailN - 1; } trailPos.set([p.x, p.y, p.z], trailCount * 3); trailCount++; trailGeo.attributes.position.needsUpdate = true; trailGeo.setDrawRange(0, trailCount); }
 
-// 3D 標籤（共用舞台的標籤層；畫布不在 #app 左上角，標籤層依畫布位置平移）
-const addLabel = (html, getPos) => stage.addLabel(html, getPos);
-let labelOffset = '';
-function updateLabels(show) {
-  const off = `${canvas.offsetLeft},${canvas.offsetTop}`;
-  if (off !== labelOffset) { labelOffset = off; for (const l of stage.labels) Object.assign(l.el.style, { left: canvas.offsetLeft + 'px', top: canvas.offsetTop + 'px' }); }
-  stage.updateLabels(show);
-}
+// 3D 標籤（共用舞台的標籤層；畫布在頁面中的偏移由 stage 處理），標籤放在點的上方
+const addLabel = (html, getPos) => stage.addLabel(html, getPos, '', { anchor: 'above' });
 const top = LAYOUT.conveyorTop;
 addLabel('<b>DENSO</b> VS-068', () => new THREE.Vector3(...LAYOUT.robot).add(new THREE.Vector3(0, 120, -110)));
 addLabel(INSERT === 'bar' ? '8 頭整排壓墊（獨立彈簧）' : '單點彈簧壓頭（快拆）', () => robot.getTcpWorld('press').add(new THREE.Vector3(0, 50, 0)));
@@ -88,6 +82,8 @@ STATIONS.forEach((name, i) => { const b = document.createElement('button'); b.cl
 let S, T = 0, current, waiting = 0, fault = '', curStation = -1, player;
 // 流程取樣（不移動手臂關節）；跳播用 project.apply（取樣＋手臂直接到位）
 function sample(t) { current = project.sample(t); S = current.state; return current; }
+// 播放中取樣：時間停在目前步驟終點時仍取這一步（手臂未到位前不換到下一步的目標）
+function sampleHeld(t) { const s = current.step, end = s.start + s.dur; return sample(t >= end - 1e-7 && t <= end ? Math.max(s.start, end - 1e-8) : t); }
 const total = sequence.total, stationStart = sequence.stationStart, shots = sequence.shots;
 ui.cycleTime.textContent = `規劃 ${total.toFixed(1)} s／盤（含一次補壓）＋到位等待 · ${product.ids.length} 顆 · 拍 ${shots.length} 張`;
 const stub = recipe.stubborn.id, shotOf = Object.fromEntries(shots.flatMap((g, k) => g.map(c => [c.id, k])));
@@ -131,14 +127,34 @@ function setView(name, instant = false) {
   document.querySelectorAll('.views button').forEach(b => b.classList.toggle('selected', b.dataset.view === name));
 }
 document.querySelectorAll('.views button').forEach(b => b.onclick = () => setView(b.dataset.view));
-// 跳播（播放列、站別按鈕、sim.seekTo）：流程取樣＋手臂直接到位，清除到位等待與故障；
-// 播放中由 tick 推進（advancing）：只取樣流程，手臂由 robot.update 限速追蹤，停在步驟終點等手臂到位才進下一步
-let advancing = false;
-function applyTime(t) {
-  T = t;
-  if (advancing) { const s = current.step, end = s.start + s.dur; sample(t >= end - 1e-7 && t <= end ? Math.max(s.start, end - 1e-8) : t); }
+// player 的 apply：seek（播放列、站別按鈕、sim.seekTo）→ 流程取樣＋手臂直接到位，清除到位等待、故障與軌跡；
+// 連續播放 → 只取樣流程（手臂已在 advance 裡限速追蹤）
+let lastSeek = true;
+function applyTime(t, { seek }) {
+  T = t; lastSeek = seek;
+  if (!seek) sampleHeld(t);
   else { current = project.apply(T); S = current.state; waiting = 0; fault = ''; trailCount = 0; trailGeo.setDrawRange(0, 0); }
   return current;
+}
+// player 的 advance（dt 已乘速度）：切成 ≤ 10 ms 的子步，每步先判斷到位——手臂未到位就停在步驟終點等，
+// 等超過 8 s 判故障；示意 NG 時複檢後停線——再推進時間並讓手臂限速追蹤（與 tools/verify.mjs 的連續播放同一規則）。
+// 故障發生在本格中途時先回傳已推進的時間，下一格回傳 null 停住
+function advance(t, dt) {
+  const n = Math.max(1, Math.ceil(dt / .01)), h = dt / n;
+  for (let k = 0; k < n; k++) {
+    if (!fault && st.opts.ngHold && current.completed.has('recheck')) fault = `NG · ${stub} 補壓後仍未貼合，停線待人工確認`;
+    if (fault) return k ? t : null;
+    const e = robot.error(), s = current.step, end = s.start + s.dur;
+    if ((t >= end - 1e-7 || (s.contact && e.position > 2)) && (e.position > 1 || e.angle > 1)) {
+      waiting += h; if (waiting > 8) fault = '到位逾時 · 請檢查 TCP 姿態';
+    } else {
+      waiting = 0;
+      if (t >= total - 1e-7) return total;
+      t = t >= end - 1e-7 ? Math.min(total, end + 1e-6) : Math.min(end, t + h); sampleHeld(t);
+    }
+    robot.update(h);
+  }
+  return t;
 }
 // 按播放時：故障後從原處重新到位、播完則從頭（在 player 自己的處理之前執行）
 function resume() { if (fault || T >= total) player.seekTo(fault ? T : 0); fault = ''; waiting = 0; }
@@ -211,7 +227,7 @@ function drawHud() {
   ui.chkCount.textContent = done + ' / ' + checklist[S.station].length;
   ui.stations.querySelectorAll('.st').forEach(b => { const i = +b.dataset.st; b.classList.toggle('active', i === S.station); b.classList.toggle('done', i < S.station || T >= total); });
   ui.progBar.style.width = T / total * 100 + '%';   // 時間軸、時鐘、步驟選單由 player 更新
-  updateLabels(ui.showLabels.checked);
+  stage.updateLabels(ui.showLabels.checked);
   document.getElementById('diagnostics').textContent = JSON.stringify({ recipe: RECIPE_KEY, insert: INSERT, time: T, total, step: current.index, station: S.station, action: S.action, poseError: e, force, playing: player.playing, waiting, fault, gaps: ps.gap, lift: S.lift, stop: S.stop });
 }
 // 主畫面以外的每格工作：面板、產品追隨、電控狀態、相機子畫面（子畫面畫進離屏目標，不動主畫布）
@@ -230,31 +246,14 @@ function render() { prepareFrame(); workspace.renderOverview(renderer,scene); }
 const workspace=createViewerWorkspace({camera,controls,canvas,resize:stage.resize,focusOccluders:[cell.occluders],
   getFocus:()=>product.root.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0,recipe.pallet.t+5,0)),
   focusOffset:[-recipe.pallet.w*.55,recipe.pallet.w*.85,recipe.pallet.d*.95],
-  onFocus:()=>{setElectricalCutaway(scene,false);stage.goTo(camera.position.toArray(),controls.target.toArray(),true);selectedView='focus';document.querySelectorAll('.views button').forEach(b=>b.classList.remove('selected'));}});
+  onFocus:()=>{setElectricalCutaway(scene,false);stage.cancelTween();selectedView='focus';document.querySelectorAll('.views button').forEach(b=>b.classList.remove('selected'));}});
 const electrical=createElectricalInspector({scene,camera,controls,canvas,onEnter:()=>setView('electrical',true),onExit:()=>setView('iso',true),title:'RobotArmPressSSD'});
 const lastProductPosition = product.root.position.clone();
-const speed = () => +ui.speed.value || 1;   // player 依網址參數與滑桿設定
-// 播放中每個子步：到位判斷（手臂未到位就停在步驟終點等待，逾時判故障）→ 推進時間 → 手臂限速追蹤
-function tick(dt) {
-  if (!player.playing) return;
-  if (st.opts.ngHold && current.completed.has('recheck')) { fault = `NG · ${stub} 補壓後仍未貼合，停線待人工確認`; player.pause(); return; }
-  const e = robot.error(), s = current.step, end = s.start + s.dur;
-  const blocked = (T >= end - 1e-7 || (s.contact && e.position > 2)) && (e.position > 1 || e.angle > 1);
-  if (blocked) { waiting += dt; if (waiting > 8) { fault = '到位逾時 · 請檢查 TCP 姿態'; player.pause(); } }
-  else {
-    waiting = 0;
-    if (T >= total - 1e-7) player.pause();
-    else { advancing = true; try { player.seekTo(T >= end - 1e-7 ? Math.min(total, end + 1e-6) : Math.min(end, T + dt)); } finally { advancing = false; } }
-  }
-  robot.update(dt);
-}
 // stage.loop 每格：視角轉場 → frameTick(dt) → controls.update() → 主畫面 renderer.render(scene, camera)
 function frameTick(dt) {
-  const n = Math.max(1, Math.ceil(dt * speed() / .01)); for (let k = 0; k < n; k++) tick(dt * speed() / n);
-  if (selectedView==='product'||selectedView==='leads') {
-    const delta=product.root.position.clone().sub(lastProductPosition);
-    camera.position.add(delta); controls.target.add(delta);
-  }
+  player.update(dt);   // 推進時間（advance：到位等待、故障停住、手臂限速追蹤）→ apply
+  // 載盤近看／銀腳特寫時視角跟著輸送中的載盤（含進行中的轉場）
+  if (selectedView==='product'||selectedView==='leads') stage.shiftView(product.root.position.clone().sub(lastProductPosition));
   lastProductPosition.copy(product.root.position);
   if (player.playing && ui.showPath.checked) pushTrail(robot.getTcpWorld(robot.goal.tcp));
   prepareFrame();
@@ -262,9 +261,9 @@ function frameTick(dt) {
   if (workspace.following) cell.occluders.visible = false;
 }
 // 播放列（共用 createPlayer）：時間、播放／暫停、重播、速度、時間軸、時鐘、步驟選單與上一步／下一步；
-// 跳播走 applyTime（手臂直接到位）並立即重畫一格（截圖與檢查直接呼叫 sim.seekTo）
-player = createPlayer({ total, apply: applyTime, events: sequence.events.map(ev => ({ ...ev, label: `S${ev.station} · ${ev.label}` })),
-  onChange: () => { if (!advancing && player) render(); } });   // 建立時的第一次跳播不重畫（最後統一 render）
+// 跳播走 applyTime（手臂直接到位）並立即重畫一格（截圖與檢查直接呼叫 sim.seekTo）；連續播放由 frameTick 繪製
+player = createPlayer({ total, apply: applyTime, advance, events: sequence.events.map(ev => ({ ...ev, label: `S${ev.station} · ${ev.label}` })),
+  onChange: () => { if (lastSeek && player) render(); } });   // 建立時的第一次跳播不重畫（最後統一 render）
 setView('iso', true); stage.resize();
 exposeSim({ seekTo: player.seekTo, views: Object.keys(views), project, pause: player.pause, play() { resume(); player.play(); }, get state() { return S; }, get T() { return T; }, get playing() { return player.playing; }, robot, total, stationStart, steps: sequence.steps, events: sequence.events, setView, recipe: RECIPE_KEY, insert: INSERT });
 if (qp.has('st')) { player.pause(); const station = THREE.MathUtils.clamp(+qp.get('st') || 0, 0, STATIONS.length - 1); player.seekTo(qp.has('t') ? stationStart[station] + (+qp.get('t') || 0) : stationPreviewTime(sequence, station)); }

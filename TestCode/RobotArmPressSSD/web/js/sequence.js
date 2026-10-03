@@ -1,6 +1,6 @@
 // 由配方自動產生的單盤流程：進板定位 → 全局定位 → 壓合 → 相機檢查 → 補壓判定 → 出板
 // 步驟、狀態快照、插值、stationStart、total 與 events 由共用步驟序列（core/anim/sequence.js）提供；
-// 本檔只放本站的規劃（分組、壓合／取像順序）與手臂姿態層（pose0／pose1、motion、PTP 重算時間、接觸速度）。
+// 本檔只放本站的規劃（分組、壓合／取像順序）與手臂姿態層（pose0／pose1、motion、PTP 時間用 retime 重排、接觸速度）。
 import * as THREE from 'three';
 import { createStepSequence } from '@core/anim/sequence.js';
 import { smooth } from '@core/anim/track.js';
@@ -67,14 +67,14 @@ export function createSequence({ robot, product, apply, recipe, insert = recipe.
   const park = () => pose('press', v(0, LAYOUT.conveyorTop + 200, -260), v(0, 0, 1));
   const pressMotion = ids => (t, s) => pose('press', mean(ids.map(id => product.pressPoint(id))).add(v(0, s.pressH, 0)), yawOf(ids[0]));
   const camMotion = ids => () => pose('cam', mean(ids.map(id => product.leadPoint(id))), yawOf(ids[0]));
-  // 第一輪（規劃）：共用步驟序列在建立每步時套用終點狀態，這裡順便記下手臂起訖姿態
+  // 共用步驟序列在建立每步時套用終點狀態，這裡順便記下手臂起訖姿態
   // （motion(1, end) 依套用後的載盤位置求壓點／取像點，終點姿態即下一步的起點）
   let lastPose = park();
-  const planned = createStepSequence({ base, discrete: DISCRETE, stations: STATIONS, ease: smooth, apply(end, s) {
+  const seq = createStepSequence({ base, discrete: DISCRETE, stations: STATIONS, ease: smooth, apply(end, s) {
     s.pose0 = lastPose; s.ptp = !s.path && !s.contact && end.zone === 'free';
     apply(end); lastPose = s.motion ? s.motion(1, end) : lastPose; s.pose1 = lastPose;
   } });
-  const add = (st, dur, action, sub, values = {}, motion = null, extra = {}) => planned.add(st, dur, action, sub, values, { motion, ...extra });
+  const add = (st, dur, action, sub, values = {}, motion = null, extra = {}) => seq.add(st, dur, action, sub, values, { motion, ...extra });
   const { lines, shots, barRows } = planGroups(recipe);
   const useBar = insert === 'bar' && barRows.length > 0;
   const label = ids => ids.length > 1 ? `${ids[0]}–${ids[ids.length - 1]}` : ids[0];
@@ -139,12 +139,10 @@ export function createSequence({ robot, product, apply, recipe, insert = recipe.
   add(5, 2.0, '出板', '送往下游（迴焊爐）', { palletX: px + gap0, belt: 1, located: false }, null, { done: 'out' });
   add(5, .2, '單盤循環完成', '下一盤已在上游等待', { belt: 0 });
 
-  robot.plan(planned.steps.flatMap(s => [s.pose0, s.pose1]));
-  // 第二輪：PTP 步驟時間依關節角度差重算（至少為原排定值），以修正後的時間重建同一份序列
-  // （終點快照原樣帶入，起點、stationStart、total、events 由共用序列重排）
-  const seq = createStepSequence({ base, discrete: DISCRETE, stations: STATIONS, ease: smooth });
-  for (const { station, dur, action, sub, end, start, initial, ...extra } of planned.steps)
-    seq.add(station, extra.ptp ? Math.max(dur, Math.ceil(robot.ptpTime(extra.pose0, extra.pose1) * 20) / 20) : dur, action, sub, end, extra);
+  // 逆解規劃全部起訖姿態後，PTP 步驟時間依關節角度差重算（至少為原排定值，取 0.05 s 刻度）；
+  // 起點、stationStart、total、events 由共用序列的 retime 重排
+  robot.plan(seq.steps.flatMap(s => [s.pose0, s.pose1]));
+  seq.retime(s => s.ptp ? Math.max(s.dur, Math.ceil(robot.ptpTime(s.pose0, s.pose1) * 20) / 20) : s.dur);
   const steps = seq.steps;
 
   /** 取樣：共用序列給狀態與所在步驟，這裡把狀態套到設備並設定手臂目標（不移動關節；播放時由 robot.update 限速追蹤） */
