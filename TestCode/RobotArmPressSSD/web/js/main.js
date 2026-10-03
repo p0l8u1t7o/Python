@@ -22,25 +22,19 @@ const qp = new URLSearchParams(location.search);
 const { key: RECIPE_KEY, recipe, insert: INSERT } = resolveRecipe(qp.get('recipe'), qp.get('insert'));
 
 // ---------------------------------------------------------------- 場景（共用舞台 core/ui/stage.js）
-// 曝光、背景、相機、半球光、補光與 stage 預設相同，只列出差異；本站場景約 2 m、銀腳特寫近裁切面 0.15 mm，不用對數深度（?movie 時 stage 一律開啟）
+// 配色、曝光、半球光與燈光強度取 look 'cell'，只列出差異；本站場景約 2 m、銀腳特寫近裁切面 0.15 mm，不用對數深度（?movie 時 stage 一律開啟）。
+// 太陽／補光位置與陰影範圍沿用原值（extent 推算的燈位與 normalBias 會改變桌面畫面），霧也照舊明確給
 const canvas = document.getElementById('c');
 const stage = createStage({
-  canvas, qp, exposure: 1.05, background: 0x0d1117, fog: [5000, 11000], logDepth: false,
-  camera: { fov: 40, near: 2, far: 20000 },
-  controls: { enableDamping: true, dampingFactor: .08, maxPolarAngle: Math.PI * .49, minDistance: 8, maxDistance: 7000 },
-  envLight: 220, envBlur: .04,
-  hemi: { sky: 0xbfd4ff, ground: 0x2a2f36, intensity: .6 },
-  sun: { color: 0xffffff, intensity: 1.5, position: [-1500, 3200, 1800], target: [0, 0, 0], shadow: { mapSize: 2048, camera: { left: -1800, right: 1800, top: 1800, bottom: -1800, near: 500, far: 8000 }, bias: -.0003 } },
-  fill: { color: 0x9fb8ff, intensity: .5, position: [1800, 1500, -1800] },
+  canvas, qp, look: 'cell', envLight: 220, fog: [5000, 11000], logDepth: false,
+  controls: { minDistance: 8, maxDistance: 7000 },
+  sun: { position: [-1500, 3200, 1800], target: [0, 0, 0], shadow: { mapSize: 2048, camera: { left: -1800, right: 1800, top: 1800, bottom: -1800, near: 500, far: 8000 }, bias: -.0003 } },
+  fill: { position: [1800, 1500, -1800] },
+  // 作業區局部光（本站專屬）：照壓合／取像區，帶小範圍陰影
+  extraLights: [{ color: 0xfff5e7, intensity: 1.3, position: [180, 1350, 160], target: [0, 900, 0],
+    shadow: { mapSize: 2048, camera: { left: -190, right: 190, top: 180, bottom: -180, near: 10, far: 850 }, bias: -.000015, normalBias: .025 } }],
 });
 const { renderer, scene, camera, controls } = stage;
-// 作業區局部光：stage 的 extraLights 不含陰影與目標點，在這裡自建
-const taskLight = new THREE.DirectionalLight(0xfff5e7, 1.3);
-taskLight.position.set(180,1350,160); taskLight.target.position.set(0,900,0);
-taskLight.castShadow=renderer.shadowMap.enabled; taskLight.shadow.mapSize.set(2048,2048);
-Object.assign(taskLight.shadow.camera,{left:-190,right:190,top:180,bottom:-180,near:10,far:850});
-taskLight.shadow.bias=-.000015; taskLight.shadow.normalBias=.025;
-scene.add(taskLight,taskLight.target);
 
 // ---------------------------------------------------------------- 物件（與 core 統一檢查共用 project.js：整站、ROI 框、流程）
 const project = createProject({ scene, recipe: RECIPE_KEY, insert: INSERT, ngHold: qp.get('result') === 'NG' });
@@ -64,13 +58,14 @@ const trailGeo = new THREE.BufferGeometry(); trailGeo.setAttribute('position', n
 const trail = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({ color: 0x7fd4ff, transparent: true, opacity: 0.7 })); scene.add(trail);
 function pushTrail(p) { if (trailCount >= trailN) { trailPos.copyWithin(0, 3); trailCount = trailN - 1; } trailPos.set([p.x, p.y, p.z], trailCount * 3); trailCount++; trailGeo.attributes.position.needsUpdate = true; trailGeo.setDrawRange(0, trailCount); }
 
-// 3D 標籤（共用舞台的標籤層；畫布在頁面中的偏移由 stage 處理），標籤放在點的上方
-const addLabel = (html, getPos) => stage.addLabel(html, getPos, '', { anchor: 'above' });
+// 3D 標籤（共用舞台的標籤層；畫布在頁面中的偏移由 stage 處理），標籤放在點的上方；
+// priority：小畫面標籤重疊時先留下手臂、壓墊與兩台相機，輸送與電控的說明其次
+const addLabel = (html, getPos, priority = 0) => stage.addLabel(html, getPos, '', { anchor: 'above', priority });
 const top = LAYOUT.conveyorTop;
-addLabel('<b>DENSO</b> VS-068', () => new THREE.Vector3(...LAYOUT.robot).add(new THREE.Vector3(0, 120, -110)));
-addLabel(INSERT === 'bar' ? '8 頭整排壓墊（獨立彈簧）' : '單點彈簧壓頭（快拆）', () => robot.getTcpWorld('press').add(new THREE.Vector3(0, 50, 0)));
-addLabel('20MP 斜視相機 45°', () => robot.tcps.cam.parent.localToWorld(new THREE.Vector3(0, 150, 10)).add(new THREE.Vector3(0, 50, 0)));
-addLabel('固定全局相機 20MP', () => new THREE.Vector3(...LAYOUT.globalCam).add(new THREE.Vector3(0, 120, 0)));
+addLabel('<b>DENSO</b> VS-068', () => new THREE.Vector3(...LAYOUT.robot).add(new THREE.Vector3(0, 120, -110)), 3);
+addLabel(INSERT === 'bar' ? '8 頭整排壓墊（獨立彈簧）' : '單點彈簧壓頭（快拆）', () => robot.getTcpWorld('press').add(new THREE.Vector3(0, 50, 0)), 2);
+addLabel('20MP 斜視相機 45°', () => robot.tcps.cam.parent.localToWorld(new THREE.Vector3(0, 150, 10)).add(new THREE.Vector3(0, 50, 0)), 1);
+addLabel('固定全局相機 20MP', () => new THREE.Vector3(...LAYOUT.globalCam).add(new THREE.Vector3(0, 120, 0)), 1);
 addLabel('止擋＋頂升', () => new THREE.Vector3(LAYOUT.stopFace, top - 60, 150));
 addLabel('上游 · 前站放置 USB', () => new THREE.Vector3(-1100, top + 120, 0));
 addLabel('下游 · 迴焊爐', () => new THREE.Vector3(1100, top + 120, 0));
@@ -104,11 +99,19 @@ function stationPoint(id) {
   const r = product.root.position;
   return product.pressPoint(id).add(new THREE.Vector3(st.place.x - r.x, LAYOUT.conveyorTop + LAYOUT.liftStroke - r.y, st.place.z - r.z));
 }
+// 壓合特寫的注視點：桌面看第一顆接頭；窄畫布（手機直向，寬高比 < 1.25）用整排壓墊時改看第一排的中點，
+// 拉遠後整排接頭才不會被畫面右緣切掉（距離仍由 stage 的 narrowFit 依畫面比例拉遠）
+function pressFocus() {
+  const first = recipe.connectors[0], narrow = canvas.clientWidth / canvas.clientHeight < 1.25;
+  if (!narrow || INSERT !== 'bar') return stationPoint(first.id);
+  const row = recipe.connectors.filter(c => c.row === first.row);
+  return row.reduce((s, c) => s.add(stationPoint(c.id)), new THREE.Vector3()).divideScalar(row.length);
+}
 const views = {
   electrical: () => [[0,520,850],[0,420,-500]],
   wiring: () => [[-1200,1850,700],[0,1200,-300]],
   iso: () => [[-1250, 1650, 1550], [0, 950, -200]], conveyor: () => [[-420, 1180, 820], [st.place.x, 915, st.place.z]], robot: () => [[-950, 1450, 150], [0, 1030, -280]],
-  press: () => { const p = stationPoint(product.ids[0]); return [p.clone().add(new THREE.Vector3(-150, 60, 90)).toArray(), p.toArray()]; },
+  press: () => { const p = pressFocus(); return [p.clone().add(new THREE.Vector3(-150, 60, 90)).toArray(), p.toArray()]; },
   inspect: () => { const p = stationPoint(product.ids[0]); return [p.clone().add(new THREE.Vector3(130, 80, 120)).toArray(), p.clone().add(new THREE.Vector3(20, -5, 10)).toArray()]; },
   top: () => [[st.place.x, 2400, st.place.z + 120], [st.place.x, 900, st.place.z - 150]],
   product: () => { const p=product.root.position.clone().add(new THREE.Vector3(0,recipe.pallet.t,0)); const d=Math.max(recipe.pallet.w,recipe.pallet.d); return [p.clone().add(new THREE.Vector3(-d*.48,d*.95,d*.85)).toArray(),p.toArray()]; },
@@ -121,8 +124,8 @@ function setView(name, instant = false) {
   if (!views[name]) return; selectedView = name;
   lastProductPosition.copy(product.root.position);
   camera.near=name==='leads' ? .15 : 2; camera.updateProjectionMatrix();
-  const [p, t] = views[name]();
-  stage.goTo(p, t, instant, 1 / 1.4);
+  const [p, t, fit] = views[name]();
+  stage.goTo(p, t, instant, 1 / 1.4, fit);
   document.querySelectorAll('.views button').forEach(b => b.classList.toggle('selected', b.dataset.view === name));
 }
 document.querySelectorAll('.views button').forEach(b => b.onclick = () => setView(b.dataset.view));

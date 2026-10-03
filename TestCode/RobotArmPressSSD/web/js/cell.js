@@ -7,6 +7,7 @@ import {cabinetShell,controlPanel,entryGland,panelFeed} from '@core/electrical/e
 import { cable, cableTray, support, CABLE } from '@core/electrical/cable-routing.js';
 import { block, cylinder, decal, screw } from '@core/geom/shapes.js';
 import { MAT, finished } from '@core/geom/materials.js';
+import { floor } from '@core/geom/environment.js';
 
 export const LAYOUT = {
   conveyorTop: 900,                   // SMT 輸送面（載盤底面）
@@ -26,7 +27,7 @@ export function palletPlacement(recipe) {
   return { x: LAYOUT.stopFace - w / 2, z: LAYOUT.rearInner + d / 2, frontInner: LAYOUT.rearInner + d + 2 };
 }
 
-// 常用材質取共用表（core/geom/materials.js）；綠色輸送皮帶、PC 外罩、深色展場地面為本站外觀，留在這裡
+// 常用材質取共用表（core/geom/materials.js）；綠色輸送皮帶、PC 外罩為本站外觀，留在這裡（深色地坪與格線用 core/geom/environment.js 的 floor）
 const matFrame = MAT.frame;       // 鋁擠型框架、橫樑、立柱
 const matDark  = MAT.black;       // 黑色件（氣缸、感測器座、相機本體）
 const matCab   = MAT.cabinet;     // 機台底櫃烤漆
@@ -36,15 +37,13 @@ const matAlu   = finished(MAT.alu, 'metal');   // 拉絲鋁：軌道、壓邊、
 const matBelt  = new THREE.MeshStandardMaterial({ color: 0x2e7d56, roughness: 0.75 });
 const matPin   = MAT.chrome;      // 拋光銷：橫向導桿、止擋銷
 const matPC    = new THREE.MeshPhysicalMaterial({ color: 0xcfe3ff, roughness: 0.1, transmission: 0.3, transparent: true, opacity: 0.12, depthWrite: false, side: THREE.DoubleSide });
-const matFloor = new THREE.MeshStandardMaterial({ color: 0x1b2027, roughness: 0.95 });
 
 export function createCell(scene, recipe) {
   const g = new THREE.Group(); g.name = 'cell'; scene.add(g);
   const { conveyorTop: top, rearInner } = LAYOUT, place = palletPlacement(recipe), frontInner = place.frontInner, keepout = [];
   const ko = (m, name) => { m.name = name; keepout.push(m); return m; };
 
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(9000, 6000), matFloor); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; g.add(floor);
-  const grid = new THREE.GridHelper(9000, 45, 0x2c3540, 0x222a33); grid.position.y = 0.5; g.add(grid);
+  floor(g, { size: [9000, 6000], cell: 200 });   // 9 × 6 m 深色地坪＋200 mm 格線（GridHelper 9000／45 格，y = 0.5）
   for (const z of [900, -1100]) block(g, [4200, 1, 40], [0, 1, z], matYellow);
 
   // ---- 輸送段：後軌固定、前軌依配方寬度；平皮帶、壓邊、端輪、腳架 ----

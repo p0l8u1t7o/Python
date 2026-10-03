@@ -1,0 +1,146 @@
+{
+  "project": "RobotArmPressSSD",
+  "devices": {
+    "desktop": {
+      "overflow": {
+        "ok": true
+      },
+      "canvas": {
+        "ok": true
+      },
+      "play": {
+        "ok": true
+      },
+      "steps": {
+        "ok": true
+      },
+      "views": {
+        "ok": true,
+        "info": 10
+      },
+      "panels": {
+        "ok": true
+      },
+      "labels": {
+        "ok": true,
+        "info": {
+          "visible": 0,
+          "outside": 0,
+          "overlaps": 0
+        }
+      },
+      "load": {
+        "ok": true
+      },
+      "movie": {
+        "ok": true,
+        "info": []
+      }
+    },
+    "phone": {
+      "overflow": {
+        "ok": true
+      },
+      "canvas": {
+        "ok": true
+      },
+      "play": {
+        "ok": true
+      },
+      "steps": {
+        "ok": true
+      },
+      "views": {
+        "ok": true,
+        "info": 10
+      },
+      "panels": {
+        "ok": true
+      },
+      "labels": {
+        "ok": true,
+        "info": {
+          "visible": 0,
+          "outside": 0,
+          "overlaps": 0
+        }
+      },
+      "targets": {
+        "ok": true
+      },
+      "load": {
+        "ok": true
+      }
+    },
+    "landscape": {
+      "overflow": {
+        "ok": true
+      },
+      "canvas": {
+        "ok": true
+      },
+      "play": {
+        "ok": true
+      },
+      "steps": {
+        "ok": true
+      },
+      "views": {
+        "ok": true,
+        "info": 10
+      },
+      "panels": {
+        "ok": true
+      },
+      "labels": {
+        "ok": true,
+        "info": {
+          "visible": 0,
+          "outside": 0,
+          "overlaps": 0
+        }
+      },
+      "targets": {
+        "ok": true
+      },
+      "load": {
+        "ok": true
+      }
+    },
+    "tablet": {
+      "overflow": {
+        "ok": true
+      },
+      "canvas": {
+        "ok": true
+      },
+      "play": {
+        "ok": true
+      },
+      "steps": {
+        "ok": true
+      },
+      "views": {
+        "ok": true,
+        "info": 10
+      },
+      "panels": {
+        "ok": true
+      },
+      "labels": {
+        "ok": true,
+        "info": {
+          "visible": 0,
+          "outside": 0,
+          "overlaps": 0
+        }
+      },
+      "targets": {
+        "ok": true
+      },
+      "load": {
+        "ok": true
+      }
+    }
+  }
+}
