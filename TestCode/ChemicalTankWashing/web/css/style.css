@@ -68,28 +68,20 @@ select option{background:#172431}
 #timeline{grid-column:1;width:100%;accent-color:#69c8d0;cursor:pointer}
 .clock{grid-column:2;font-variant-numeric:tabular-nums;font-size:13px;color:var(--muted);text-align:right}
 
-#pip{position:absolute;border:1px solid #4b8798;border-radius:8px;z-index:6;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 8px 24px #0005}
-#pipHeader{height:36px;flex:none;display:flex;align-items:center;gap:4px;padding:3px 6px;background:#122736;cursor:move;touch-action:none;user-select:none}
-#pipTitle{font-size:11px;color:#8bd4ed;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#pipHeader button{padding:1px 7px;font-size:17px}
-#pipToolbar{height:34px;flex:none;display:flex;justify-content:space-between;padding:3px 7px;background:#101e2a}
-#pipToolbar select,#pipToolbar button{font-size:10px;padding:2px 5px}
-#pipViewport{flex:1;min-height:0;pointer-events:none}
-#pipResult{flex:none;max-height:48px;overflow:hidden;font-size:10px;background:#10202bef;padding:4px 22px 4px 8px;color:#7fe2b2;line-height:1.4}
-#pipResize{position:absolute;right:0;bottom:0;border:0;border-radius:0;padding:0 3px;cursor:nwse-resize;touch-action:none;color:#8bd4ed;background:#122736}
-#pip.minimized #pipToolbar,#pip.minimized #pipViewport,#pip.minimized #pipResult,#pip.minimized #pipResize{display:none}
-#pipRestore{position:absolute;z-index:6}
+/* 相機子畫面外框、拖曳與按鈕由 core/ui/viewer-workspace.css 提供；這裡只排來源選單 */
+#pipToolbar{flex:none;display:flex;align-items:center;gap:6px;padding:4px 8px;background:#101e2a;font-size:11px;color:var(--muted)}
+#pipToolbar label{display:flex;align-items:center;gap:6px}
+#pipToolbar select{font-size:11px;padding:2px 5px}
 .focus-choice{display:flex;gap:5px;align-items:center;white-space:nowrap;font-size:12px;color:var(--muted)}
 .focusbar{grid-column:1/-1;display:flex;align-items:center;gap:8px;overflow-x:auto;scrollbar-width:thin}
 .focusbar button{white-space:nowrap}
 #focusStatus{font-size:11px;color:#7fe2b2;white-space:nowrap}
-#focusTrack[aria-pressed=true]{background:#1b4939;border-color:#3dd68c;color:#9af3cd}
+.focusbar .hint{font-size:11px;color:#819bad;white-space:nowrap}
 
-#pip[hidden]{display:none}
 #loading{position:absolute;inset:0;display:grid;place-items:center;background:var(--bg);z-index:10;color:var(--muted);font-size:14px;letter-spacing:1px}
 #loading.hide{display:none}
 .label3d{font:10.5px var(--font);color:#dfe7f0;background:#10202be0;border:1px solid #49616d;padding:3px 8px;border-radius:6px;white-space:nowrap;
-  pointer-events:none;transform:translate(-50%,-100%);position:absolute;z-index:2}
+  pointer-events:none;position:absolute;left:var(--canvas-left,0px);top:var(--canvas-top,152px);z-index:2}  /* 位置由 stage.updateLabels 以 transform 設定 */
 .label3d b{color:var(--accent)}
 .label3d.dim{background:#0b1a26d0;border-color:#5d8aa3;color:#b6e3ff}
 

@@ -14,7 +14,7 @@ TestCode 底下每個有 `web/index.html` 的資料夾都是一個展示專案�
 | `anim/` | `track.js`：時間軌與時間軸（`createTimeline`、`Track`、`smooth`），狀態只由時間決定 |
 | `electrical/` | 線材、拖鏈、電盤、電控元件與檢視器 |
 | `movie/` | 錄影程式（4K 取樣 1080p、絕對時間取樣、追焦運鏡），各專案以 `?movie` 呼叫 |
-| `ui/` | `stage.js`（renderer／場景／相機／燈光／3D 標籤／視角轉場／畫面迴圈／`exposeSim`）、`player.js`（標準播放列）、`viewer-workspace`（相機視窗與焦點）、`view-controls`、`vision-overlay` |
+| `ui/` | `stage.js`（renderer／場景／相機／燈光／3D 標籤／視角轉場／畫面迴圈／`exposeSim`）、`player.js`（標準播放列）、`viewer-workspace`（相機視窗與焦點追隨，所有專案共用）、`vision-overlay` |
 | `verify/` | 統一檢查：`scene.mjs`（全場干涉＋重合面閃爍）、`determinism.mjs`（倒序一致）、`run.mjs`（執行入口）、`dom-stub.mjs` |
 | `template/` | 新專案範本（`tools/new-project.mjs` 複製） |
 | `tools/` | 伺服器、檢查執行器、截圖比對、Pages 建置、建立新專案（不發布） |

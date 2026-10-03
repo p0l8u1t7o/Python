@@ -51,7 +51,8 @@ export function createSequence({ robot }) {
   const drums = DRUM_IDS.map((id, k) => track('drum' + k, { mode: 'pallet', slot: k, yaw: YAW0[k], lx: LYING.place, uz: UPRIGHT.z0, water: 0, film: 0, weighG: -1, lift: 0, capBig: true, capSmall: true, label: false, labelAng: 0, read: false, rinse: 0, dry: false, state: '倉儲' }));
   const inDrums = IN_IDS.map((id, k) => track('in' + k, { mode: 'hidden', slot: 0, yaw: YAW_IN[k], water: 0, capBig: true, capSmall: true, label: false, labelAng: 0, read: false, rinse: 0, dry: false, state: '廠外待入' }));
   const events = [];
-  const ev = (s, station, label) => { events.push({ time: s.start, station, label: label || s.action }); return s; };
+  // 事件：與 core 排程同樣的介面 { time, dur, label, sub, station }（播放列的事件選單、上一步／下一步）
+  const ev = (s, station, label) => { events.push({ time: s.start, dur: s.dur, label: label || s.action, sub: s.sub || '', station }); return s; };
 
   // ================================================================ S1 AGV 取料：第 2 道第 2 層前位
   const laneX = RACK.lanes[RACK.demo.lane], rail = RACK.levels[RACK.demo.level], pivotRack = RACK.pos[0] + AGV.palletX, pivotStation = PALLET_STATION.z - AGV.palletX;
@@ -245,7 +246,7 @@ export function createSequence({ robot }) {
     const tRobot = Math.max(tAtPick, robotFree);
     if (robotStart == null) robotStart = tRobot;
     const a0 = rAdd('lin', P.pre, 1.2, { at: tRobot, action: '接近取桶位', sub: '夾爪張開，沿 +X 前進' });
-    if (k === 0) events.push({ time: a0.start, station: 'robot', label: '手臂開始取桶' });
+    if (k === 0) ev(a0, 'robot', '手臂開始取桶');
     rAdd('lin', P.pick, 1.6, { action: '夾爪包覆桶身' });
     grip.hold(rt); grip.add(1, { jaw: 1 }, { action: '夾爪夾緊' }); rt = grip.t;
     d.add(0, { mode: 'robot', state: '手臂夾持' }, { at: rt });
@@ -254,13 +255,13 @@ export function createSequence({ robot }) {
     rAdd('ptp', P.via, null, { action: '移到沖洗站東北過渡點', sub: '桶身避開圍籬東南角與隔間' });
     rAdd('ptp', P.entry, null, { action: '轉向沖洗站', sub: '關節同步插值（PTP），桶身停在隔間開口外' });
     const en = rAdd('lin', P.u, 1.8, { action: '送入沖洗站', sub: '2" 與 3/4" 桶口對準兩支噴槍' });
-    events.push({ time: en.start, station: 'robot', label: `${id} 進入沖洗站` });
+    ev(en, 'robot', `${id} 進入沖洗站`);
     for (let c = 1; c <= 3; c++) {
       const src = c === 1 ? 'R' : 'F', dest = c < 3 ? (CHEM[k] === 'acid' ? 'WA' : 'WB') : 'R';
       booth.hold(rt);
       booth.add(1, { lance: 1, lance2: 1, src }, { action: `第 ${c} 次沖洗：兩支噴槍伸入桶口`, sub: '2" 旋轉噴頭、3/4" 直噴頭同時伸入約 140 mm' });
       const sp = booth.add(SPRAY_S, { spray: true }, { action: `第 ${c} 次沖洗：雙孔同時進水 ${SPRAY_S.toFixed(1)} s`, sub: `${WASTE.rinseL} L ＝ 2" ${BOOTH.flow.big}＋3/4" ${BOOTH.flow.small} L/min（單孔需 ${SPRAY_SINGLE_S.toFixed(0)} s）；水源 ${src === 'R' ? 'TK-R 回收水' : 'TK-F 清水'}` });
-      if (c === 1 && k === 0) events.push({ time: sp.start, station: 'waste', label: '沖洗水由 TK-R 供應' });
+      if (c === 1 && k === 0) ev(sp, 'waste', '沖洗水由 TK-R 供應');
       d.add(0, { rinse: c, state: `第 ${c} 次沖洗` }, { at: sp.start }); d.add(SPRAY_S, { water: WASTE.rinseL }, { at: sp.start });
       tanks.add(SPRAY_S, { [src]: tanks.state[src] - WASTE.rinseL }, { at: sp.start, action: `P-1 供水 ${src === 'R' ? 'TK-R' : 'TK-F'} → 噴槍` });
       if (src === 'F') { tanks.add(4, { F: tanks.state.F + WASTE.rinseL }, { at: sp.start + SPRAY_S, action: 'TK-F 液位補水' }); makeup.add(4, { on: true }, { at: sp.start + SPRAY_S, action: '廠務清水補入 TK-F' }); makeup.add(0, { on: false }); }

@@ -56,7 +56,7 @@ if (ready) {
   }
   // 面板與狀態健全性：每 2 秒取樣，NaN 或手臂追蹤誤差過大即記錄
   report.checks.samples = await evaluate(`(() => { const bad = []; for (let t = 0; t <= window.sim.total; t += 2) { window.sim.seekTo(t); const s = window.sim.state; const e = s.robot.err; if (e && (e.position > 2 || e.angle > .5)) bad.push({ t, e }); const j = JSON.stringify(s.st); if (/:null/.test(j)) bad.push({ t, nan: true }); } return bad; })()`);
-  report.checks.pipShown = await evaluate(`(window.sim.seekTo(${await at('CTW-2610-0001 讀碼', .4)}), new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r(!document.getElementById('pip').hidden)))))`);
+  report.checks.pipShown = await evaluate(`(window.sim.seekTo(${await at('CTW-2610-0001 讀碼', .4)}), new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r(!document.getElementById('pipFrame').hidden)))))`);
   report.checks.layoutChecks = await evaluate(`document.getElementById('chkCount').textContent`);
   report.checks.equipRows = await evaluate(`document.querySelectorAll('#equip .row').length`);
 }

@@ -42,7 +42,7 @@
     </div>
     <div class="focusbar" aria-label="焦點控制">
       <label class="focus-choice">焦點 <select id="focusTarget" aria-label="焦點追蹤目標"><option value="gripper">清洗夾具</option><option value="auto">目前作業桶</option><option value="drum0">第 1 桶</option><option value="drum1">第 2 桶</option><option value="drum2">第 3 桶</option><option value="drum3">第 4 桶</option><option value="agv">AGV</option><option value="gantry">龍門夾爪</option></select></label>
-      <button id="focusNow">對準焦點</button><button id="focusTrack" aria-pressed="false">追蹤焦點</button><span id="focusStatus" role="status">自由視角</span>
+      <button id="focusNow">對準焦點</button><span class="hint">◎ 追隨此焦點</span><span id="focusStatus" role="status">自由視角</span>
     </div>
   </header>
 
@@ -73,18 +73,19 @@
     </section>
   </aside>
 
-  <section id="pip" aria-label="相機視野視窗" hidden>
-    <div id="pipHeader" tabindex="0" aria-label="拖曳相機視窗；方向鍵移動"><span id="pipTitle">相機視野</span><button id="pipMinimize" aria-label="收合相機視窗">−</button><button id="pipClose" aria-label="隱藏相機視窗">×</button></div>
-    <div id="pipToolbar"><select id="pipSource" aria-label="相機視窗來源"><option value="auto">自動切換</option><option value="label">貼標相機</option><option value="decap">桶口相機</option><option value="gripper">清洗夾具</option></select><button id="pipReset">重設位置</button></div>
-    <div id="pipViewport"></div><div id="pipResult"></div><button id="pipResize" aria-label="調整相機視窗大小" title="拖曳或使用方向鍵調整大小">◢</button>
+  <!-- 相機子畫面：拖曳、放大、獨立視窗、隱藏由 core/ui/viewer-workspace.js 提供；來源選單為本專案附加 -->
+  <section id="pipFrame" hidden>
+    <div id="pipTitle" class="pipTitle">相機視野</div>
+    <div id="pipToolbar"><label>來源 <select id="pipSource" aria-label="相機視窗來源"><option value="auto">自動切換（依取像事件）</option><option value="label">貼標相機</option><option value="decap">桶口相機</option><option value="gripper">清洗夾具</option></select></label></div>
+    <div id="pipImage" aria-label="相機取景畫面"></div>
+    <div id="pipResult" class="pipResult"></div>
   </section>
-  <button id="pipRestore" hidden>顯示相機視窗</button>
 
   <footer id="bottombar">
     <div class="ctl">
       <button id="playBtn" class="primary">▶ 播放</button>
       <button id="restartBtn">⟲ 重播</button>
-      <label>速度 <input id="speed" type="range" min="0" max="5" step="1" value="2"><span id="speedVal">1×</span></label>
+      <label>速度 <input id="speed" type="range" min="0.25" max="8" step="0.25" value="1"><span id="speedVal">1×</span></label>
       <span id="cycleTime"></span>
     </div>
     <div class="stepRow"><button id="previous" aria-label="上一事件">◀</button><select id="stepSelect" aria-label="流程事件"></select><button id="next" aria-label="下一事件">▶</button></div>

@@ -6,6 +6,10 @@
       "ok": true
     },
     {
+      "name": "◎ 開始追隨焦點",
+      "ok": true
+    },
+    {
       "name": "追蹤及跳轉 · agv",
       "ok": true
     },
@@ -38,7 +42,7 @@
       "ok": true
     },
     {
-      "name": "停止追蹤後跳轉不移動相機",
+      "name": "停止追隨後跳轉不移動相機",
       "ok": true
     },
     {
@@ -50,7 +54,7 @@
       "ok": true
     },
     {
-      "name": "預設視角可退出追蹤",
+      "name": "預設視角可退出追隨",
       "ok": true
     },
     {
@@ -58,39 +62,43 @@
       "ok": true
     },
     {
-      "name": "從全景追蹤已離線目標不突然拉近",
+      "name": "從全景追隨已離線目標不突然拉近",
+      "ok": true
+    },
+    {
+      "name": "相機視窗預設顯示",
       "ok": true
     },
     {
       "name": "標題列可拖曳且不旋轉主相機",
       "ok": true,
       "detail": {
-        "h": 286,
-        "minimized": false,
-        "visible": true,
+        "x": 152,
+        "y": 272,
         "w": 360,
-        "x": 156,
-        "y": 72
+        "h": 334.046875,
+        "expanded": false,
+        "visible": true
       }
     },
     {
-      "name": "拖曳右下角調整視窗大小",
-      "ok": true,
-      "detail": {
-        "h": 336,
-        "minimized": false,
-        "visible": true,
-        "w": 440,
-        "x": 156,
-        "y": 72
-      }
-    },
-    {
-      "name": "收合保留標題列",
+      "name": "鍵盤可移動視窗",
       "ok": true
     },
     {
-      "name": "展開恢復畫面",
+      "name": "放大視窗",
+      "ok": true,
+      "detail": {
+        "x": 164,
+        "y": 272,
+        "w": 680,
+        "h": 547.390625,
+        "expanded": true,
+        "visible": true
+      }
+    },
+    {
+      "name": "還原大小",
       "ok": true
     },
     {
@@ -98,7 +106,11 @@
       "ok": true
     },
     {
-      "name": "一鍵恢復視窗",
+      "name": "工具列一鍵恢復視窗",
+      "ok": true
+    },
+    {
+      "name": "側欄「相機子畫面」勾選控制視窗",
       "ok": true
     },
     {
@@ -118,17 +130,8 @@
       "ok": true
     },
     {
-      "name": "鍵盤可移動視窗",
-      "ok": true
-    },
-    {
-      "name": "鍵盤可調整尺寸",
-      "ok": true
-    },
-    {
-      "name": "Escape 隱藏視窗",
+      "name": "自動切換到取像中的相機",
       "ok": true
     }
-  ],
-  "logs": []
+  ]
 }

@@ -69,11 +69,12 @@ node ../core/tools/serve.mjs ChemicalTankWashing            # http://127.0.0.1:8
 
 ## 操作
 
-- 上方 S0–S7 跳到各站並切換視角；下拉選單列出所有流程事件，時間軸可以拖曳，播放速度 0.25–8×。
+- 上方 S0–S7 跳到各站並切換視角；底部播放列（共用 `core/ui/player.js`）有播放、重播、速度 0.25–8×、事件選單與上一步／下一步，時間軸可以拖曳。
 - 視角：全景、俯視配置、散桶入庫、倉儲 AGV、龍門上料、貼標讀碼、翻桶、開蓋、清洗手臂、沖洗站、廢液回收、跟隨 #1。
 - 右側面板：設備狀態、桶槽追蹤（含殘水是否抽乾）、手臂負載、水槽液位、空間檢核。
 - 顯示選項：尺寸、AGV 迴轉圈與入庫弧線、手臂伸展範圍、圍籬、標籤、天花板、透視桶身、相機子畫面。
-- 網址參數：`?pause&t=230&view=booth`、`?dims`。主控台可用 `window.sim.seekTo(秒)`、`setView(名稱)`。
+- 畫面上方的小工具列（共用 `core/ui/viewer-workspace.js`）：◨ 收合右側面板、▣ 顯示／隱藏相機視窗、◎ 追隨焦點。
+- 網址參數：`?pause&t=230&view=booth`、`?speed=2`、`?dims`、`?cam=x,y,z,tx,ty,tz`。主控台可用 `window.sim.seekTo(秒)`、`setView(名稱)`、`play()`、`pause()`。
 - 畫面閃爍已處理：
   - 改用對數深度緩衝，近裁切面 100 mm；
   - 地面分區固定繪製順序；
@@ -182,11 +183,11 @@ node --import ../core/tools/register.mjs tools/verify-detail.mjs
 滑座改為具有實際通槽的 U 形結構，氣缸與驅動橫桿前移避開導軌，補上連到背板的固定座、活塞桿貫穿孔、雙路供氣接頭及分配塊。框架採鋁材，接觸支架與導軌保留鋼材；背板四個檢修窗可看見缸體與推桿，固定座下方保留完整腹板。
 
 - **夾具特寫**：上方視角按鈕可直接看清接合與夾持結構。
-- **焦點**：選清洗夾具、目前作業桶、第 1–4 桶、AGV 或龍門夾爪，再按「對準焦點」或「追蹤焦點」。追蹤時仍可旋轉和縮放；按「停止追蹤」或其他預設視角退出。桶離線時保留視角並顯示提示，倒退跳轉會恢復追蹤。
-- **相機視窗**：拖曳標題列移動、拖曳右下角調整大小；「−」收合、「×」隱藏，再按「顯示相機視窗」恢復。「重設位置」恢復預設大小與位置。方向鍵可移動／調整大小，Shift 加速，Escape 隱藏。
-- **相機來源**：可選自動切換、貼標相機、桶口相機或清洗夾具。即時畫面持續可用，檢測結果只在觸發後顯示 4 秒，並標示為模擬訊號。視窗會限制在 3D 畫布內，縮窄畫面後仍能操作。
+- **焦點**：在頂列「焦點」選清洗夾具、目前作業桶、第 1–4 桶、AGV 或龍門夾爪，按「對準焦點」單次對準，或按工具列 ◎ 持續追隨（追隨中換目標會平移過去）。追隨時仍可旋轉和縮放；再按 ◎ 或其他預設視角退出。桶離線時保留視角並顯示提示，倒退跳轉會恢復追隨。
+- **相機視窗**（共用 viewer-workspace）：拖曳標題列或用方向鍵移動；⛶ 放大／縮小、↗ 以獨立視窗顯示（跟隨主頁播放與跳轉）、× 隱藏，再按工具列 ▣ 或勾選側欄「相機子畫面」恢復。畫面左上角是模擬檢測標記（桶塞 ROI，可用「標記」按鈕關閉）。
+- **相機來源**：視窗內的「來源」選單可選自動切換（依最近一次取像事件切到貼標或桶口相機）、貼標相機、桶口相機或清洗夾具。即時畫面持續可用，檢測結果與桶塞定位標記只在觸發後顯示 4 秒，並標示為模擬訊號。窄螢幕時版面改為收合式選單與播放列。
 
-暫停且視角不變時停止重繪；陰影隨設備狀態更新一次，由主視角和子視窗共用，避免雙重計算。
+暫停且視角不變時停止重繪（共用舞台 `onDemand`，狀態改變時 `stage.invalidate`）；陰影只在重繪時更新，由主視角和子視窗共用。
 
 新增驗證：
 
@@ -194,7 +195,7 @@ node --import ../core/tools/register.mjs tools/verify-detail.mjs
 node --import ../core/tools/register.mjs tools/verify-gripper.mjs
 ```
 
-[夾具檢核](review/gripper-verification.json) 包含 15,098 個時間／事件取樣、101 個開合位置、10 項結構檢查、實際零件定向包圍盒及桶輪廓邊線取樣。未檢出設備干涉、穿桶或越界；夾具至 40 mm 圍籬框的取樣最小淨距約 9.96 mm，金屬至桶身約 1.61 mm。小間隙尚須計入製造公差與桶型變異，不能視為製造驗證。`tools/review-camera.mjs` 可由 Browser 工作階段呼叫 `runCameraReview(cdp, tab, outputDirectory)`；[互動報告](review/camera/camera-review.json) 記錄 28 項追蹤及視窗操作測試，包含從全景選擇已離線目標時保留相機位置。
+[夾具檢核](review/gripper-verification.json) 包含 15,098 個時間／事件取樣、101 個開合位置、10 項結構檢查、實際零件定向包圍盒及桶輪廓邊線取樣。未檢出設備干涉、穿桶或越界；夾具至 40 mm 圍籬框的取樣最小淨距約 9.96 mm，金屬至桶身約 1.61 mm。小間隙尚須計入製造公差與桶型變異，不能視為製造驗證。`tools/review-camera.mjs` 只用 DevTools Protocol，可由 `core/tools/cdp.mjs` 的 `openBrowser()` 或 Browser 工作階段呼叫 `runCameraReview(cdp, tab, outputDirectory)`；[互動報告](review/camera/camera-review.json) 記錄 29 項追隨及視窗操作測試，包含從全景選擇已離線目標時保留相機位置、相機來源與自動切換。
 
 另有 [480 × 800 視窗邊界測試](review/camera/responsive-review.json)，及實際 WebGL 畫布匯出的 [夾持特寫](review/camera/gripper-closed.png)、[張開](review/camera/gripper-open.png)、[倒置倒液](review/camera/gripper-inverted.png) 預覽。
 
@@ -212,8 +213,9 @@ node --import ../core/tools/register.mjs tools/verify-gripper.mjs
 | `core/geom/shapes.js`、`materials.js`、`hardware.js` | 材質表與基本形狀；倒角外殼、螺栓實例、馬達／法蘭／儀表等共用細節（其他專案也可用） |
 | `web/js/drum.js` | 200L 桶 |
 | `web/js/sequence.js` | 各設備與各桶的時間軌、交接推算、狀態取樣 |
-| `web/js/main.js` | 場景、面板、視角、相機子畫面 |
-| `core/ui/view-controls.js` | 焦點追蹤、相機視窗拖曳／縮放／隱藏 |
+| `web/js/main.js` | 場景、面板、視角、3D 標籤、相機子畫面來源與焦點目標 |
+| `core/ui/stage.js`、`player.js` | 共用舞台（renderer、燈光、3D 標籤、視角轉場、按需重繪）、播放列 |
+| `core/ui/viewer-workspace.js`、`vision-overlay.js` | 相機子畫面（拖曳、放大、獨立視窗）、焦點追隨、模擬檢測標記 |
 | `web/js/plant.js`、`project.js` | 建立全場設備並套用取樣狀態；`project.js` 是網頁與 core 統一檢查共用的專案介面 |
 | `tools/verify.mjs`、`browser-check.mjs` | 幾何驗證、瀏覽器檢查（全場干涉與重合面改由 `core/tools/check.mjs` 執行） |
 | `docs/planning.md` | 規劃說明（只留本機） |
