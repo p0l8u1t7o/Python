@@ -28,11 +28,11 @@ export function createRobot() {
   const railBase = box(railLen, 120, 260, matArmD); railBase.position.y = 60; root.add(railBase);
   for (const z of [-80, 80]) { const r = box(railLen - 40, 24, 24, matRail); r.position.set(0, 132, z); root.add(r); }
   const carriage = new THREE.Group(); carriage.position.y = 144; root.add(carriage);
-  const carBody = box(360, 60, 300, matArmD); carBody.position.y = 30; carriage.add(carBody);
+  const carBody = box(360, 57, 300, matArmD); carBody.position.y = 31.5;   // 底面離滑軌螺絲頭 1 mm carriage.add(carBody);
   const railHarness=carrier(root,'RAIL / rolling power-data-air carrier',{origin:[0,30,-220],min:-1100,max:1100,radius:65,width:44,pitch:24});
   for(const x of [-1050,-550,-50,50,550,1050])support(root,'RAIL / guide cantilever',[x,19,-130],[x,19,-220],8);
   support(carriage,'RAIL / moving anchor',[0,16,-150],[0,16,-220],6);
-  for(let x=-1300;x<=1300;x+=140)for(const z of [-80,80])cylinder(root,4,3,[x,146,z],matJoint);
+  for(let x=-1300;x<=1300;x+=140)for(const z of [-80,80])cylinder(root,4,2,[x,145,z],matJoint);
 
   // ---- 手臂連桿 ----
   // DENSO VM-60B1 型錄：臂長 520＋590、J1–J2 偏移 180、J3 偏移 100。基座高度與 J5 以後的手腕長度型錄未列，仍為概念值。
@@ -42,7 +42,7 @@ export function createRobot() {
 
   const riser = box(300, L.riser, 300, matArmD); riser.position.y = 60 + L.riser / 2; carriage.add(riser);
   const base = cyl(120, 140, L.base, matArm); base.position.y = 60 + L.riser + L.base / 2; carriage.add(base);
-  const baseRing = cyl(128, 128, 14, matJoint); baseRing.position.y = 60 + L.riser + L.base - 7; carriage.add(baseRing);
+  const baseRing = cyl(128, 128, 14, matJoint); baseRing.position.y = 60 + L.riser + L.base - 7.7; carriage.add(baseRing);
   cylinder(carriage,10,20,[0,740,-140],matJoint,'z');
   cable(carriage,'RAIL / moving-end strain relief',[[0,16,-220],[0,75,-195],[0,340,-176],[0,740,-176],[0,740,-143]],{radius:8,color:CABLE.sleeve,clips:7});
 

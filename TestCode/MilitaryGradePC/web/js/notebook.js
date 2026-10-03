@@ -44,7 +44,7 @@ function port(type){
     const shell=outline(w+1.2,h+1.2);shell.holes.push(new THREE.Path(outline(w,h).getPoints(16)));
     const metalShell=new THREE.Mesh(new THREE.ExtrudeGeometry(shell,{depth:2.8,bevelEnabled:false,curveSegments:12}),steel);
     metalShell.position.z=-.8;metalShell.castShadow=metalShell.receiveShadow=true;g.add(metalShell);
-    block(g,[w,h,.25],[0,0,-.7],dark);
+    block(g,[w,h,.25],[0,0,0],dark);   // 插座底板：與金屬殼後緣、機身側面錯開 ≥0.6 mm，避免重合面閃爍
     if(type==='usb'||type==='typec')block(g,[w-2,1,2],[0,0,.25],type==='usb'?blue:dark);
     if(type==='com'){for(let row=0;row<2;row++)for(let i=0;i<(row?4:5);i++)cylinder(g,.5,2,[-6+i*3+row*1.5,1.5-row*3,2],gold,'z',8);}
     else {
@@ -56,7 +56,7 @@ function port(type){
   }else if(type==='ac'||type==='audio'){
     cylinder(g,type==='ac'?3.5:3,3,[0,0,0],steel,'z');cylinder(g,2,1,[0,0,2],dark,'z');
     if(type==='ac')cylinder(g,.8,2,[0,0,2.5],gold,'z');
-  }else{block(g,[28,13,3],[0,0,0],rubber);decal(g,25,10,[0,0,1.6],[0,0,0],type==='hdd'?['SSD','PULL TAB']:['SEALED','BATTERY']);}
+  }else{block(g,[28,13,3],[0,0,0],rubber);decal(g,25,10,[0,0,2.15],[0,0,0],type==='hdd'?['SSD','PULL TAB']:['SEALED','BATTERY']);}
   return g;
 }
 function makeDoor(def){
@@ -65,11 +65,12 @@ function makeDoor(def){
   for(const y of [3,def.h-3])block(hinge,[def.w-5,1.2,1],[0,y,-.4],rubber);
   for(const x of [-def.w/2+3,def.w/2-3])block(hinge,[1.2,def.h-6,1],[x,def.h/2,-.4],rubber);
   const seal=decal(hinge,def.w-12,8,[0,def.h/2,-1.05],[0,Math.PI,0],'LOCK / UNLOCK',{color:'#a9b8ba'});
-  decal(hinge,def.w-8,6,[0,def.h*.44,3.8],[0,0,0],def.icon,{center:true,color:def.id==='D1'?'#dc776b':'#d1d9d7'});
+  decal(hinge,def.w-8,6,[0,def.h*.44,4.5],[0,0,0],def.icon,{center:true,color:def.id==='D1'?'#dc776b':'#d1d9d7'});
   const latchPivot=new THREE.Group();latchPivot.position.set(0,def.h-2,4);hinge.add(latchPivot);
   block(latchPivot,[Math.min(22,def.w*.4),3,2],[0,0,0],steel);block(latchPivot,[Math.min(19,def.w*.35),1.2,2.3],[0,1,1],rubber);
   for(const x of [-def.w/2+5,def.w/2-5])cylinder(group,1.5,8,[x,0,1],steel,'x');
-  const cavity=block(group,[def.w-2,def.h-2,1],[0,def.h/2,-4.625],dark);
+  // 門內黑色底板：前緣凸出機身側面 0.65 mm、上緣低於上蓋膠條，避免與機身／膠條／上蓋重合面閃爍
+  const cavity=block(group,[def.w-2,def.h-5,2],[0,(def.h-5)/2+1,-4.4],dark);
   // Recess the ports behind the closed door's inner face (z=.55).
   const portGroup=new THREE.Group();portGroup.position.set(0,def.h/2,-3.2);group.add(portGroup);
   def.ports.forEach((p,i)=>{const m=port(p);m.position.x=(i-(def.ports.length-1)/2)*(def.w-14)/def.ports.length;portGroup.add(m);});
@@ -94,8 +95,8 @@ export function createNotebook(){
   profile(root,[[-42,33],[42,33],[52,42],[52,78],[39,90],[-39,90],[-52,78],[-52,42]],35.4,.65,lid);
   decal(root,54,17,[0,36.7,14],[-Math.PI/2,0,Math.PI],'Getac',{center:true,bold:true});
   for(const sx of [-1,1])for(const sz of [-1,1]){
-    rounded(root,25,29,38,6,[sx*139,-1,sz*94],rubber);
-    for(let k=0;k<3;k++)block(root,[26,1.2,1],[sx*139,7+k*6,sz*109],doorMat);
+    rounded(root,25,29,38,6,[sx*139,-1,sz*94],rubber).name='corner guard';
+    for(let k=0;k<3;k++)block(root,[26,1.2,1],[sx*139,7+k*6,sz*109.25],doorMat);
     screw(root,sx*140,38,sz*94,2.1);cylinder(root,5,2.5,[sx*136,-2,sz*91],rubber);
   }
   cylinder(root,7,48,[0,28,-104],steel,'x');block(root,[42,14,12],[0,27,106],rubber);block(root,[22,5,3],[0,30,113],steel);
@@ -107,13 +108,13 @@ export function createNotebook(){
   const points=[[-127,-77],[-68,-88],[0,-88],[66,-88],[126,-77],[-127,0],[127,0],[-127,76],[-70,88],[0,88],[70,88],[127,76]];
   points.forEach(([x,z])=>{bottomScrews.push(screw(root,x,-.8,z));screw(root,x,36,z,1.5);});
   profile(root,[[-23,-12],[91,-12],[106,0],[106,57],[93,71],[29,71],[12,87],[-29,87],[-43,73],[-43,3]],-.9,.4,rubber,.3);
-  profile(root,[[-22,-10],[90,-10],[103,1],[103,56],[92,68],[28,68],[10,84],[-28,84],[-40,72],[-40,4]],-1.35,.35,body,.3);
-  [[-33,6],[46,-4],[97,5],[97,56],[42,66],[-30,70],[4,80]].forEach(([x,z])=>bottomScrews.push(screw(root,x,-1.7,z,1.4)));
+  profile(root,[[-22,-10],[90,-10],[103,1],[103,56],[92,68],[28,68],[10,84],[-28,84],[-40,72],[-40,4]],-1.55,.35,body,.3);
+  [[-33,6],[46,-4],[97,5],[97,56],[42,66],[-30,70],[4,80]].forEach(([x,z])=>bottomScrews.push(screw(root,x,-1.9,z,1.4)));
   const printing=new THREE.Group();root.add(printing);
   decal(printing,103,46,[66,-1.1,-55],[Math.PI/2,0,0],['Getac     V110','MODEL / INPUT : SEE WORK ORDER','REGULATORY MARKING','CE   FCC   UL   EAC','REFERENCE RECONSTRUCTION'],{color:'#c8cbc5'});
-  decal(printing,74,14,[-47,-1,-79],[Math.PI/2,0,0],['V110 SERIES','WHITE INK INSPECTION']);
+  decal(printing,74,14,[-47,-1.1,-79],[Math.PI/2,0,0],['V110 SERIES','WHITE INK INSPECTION']);
   const labels={safety:printing.children[0]};
-  labels.sn=decal(root,45,15,[61,-1.2,-31],[Math.PI/2,0,0],['','SN: DEMO-0001'],{bg:'#d7e4da',color:'#151a1b',barcode:true});
+  labels.sn=decal(root,45,15,[61,-1.8,-31],[Math.PI/2,0,0],['','SN: DEMO-0001'],{bg:'#d7e4da',color:'#151a1b',barcode:true});
   labels.coin=decal(root,59,19,[-68,-1.1,-43],[Math.PI/2,0,0],['WARNING','INGESTION HAZARD','WORK ORDER LABEL'],{bg:'#dcd4b9',color:'#191c1c'});
   const dock=new THREE.Group();dock.position.set(-89,-1.4,61);dock.rotation.x=Math.PI/2;root.add(dock);
   block(dock,[18,34,1],[0,0,0],rubber);

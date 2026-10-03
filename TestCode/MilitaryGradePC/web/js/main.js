@@ -11,15 +11,14 @@ const vision = createVisionOverlay();
 const fullSensorVision = createVisionOverlay();
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { createNotebook, NB, SKUS, selectSku } from './notebook.js';
-import { createRobot } from './robot.js';
-import { createCell, createPallet, LAYOUT } from './cell.js';
-import { createSequence, smooth } from './sequence.js';
+import { SKUS } from './notebook.js';
+import { LAYOUT } from './cell.js';
+import { smooth } from './sequence.js';
+import { createProject, DEFAULT_SKU } from './project.js';
 
 // ---------------------------------------------------------------- SKU（由網址參數或選單決定；換 SKU 重建整條時間軸）
 const qp = new URLSearchParams(location.search);
-const SKU = qp.get('sku') && SKUS[qp.get('sku')] ? qp.get('sku') : 'V110-STND';
-const DOOR_DEFS = selectSku(SKU);
+const SKU = qp.get('sku') && SKUS[qp.get('sku')] ? qp.get('sku') : DEFAULT_SKU;
 
 // ---------------------------------------------------------------- 場景
 const canvas = document.getElementById('c');
@@ -51,46 +50,13 @@ detailLight.shadow.mapSize.set(2048,2048);Object.assign(detailLight.shadow.camer
 detailLight.shadow.bias=-.00001;detailLight.shadow.normalBias=.035;scene.add(detailLight,detailLight.target);
 const fill = new THREE.DirectionalLight(0x9fb8ff, 0.5); fill.position.set(2500, 2000, -2500); scene.add(fill);
 
-// ---------------------------------------------------------------- 物件
-const cell = createCell(scene);
-const nb = createNotebook();
-const notebook = nb.root;
-// 載體（carrier）：機台的實際位置／翻轉由它決定（載具上、升降、翻轉治具中）
-const carrier = new THREE.Group(); scene.add(carrier); carrier.add(notebook);
-notebook.position.set(0, -NB.H / 2, 0);
-const robot = createRobot();
-robot.root.position.set(0, 0, LAYOUT.railZ);
-scene.add(robot.root);
+// ---------------------------------------------------------------- 物件（與 core 統一檢查共用 project.js）
+const project = createProject({ scene, sku: SKU });
+const { cell, nb, carrier, robot, sequence, roiBox, seamLaser, trail, trailGeo, trailPos, trailN } = project;
+const [zoneSlow, zoneSlowE, zoneKeep] = project.zones;
 
-// 堆料架內的載具堆（進料 4 台待檢、出料 2 台已檢）
-const stackIn = [], stackOut = [];
-function stackedUnit() { const p = createPallet(true);p.setClamp(1); const n = createNotebook().root; n.position.y = LAYOUT.palletH + LAYOUT.padH + LAYOUT.footOffset; p.group.add(n); return p.group; }
-for (let i = 0; i < 5; i++) { const u = stackedUnit(); cell.stackerIn.group.add(u); stackIn.push(u); }
-for (let i = 0; i < 2; i++) { const u = stackedUnit(); cell.stackerOut.group.add(u); stackOut.push(u); }
-
-// 防撞區
-const zoneMat = new THREE.MeshBasicMaterial({ color: 0x4aa8ff, transparent: true, opacity: 0.08, depthWrite: false });
-const zoneEdge = new THREE.LineBasicMaterial({ color: 0x4aa8ff, transparent: true, opacity: 0.35 });
-const zoneSlow = new THREE.Mesh(new THREE.BoxGeometry(NB.W + 200, NB.H + 200, NB.D + 200), zoneMat); zoneSlow.position.y = NB.H / 2;
-const zoneSlowE = new THREE.LineSegments(new THREE.EdgesGeometry(zoneSlow.geometry), zoneEdge); zoneSlowE.position.y = NB.H / 2;
-const zoneKeep = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(NB.W + 60, NB.H + 60, NB.D + 60)), new THREE.LineBasicMaterial({ color: 0xff4d4d, transparent: true, opacity: 0.5 })); zoneKeep.position.y = NB.H / 2;
-notebook.add(zoneSlow, zoneSlowE, zoneKeep);
-
-// ROI 框
-const roiMat = new THREE.LineBasicMaterial({ color: 0x3dd68c, transparent: true, opacity: 0.0 });
-const roiBox = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)), roiMat); scene.add(roiBox);
-let roiTimer = 0;
-function showROI(center, size, life = 0.9) { roiBox.position.copy(center); roiBox.scale.set(size.x, size.y, size.z); roiBox.quaternion.identity(); roiMat.opacity = 1; roiTimer = life; }
-function showROIObj(obj, pad = 6, life = 0.9) { scene.updateMatrixWorld(true); const b = new THREE.Box3().setFromObject(obj); showROI(b.getCenter(new THREE.Vector3()), b.getSize(new THREE.Vector3()).addScalar(pad), life); }
-
-// A 面接縫雷射線
-const seamLaser = new THREE.Mesh(new THREE.PlaneGeometry(3, 16), new THREE.MeshBasicMaterial({ color: 0xff2a2a, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false }));
-seamLaser.rotation.x = -Math.PI / 2; scene.add(seamLaser);
-
-// 手臂路徑
-const trailN = 500; const trailPos = new Float32Array(trailN * 3); let trailCount = 0;
-const trailGeo = new THREE.BufferGeometry(); trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPos, 3)); trailGeo.setDrawRange(0, 0);
-const trail = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({ color: 0x7fd4ff, transparent: true, opacity: 0.6 })); scene.add(trail);
+// 手臂路徑（播放時累積，跳播時清空）
+let trailCount = 0;
 function pushTrail(p) { if (trailCount >= trailN) { trailPos.copyWithin(0, 3); trailCount = trailN - 1; } trailPos.set([p.x, p.y, p.z], trailCount * 3); trailCount++; trailGeo.attributes.position.needsUpdate = true; trailGeo.setDrawRange(0, trailCount); }
 
 // 3D 標籤
@@ -106,25 +72,10 @@ addLabel('力覺末端', () => robot.getTcpWorld('cam').add(new THREE.Vector3(0,
 
 const ui=Object.fromEntries(['action','substep','forceBar','forceVal','zoneDot','zoneTxt','checklist','chkCount','playBtn','restartBtn','speed','speedVal','showZone','showPath','progBar','clock','sku','timeline','stepSelect','previous','next','signals','poseError','phase','result','exportBtn','showGuards','showLabels','cycleTime'].map(id=>[id,document.getElementById(id)]));
 let S,playing=!qp.has('pause'),T=0,speed=1,current,waiting=0,fault='',curStation=-1;
-const top=LAYOUT.conveyorTop+6+LAYOUT.palletH+LAYOUT.padH+LAYOUT.footOffset;
 const CAPTURE=qp.has('capture');
-function applyState(s){
-  S=s;
-  cell.pallet.group.position.set(s.palletX,LAYOUT.conveyorTop+6+s.palletLift,0);
-  carrier.position.set(s.palletX,top+s.palletLift+s.lift+NB.H/2,0);carrier.rotation.x=Math.PI*s.flip;
-  cell.pallet.setClamp(s.clamp);nb.doors.forEach((d,i)=>d.set(s.doors[i].open,s.doors[i].latch));
-  const inBase=LAYOUT.conveyorTop+6;
-  cell.stackerIn.lift.position.y=inBase-20+s.inLift;
-  stackIn.forEach((u,i)=>u.position.set(0,inBase+(i+1)*LAYOUT.palletPitch+s.inStackY,0));
-  cell.stackerOut.lift.position.y=inBase-20+s.outLift;
-  stackOut.forEach((u,i)=>u.position.set(0,inBase+(i+1)*LAYOUT.palletPitch+s.outStackY,0));
-  cell.stackerIn.setPush(s.pushIn);cell.stackerOut.setPush(s.pushOut);cell.stackerIn.setForks(s.inFork);cell.stackerOut.setForks(s.outFork);
-  cell.cradle.lift.position.y=top+NB.H/2+s.cradleLift;cell.cradle.rot.rotation.x=Math.PI*s.flip;cell.cradle.setClamp(s.cradleClamp);
-  cell.updateTransport(s.palletX,s.located);cell.setHead(s.s1Head);
-  scene.updateMatrixWorld(true);
-}
-const sequence=createSequence({nb,robot,apply:applyState});
-const total=sequence.total,stationStart=sequence.stationStart;
+// 時間 → 場景一律經由 project：apply（跳播，手臂直接到位）或 sample（播放，手臂由 robot.update 追上）
+function go(c){current=c;S=c.state;return c;}
+const total=project.total,stationStart=sequence.stationStart;
 ui.timeline.max=total;ui.cycleTime.textContent=`配方 ${Math.round(total)} s ＋到位等待`;
 ui.sku.value=SKU;ui.sku.onchange=()=>{const q=new URLSearchParams(location.search);q.set('sku',ui.sku.value);location.search=q.toString();};
 sequence.steps.forEach((s,i)=>{const opt=document.createElement('option');opt.value=i;opt.textContent=`S${s.station} · ${s.action}`;ui.stepSelect.appendChild(opt);});
@@ -167,8 +118,8 @@ document.querySelectorAll('.views button').forEach(b=>b.onclick=()=>{
   setView(b.dataset.view);
 });
 function seekTo(sec,snap=true){
-  T=Number.isFinite(sec)?THREE.MathUtils.clamp(sec,0,total):0;current=sequence.sample(T);
-  if(snap)robot.snap();waiting=0;fault='';trailCount=0;trailGeo.setDrawRange(0,0);roiTimer=0;
+  T=Number.isFinite(sec)?THREE.MathUtils.clamp(sec,0,total):0;go(snap?project.apply(T):project.sample(T));
+  waiting=0;fault='';trailCount=0;trailGeo.setDrawRange(0,0);
   ui.playBtn.textContent=playing?'⏸ 暫停':'▶ 播放';render();
 }
 ui.playBtn.onclick=()=>{if(T>=total)seekTo(0);playing=!playing;fault='';waiting=0;ui.playBtn.textContent=playing?'⏸ 暫停':'▶ 播放';};
@@ -191,18 +142,11 @@ ui.exportBtn.onclick=exportReport;
 const signals=[['載具到位',()=>S.located],['載具夾緊',()=>S.clamp>.99],['翻轉夾緊',()=>S.cradleClamp>.99],['升降到位',()=>S.lift===0||S.lift===LAYOUT.flipLift],['取像頭退出',()=>S.s1Head<.001],['所有門關閉',()=>S.doors.every(d=>d.open<.001&&d.latch<.001)],['工具到位',()=>{const e=robot.error();return e.position<1.5&&e.angle<2&&e.rail<1;}]];
 signals.forEach(([name])=>{const row=document.createElement('div');row.innerHTML=`<i></i><span>${name}</span>`;ui.signals.appendChild(row);});
 function drawHud(){
-  const e=robot.error(),arrived=e.position<(current.step.contact?1:2)&&e.angle<3&&e.rail<2;
-  const illuminated=arrived||CAPTURE;
-  robot.setFlash(S.flashTool>0&&illuminated);robot.setLaser(S.laserTool>0&&illuminated);
-  cell.topFlash.intensity=S.flashTop*2000;cell.snFlash.intensity=S.flashSn*800;
-  const activeDoor=nb.doors.find(d=>S.action.startsWith(d.def.id+' '));
-  roiBox.visible=!!(S.flashTool&&illuminated);
-  if(roiBox.visible)showROIObj(activeDoor?activeDoor.portGroup:S.action.includes('Docking')?nb.dock:S.action.includes('法規')?nb.printing:nb.labels.sn,3);
-  const force=arrived?S.force:0;robot.setForceColor(force);
-  cell.tower.set(fault?'red':S.station===4?(ui.result.value==='NG'?'red':'green'):'yellow');
+  const e=robot.error(),arrived=project.arrived(current);
+  // 光源、雷射、ROI 框、接縫雷射線、力覺色環、三色燈與 apply(t) 用同一段程式
+  project.effects(current,{arrived,capture:CAPTURE,result:ui.result.value,fault});
+  const force=arrived?S.force:0;
   cell.occluders.visible=ui.showGuards.checked;
-  seamLaser.material.opacity=S.seamLaser>=0&&illuminated?.7:0;
-  seamLaser.position.set(S.palletX-125+250*smooth(current.t),top+NB.H+1,-94);
   zoneSlow.visible=zoneSlowE.visible=zoneKeep.visible=ui.showZone.checked;trail.visible=ui.showPath.checked;
   ui.action.textContent=S.action;ui.substep.textContent=S.sub;
   ui.phase.textContent=fault|| (T>=total?'COMPLETE · 本台完成':waiting>0?'等待手臂到位':playing?'AUTO · 執行中':'HOLD · 暫停');ui.phase.classList.toggle('fault',!!fault);
@@ -252,7 +196,7 @@ function tick(dt){
   else{
     waiting=0;
     if(T>=total-1e-7){playing=false;ui.playBtn.textContent='▶ 播放';}
-    else {T=T>=end-1e-7?Math.min(total,end+1e-6):Math.min(end,T+dt);current=sequence.sample(T>=end-1e-7&&T<=end?Math.max(s.start,end-1e-8):T);}
+    else {T=T>=end-1e-7?Math.min(total,end+1e-6):Math.min(end,T+dt);go(project.sample(T>=end-1e-7&&T<=end?Math.max(s.start,end-1e-8):T));}
   }
   robot.update(dt);
 }
@@ -265,8 +209,8 @@ function frame(){
   if(camAnim){camAnim.u=Math.min(1,camAnim.u+dt*1.4);camera.position.lerpVectors(camAnim.p0,camAnim.p,smooth(camAnim.u));controls.target.lerpVectors(camAnim.t0,camAnim.t,smooth(camAnim.u));if(camAnim.u===1)camAnim=null;}
   controls.update();render();
 }
-current=sequence.sample(0);robot.snap();setView('iso',true);resize();ui.playBtn.textContent=playing?'⏸ 暫停':'▶ 播放';
-window.sim={jump(st,view,off=0){seekTo((stationStart[THREE.MathUtils.clamp(Math.trunc(st)||0,0,4)]||0)+off);if(view)setView(view,true);},seekTo,pause(){playing=false;ui.playBtn.textContent='▶ 播放';},play(){playing=true;ui.playBtn.textContent='⏸ 暫停';},get state(){return S;},robot,total,stationStart,steps:sequence.steps};
+go(project.apply(0));setView('iso',true);resize();ui.playBtn.textContent=playing?'⏸ 暫停':'▶ 播放';
+window.sim={jump(st,view,off=0){seekTo((stationStart[THREE.MathUtils.clamp(Math.trunc(st)||0,0,4)]||0)+off);if(view)setView(view,true);},seekTo,pause(){playing=false;ui.playBtn.textContent='▶ 播放';},play(){playing=true;ui.playBtn.textContent='⏸ 暫停';},get state(){return S;},get T(){return T;},setView,views:[...Object.keys(views),'sensor'],project,robot,total,stationStart,steps:sequence.steps};
 if(qp.has('st'))window.sim.jump(+qp.get('st'),qp.get('view'),+(qp.get('t')||0));else if(qp.has('view'))setView(qp.get('view'),true);
 if(qp.has('step')){playing=false;seekTo(sequence.steps[THREE.MathUtils.clamp(+qp.get('step')||0,0,sequence.steps.length-1)].start);if(qp.has('view'))setView(qp.get('view'),true);}
 if(qp.has('cam')){const a=qp.get('cam').split(',').map(Number);if(a.length===6&&a.every(Number.isFinite)){camera.position.set(...a.slice(0,3));controls.target.set(...a.slice(3));controls.update();}}
@@ -275,5 +219,5 @@ document.getElementById('loading').classList.add('hide');render();frame();
 if(CAPTURE){
   const {installVideo}=await import('./video.js');
   ui.showGuards.checked=false;ui.showLabels.checked=false;
-  window.capture=installVideo({steps:sequence.steps,renderer,camera,controls,render,nb,getState:()=>S,sample(time){T=time;current=sequence.sample(time);robot.snap();}});
+  window.capture=installVideo({steps:sequence.steps,renderer,camera,controls,render,nb,getState:()=>S,sample(time){T=time;go(project.apply(time,{capture:true}));}});
 }

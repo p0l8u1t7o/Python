@@ -42,7 +42,7 @@ node ../core/tools/serve.mjs MilitaryGradePC --no-open
 - `V110-RF` 保留為非本工單的擴充示意，不冒充 G7-STND 配置。
 
 測試網址：`?pause&st=2&view=product`、`?pause&step=43&view=door`；`cam=x,y,z,tx,ty,tz` 可指定鏡頭。
-主控台支援 `window.sim.jump(st, view, off)`、`seekTo(sec)`、`pause()`、`play()`；`window.sim.steps` 列出步驟起點。
+主控台支援 `window.sim.jump(st, view, off)`、`seekTo(sec)`、`setView(name, instant)`、`pause()`、`play()`；`window.sim.views` 列出視角名稱，`window.sim.steps` 列出步驟起點。
 
 ## 建模與運動
 
@@ -61,7 +61,8 @@ node ../core/tools/serve.mjs MilitaryGradePC --no-open
 | `web/js/cell.js` | 載具、進出料、輸送與翻轉設備 |
 | `web/js/robot.js` | 概念手臂、末端工具、限速；IK 用 `core/robot/kinematics.js` |
 | `web/js/sequence.js` | 第一階段逐步流程、時間、狀態快照 |
-| `web/js/main.js` | 場景、控制、到位等待、紀錄匯出、錄影分鏡 |
+| `web/js/project.js` | 專案介面 `createProject`：建立全部設備、產品與動作序列，`apply(t)` 把場景放到時間 t；網頁與 core 統一檢查共用 |
+| `web/js/main.js` | 燈光、控制、到位等待、紀錄匯出、錄影分鏡（場景物件由 `project.js` 建立） |
 | `docs/phase1-scope.md` | 文件依據與範圍映射 |
 | `docs/cost-estimate.xlsx` | 元件選型與成本估算（預算級） |
 | `tools/verify.mjs` | 狀態／幾何／運動驗證 |
@@ -72,7 +73,11 @@ node ../core/tools/serve.mjs MilitaryGradePC --no-open
 
 ```powershell
 node --import ../core/tools/register.mjs tools/verify.mjs
+# 或在 TestCode 執行統一檢查（imports、倒序一致、全場干涉／重合面，再加上本專案 tools/verify*.mjs）
+node ../core/tools/check.mjs MilitaryGradePC
 ```
+
+統一檢查讀取 `web/js/project.js`（預設 SKU `V110-STND`），全場干涉與重合面結果寫入 `review/scene-verification.txt`。
 
 涵蓋兩個 SKU、全部步驟的代表時刻、任意倒退／跳站一致性、封印保持、翻面升降與夾持條件、TCP 可達性（PTP 步驟檢查終點）、手臂對 S1／S3 固定結構的碰撞（代表時刻＋連續播放每 0.25 秒），以及連續播放。最近一次結果在 `review/verification.json`；模型計算誤差並非設備精度。瀏覽器畫面驗證（全景、產品、護蓋、翻面、控制及 NG 停留）是改用 VM-60B1 與 S1 懸臂之前做的，本版尚未重做。
 

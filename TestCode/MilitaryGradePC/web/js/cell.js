@@ -45,8 +45,8 @@ export function createPallet(withClamps = true) {
   }
   for (const [x, z] of [[-150, -95], [150, -95], [-150, 95], [150, 95]]) { const p = box(40, LAYOUT.padH, 40, matPU); p.position.set(x, ph + LAYOUT.padH/2, z); pallet.add(p); }
   for (const [x, z] of [[-170, 127], [170, 127], [-170, -127]]) { const p = cyl(4, 30, matPin, 12);p.name='pallet-guide-pin'; p.position.set(x, ph + 15, z); pallet.add(p); }
-  // 堆疊柱（四角，高度 = 堆疊間距）
-  for (const [x, z] of [[-pw / 2 + 20, -pd / 2 + 20], [pw / 2 - 20, -pd / 2 + 20], [-pw / 2 + 20, pd / 2 - 20], [pw / 2 - 20, pd / 2 - 20]]) {
+  // 堆疊柱（四角，高度 = 堆疊間距）；內縮到 z=±125，讓出堆料架托叉（z=±140～164）的通道，推出／拉入時柱子不穿過托叉
+  for (const [x, z] of [[-pw / 2 + 20, -pd / 2 + 40], [pw / 2 - 20, -pd / 2 + 40], [-pw / 2 + 20, pd / 2 - 40], [pw / 2 - 20, pd / 2 - 40]]) {
     const post = box(24, LAYOUT.palletPitch - ph, 24, matAlu); post.position.set(x, ph + (LAYOUT.palletPitch - ph) / 2, z); pallet.add(post);
   }
   const clamps = [];
@@ -55,11 +55,11 @@ export function createPallet(withClamps = true) {
     const cylBody = box(26, 22, 20, matDark); cylBody.position.x = sx * 12; cg.add(cylBody);
     const rod = new THREE.Group(); cg.add(rod);
     const rodM = cyl(4, 40, matPin, 10); rodM.rotation.z = Math.PI / 2; rodM.position.x = -sx * 30; rod.add(rodM);
-    const pad = box(8, 18, 8, matPU); pad.position.x = -sx * 52; rod.add(pad);
+    const pad = box(8, 18, 8, matPU); pad.name = 'pallet clamp pad'; pad.position.x = -sx * 52; rod.add(pad);
     clamps.push({ rod, sx });
   }
-  decal(pallet,110,22,[0,ph/2,pd/2+.5],[0,0,0],'QC • P001',{bg:'#1b3139',center:true});
-  for (const sx of [-1,1]) for (const sz of [-1,1]) cylinder(pallet,3,1,[sx*200,ph+1,sz*145],matDark);
+  decal(pallet,110,22,[0,ph/2,pd/2+1.2],[0,0,0],'QC • P001',{bg:'#1b3139',center:true});
+  for (const sx of [-1,1]) for (const sz of [-1,1]) cylinder(pallet,3,1,[sx*200,ph+1,sz*125],matDark);
   return { group: pallet, setClamp(v) { for (const c of clamps) c.rod.position.x = -c.sx * (v * 25 - 25); } };
 }
 
@@ -73,8 +73,10 @@ function createStacker(x, dir) {
   // 升降立柱（伺服）＋平台
   const column = box(80, H, 60, matDark); column.position.set(0, H / 2, -D / 2 - 40); g.add(column);
   const lift = new THREE.Group(); g.add(lift);
-  const platform = box(W - 80, 20, D - 80, matAlu); platform.position.y = 10; lift.add(platform);
-  const bracket = box(120, 60, 60, matDark); bracket.position.set(0, 30, -D / 2 + 40); lift.add(bracket);
+  // 平台 430×270：z 方向窄於托叉（z=±140～164）、x 方向避開推／拉料鞋，升降時不穿過托叉與料鞋
+  const platform = box(430, 20, 270, matAlu); platform.position.y = 10; lift.add(platform);
+  // 平台托架在平台下方接到後側升降立柱，上升到托叉高度時不碰托叉
+  const bracket = box(120, 59.2, 110, matDark); bracket.position.set(0, -30.4, -185); lift.add(bracket);
   // 推料氣缸（在輸送線高度，把最底層載具推出／拉入）
   const pusher = new THREE.Group(); pusher.position.set(-dir * (W / 2 + 60), top + 30, 0); g.add(pusher);
   const pBody = box(70, 40, 60, matDark); pusher.add(pBody);
@@ -85,13 +87,14 @@ function createStacker(x, dir) {
   const hmi = box(160, 110, 14, new THREE.MeshStandardMaterial({ color: 0x0c1a2b, emissive: 0x1f4f8f, emissiveIntensity: 0.6 })); hmi.position.set(0, 1500, D / 2 + 10); g.add(hmi);
   const forks=[];
   for(const sz of [-1,1]){
-    const fork=block(g,[440,12,34],[0,top+6+LAYOUT.palletPitch-6,sz*147],matBlue);forks.push({fork,sz});
+    // 托叉 24 mm 寬、z=±140～164：承托載具前後框，與堆疊柱（z=±113～137）錯開
+    const fork=block(g,[440,12,24],[0,top+6+LAYOUT.palletPitch-6,sz*152],matBlue);forks.push({fork,sz});
     for(const sx of [-1,1])block(g,[12,1400,12],[sx*235,850,sz*218],matPin);
   }
   cylinder(g,13,1450,[0,850,-D/2-78],matPin);
   const motor=box(100,110,90,matBlue);motor.position.set(0,150,-D/2-78);g.add(motor);
   decal(g,140,70,[0,1500,D/2+18],[0,0,0],[dir===1?'INFEED':'OUTFEED','SERVO LIFT','6 PALLETS'],{bg:'#122d3c',center:true});
-  return { group:g,lift,rod,dir,forks,setForks(v){for(const {fork,sz} of forks)fork.position.z=sz*(147+(1-v)*85);},setPush(mm){
+  return { group:g,lift,rod,dir,forks,setForks(v){for(const {fork,sz} of forks)fork.position.z=sz*(152+(1-v)*85);},setPush(mm){
     // Pusher shoe remains on the pallet edge; rod grows from the cylinder head.
     plate.position.x=dir*(115+mm);rodM.position.x=dir*(35+(80+mm)/2);rodM.scale.y=(80+mm)/200;
   }};
@@ -102,13 +105,14 @@ function createFlipCradle(x) {
   const g = new THREE.Group(); g.position.set(x, 0, 0);
   const top = LAYOUT.conveyorTop;
   const keepout = [];
-  for (const sx of [-1, 1]) { const post = box(60, 1800, 60, matFrame); post.position.set(sx * 380, 900, 270); g.add(post); post.name = sx < 0 ? 'S3 左立柱' : 'S3 右立柱'; keepout.push(post); block(g,[18,900,15],[sx*380,1050,231],matPin); }
-  const beam = box(840, 60, 60, matFrame); beam.position.set(0, 1800, 270); g.add(beam); beam.name = 'S3 橫樑'; keepout.push(beam);
+  // 龍門立柱 z=225～285：讓出輸送線前側線槽（z=291～349）
+  for (const sx of [-1, 1]) { const post = box(60, 1800, 60, matFrame); post.position.set(sx * 380, 900, 255); g.add(post); post.name = sx < 0 ? 'S3 左立柱' : 'S3 右立柱'; keepout.push(post); block(g,[18,900,15],[sx*380,1050,216],matPin); }
+  const beam = box(840, 60, 60, matFrame); beam.position.set(0, 1800, 255); g.add(beam); beam.name = 'S3 橫樑'; keepout.push(beam);
   // 升降滑台（兩側），帶動旋轉軸
   const lift = new THREE.Group(); g.add(lift);
   for (const sx of [-1, 1]) {
-    const slide = box(90, 120, 70, matDark); slide.position.set(sx * 380, 0, 240); lift.add(slide);
-    block(lift,[60,60,240],[sx*380,0,120],matAlu);
+    const slide = box(90, 120, 70, matDark); slide.position.set(sx * 380, 0, 225); lift.add(slide);
+    block(lift,[60,60,225],[sx*380,0,112.5],matAlu);
     const motor = cyl(38, 90, matBlue); motor.rotation.z = Math.PI / 2; motor.position.set(sx * 410, 0, 0); lift.add(motor);
   }
   // 旋轉框：兩支夾臂沿 X 伸向機台兩端，夾墊在 z=±85（避開側邊護蓋）
@@ -118,7 +122,7 @@ function createFlipCradle(x) {
     const shaft = cyl(18, 180, matAlu); shaft.rotation.z = Math.PI / 2; shaft.position.set(sx * 300, 0, 0); rot.add(shaft);
     const arm = new THREE.Group(); arm.position.set(sx * 235, 0, 0); rot.add(arm);
     const yoke = box(30, 40, 240, matDark); arm.add(yoke);
-    for (const sz of [-1, 1]) { const finger = box(50, 22, 10, matDark); finger.position.set(-sx * 20, 0, sz * 98); arm.add(finger); const pad = box(10, 22, 10, matPU); pad.position.set(-sx * 48, 0, sz * 98); arm.add(pad); }
+    for (const sz of [-1, 1]) { const finger = box(50, 22, 10, matDark); finger.position.set(-sx * 20, 0, sz * 98); arm.add(finger); const pad = box(10, 20.6, 8.6, matPU); pad.name = 'cradle clamp pad'; pad.position.set(-sx * 48, 0, sz * 98); arm.add(pad); }
     arms.push({ arm, sx });
   }
   return { group: g, lift, rot, arms, keepout, setClamp(v) { for (const a of arms) a.arm.position.x = a.sx * (235 - v * 30.5); } };
@@ -143,7 +147,7 @@ export function createCell(scene) {
   const stops=[];
   for (const x of [-1450,...stationX.slice(1,4),1450]) {
     const base=box(45,70,70,matDark);base.position.set(x+225,top-35,0);g.add(base);
-    const st=box(10,24,70,matYellow);st.position.set(x+225,top-14,0);g.add(st);
+    const st=box(10,24,68,matYellow);st.position.set(x+225,top-14,0);g.add(st);
     const sensor=box(16,18,24,matBlue);sensor.position.set(x,top+12,210);g.add(sensor);
     const led=cylinder(g,3,2,[x,top+23,210],new THREE.MeshStandardMaterial({color:0x1b4f3d,emissive:0x32d49b,emissiveIntensity:0}));
     stops.push({x,st,led});
@@ -152,7 +156,7 @@ export function createCell(scene) {
   for(let x=x0+30;x<x1;x+=120)for(const z of [-201,201])block(g,[42,3,1],[x,top-30,z],matDark);
   const drive=box(140,120,100,matBlue);drive.position.set(x1-90,top-90,265);g.add(drive);
   const beltMarks=new THREE.Group();g.add(beltMarks);
-  for(let x=x0+30;x<x1-100;x+=110)for(const z of [-170,170])block(beltMarks,[3,1,28],[x,top+6.3,z],matAlu);
+  for(let x=x0+30;x<x1-100;x+=110)for(const z of [-170,170])block(beltMarks,[3,1.4,28],[x,top+6,z],matAlu);
 
   // ---- 主載具（隨機台移動）----
   const pallet = createPallet(true);
@@ -208,7 +212,8 @@ export function createCell(scene) {
     m.position.y = y; tower.add(m); towerLamps[k] = m;
   });
   const towerApi = { set(k) { for (const n in towerLamps) towerLamps[n].material.emissiveIntensity = n === k ? 1.6 : 0.08; } };
-  const backZ = railZ - 420, endX = 2700;
+  // 後圍籬：手臂待命／PTP 時肘部最遠到 z≈-996，圍籬放在 railZ-500，保留約 60 mm
+  const backZ = railZ - 500, endX = 2700;
   for (let x = -endX; x <= endX; x += 675) { const p = box(40, 1400, 40, matFrame); p.position.set(x, 700, backZ); occ.add(p); }
   for (const y of [500, 1380]) { const r = box(endX * 2, 14, 14, y > 1000 ? matYellow : matFrame); r.position.set(0, y, backZ); occ.add(r); }
   for (const x of [-endX, endX]) {
