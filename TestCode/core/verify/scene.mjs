@@ -56,9 +56,11 @@ export function verifyScene(project, scene, {
     for (const o of objs) if (!o.scale.equals(s0.get(o))) stretch.add(o);
   }
   const spinner = new Set(meshes.filter(m => AXI.has(m.geometry.type) && !moved.has(m)));
-  const spinnerJoint = p => { let only = true; p.traverse(c => { if (c.isMesh && !spinner.has(c)) only = false; }); return only; };
+  // 快取：大型場景（數千個會動零件）每次重走子樹會讓檢查跑上數小時
+  const sjCache = new Map(), bodyCache = new Map();
+  const spinnerJoint = p => { if (sjCache.has(p)) return sjCache.get(p); let only = true; p.traverse(c => { if (c.isMesh && !spinner.has(c)) only = false; }); sjCache.set(p, only); return only; };
   // 自轉件本身不算關節，但仍屬於它所在的會動群組（例如繞自身軸轉的肩部屬於 J1）；只在固定群組裡的自轉件（滾輪）才是固定件
-  const bodyOf = o => { for (let p = spinner.has(o) ? o.parent : o; p && p !== scene; p = p.parent) if (joints.has(p) && !spinnerJoint(p)) return p; return null; };
+  const bodyOf = o => { if (!o) return null; if (bodyCache.has(o)) return bodyCache.get(o); let r = null; for (let p = spinner.has(o) ? o.parent : o; p && p !== scene; p = p.parent) if (joints.has(p) && !spinnerJoint(p)) { r = p; break; } bodyCache.set(o, r); return r; };
   const parentBody = b => bodyOf(b.parent);
   const movingSet = new Set(meshes.filter(m => bodyOf(m) && !spinner.has(m)));
   const moving = [...movingSet], fixed = meshes.filter(m => !bodyOf(m) || spinner.has(m));   // 自轉件外框不變，以固定件取樣即可
