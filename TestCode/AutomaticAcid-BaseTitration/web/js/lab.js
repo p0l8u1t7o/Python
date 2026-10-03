@@ -6,17 +6,18 @@ import { cable, cableTray, carrier, support, CABLE } from '@core/electrical/cabl
 import { finish } from '@core/geom/finish.js';
 import { perforated } from '@core/geom/perforated.js';
 import { block, cylinder, decal, tube } from '@core/geom/shapes.js';
-import { MAT } from '@core/geom/materials.js';
+import { MAT, finished } from '@core/geom/materials.js';
 import { Y0, BENCH, ST, BEAKER, BOTTLES, CAP, PIPETTE, SAMPLES } from './layout.js';
 import { glass, glassRim, liquidMaterial, glassVessel, glassBottle, graduations, createLiquid, rim, screw, flowLine, tipFillHeight } from './render-details.js';
 
-// 常見材質用共用材質表（core/geom/materials.js 的 MAT）：桌架＝深色鋼、不鏽鋼件、黑件、狀態燈；
-// 不鏽鋼另加金屬細紋（finish 會改材質，所以用 MAT.steel 的複本，不動共用那一份）。
+// 常見材質用共用材質表（core/geom/materials.js 的 MAT）：桌架＝深色鋼、不鏽鋼件（finished：帶金屬細紋的快取複本）、黑件、狀態燈。
 // 實驗室與產品專屬外觀（桌面、Metrohm 外殼、POM、瓶蓋、吸頭、玻璃與液體、雷射與安全區）留在本專案。
+// grey 不換成 MAT.frame：用在電控箱外殼、天平防風罩框與滑門、瓶座夾爪座、鍵盤鍵帽、移液模組本體，
+// 是烤漆／塑膠件（霧面塑膠細紋、低金屬度），不是鋁擠型；MAT.frame（較深、金屬度 .6）會改變外觀。
 const M = {
   benchTop: new THREE.MeshStandardMaterial({ color: 0xd9dcd6, roughness: 0.6 }),          // 耐酸鹼實驗桌面
   frame: MAT.steelDark,
-  steel: MAT.steel.clone(),
+  steel: finished(MAT.steel, 'metal', .008),
   white: new THREE.MeshStandardMaterial({ color: 0xeef0ee, roughness: 0.45 }),
   grey: new THREE.MeshStandardMaterial({ color: 0x8c949c, roughness: 0.5, metalness: 0.2 }),
   dark: MAT.black,
@@ -38,7 +39,7 @@ const M = {
 };
 
 for (const name of ['white','grey','metrohm','metrohmDark','pom','cap','capRed']) finish(M[name],'polymer',.02);
-finish(M.steel,'metal',.008); finish(M.benchTop,'polymer',.035);
+finish(M.benchTop,'polymer',.035);
 // 空心圓筒（器皿壁）
 function vessel(parent, r, h, material, bottom = 2) {
   if (material === M.glass) return glassVessel(parent, r, h, bottom);

@@ -2,7 +2,9 @@
 // 兩種共用排程（core/anim）：
 //   手臂 → createStepSequence：單一手臂依序作業；每步存起始狀態快照（s0）與步驟內變化（fx），station = 用戶文件流程編號（①～⑨）
 //   進樣器 → createTimeline：轉盤（rack）與滴定頭（head）兩條時間軌，與手臂並行
-// 手臂步驟先在本檔的規劃器排出（進樣器區需試排、避開轉盤轉動時退回重排），定案後依序寫入步驟序列。
+// 手臂步驟由本檔的規劃器直接寫入步驟序列；進樣器區需試排，撞到轉盤轉動時用序列的 mark()／rollback() 退回重排。
+// station 編號照用戶文件：1 初始化、2 空杯秤重、3 讀碼開蓋、4 移液、5 樣品秤重、6 進樣器、8 關蓋、9 分析・取杯、10 Cycle Complete。
+// 文件的 ⑦ 是「第二個空杯重複 ②④⑤⑥」，沒有自己的步驟；0 不使用。所以 stationStart[0]、[7] 是空位（undefined），查詢前先確認有值。
 // sample(T)／sampler(T) 只由 T 決定，倒退／跳站結果一致。
 import * as THREE from 'three';
 import { createStepSequence, timelineEvents } from '@core/anim/sequence.js';
@@ -105,9 +107,13 @@ export function buildPlan(robot) {
     say(job.end, 'Metrohm', '整合軟體', `分析完成：樣品 ${job.sample + 1}-${job.rep + 1}，${job.result.toFixed(3)} %`);
   }
 
-  // ---------------------------------------------------------------- 手臂動作建構（規劃器：草稿步驟可退回重排，定案後寫入步驟序列）
-  const steps = [], events = [];                         // 草稿步驟、流程節點 { t, label, phase, sample?, job? }
-  const B = { t: 0, pose: null, j: null };
+  // ---------------------------------------------------------------- 手臂動作建構（規劃器：步驟直接寫入步驟序列，試排失敗時退回）
+  // 流程節點（ev）落在下一步的起點：該步的 action 為節點文字、station 為流程編號，之後各步沿用到下一個節點。
+  // 其他步驟 action 留空，所以 sequence.events 就是節點清單（事件選單、上一步／下一步、流程按鈕）。
+  const sequence = createStepSequence();
+  const events = [];                                     // 流程節點 { t, label, phase, sample?, job? }；ei＝已寫入步驟的節點數
+  let ei = 0, phase = 1;
+  const B = { get t() { return sequence.total; }, pose: null, j: null };
   const jawVec = a => new THREE.Vector3(Math.sin(a), 0, Math.cos(a));   // 夾爪沿 (cos a, 0, −sin a) 開合
   function P(x, y, z, a = 0, sym = true) {
     // 對稱夾持（圓形器皿、移液模組）：a 與 a+π 等價，取相對手臂徑向在 ±90° 內者，J6 不會越轉越多
@@ -116,8 +122,15 @@ export function buildPlan(robot) {
   }
   const at = (y, dx = 0, dz = 0) => P(B.pose.m.x + dx, y, B.pose.m.z + dz, B.pose.m.a, false);
   function add(st) {
-    st.start = B.t; st.s0 = JSON.stringify(s); st.act = s.act; steps.push(st);
-    B.t += st.dur; if (st.fx) st.fx(s, 1); B.pose = st.p1; B.j = pureJ(robot.solveJoints(st.p1));
+    let action = '';
+    if (ei < events.length) {
+      const m = events[ei++];
+      if (m.t !== B.t || ei < events.length) throw new Error(`流程節點未對齊步驟起點：${m.label}`);
+      action = m.label; phase = m.phase; st.milestone = { sample: m.sample, job: m.job };
+    }
+    st.s0 = JSON.stringify(s); st.act = s.act;
+    sequence.add(phase, st.dur, action, '', {}, st);
+    if (st.fx) st.fx(s, 1); B.pose = st.p1; B.j = pureJ(robot.solveJoints(st.p1));
   }
   function go(p1, label, o = {}) {
     robot.solveJoints(p1, B.j);
@@ -155,9 +168,12 @@ export function buildPlan(robot) {
     if (loc && loc.as !== undefined && loc.yaw === undefined) loc.yaw = wrapPi(yawOf(w.q) - slotWorld(loc.as, B.t).a);
     s.loc[id] = loc || { w: w.p.toArray(), yaw: yawOf(w.q) };
   }
-  // 暫存／還原（進樣器區需避開轉盤轉動時重排）
-  const mark = () => ({ n: steps.length, t: B.t, pose: B.pose, j: B.j, s: JSON.stringify(s), ev: events.length });
-  function rollback(m) { steps.length = m.n; B.t = m.t; B.pose = m.pose; B.j = m.j; const o = JSON.parse(m.s); for (const k of Object.keys(s)) delete s[k]; Object.assign(s, o); events.length = m.ev; }
+  // 暫存／還原（進樣器區需避開轉盤轉動時重排）：步驟與時間交給序列的 mark／rollback，規劃器自己的位姿、器皿狀態與節點另外記
+  const mark = () => ({ seq: sequence.mark(), pose: B.pose, j: B.j, s: JSON.stringify(s), ev: events.length, ei, phase });
+  function rollback(m) {
+    sequence.rollback(m.seq); B.pose = m.pose; B.j = m.j; events.length = m.ev; ei = m.ei; phase = m.phase;
+    const o = JSON.parse(m.s); for (const k of Object.keys(s)) delete s[k]; Object.assign(s, o);
+  }
 
   // 高度（TCP y，世界座標）
   const Y_EMPTY = Y0 + 440, Y_BEAKER = Y0 + TRAVEL + BEAKER.h / 2, Y_PIP = Y0 + PIP_TRAVEL + PIPETTE.tipEnd;
@@ -353,7 +369,7 @@ export function buildPlan(robot) {
   }
 
   // ================================================================ 流程
-  ev('① 初始化：人員掃條碼、整合軟體建立樣品表（6 瓶 × 2 重複）', { phase: 0 });
+  ev('① 初始化：人員掃條碼、整合軟體建立樣品表（6 瓶 × 2 重複）', { phase: 1 });
   say(0, '人員', '整合軟體', '掃描 6 瓶條碼、選方法、按開始');
   say(0, '整合軟體', 'Metrohm', '下載樣品表（12 列，位置待定）');
   wait(3, '整合軟體檢查天平、Metrohm、移液模組連線');
@@ -499,28 +515,9 @@ export function buildPlan(robot) {
   act('批次完成'); setSig('cycle', true);
   wait(10, '批次完成', null, { idle: true });
 
-  msgs.sort((a, b) => a.t - b.t); events.sort((a, b) => a.t - b.t);
-
-  // ---------------------------------------------------------------- 定案：草稿步驟依序寫入共用步驟序列
-  // 流程節點（ev）落在某一步的起點：該步的 action 為節點文字、station 為流程編號，之後各步沿用到下一個節點。
-  // 其他步驟 action 留空，所以 sequence.events 就是節點清單（事件選單、上一步／下一步、流程按鈕）。
-  const sequence = createStepSequence();
-  let ei = 0, phase = 0;
-  for (const draft of steps) {
-    let action = '';
-    if (ei < events.length && events[ei].t <= draft.start) {
-      const m = events[ei++];
-      if (m.t !== draft.start || (ei < events.length && events[ei].t <= draft.start)) throw new Error(`流程節點未對齊步驟起點：${m.label}`);
-      action = m.label; phase = m.phase; draft.milestone = { sample: m.sample, job: m.job };
-    }
-    const { start, ...rest } = draft;
-    const st = sequence.add(phase, draft.dur, action, '', {}, rest);
-    if (st.start !== start) throw new Error(`步驟時間不一致：${draft.label} ${st.start} ≠ ${start}`);
-  }
+  msgs.sort((a, b) => a.t - b.t);
   if (ei !== events.length) throw new Error('流程節點在最後一步之後');
-  const total = sequence.total;
-  if (total !== B.t) throw new Error(`批次總長不一致：${total} ≠ ${B.t}`);
-  const armSteps = sequence.steps, armEvents = sequence.events;
+  const total = sequence.total, armSteps = sequence.steps, armEvents = sequence.events;
 
   /** 任一時間的手臂位姿與器皿狀態（純函數）：步驟序列找出所在步驟與進度，狀態由起始快照＋步驟內變化（fx）算出 */
   function sample(T) {

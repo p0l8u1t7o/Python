@@ -35,8 +35,8 @@ node ../core/tools/serve.mjs AutomaticAcid-BaseTitration --no-open
 
 ## 操作
 
-- **時間軸**是整批約 93 分鐘，播放列為共用的 `core/ui/player.js`。預設 5 倍速；勾選「等待時加速」時，手臂等待分析的時段再加快 10 倍。下拉選單與 ‹ › 依排程的流程節點（每瓶、每杯的各步驟）跳轉。
-- **上方流程按鈕**對照用戶文件的步驟（①初始化 … ⑨分析・取杯），按下跳到下一次出現的時間點。
+- **時間軸**是整批約 93 分鐘，播放列為共用的 `core/ui/player.js`。預設 5 倍速（速度選單選定的選項，`?speed=` 優先）；勾選「等待時加速」時，手臂等待分析的時段再加快 10 倍（player 的 `advance`）。下拉選單與 ‹ › 依排程的流程節點（每瓶、每杯的各步驟）跳轉。
+- **上方流程按鈕**對照用戶文件的步驟（①初始化 … ⑨分析・取杯），按下跳到下一次出現的時間點。⑦（第二杯重複 ②④⑤⑥）沒有自己的步驟，所以沒有按鈕。
 - **視角**：全景、天平、開蓋、移液、進樣器、跟隨手臂、俯視。
 - **整合方式**：選單切換 tiamo／OMNIS，通訊紀錄與電腦畫面跟著改。
 - **左側**：
@@ -49,7 +49,7 @@ node ../core/tools/serve.mjs AutomaticAcid-BaseTitration --no-open
   - 交握訊號。
 - 「匯出紀錄」產生 JSON，內容是樣品表、滴定排程與通訊紀錄。**全部是模擬值，非實測。**
 
-網址參數：`?t=600&pause&view=sampler`、`?mode=omnis`、`?speed=30`、`?shadow=0`；主控台：`window.sim.seekTo(sec)`、`setView(name)`、`plan`（`plan.events`、`plan.stationStart`、`plan.total` 為共用事件介面，`plan.timeline` 為進樣器時間軸）。
+網址參數：`?t=600&pause&view=sampler`、`?mode=omnis`、`?speed=30`、`?shadow=0`；主控台：`window.sim.seekTo(sec)`、`setView(name)`、`plan`（`plan.events`、`plan.stationStart`、`plan.total` 為共用事件介面，`plan.timeline` 為進樣器時間軸）。station 即用戶文件的流程編號：1～6、8、9，10 為 Cycle Complete；0 與 7 沒有步驟，`stationStart[0]`、`[7]` 是空位。
 
 展示影片：開 `?pause&movie`，`main.js` 不跑一般迴圈，改載入 `core/movie/movie.js` 的 `installMovie`（逐格取樣排程、秤重步驟對準天平秤盤、其餘跟隨目前的杯／瓶），頁面下方出現影片預覽與輸出按鈕；此時舞台強制開對數深度。
 
@@ -60,11 +60,11 @@ node ../core/tools/serve.mjs AutomaticAcid-BaseTitration --no-open
 | `web/js/layout.js` | 站別位置、器皿尺寸、時間與速度參數、樣品批次 |
 | `web/js/robot.js` | COBOTTA PRO 900 模型、逆解（肘部朝上、J1 固定角度窗）、長行程夾爪 |
 | `web/js/lab.js` | 實驗桌、天平、樣品瓶座、移液區（廢液漏斗、吸頭廢料口、吸頭架、移液模組座）、讀碼器、料架、Metrohm 進樣器與滴定儀、電腦、安全掃描器、器皿 |
-| `web/js/plan.js` | 手臂動作序列（逐步計算 PTP 與直線移動時間；進樣器區先試排、避開轉盤轉動時退回重排，定案後寫入 `core/anim/sequence.js` 的 `createStepSequence`，station＝流程編號 ①～⑨）、轉盤與滴定頭排程（`core/anim/track.js` 的 `createTimeline`，rack／head 兩條軌）、樣品表與通訊紀錄 |
+| `web/js/plan.js` | 手臂動作序列（逐步計算 PTP 與直線移動時間，直接寫入 `core/anim/sequence.js` 的 `createStepSequence`；進樣器區先試排，撞到轉盤轉動時用序列的 `mark()`／`rollback()` 退回重排；station＝流程編號 ①～⑨）、轉盤與滴定頭排程（`core/anim/track.js` 的 `createTimeline`，rack／head 兩條軌）、樣品表與通訊紀錄 |
 | `web/js/sim.js` | 把排程在任一時間的狀態套到場景（畫面與驗證共用） |
 | `web/js/project.js` | 專案介面 `createProject({ scene })`：建立場景、`apply(t)` 套到時間 t，並提供 core 全場檢查的設定（非實體物件、設備分工位、逐條說明的允許接觸）；`main.js` 與 core 檢查共用同一份場景 |
-| `web/js/main.js` | renderer、場景、相機、軌道控制、環境光與主要燈光由共用舞台 `core/ui/stage.js` 的 `createStage` 建立（只傳本站的曝光、霧、燈光參數；滴定杯補光有自己的陰影相機，留在本檔）；畫面迴圈用 `stage.loop`，3D 標籤用 `stage.addLabel`，固定視角（`VIEWS`）用 `stage.goTo`，`window.sim` 用 `exposeSim`；播放列用 `createPlayer`；液面俯拍、跟隨手臂、流程按鈕、樣品表、滴定曲線、交握訊號、通訊紀錄、匯出為本站自有；場景物件取自 `project.js` |
-| 材質 | 桌架、不鏽鋼件、黑件、狀態燈、安全掃描器、夾爪陽極件用 `core/geom/materials.js` 的 `MAT`；實驗桌面、Metrohm 外殼、POM、瓶蓋、玻璃、液體、吸頭與安全區留在 `lab.js`／`render-details.js` |
+| `web/js/main.js` | renderer、場景、相機、軌道控制、環境光與主要燈光由共用舞台 `core/ui/stage.js` 的 `createStage` 建立（只傳本站的曝光、霧、燈光參數；滴定杯補光有自己的陰影相機，留在本檔）；畫面迴圈用 `stage.loop`，3D 標籤用 `stage.addLabel`（`anchor: 'above'`，畫布偏移由 stage 處理），固定視角（`VIEWS`）用 `stage.goTo`、停止轉場用 `stage.cancelTween`、液面俯拍跟著液面平移用 `stage.shiftView`，`window.sim` 用 `exposeSim`；播放列用 `createPlayer`；液面俯拍、跟隨手臂、流程按鈕、樣品表、滴定曲線、交握訊號、通訊紀錄、匯出為本站自有；場景物件取自 `project.js` |
+| 材質 | 桌架、不鏽鋼件（`finished(MAT.steel, 'metal', .008)`）、黑件、狀態燈、安全掃描器、夾爪陽極件用 `core/geom/materials.js` 的 `MAT`；灰色件（電控箱、防風罩框、夾爪座、鍵帽、移液模組本體）是烤漆／塑膠，不用 `MAT.frame`（鋁擠型）；實驗桌面、Metrohm 外殼、POM、瓶蓋、玻璃、液體、吸頭與安全區留在 `lab.js`／`render-details.js` |
 | `tools/verify.mjs` | 排程與幾何驗證 |
 
 ## 驗證
