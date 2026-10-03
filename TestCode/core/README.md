@@ -13,6 +13,7 @@ TestCode 底下每個有 `web/index.html` 的資料夾都是一個展示專案�
 | `catalog/` | 模型目錄頁（發布在 Pages） |
 | `anim/` | `track.js`：時間軌與時間軸（`createTimeline`、`Track`、`smooth`），狀態只由時間決定 |
 | `electrical/` | 線材、拖鏈、電盤、電控元件與檢視器 |
+| `movie/` | 錄影程式（4K 取樣 1080p、絕對時間取樣、追焦運鏡），各專案以 `?movie` 呼叫 |
 | `ui/` | `stage.js`（renderer／場景／相機／燈光／3D 標籤／視角轉場／畫面迴圈／`exposeSim`）、`player.js`（標準播放列）、`viewer-workspace`（相機視窗與焦點）、`view-controls`、`vision-overlay` |
 | `verify/` | 統一檢查：`scene.mjs`（全場干涉＋重合面閃爍）、`determinism.mjs`（倒序一致）、`run.mjs`（執行入口）、`dom-stub.mjs` |
 | `template/` | 新專案範本（`tools/new-project.mjs` 複製） |
@@ -106,6 +107,21 @@ export function createProject({ scene, headless }) {
 - `nested = 另一個關節物件`：套筒式伸縮（內外管）。
 
 `window.sim` 至少提供：`seekTo(t)`、`setView(name, instant)`、`views`（視角名稱陣列）、`total`、`play()`、`pause()`。
+
+## 共用舞台（`core/ui/stage.js`）
+
+```js
+const stage = createStage({ canvas, exposure: .86, fog: [5000, 11000], logDepth: true,
+  camera: { fov: 40, near: 2, far: 20000 }, controls: { minDistance: 8, maxDistance: 7000 },
+  envLight: 220, sun: { position, target, shadow: { mapSize, camera, bias, normalBias } }, fill: { … },
+  extraLights: [{ color, intensity, position, target, shadow }] });
+stage.loop(dt => { /* 推進時間、更新面板 */ return changed; }, { render: drawEverything });
+exposeSim({ seekTo, setView, views, total, play, pause, get T() { return T; } });
+```
+
+- 網址參數一致：`?shadow=0`、`?aa=0`、`?logdepth=0/1`、`?movie`（錄影：不跑迴圈、不聽 resize、強制對數深度）。
+- `loop(tick, { render })`：多畫面專案（主畫面＋相機子畫面＋疊圖）傳自己的整格繪製；不傳則只畫主畫面。
+- 錄影：`?movie` 時在 main.js 呼叫 `installMovie({...})`（`core/movie/movie.js`），各站的取樣、追焦、細節重播設定寫在專案裡；`tools/movie-export/prepare.py` 只建網站副本。
 
 ## 檢查
 

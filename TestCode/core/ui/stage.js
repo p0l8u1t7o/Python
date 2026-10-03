@@ -18,7 +18,7 @@ export function createStage({
   hemi = { sky: 0xbfd4ff, ground: 0x2a2f36, intensity: .6 },
   sun = { color: 0xffffff, intensity: 1.5, position: [-1500, 3200, 1800], target: [0, 0, 0], shadow: { mapSize: 2048 } },
   fill = { color: 0x9fb8ff, intensity: .5, position: [1800, 1500, -1800] },
-  extraLights = [],                                             // [{ color, intensity, position }]
+  extraLights = [],                                             // [{ color, intensity, position, target?, shadow? }]（shadow 同 sun.shadow）
   onDemand = false,                                             // true：靜止時不重繪（需在狀態改變時呼叫 invalidate）
   preserveDrawingBuffer = qp.has('shot'),
 } = {}) {
@@ -42,19 +42,23 @@ export function createStage({
 
   const lights = {};
   if (hemi) scene.add(lights.hemi = new THREE.HemisphereLight(hemi.sky, hemi.ground, hemi.intensity));
-  if (sun) {
-    const s = lights.sun = new THREE.DirectionalLight(sun.color ?? 0xffffff, sun.intensity ?? 1.5);
-    s.position.set(...sun.position); s.target.position.set(...(sun.target || [0, 0, 0]));
-    s.castShadow = renderer.shadowMap.enabled;
-    const sh = sun.shadow || {};
-    s.shadow.mapSize.set(sh.mapSize ?? 2048, sh.mapSize ?? 2048);
-    if (sh.camera) Object.assign(s.shadow.camera, sh.camera);
-    if (sh.bias != null) s.shadow.bias = sh.bias;
-    if (sh.normalBias != null) s.shadow.normalBias = sh.normalBias;
-    scene.add(s, s.target);
-  }
-  if (fill) { const f = lights.fill = new THREE.DirectionalLight(fill.color ?? 0x9fb8ff, fill.intensity ?? .5); f.position.set(...fill.position); scene.add(f); }
-  lights.extra = extraLights.map(l => { const d = new THREE.DirectionalLight(l.color ?? 0xffffff, l.intensity ?? .5); d.position.set(...l.position); scene.add(d); return d; });
+  // 平行光：shadow 給定時投陰影（mapSize、camera 範圍、bias、normalBias），target 為照射點
+  const directional = (l, defaults, castShadow) => {
+    const d = new THREE.DirectionalLight(l.color ?? defaults.color, l.intensity ?? defaults.intensity);
+    d.position.set(...l.position); d.target.position.set(...(l.target || [0, 0, 0]));
+    if (castShadow) {
+      d.castShadow = renderer.shadowMap.enabled;
+      const sh = l.shadow || {};
+      d.shadow.mapSize.set(sh.mapSize ?? 2048, sh.mapSize ?? 2048);
+      if (sh.camera) Object.assign(d.shadow.camera, sh.camera);
+      if (sh.bias != null) d.shadow.bias = sh.bias;
+      if (sh.normalBias != null) d.shadow.normalBias = sh.normalBias;
+    }
+    scene.add(d, d.target); return d;
+  };
+  if (sun) lights.sun = directional(sun, { color: 0xffffff, intensity: 1.5 }, true);
+  if (fill) lights.fill = directional(fill, { color: 0x9fb8ff, intensity: .5 }, false);
+  lights.extra = extraLights.map(l => directional(l, { color: 0xffffff, intensity: .5 }, !!l.shadow));
 
   // ---------------------------------------------------------------- 3D 標籤（HTML 疊在畫布上）
   const host = canvas.parentElement, labels = [], _v = new THREE.Vector3();
@@ -96,11 +100,11 @@ export function createStage({
     const w = canvas.clientWidth, h = canvas.clientHeight; if (!w || !h) return;
     renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); invalidate();
   }
-  addEventListener('resize', resize);
+  if (!qp.has('movie')) addEventListener('resize', resize);   // 錄影時畫布尺寸由錄影程式固定
   if (onDemand) { renderer.shadowMap.autoUpdate = false; controls.addEventListener('change', () => invalidate()); }
   const render = (cam2 = camera) => renderer.render(scene, cam2);
   const clock = new THREE.Clock();
-  let tick = null, running = false;
+  let tick = null, running = false, draw = () => render();
   function frame() {
     if (!running) return;
     requestAnimationFrame(frame);
@@ -108,10 +112,11 @@ export function createStage({
     const moved = stepTween(dt);
     const keep = tick?.(dt);
     controls.update();
-    if (!onDemand || dirty || moved || keep) { if (onDemand) renderer.shadowMap.needsUpdate = true; render(); dirty = false; }
+    if (!onDemand || dirty || moved || keep) { if (onDemand) renderer.shadowMap.needsUpdate = true; draw(); dirty = false; }
   }
-  // tick(dt) 回傳 true 代表這格有變化（onDemand 模式下需要重繪）
-  function loop(fn) { tick = fn; resize(); if (qp.has('movie') || running) return; running = true; clock.getDelta(); frame(); }
+  // tick(dt) 回傳 true 代表這格有變化（onDemand 模式下需要重繪）。
+  // opts.render：自訂整格繪製（例如主畫面＋相機子畫面＋疊圖），預設只畫主畫面
+  function loop(fn, opts = {}) { tick = fn; if (opts.render) draw = opts.render; resize(); if (qp.has('movie') || running) return; running = true; clock.getDelta(); frame(); }
   function stop() { running = false; }
 
   return { renderer, scene, camera, controls, lights, qp, addLabel, updateLabels, labels, goTo, resize, render, invalidate, loop, stop, clock, useLog };
