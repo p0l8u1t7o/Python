@@ -5,8 +5,8 @@ import * as THREE from 'three';
 import {controlPanel,entryGland,panelFeed} from '@core/electrical/electrical-cabinet.js';
 import { cable, cableTray, support, CABLE } from '@core/electrical/cable-routing.js';
 import { block, cylinder, decal, screw } from '@core/geom/shapes.js';
-import { MAT } from '@core/geom/materials.js';
-import { microTexture, batchStatic } from '@core/geom/surfaces.js';
+import { MAT, finished } from '@core/geom/materials.js';
+import { batchStatic } from '@core/geom/surfaces.js';
 import { PART, createBase, createBlade, createCover, createAssembly } from './product.js';
 
 export const LAYOUT = {
@@ -41,9 +41,8 @@ export const pocketCount = kind => TRAYS[kind].cols * TRAYS[kind].rows;
 /** 決定性的擺放偏移（料在格內的自然偏差），顯示用；本循環用到的格子另由 sequence 指定 */
 function jitter(i, k) { const h = Math.sin(i * 12.9898 + k * 78.233) * 43758.5453; return (h - Math.floor(h)) * 2 - 1; }
 
-const matFrame = new THREE.MeshStandardMaterial({ color: 0x6b7480, roughness: 0.5, metalness: 0.6 });
-const matAlu = new THREE.MeshStandardMaterial({ color: 0xb9c0c8, roughness: 0.38, metalness: 0.8, bumpMap: microTexture('brushed'), bumpScale: .02 });
-const matPlate = new THREE.MeshStandardMaterial({ color: 0x8a939c, roughness: 0.45, metalness: 0.7, bumpMap: microTexture('brushed'), bumpScale: .015 });
+// 鋁擠型框架、拉絲鋁件（治具座、抽屜）與台面板用 core 共用材質；台面板取較深的 MAT.steel，維持與吸塑盤的對比
+const matFrame = MAT.frame, matAlu = finished(MAT.alu, 'metal'), matPlate = finished(MAT.steel, 'metal');
 const matESDmat = new THREE.MeshStandardMaterial({ color: 0x2d6b56, roughness: 0.9 });
 const matNest = new THREE.MeshStandardMaterial({ color: 0x2b3038, roughness: 0.35, metalness: 0.55 });
 const matPOM = new THREE.MeshStandardMaterial({ color: 0xe8e4d8, roughness: 0.6 });

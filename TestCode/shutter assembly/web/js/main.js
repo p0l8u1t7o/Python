@@ -4,7 +4,7 @@ import { createViewerWorkspace } from '@core/ui/viewer-workspace.js';
 import { routingLegend } from '@core/electrical/cable-routing.js';
 routingLegend();
 // 主程式：場景、時間軸（動作序列）、UI、相機子畫面（上視遠心相機／手臂下視相機）
-// 舞台、3D 標籤、視角轉場用 core/ui/stage.js；播放列用 core/ui/player.js（本站另加「等手臂到位才前進」的播放推進）
+// 舞台、3D 標籤、視角轉場用 core/ui/stage.js；播放列用 core/ui/player.js（advance 提供「等手臂到位才前進」的播放推進）
 import * as THREE from 'three';
 import { createStage, exposeSim } from '@core/ui/stage.js';
 import { createPlayer } from '@core/ui/player.js';
@@ -121,7 +121,7 @@ function setView(name, instant = false) {
 document.querySelectorAll('.views button').forEach(b => b.onclick = () => setView(b.dataset.view));
 // 跳播（拖曳、選步驟、上一步／下一步、跳站、sim.seekTo）：整個場景由 project.apply(T) 決定（與檢查相同）；
 // snap=false 只換流程狀態、手臂保持原姿態
-let snapSeek = true, ticking = false;
+let snapSeek = true;
 function jump(t) {
   T = t;
   if (snapSeek) current = project.apply(T); else { current = sequence.sample(T); st.sync(); }
@@ -219,46 +219,48 @@ function render() {
   renderer.toneMappingExposure=exposure;hidden.forEach((o,i)=>o.visible=visible[i]);
 }
 const workspace=createViewerWorkspace({camera,controls,canvas,resize,focusOccluders:[cell.occluders],getFocus:()=>st.pose('base').p,
-  focusOffset:[-24,35,42],focusNear:.1,onFocus:()=>{setElectricalCutaway(scene,false);stage.goTo(camera.position.toArray(),controls.target.toArray(),true);selectedView='focus';document.querySelectorAll('.views button').forEach(b=>b.classList.remove('selected'));}});
+  focusOffset:[-24,35,42],focusNear:.1,onFocus:()=>{setElectricalCutaway(scene,false);stage.cancelTween();selectedView='focus';document.querySelectorAll('.views button').forEach(b=>b.classList.remove('selected'));}});
 const electrical=createElectricalInspector({scene,camera,controls,canvas,onEnter:()=>setView('electrical',true),onExit:()=>setView('iso',true),title:'shutter assembly'});
 const lastBase = new THREE.Vector3();
 
 // ---------------------------------------------------------------- 播放
-// 播放列（core/ui/player.js）負責按鈕、時間軸、步驟選單與上一步／下一步；拖曳與跳播走 jump（project.apply，手臂直接到位）。
-// 連續播放由本站自己推進：手臂以實際限速追蹤目標，步驟結束或接近／接觸中偏離時「等到位」才前進，等超過 5 秒判定逾時。
-player = createPlayer({
-  total, apply: t => ticking ? current : jump(t),
-  events: sequence.events.map(e => ({ time: e.time, label: `S${e.station} · ${e.label}` })),
-});
-// 播放鍵：從故障停住處恢復時手臂重新到位；已播完則從頭開始
-ui.playBtn.addEventListener('click', () => {
-  if (!player.playing) return;
-  if (fault) seekTo(T); else if (T >= total - 1e-6) seekTo(0);
-  waiting = 0;
-});
+// 播放列（core/ui/player.js）負責按鈕、時間軸、步驟選單、上一步／下一步與時間推進：
+//   apply(T, { seek: true })  跳播 → jump（project.apply，手臂直接到位）
+//   advance(T, dt)            連續播放 → 以 5 ms 細分推進：手臂以實際限速追蹤目標，步驟結束或接近／接觸中偏離時
+//                             「等到位」才前進；等超過 5 秒判定逾時，回傳 null 讓播放列停住
+//   apply(T, { seek: false }) 連續播放的一格：狀態已在 advance 中取樣，直接回傳
+// 一顆的最後一步也要等手臂到位才算播完；從逾時處再按播放時，手臂先依目前時間重新到位。
+// 等待計時只在播放中累計（暫停即歸零，與原本「按播放時歸零」相同）。
 function tick(dt) {
   const e = robot.error(), s = current.step, end = s.start + s.dur;
   const blocked = (T >= end - 1e-7 || ((s.contact || s.near) && e.position > .5)) && (e.position > .05 || e.angle > .2);
-  if (blocked) { waiting += dt; if (waiting > 5) { fault = '到位逾時 · 請檢查 TCP 位置'; player.pause(); } }
+  let going = true;
+  if (blocked) { waiting += dt; if (waiting > 5) { fault = '到位逾時 · 請檢查 TCP 位置'; going = false; } }
   else {
     waiting = 0;
-    if (T >= total - 1e-7) player.pause();
+    if (T >= total - 1e-7) going = false;
     else { T = T >= end - 1e-7 ? Math.min(total, end + 1e-6) : Math.min(end, T + dt); current = sequence.sample(T >= end - 1e-7 && T <= end ? Math.max(s.start, end - 1e-8) : T); S = current.state; }
   }
   robot.update(dt); st.sync();
+  return going;
 }
+function advance(t, dt) {
+  if (fault) jump(t);                                 // 從逾時停住處恢復：手臂重新到位
+  const n = Math.max(1, Math.ceil(dt / .005));
+  let going = true;
+  for (let k = 0; k < n && going; k++) going = tick(dt / n);
+  if (fault) return null;
+  return going ? Math.min(T, total - 1e-8) : total;  // 最後一步到位前不讓播放列判定播完
+}
+player = createPlayer({
+  total, advance, apply: (t, { seek }) => seek ? jump(t) : current,
+  events: sequence.events.map(e => ({ time: e.time, label: `S${e.station} · ${e.label}` })),
+});
 function frame(dt) {
-  if (Math.abs(player.T - T) > 1e-9) jump(player.T);   // 播放列自行把時間歸零（播完後按播放）
-  if (player.playing) {
-    const span = dt * (+ui.speed.value || 1), n = Math.max(1, Math.ceil(span / .005));
-    for (let k = 0; k < n && player.playing; k++) tick(span / n);
-    ticking = true; try { player.seekTo(T); } finally { ticking = false; }   // 只更新播放列顯示
-  }
-  // 產品近看：視角跟著本體移動（視角轉場進行中由 stage 接管）
-  if (followBase()) {
-    const p = st.pose('base').p, delta = p.clone().sub(lastBase);
-    camera.position.add(delta); controls.target.add(delta);
-  }
+  player.update(dt);
+  if (!player.playing && !fault) waiting = 0;
+  // 產品近看：視角跟著本體移動（轉場進行中，stage.shiftView 連同轉場起訖點一起平移）
+  if (followBase()) stage.shiftView(st.pose('base').p.clone().sub(lastBase));
   lastBase.copy(st.pose('base').p);
   if (player.playing && ui.showPath.checked) pushTrail(robot.getTcpWorld(robot.goal.tcp));
   return true;

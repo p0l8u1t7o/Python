@@ -1,9 +1,9 @@
 // 單顆組裝流程：本體上料 → 定位取像 → 小葉片 ×2 → 大葉片 ×2 → 上蓋壓合 → 檢查下料
-// 排程本體用 core 的步驟序列（@core/anim/sequence.js：快照、插值、stationStart、total、events），
+// 排程本體用 core 的步驟序列（@core/anim/sequence.js：快照、插值、latch、easeKeys、stationStart、total、events），
 // 本檔只負責規劃（取放料動作拆解、PTP 時間依關節速度延長、NG 疊片剔除）與 SCARA 手臂姿態。
 import * as THREE from 'three';
 import { createStepSequence } from '@core/anim/sequence.js';
-import { smooth } from '@core/anim/track.js';
+import { smooth, linear } from '@core/anim/track.js';
 import { LAYOUT, NEST_SEAT, pocket } from './cell.js';
 import { PART, BLADES, bladeSeat } from './product.js';
 
@@ -52,8 +52,9 @@ export function createSequence({ robot, apply, ng = false }) {
     t1: 0, t2: 0, t3: 1, open: 1, clamp: 0, baseShift: 0, float: 1, press: 0, drop: 0, vac: 0, flashUp: 0, flashDown: 0, view: 'down', shot: '',
     zone: 'free', station: 0, action: '', sub: '',
   };
-  // station、閃光、真空在步驟開始時切換；其餘數值由 core 以五次 S 曲線插值
-  const seq = createStepSequence({ base, discrete: ['station', 'flashUp', 'flashDown', 'vac'], stations: STATIONS });
+  // station、閃光、真空在步驟開始時切換；零件歸屬（loc）在步驟完成時才切換（吸取／放開的瞬間，位置因此連續）；
+  // 其餘數值由 core 以五次 S 曲線插值
+  const seq = createStepSequence({ base, discrete: ['station', 'flashUp', 'flashDown', 'vac'], latch: ['loc'], stations: STATIONS });
   const steps = seq.steps;
   const P = (tcp, p, yaw = 0) => robot.poseFor(tcp, p, yaw);
   const at = (p, y) => v(p.x, y, p.z);
@@ -119,7 +120,8 @@ export function createSequence({ robot, apply, ng = false }) {
       add(st, .3, '移至 NG 盒', 'PTP；疊片不組裝', { view: 'down' }, P('T1', v(B.x, B.top + 25, B.z), seat.yaw));
       add(st, .08, '吹落 NG 料', '破真空＋吹氣', { loc: { L2x: 'fall' }, vac: 0 }, null);
       const dropHeight=B.top+25-(LAYOUT.table+2+PART.blade.t*2);
-      add(st, Math.sqrt(2*dropHeight/9810), 'NG 料落入盒內', '自由落下完成後再離開，避免零件瞬間移到盒底', {drop:1,loc:{L2x:'bin'}}, null, {done:'reject'});
+      // drop 隨時間線性（station.js 再換算成拋物線高度）
+      add(st, Math.sqrt(2*dropHeight/9810), 'NG 料落入盒內', '自由落下完成後再離開，避免零件瞬間移到盒底', {drop:1,loc:{L2x:'bin'}}, null, {done:'reject', easeKeys: { drop: linear }});
       return;
     }
     upShot(st, id, b.name, seat.yaw, `樞軸孔 Δx ${fmt(onTool.x)}、Δz ${fmt(onTool.z)} mm、θ ${fmt(onTool.a)}° → 補正放料位置`, 'shot' + id);
@@ -163,13 +165,9 @@ export function createSequence({ robot, apply, ng = false }) {
   place(5, 'T3', `料盤 #${SPEC.k + 1}（放回原格）`, pBase, 0, 'base', '放開成品', 'out');
   steps[steps.length - 1].done = 'out';
 
-  // ---- 取樣：core 給狀態插值，本檔補上兩個例外與手臂姿態 ----
+  // ---- 取樣：core 給狀態插值（含 latch 與逐鍵緩動），本檔補上手臂姿態 ----
   function sample(sec) {
     const r = seq.sample(sec), { state, step: s, index, u: t, e } = r;
-    // 零件的歸屬在該步驟完成時才改變（吸取／放開的瞬間），位置因此連續
-    if (t < 1) state.loc = clone(s.initial.loc);
-    // NG 料自由落下：drop 隨時間線性（station.js 再換算成拋物線高度）
-    state.drop = s.initial.drop + (s.end.drop - s.initial.drop) * t;
     // 自由移位走關節插值（PTP）；下降、接近、上升走直線
     const p = s.path ? { tcp: s.pose1.tcp, target: s.pose0.target.clone().lerp(s.pose1.target, e), yaw: s.pose1.yaw, ref: s.pose0 }
       : s.ptp ? { ptp: { from: s.pose0, to: s.pose1, e } } : s.pose1;

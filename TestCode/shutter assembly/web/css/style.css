@@ -80,7 +80,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:
 #loading.hide{display:none}
 
 .label3d{font:11.5px var(--font);color:#dfe7f0;background:rgba(10,14,20,.72);border:1px solid rgba(255,255,255,.12);
-  padding:3px 8px;border-radius:6px;white-space:nowrap;pointer-events:none;transform:translate(-50%,-100%);position:absolute}
+  padding:3px 8px;border-radius:6px;white-space:nowrap;pointer-events:none;position:absolute}
 .label3d b{color:var(--accent)}
 
 .views select{background:rgba(255,255,255,.06);border:1px solid var(--line);color:var(--fg);padding:6px 6px;border-radius:6px;font:12px var(--font);margin-left:6px;max-width:150px}
@@ -105,7 +105,6 @@ body.capture #topbar{background:rgba(11,15,21,.94)}
 /* Keep the machine viewport clear of the controls at normal desktop widths. */
 #c{top:124px;left:0;right:auto;bottom:auto;width:calc(100% - 332px);height:calc(100% - 272px)}
 /* 3D 標籤由 stage.updateLabels 以畫布左上角為原點定位：原點對齊畫布 */
-.label3d{left:0;top:124px}
 #topbar{height:116px;display:grid;grid-template-columns:1fr auto;grid-template-rows:54px 42px;gap:0 16px;overflow:visible;background:#111923;padding:8px 20px}
 .brand .title{font-size:20px;font-weight:650}.brand .sub{margin-top:5px}
 #stations{margin-left:0}#stations .st{padding:8px 10px}
@@ -132,7 +131,7 @@ button,select{font-family:var(--font)}select,button{color:var(--fg);background:#
 .checklist{max-height:none}.checklist li{font-size:11px;line-height:1.65;align-items:flex-start}
 .checklist li .box{margin-top:3px}.label3d{font-size:10px;background:#10202be0;border-color:#49616d}
 body.capture #c{height:calc(100% - 132px)}body.capture #bottombar{display:none}
-@media(max-width:1100px){.label3d{top:156px}#topbar{grid-template-columns:1fr;height:150px;grid-template-rows:48px 40px 42px}#stations{grid-row:2}.views{grid-row:3}.brand .title{font-size:17px}#side{top:160px;width:280px}#c{top:156px;width:calc(100% - 300px);height:calc(100% - 305px)}#bottombar{right:312px}#cycleTime{display:none}.views{gap:4px}.views button{padding:6px 9px}}
+@media(max-width:1100px){#topbar{grid-template-columns:1fr;height:150px;grid-template-rows:48px 40px 42px}#stations{grid-row:2}.views{grid-row:3}.brand .title{font-size:17px}#side{top:160px;width:280px}#c{top:156px;width:calc(100% - 300px);height:calc(100% - 305px)}#bottombar{right:312px}#cycleTime{display:none}.views{gap:4px}.views button{padding:6px 9px}}
 @media(max-width:760px){#topbar{padding:5px 10px}.views{overflow:auto}.views select{min-width:150px}.brand .sub{font-size:10px}#stations{gap:4px}#stations .st{padding:6px;font-size:10px}#side{width:225px}#c{width:calc(100% - 239px)}#bottombar{right:251px}.ctl{gap:6px}.ctl .chk{display:none}}
 #movie{position:fixed;inset:0;z-index:100;background:#080f18;display:flex;align-items:center;justify-content:center}#movieCanvas{width:100%;height:100%;object-fit:contain}#movieControls{position:absolute;left:20px;bottom:8px;display:flex;gap:18px;align-items:center;font:12px var(--font);color:#b8d3e0;background:#0b1629e8;padding:8px 14px;border-radius:6px}#movieControls button{font-size:12px}
 
