@@ -1,9 +1,0 @@
-{
-  "devices": 23,
-  "axes": 8,
-  "io": 18,
-  "samples": 627,
-  "pass": true,
-  "failures": [],
-  "scope": "Board envelope/pairs, real feed-through raycasts, cable finite geometry/cabinet skin, lift rail clearance, paired fiber vs C-frame. Other cable/component pairs and OEM bend radii not certified."
-}

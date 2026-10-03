@@ -6,3 +6,6 @@ venv
 *.pt
 *.onnx
 *.pyc
+
+# TestCode 已搬到獨立庫 SimplePhysicsEngine（2026-10-04）；本機剩下的 docs、Temp（MechanicalAssembly 的 CAD 原始檔）、ffmpeg、.venv 不進版控
+/TestCode/
