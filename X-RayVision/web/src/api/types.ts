@@ -103,6 +103,33 @@ export interface RecipeBody {
   acquisition_limits: Record<string, [number | null, number | null]>;
   modules: RecipeModule[];
   regions?: Regions | null;
+  image_set?: ImageSetConfig | null;   // 圖組量測 (PLAN-006)
+}
+
+export type CornerPosition = "top_left" | "top_right" | "bottom_left" | "bottom_right";
+
+// 圖組量測設定 (PLAN-006)：角點搜尋區域以參考影像座標保存
+export interface ImageSetConfig {
+  enabled: boolean;
+  reference: { width: number; height: number; run_id?: number } | null;
+  corner_regions: { type: "rect"; x0: number; y0: number; x1: number; y1: number; position: "auto" | CornerPosition }[];
+}
+
+// 晶片角點偵測結果 (PLAN-006 第 3 節)
+export interface DieCorner {
+  found: boolean;
+  position: CornerPosition | null;
+  x: number | null;
+  y: number | null;
+  angle_deg: number | null;
+  edges: { side: string; x0: number; y0: number; x1: number; y1: number }[];
+  quality: Record<string, number | number[]>;
+  reason: string;
+  edge_only?: { side: string; x0: number; y0: number; x1: number; y1: number };
+  source: "auto" | "recipe_region" | "manual";
+  region: number | null;
+  found_count: number;
+  elapsed_s?: number;
 }
 
 export interface RegionShape {
@@ -111,6 +138,7 @@ export interface RegionShape {
   points?: number[][];
   label?: string;
   as_array?: boolean;             // 僅包含區域：區域內的目標視為一個陣列
+  position?: "auto" | CornerPosition;   // 角點搜尋區域 (RegionCanvas mode="corners") 的角落位置
 }
 
 export interface Regions {
@@ -267,6 +295,7 @@ export interface AnalysisResult {
   unvalidated_modules?: string[];
   regions_source?: "recipe" | "image";   // 生效的檢測區域來源 (image = 本影像自訂檢測區域)
   manual?: boolean;                      // 手動檢測 (非正式結果)
+  die_corner?: DieCorner | null;         // 晶片角點 (配方啟用圖組量測時)
 }
 
 export interface Review {
@@ -283,6 +312,17 @@ export interface RunDetail {
   result: AnalysisResult;
   reviews: Review[];
   history: HistoryItem[];
+  manual_corner?: ManualCorner | null;   // 本影像手動指定的晶片角點 (PLAN-006)
+}
+
+export interface ManualCorner {
+  position: CornerPosition;
+  x: number;
+  y: number;
+  angle_deg: number;
+  actor: string;
+  created_at: string;
+  run_id: number | null;
 }
 
 // 分析歷程：同一影像的所有紀錄 (新到舊)

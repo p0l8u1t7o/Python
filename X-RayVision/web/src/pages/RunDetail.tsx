@@ -1,10 +1,11 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { get, send } from "../api/client";
-import type { Finding, HistoryItem, Judgment, ModuleResult, RunDetail as RunDetailT } from "../api/types";
+import type { DieCorner, ManualCorner, Finding, HistoryItem, Judgment, ModuleResult, RunDetail as RunDetailT } from "../api/types";
 import { reasonText, useApp } from "../app/context";
 import { FindingTable, SummaryKV } from "../components/ModuleSummary";
 import { DiagnosticsDialog } from "../components/DiagnosticsDialog";
+import { DieCornerDialog } from "../components/DieCornerDialog";
 import { ImageRegionsDialog } from "../components/ImageRegionsDialog";
 import { ImageViewer, buildShapes, layersOf, pickFinding } from "../components/ImageViewer";
 import { Layout } from "../components/Layout";
@@ -40,10 +41,20 @@ export function RunDetail() {
   const [showDiag, setShowDiag] = useState(false);
   const [showReanalyze, setShowReanalyze] = useState(false);
   const [showRegions, setShowRegions] = useState(false);
+  const [showCorner, setShowCorner] = useState(false);
   useEffect(() => setPicked(null), [runId]);          // 上一張／下一張切換時清除點選的物件
 
-  const shapes = useMemo(() => (data ? buildShapes(data.result, modules, vscale, t("ui.group")) : []),
-    [data, modules, vscale, t]);
+  const shapes = useMemo(() => {
+    if (!data) return [];
+    const out = buildShapes(data.result, modules, vscale, t("ui.group"));
+    // 手動指定的角點 (與自動偵測結果分開顯示)
+    const mc = data.manual_corner;
+    if (mc) {
+      out.push({ kind: "circle", layer: "image_set.manual_corner", color: "#38bdf8", width: 3, x: mc.x, y: mc.y, r: 18 });
+      out.push({ kind: "cross", layer: "image_set.manual_corner", color: "#38bdf8", width: 2, x: mc.x, y: mc.y, r: 30 });
+    }
+    return out;
+  }, [data, modules, vscale, t]);
   const layers = useMemo(() => layersOf(shapes), [shapes]);
 
   if (!data) {
@@ -68,6 +79,7 @@ export function RunDetail() {
         <Link className="btn" to={`/runs/${runId}/report`}>{t("ui.report")}</Link>
         {can("import") && <button className="btn" onClick={() => setShowReanalyze(true)}>{t("ui.reanalyze")}</button>}
         {can("image_regions") && <button className="btn" onClick={() => setShowRegions(true)}>{t("ui.image_regions.open")}</button>}
+        {can("image_corner") && result.die_corner && <button className="btn" onClick={() => setShowCorner(true)}>{t("ui.corner.manual_open")}</button>}
         {result.modules.some((m) => m.module_id === "void") && (
           <Link className="btn" to={`/runs/${runId}/annotate`}>{t(can("annotate") ? "ui.annot.open" : "ui.annot.view")}</Link>
         )}
@@ -152,7 +164,28 @@ export function RunDetail() {
       {showDiag && <DiagnosticsDialog runIds={[runId]} onClose={() => setShowDiag(false)} />}
       {showReanalyze && <ReanalyzeDialog runIds={[runId]} onClose={() => setShowReanalyze(false)} />}
       {showRegions && <ImageRegionsDialog data={data} onClose={() => setShowRegions(false)} />}
+      {showCorner && <DieCornerDialog data={data} onClose={() => setShowCorner(false)} onSaved={reload} />}
     </Layout>
+  );
+}
+
+// 晶片角點 (PLAN-006)：配方啟用圖組量測時顯示
+function DieCornerSummary({ c, manual }: { c: DieCorner; manual?: ManualCorner | null }) {
+  const { t } = useApp();
+  return (
+    <div className="stack">
+      <h3>{t("ui.corner.title")}</h3>
+      <dl className="kv">
+        <dt>{t("ui.corner.result")}</dt>
+        <dd>{c.found && c.position ? t(`ui.corner.pos_${c.position}`) : t(`corner.reason.${c.reason}`, c.reason)}</dd>
+        {c.found && <><dt>{t("ui.corner.point")}</dt><dd className="num">({fmt(c.x, 1)}, {fmt(c.y, 1)}) px</dd>
+          <dt>{t("ui.corner.angle")}</dt><dd className="num">{fmt(c.angle_deg, 3)}°</dd></>}
+        <dt>{t("ui.corner.source")}</dt><dd>{t(`ui.corner.source_${c.source}`)}{c.region ? ` ${c.region}` : ""}</dd>
+        {manual && <><dt>{t("ui.corner.source_manual")}</dt>
+          <dd>{t(`ui.corner.pos_${manual.position}`)}（{fmt(manual.x, 1)}, {fmt(manual.y, 1)}）・{manual.actor}・{fmtTime(manual.created_at)}</dd></>}
+      </dl>
+      {manual && <div className="muted" style={{ fontSize: "var(--fs-xs)" }}>{t("ui.corner.manual_note")}</div>}
+    </div>
   );
 }
 
@@ -179,6 +212,7 @@ function ResultTab({ data }: { data: RunDetailT }) {
               <JudgmentBadge value={m.judgment} /></div>
             {r.unvalidated_modules?.includes(m.module_id) && <div className="alert info">{t("note.module_unvalidated")}</div>}
             {m.status !== "ok" && <div className="alert info">{t(`status.${m.status}`)}：{m.reasons.map((x) => reasonText(t, x)).join("、")}</div>}
+            {m.status === "ok" && m.reasons.length > 0 && <div className="alert info">{m.reasons.map((x) => reasonText(t, x)).join("、")}</div>}
             {d && (
               <table className="table">
                 <tbody>
@@ -206,6 +240,7 @@ function ResultTab({ data }: { data: RunDetailT }) {
           </div>
         );
       })}
+      {r.die_corner && <DieCornerSummary c={r.die_corner} manual={data.manual_corner} />}
       <dl className="kv muted">
         <dt>{t("ui.software_version")}</dt><dd>{r.software_version}</dd>
         <dt>SHA-256</dt><dd className="mono" style={{ wordBreak: "break-all" }}>{r.image.sha256}</dd>

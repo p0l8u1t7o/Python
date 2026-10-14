@@ -255,6 +255,24 @@ MIGRATIONS = [
     """
     ALTER TABLE jobs ADD COLUMN regions_json TEXT;
     """,
+    # 8：單張影像手動指定的晶片角點 (PLAN-006 第 3.3 節)；只新增，最新一筆有效 (cleared = 1 表示改回自動)
+    """
+    CREATE TABLE image_corners (
+        id INTEGER PRIMARY KEY,
+        image_id INTEGER NOT NULL REFERENCES images(id),
+        run_id INTEGER REFERENCES runs(id),
+        position TEXT,
+        x REAL,
+        y REAL,
+        angle_deg REAL,
+        cleared INTEGER NOT NULL DEFAULT 0,
+        actor TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    );
+    CREATE INDEX image_corners_key ON image_corners (image_id, id);
+    CREATE TRIGGER image_corners_no_update BEFORE UPDATE ON image_corners
+    BEGIN SELECT RAISE(ABORT, 'image corners are append-only'); END;
+    """,
 ]
 
 

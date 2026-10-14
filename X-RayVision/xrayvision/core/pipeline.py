@@ -9,6 +9,7 @@
   "quality_rules": [{"metric": "image.snr", "warn_below": 80, "fail_below": 30}],   覆寫預設品質規則
   "acquisition_limits": {"tube_voltage_kv": [60, 130]},                             拍攝參數允許範圍
   "regions": {"reference": {...}, "include": [...], "exclude": [...]},             檢測區域 (選用，regions.py)
+  "image_set": {"enabled": true, "corner_regions": [...]},                          圖組量測 (選用，image_set.py)
   "modules": [{"module_id": "bump_alignment", "params": {...},
                "judgment": {"die_shift_max_um": 5.0}}]                               判定規格
 }
@@ -19,7 +20,7 @@ import traceback
 from dataclasses import asdict, dataclass, field
 
 from .. import __version__
-from . import acquisition, judge, plugin, quality
+from . import acquisition, image_set, judge, plugin, quality
 from . import regions as regions_mod
 from .calibration import CalibrationError, CalibrationProfile, prepare
 from .io import KIND_RGB8, load_image
@@ -52,6 +53,7 @@ class Recipe:
     quality_rules: list = field(default_factory=list)
     acquisition_limits: dict = field(default_factory=dict)
     regions: dict = None                   # 檢測區域 (regions.py)；None 為整張影像
+    image_set: dict = None                 # 圖組量測 (image_set.py)；None 為未設定
 
     @classmethod
     def from_dict(cls, d):
@@ -64,7 +66,8 @@ class Recipe:
                     calibration_profile=d.get("calibration_profile") or None,
                     quality_rules=[dict(q) for q in d.get("quality_rules", [])],
                     acquisition_limits={k: list(v) for k, v in d.get("acquisition_limits", {}).items()},
-                    regions=regions_mod.normalize(d.get("regions")))
+                    regions=regions_mod.normalize(d.get("regions")),
+                    image_set=_image_set(d.get("image_set")))
             for q in r.quality_rules:
                 quality.QualityRule.from_dict(q)
             for k, v in r.acquisition_limits.items():
@@ -72,6 +75,8 @@ class Recipe:
                     raise ValueError(f"acquisition_limits.{k}")
         except regions_mod.RegionError as e:
             raise RecipeError("invalid_regions", str(e))
+        except RecipeError:
+            raise
         except (KeyError, TypeError, ValueError) as e:
             raise RecipeError("invalid_recipe", str(e))
         r.validate()
@@ -105,6 +110,13 @@ class Recipe:
 
     def to_dict(self):
         return asdict(self)
+
+
+def _image_set(d):
+    try:
+        return image_set.normalize(d)
+    except regions_mod.RegionError as e:
+        raise RecipeError("invalid_image_set", str(e))
 
 
 @dataclass
@@ -145,6 +157,7 @@ class AnalysisResult:
     unvalidated_modules: list = field(default_factory=list)    # 未驗證的模組 (判定最多需複判)
     regions_source: str = "recipe"     # 生效的檢測區域來源：recipe = 配方；image = 本影像自訂檢測區域 (PLAN-004)
     manual: bool = False               # 手動檢測 (非正式結果，不寫入紀錄)
+    die_corner: dict = None            # 晶片角點 (配方啟用圖組量測時，PLAN-006)；None 為未偵測
 
 
 def load_profile(recipe, calibration_root):
@@ -211,6 +224,13 @@ def analyze_image(path, recipe, calibration_root=None, acquisition_manual=None, 
         r.elapsed_s = time.time() - t1
         results.append(r)
 
+    # 晶片角點：只在配方啟用圖組量測時偵測，不影響單張影像的判定
+    die_corner = None
+    if recipe.image_set and recipe.image_set["enabled"]:
+        t1 = time.time()
+        die_corner = image_set.detect_corner(prep.absorption, recipe.image_set)
+        die_corner["elapsed_s"] = round(time.time() - t1, 3)
+
     # 成像品質閘門 (平台指標 + 模組指標) 與拍攝參數檢查
     metrics = quality.image_metrics(img)
     for r in results:
@@ -231,7 +251,7 @@ def analyze_image(path, recipe, calibration_root=None, acquisition_manual=None, 
                          reference_only=reference_only, notes=notes,
                          quality=dict(level=level, metrics=metrics, checks=checks), judgment="", judgment_reasons=[],
                          acquisition=acq, calibration=prep.calibration, modules=results,
-                         elapsed_s=0.0, started_at=started)
+                         elapsed_s=0.0, started_at=started, die_corner=die_corner)
     if validated is not None:
         vset = {tuple(v) for v in validated}
         res.unvalidated_modules = [r.module_id for r in results

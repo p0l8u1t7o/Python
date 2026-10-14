@@ -490,6 +490,11 @@ tools/                 原廠端工具（不隨產品發布）
 | 檢測區域 | Inspection Region | 配方中限定檢測範圍的包含／排除區域 |
 | 自訂檢測區域 | Image-specific Region | 只套用於單張影像、取代配方區域的檢測區域 |
 | 視為一個陣列 | Treat as One Array | 區域內的凸塊強制成為同一陣列 |
+| 圖組 | Image Set | 同一顆晶片不同位置的影像集合（PLAN-006） |
+| 晶片角點 | Die Corner | 晶片兩條邊緣的交點 |
+| 角落位置 | Corner Position | 左上、右上、左下、右下 |
+| 角點搜尋區域 | Corner Search Region | 配方中限定角點偵測範圍的區域 |
+| 焊墊分離 | Pad Separation | 焊墊與凸塊大幅偏移或完全分離，現有量測會低估偏移（PLAN-007） |
 
 ---
 

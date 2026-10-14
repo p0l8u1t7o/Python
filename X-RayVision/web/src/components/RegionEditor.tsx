@@ -19,7 +19,7 @@ const MIN_PX = 3;                // 矩形最小邊長 (影像像素)
 // 檢測區域編輯 (PLAN-004 第 3 節)：在可縮放、平移的影像檢視器上框選包含／排除區域。
 // 座標以 value.reference (參考影像尺寸) 保存；顯示影像尺寸不同時依比例換算。
 // ---------------------------------------------------------------------------
-export function RegionCanvas({ value, onChange, readOnly, src, width, height, reference, shapes, arraysSupported, viewerHeight = "62vh", compact }: {
+export function RegionCanvas({ value, onChange, readOnly, src, width, height, reference, shapes, arraysSupported, viewerHeight = "62vh", compact, mode = "regions" }: {
   value: Regions | null | undefined;
   onChange: (v: Regions | null) => void;
   readOnly: boolean;
@@ -31,8 +31,10 @@ export function RegionCanvas({ value, onChange, readOnly, src, width, height, re
   arraysSupported: boolean;
   viewerHeight?: string;
   compact?: boolean;                               // 區域清單放在影像下方 (版面較窄時)
+  mode?: "regions" | "corners";                  // corners = 角點搜尋區域 (PLAN-006)：只有矩形，每個區域指定角落位置
 }) {
   const { t } = useApp();
+  const corners = mode === "corners";
   const [tool, setTool] = useState<Tool>(readOnly ? "pan" : "rect");
   const [kind, setKind] = useState<Kind>("include");
   const [asArray, setAsArray] = useState(false);
@@ -77,7 +79,8 @@ export function RegionCanvas({ value, onChange, readOnly, src, width, height, re
   };
   const add = (s: RegionShape) => {
     const b = base();
-    const shape: RegionShape = kind === "include" && asArray && arraysSupported ? { ...s, as_array: true } : s;
+    const shape: RegionShape = corners ? { ...s, position: "auto" }
+      : kind === "include" && asArray && arraysSupported ? { ...s, as_array: true } : s;
     const next = { ...b, [kind]: [...b[kind], shape] };
     apply(next);
     setSel({ kind, index: next[kind].length - 1 });
@@ -191,9 +194,9 @@ export function RegionCanvas({ value, onChange, readOnly, src, width, height, re
         const s = it.shape;
         const pts = verts(s);
         const isSel = sel && sel.kind === it.kind && sel.index === it.index;
-        const color = s.as_array ? ARRAY_COLOR : REGION_COLORS[it.kind];
+        const color = s.as_array || corners ? ARRAY_COLOR : REGION_COLORS[it.kind];
         outline(pts, true);
-        g.fillStyle = it.kind === "include" ? (s.as_array ? "rgba(245,158,11,0.12)" : "rgba(22,163,74,0.12)") : "rgba(220,38,38,0.22)";
+        g.fillStyle = it.kind === "include" ? (s.as_array || corners ? "rgba(245,158,11,0.12)" : "rgba(22,163,74,0.12)") : "rgba(220,38,38,0.22)";
         g.fill();
         g.setLineDash(it.kind === "exclude" ? [6, 4] : []);
         g.strokeStyle = isSel ? "#ffffff" : color;
@@ -201,7 +204,7 @@ export function RegionCanvas({ value, onChange, readOnly, src, width, height, re
         g.stroke();
         g.setLineDash([]);
         const n = it.kind === "include" ? ++nIn : ++nEx;
-        const name = s.label || `${t(`ui.region.${it.kind}`)} ${n}`;
+        const name = corners ? cornerName(s, n) : s.label || `${t(`ui.region.${it.kind}`)} ${n}`;
         const [lx, ly] = P([Math.min(...pts.map((p) => p[0])), Math.min(...pts.map((p) => p[1]))]);
         g.font = "600 12px Segoe UI, sans-serif";
         const txt = s.as_array ? `${name}・${t("ui.region.as_array_short")}` : name;
@@ -227,7 +230,7 @@ export function RegionCanvas({ value, onChange, readOnly, src, width, height, re
           : [...draft, ...(hover ? [hover] : [])]).map((p) => toImg(p));
         outline(pts as Pt[], tool === "rect");
         g.setLineDash([6, 4]);
-        g.strokeStyle = kind === "include" && asArray && arraysSupported ? ARRAY_COLOR : REGION_COLORS[kind];
+        g.strokeStyle = corners || (kind === "include" && asArray && arraysSupported) ? ARRAY_COLOR : REGION_COLORS[kind];
         g.lineWidth = 2;
         g.stroke();
       }
@@ -322,6 +325,9 @@ export function RegionCanvas({ value, onChange, readOnly, src, width, height, re
   }, [list, sel, draft, hover, tool, kind, asArray, arraysSupported, readOnly, sx, sy, value, t]);
 
   const overlap = useMemo(() => arrayOverlap(include.filter((s) => s.as_array)), [include]);
+  function cornerName(s: RegionShape, n: number) {
+    return `${t("ui.corner.region")} ${n}・${t(`ui.corner.pos_${s.position || "auto"}`)}`;
+  }
   const selShape = sel ? (sel.kind === "include" ? include : exclude)[sel.index] : null;
   const updateSel = (patch: Partial<RegionShape>) => {
     if (!sel || !selShape) return;
@@ -336,18 +342,18 @@ export function RegionCanvas({ value, onChange, readOnly, src, width, height, re
       {!readOnly && (
         <div className="region-toolbar">
           <div className="seg">
-            {(["pan", "rect", "polygon", "select"] as Tool[]).map((k) => (
+            {((corners ? ["pan", "rect", "select"] : ["pan", "rect", "polygon", "select"]) as Tool[]).map((k) => (
               <button key={k} className={tool === k ? "active" : ""} onClick={() => { setTool(k); setDraft(null); }}>{t(`ui.region.tool_${k}`)}</button>
             ))}
           </div>
-          <div className="seg">
+          {!corners && <div className="seg">
             {(["include", "exclude"] as Kind[]).map((k) => (
               <button key={k} className={kind === k ? "active" : ""} onClick={() => setKind(k)}>
                 <span style={{ color: REGION_COLORS[k] }}>■</span> {t(`ui.region.${k}`)}
               </button>
             ))}
-          </div>
-          {arraysSupported && kind === "include" && (
+          </div>}
+          {!corners && arraysSupported && kind === "include" && (
             <label className="check"><input type="checkbox" checked={asArray} onChange={(e) => setAsArray(e.target.checked)} /> {t("ui.region.as_array")}</label>
           )}
           <button className="btn small" disabled={!past.current.length} onClick={undo} title="Ctrl+Z">{t("ui.region.undo")}</button>
@@ -373,14 +379,24 @@ export function RegionCanvas({ value, onChange, readOnly, src, width, height, re
             return (
               <div key={`${it.kind}${it.index}`} className={`region-item${active ? " active" : ""}`} onClick={() => { setSel({ kind: it.kind, index: it.index }); if (!readOnly) setTool("select"); }}>
                 <div className="row" style={{ gap: "var(--sp-2)" }}>
-                  <span style={{ color: s.as_array ? ARRAY_COLOR : REGION_COLORS[it.kind], fontWeight: 700 }}>■</span>
-                  <strong>{s.label || `${t(`ui.region.${it.kind}`)} ${no}`}</strong>
+                  <span style={{ color: s.as_array || corners ? ARRAY_COLOR : REGION_COLORS[it.kind], fontWeight: 700 }}>■</span>
+                  <strong>{corners ? cornerName(s, no) : s.label || `${t(`ui.region.${it.kind}`)} ${no}`}</strong>
                   <span className="muted" style={{ fontSize: "var(--fs-xs)" }}>{t(`ui.region.${s.type}`)}{s.as_array ? `・${t("ui.region.as_array_short")}` : ""}</span>
                 </div>
                 <div className="mono muted" style={{ fontSize: "var(--fs-xs)" }}>{s.type === "rect"
                   ? `(${Math.round(s.x0!)}, ${Math.round(s.y0!)}) – (${Math.round(s.x1!)}, ${Math.round(s.y1!)})`
                   : `${s.points!.length} ${t("ui.region.points")}`}</div>
-                {active && !readOnly && (
+                {active && !readOnly && corners && (
+                  <div className="stack" style={{ gap: "var(--sp-2)", marginTop: "var(--sp-2)" }} onClick={(e) => e.stopPropagation()}>
+                    <label className="field">{t("ui.corner.position")}
+                      <select value={s.position || "auto"} onChange={(e) => updateSel({ position: e.target.value as RegionShape["position"] })}>
+                        {["auto", "top_left", "top_right", "bottom_left", "bottom_right"].map((p) => <option key={p} value={p}>{t(`ui.corner.pos_${p}`)}</option>)}
+                      </select>
+                    </label>
+                    <div><button className="btn small danger" onClick={() => remove(it.kind, it.index)}>{t("ui.delete")}</button></div>
+                  </div>
+                )}
+                {active && !readOnly && !corners && (
                   <div className="stack" style={{ gap: "var(--sp-2)", marginTop: "var(--sp-2)" }} onClick={(e) => e.stopPropagation()}>
                     <label className="field">{t("ui.region.label")}
                       <input type="text" maxLength={32} value={s.label || ""} placeholder={`${t(`ui.region.${it.kind}`)} ${no}`}
@@ -422,8 +438,8 @@ export function RegionCanvas({ value, onChange, readOnly, src, width, height, re
 // ---------------------------------------------------------------------------
 // 配方編輯器用：選一筆檢測紀錄的影像作為參考影像，並可疊上該紀錄的分析結果
 // ---------------------------------------------------------------------------
-export function RegionEditor({ value, onChange, readOnly, arraysSupported }:
-  { value: Regions | null | undefined; onChange: (v: Regions | null) => void; readOnly: boolean; arraysSupported: boolean }) {
+export function RegionEditor({ value, onChange, readOnly, arraysSupported, mode = "regions" }:
+  { value: Regions | null | undefined; onChange: (v: Regions | null) => void; readOnly: boolean; arraysSupported: boolean; mode?: "regions" | "corners" }) {
   const { t, modules } = useApp();
   const [runs, setRuns] = useState<RunRow[]>([]);
   const [runId, setRunId] = useState<number | null>(value?.reference?.run_id ?? null);
@@ -453,7 +469,7 @@ export function RegionEditor({ value, onChange, readOnly, arraysSupported }:
 
   return (
     <div className="stack">
-      <div className="muted">{t("ui.region.hint")}</div>
+      <div className="muted">{t(mode === "corners" ? "ui.corner.hint" : "ui.region.hint")}</div>
       <label className="field" style={{ maxWidth: 480 }}>{t("ui.region.reference")}
         <select value={runId ?? ""} onChange={(e) => pickRun(Number(e.target.value))}>
           <option value="" disabled>{t("ui.region.pick_reference")}</option>
@@ -466,7 +482,7 @@ export function RegionEditor({ value, onChange, readOnly, arraysSupported }:
       {run ? (
         <RegionCanvas value={value} readOnly={readOnly} arraysSupported={arraysSupported} src={`/api/runs/${run.id}/image?max_size=2048`}
           width={run.width} height={run.height} reference={{ width: run.width, height: run.height, run_id: run.id }} shapes={shapes}
-          onChange={onChange} />
+          onChange={onChange} mode={mode} />
       ) : (
         <div className="muted">{value ? t("ui.region.pick_first") : readOnly ? t("ui.region.none") : t("ui.region.pick_first")}</div>
       )}

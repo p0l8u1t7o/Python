@@ -24,7 +24,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .. import PRODUCT_NAME, __version__
-from ..core import acquisition, inference, plugin
+from ..core import acquisition, die_corner, inference, plugin
 from ..core import regions as regions_mod
 from ..core.calibration import to_display
 from ..core.io import IMAGE_EXTENSIONS, ImageFormatError, load_image
@@ -90,6 +90,14 @@ class ReleaseBody(BaseModel):
 
 class RegionsBody(BaseModel):
     regions: Optional[dict] = None           # 本影像自訂檢測區域；None 表示改回配方區域
+
+
+class CornerBody(BaseModel):
+    clear: bool = False                      # True = 改回自動偵測
+    position: Optional[str] = None           # top_left / top_right / bottom_left / bottom_right
+    x: Optional[float] = None                # 角點 (原始影像像素)
+    y: Optional[float] = None
+    angle_deg: float = 0.0                   # 晶片邊緣相對影像軸的旋轉
 
 
 class WorkspaceParams(BaseModel):
@@ -779,7 +787,8 @@ def create_app(settings, workers=None, watch=True, start=True, enforce_license=T
             h["image_regions"] = bool(h["image_regions"])
             h["reviews"] = db.all("SELECT judgment, comment, reviewer, created_at FROM reviews WHERE run_id = ? "
                                   "ORDER BY id", (h["id"],))
-        return dict(run=_run_row(r), result=result, reviews=reviews, history=history)
+        return dict(run=_run_row(r), result=result, reviews=reviews, history=history,
+                    manual_corner=_manual_corner(r["image_id"]))
 
     @app.get("/api/runs/{run_id}/image")
     def run_image(run_id: int, max_size: int = Query(2048, ge=256, le=8192), low: float = 0.5, high: float = 99.5, _u: str = Depends(require("view"))):
@@ -839,6 +848,37 @@ def create_app(settings, workers=None, watch=True, start=True, enforce_license=T
             return regions_mod.normalize(d) if d else None
         except regions_mod.RegionError as e:
             raise ApiError(400, "invalid_regions", str(e))
+
+    # ---- 本影像手動指定晶片角點 (PLAN-006 第 3.3 節)：只影響圖組計算，單張結果不變 ----
+    def _manual_corner(image_id):
+        row = db.one("SELECT * FROM image_corners WHERE image_id = ? ORDER BY id DESC LIMIT 1", (image_id,))
+        if row is None or row["cleared"]:
+            return None
+        return dict(position=row["position"], x=row["x"], y=row["y"], angle_deg=row["angle_deg"],
+                    actor=row["actor"], created_at=row["created_at"], run_id=row["run_id"])
+
+    @app.put("/api/runs/{run_id}/corner")
+    def set_manual_corner(run_id: int, b: CornerBody, who: str = Depends(require("image_corner"))):
+        r = db.one("SELECT image_id, result_path FROM runs WHERE id = ?", (run_id,))
+        if r is None:
+            raise ApiError(404, "run_not_found", run_id)
+        if b.clear:
+            if _manual_corner(r["image_id"]) is None:
+                return dict(manual_corner=None)
+            db.insert("image_corners", image_id=r["image_id"], run_id=run_id, cleared=1, actor=who, created_at=now())
+            db.audit(who, "image.corner_cleared", "image", r["image_id"], run_id=run_id)
+            return dict(manual_corner=None)
+        with open(r["result_path"], encoding="utf-8") as f:
+            img = json.load(f)["image"]
+        if b.position not in die_corner.POSITIONS or b.x is None or b.y is None:
+            raise ApiError(400, "invalid_request", "position/x/y")
+        if not (0 <= b.x <= img["width"] and 0 <= b.y <= img["height"]) or abs(b.angle_deg) > 10:
+            raise ApiError(400, "invalid_request", "corner out of range")
+        db.insert("image_corners", image_id=r["image_id"], run_id=run_id, position=b.position, x=float(b.x),
+                  y=float(b.y), angle_deg=float(b.angle_deg), cleared=0, actor=who, created_at=now())
+        db.audit(who, "image.corner_manual", "image", r["image_id"], run_id=run_id, position=b.position,
+                 x=round(b.x, 2), y=round(b.y, 2), angle_deg=round(b.angle_deg, 4))
+        return dict(manual_corner=_manual_corner(r["image_id"]))
 
     @app.post("/api/runs/{run_id}/regions/trial")
     def trial_image_regions(run_id: int, b: RegionsBody, who: str = Depends(require("image_regions"))):

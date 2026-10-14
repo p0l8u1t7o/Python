@@ -53,6 +53,8 @@
 | 2026-09-24 | PLAN-003：紀錄頁左清單＋右預覽；已發布配方以「修改」建新版本、發布時挑選重跑範圍（預設舊版本全部影像）；新結果成為目前結果、舊結果標示已被取代；不沿用人工複判；配方編輯器草稿試跑 |
 | 2026-09-30 | PLAN-004：手動檢測不進正式紀錄（工作區暫存、可另存配方草稿與匯出）、工程師以上；正式流程保留配方區域並加檢閱頁單張自訂檢測區域（新紀錄、可追溯）；包含區域可勾選「視為一個陣列」；重新分析預設沿用自訂區域；工作區 7 天未用清除、每人 50 張／2 GB；不做參數並列比較；微凸塊對位升 1.1.1 而非 1.2.0（避免既有已發布配方版本鎖定失效） |
 | 2026-09-30 | README 檢討：空洞預設用模型（範本預設，既有配方不變、不升版）；檢測區域自動對位先觀察現場；先不新增檢測模組；做疊圖依判定著色與標註筆刷（PLAN-005）；操作手冊英文版暫不做 |
+| 2026-10-14 | PLAN-006 晶片角點與圖組量測（v0.3 加 CAD 模式三：四種格式分期、自動對位＋兩點微調、焊墊對位 CAD 量凸塊偏離）：座標關聯「角點定位＋晶片設計尺寸」與「平台座標」都支援；至少一組對角才計算；圖組於介面拖拉形成，資料夾監看可選子資料夾或檔名規則；Batch2 是否同一顆晶片不確定，圖組計算以合成影像驗證 |
+| 2026-10-14 | PLAN-007 焊墊大幅偏移／完全分離：現有等高線法偏移超過「焊墊−凸塊半徑差」即失準，完全分離時量到約 0 且可能判合格；做安全防護（不得判合格，1.1.2）＋雙圓疊加模型（1.2.0，既有配方需重新發布）；安全防護先做，雙圓模型排在 PLAN-006 A、B 之後；超過半個 pitch 列需複判 |
 
 ## 目前狀態
 
@@ -122,6 +124,8 @@
   - `tests/test_manual_inspection.py` 11 項（含預先準備與授權不可分析）；回歸 0 差異。主體已提交 170acce；審閱後追加的預先載入與授權測試見規劃書第 10.1 節。
   - 截圖／操作腳本：Node 24 內建 WebSocket 走 CDP 控制 Edge 無頭模式即可（不需裝套件）；注意 hash 導覽不會重新載入頁面，改 localStorage 後要 `Page.reload`。
 - **PLAN-005（README 檢討後續）已完成**（2026-09-30），規劃書 [docs/review-followups-plan.md](docs/review-followups-plan.md) 第 7 節有完成紀錄，待審閱：空洞新增配方範本預設模型（`template_model_defaults`，模組預設與版本不變）、疊圖「判定標示」圖層（前端 `judgedTargets`、後端 `render.judged_targets`）、標註筆刷／橡皮擦（`web/src/components/maskPoly.ts`）與復原；`tests/test_review_followups.py` 3 項，全部 117 項通過。
+- **PLAN-007（焊墊完全分離）2026-10-14 核准**：[docs/separated-pad-plan.md](docs/separated-pad-plan.md)。第一步安全防護已完成（模組 1.1.2，`separation_check`，第 5.1 節）；已知缺口：bump 超出 pad 但未分離（合成約 8～20 px）仍可能低估並判合格，要靠第二步雙圓模型（1.2.0）。
+- **PLAN-006（晶片角點定位與圖組量測）2026-10-14 核准、執行中**：[docs/die-image-set-plan.md](docs/die-image-set-plan.md)（v0.3 含第 11 節 CAD 模式三）。A 角點偵測已完成（第 12.1 節：`core/die_corner.py`、`core/image_set.py`、結構 8 `image_corners`、權限 `image_corner`、`DieCornerDialog`、`RegionCanvas mode="corners"`、`tests/synthetic_die_set.py`）；下一步 B 計算引擎。待確認事項 Q1～Q7（第 9 節）與 CAD C1～C4（第 11.6 節）。
 - **第 0 階段（平台基礎）已完成**：
   - `xrayvision/` 套件：平台核心、檢測模組介面、微凸塊對位模組、命令列、語系檔。
   - 模組介面規格見 [docs/inspection-module-interface.md](docs/inspection-module-interface.md)（SPEC-001）。

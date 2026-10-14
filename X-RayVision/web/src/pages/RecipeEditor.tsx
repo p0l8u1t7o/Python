@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { get, send } from "../api/client";
-import type { AnalysisResult, RecipeBody, RecipeDiff, RecipeRow, RunDetail, RunRow } from "../api/types";
+import type { AnalysisResult, ImageSetConfig, RecipeBody, RecipeDiff, RecipeRow, Regions, RunDetail, RunRow } from "../api/types";
 import { reasonText, useApp } from "../app/context";
 import { ImageViewer, buildShapes } from "../components/ImageViewer";
 import { Layout } from "../components/Layout";
@@ -148,6 +148,10 @@ export function RecipeEditor() {
             <RegionEditor value={body.regions} readOnly={readOnly} arraysSupported={arraysSupported(body, modules)} onChange={(v) => upd({ regions: v })} />
           </Card>
 
+          <Card title={t("ui.image_set.title")}>
+            <ImageSetForm value={body.image_set} readOnly={readOnly} onChange={(v) => upd({ image_set: v })} />
+          </Card>
+
           <Card title={t("ui.recipe.quality_rules")}>
             <QualityRulesForm body={body} upd={upd} modules={modules} />
           </Card>
@@ -163,6 +167,26 @@ export function RecipeEditor() {
           onReleased={(r) => { setRow(r); setBody(r.body); setDiff(null); }} />
       )}
     </Layout>
+  );
+}
+
+// 圖組量測 (PLAN-006)：啟用後分析時偵測晶片角點；角點搜尋區域沿用檢測區域編輯器 (corners 模式)
+function ImageSetForm({ value, readOnly, onChange }: { value: ImageSetConfig | null | undefined; readOnly: boolean; onChange: (v: ImageSetConfig | null) => void }) {
+  const { t } = useApp();
+  const cfg: ImageSetConfig = value || { enabled: false, reference: null, corner_regions: [] };
+  const regions: Regions | null = cfg.corner_regions.length && cfg.reference
+    ? { reference: cfg.reference, include: cfg.corner_regions.map((r) => ({ ...r })), exclude: [] } : null;
+  const emit = (next: ImageSetConfig) => onChange(!next.enabled && !next.corner_regions.length ? null : next);
+  return (
+    <div className="stack">
+      <label className="check"><input type="checkbox" checked={cfg.enabled} onChange={(e) => emit({ ...cfg, enabled: e.target.checked })} /> {t("ui.image_set.enable")}</label>
+      <div className="muted">{t("ui.image_set.hint")}</div>
+      {(cfg.enabled || regions) && (
+        <RegionEditor value={regions} readOnly={readOnly} arraysSupported={false} mode="corners"
+          onChange={(v) => emit({ ...cfg, reference: v?.reference ?? null,
+            corner_regions: (v?.include || []).map((s) => ({ type: "rect" as const, x0: s.x0!, y0: s.y0!, x1: s.x1!, y1: s.y1!, position: s.position || "auto" })) })} />
+      )}
+    </div>
   );
 }
 

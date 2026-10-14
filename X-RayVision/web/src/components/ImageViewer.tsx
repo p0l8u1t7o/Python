@@ -303,6 +303,20 @@ export function buildShapes(result: AnalysisResult, modules: Record<string, Modu
       }
     }
   }
+  // 晶片角點 (PLAN-006)：兩條晶片邊緣與角點；只找到單一邊緣時以虛線表示
+  const dc = result.die_corner;
+  if (dc) {
+    const color = "#f59e0b", layer = "image_set.die_corner";
+    for (const e of dc.edges) out.push({ kind: "line", layer, color, width: 3, x: e.x0, y: e.y0, x2: e.x1, y2: e.y1 });
+    if (dc.edge_only) {
+      const e = dc.edge_only;
+      out.push({ kind: "line", layer, color, width: 3, x: e.x0, y: e.y0, x2: e.x1, y2: e.y1, dash: true });
+    }
+    if (dc.found && dc.x != null && dc.y != null) {
+      out.push({ kind: "circle", layer, color, width: 3, x: dc.x, y: dc.y, r: 18 });
+      out.push({ kind: "cross", layer, color, width: 2, x: dc.x, y: dc.y, r: 30 });
+    }
+  }
   for (const m of result.modules) {
     const styles = modules[m.module_id]?.overlay_styles || {};
     const unused = styles.unused || { color: "#969696", thickness: 1 };

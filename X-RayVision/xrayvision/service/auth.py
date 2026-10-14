@@ -36,6 +36,7 @@ PERMISSIONS = {
     "annotate": "engineer",             # 標註空洞、匯出訓練資料
     "manual_inspect": "engineer",       # 手動檢測 (工作區，結果不寫入正式紀錄；PLAN-004)
     "image_regions": "engineer",        # 本影像自訂檢測區域並重新分析 (PLAN-004)
+    "image_corner": "engineer",         # 本影像手動指定晶片角點 (PLAN-006)
     "user_manage": "admin",             # 帳號管理
     "settings": "admin",                # 系統設定、資料保留
     "license": "admin",                 # 授權
