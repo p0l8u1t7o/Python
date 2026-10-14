@@ -53,6 +53,15 @@ DEFAULTS = dict(
     lobe_r_ratio=(0.6, 1.8), # 自由擬合焊墊半徑 / 凸塊半徑 合理範圍
     shift_tol=0.5,           # 整體偏移內點容差下限 (px)
     shift_k=3.0,             # 內點容差 = max(shift_tol, shift_k x 1.4826 x MAD)
+    # 焊墊分離安全檢查 (PLAN-007 第 2.1 節)：門檻依 Batch1／Batch2 (孤立焊墊比例 0.04～0.21、低對比位點 ≤ 0.03)
+    # 與合成影像 (偏移 >= 24 px 時孤立焊墊比例 >= 1.27；焊墊被當成凸塊時低對比位點 0.5) 訂定
+    sep_min_sites=10,        # 可採用位點少於此數不檢查
+    sep_pad_scale=1.15,      # 焊墊尺度 / R0 (只用於尋找淡圓盤)
+    sep_min_amp=0.15,        # 淡圓盤振幅下限 / 凸塊核心對比中位數
+    sep_orphan_frac=0.5,     # 孤立焊墊數 / 可採用位點 >= 此值，且方向一致 → 焊墊分離
+    sep_coherence=0.6,       # 孤立焊墊相對最近凸塊的方向一致性 (0～1)
+    sep_orphan_frac_any=0.8, # 孤立焊墊比例 >= 此值時不論方向 (接近半個 pitch 時方向會分裂)
+    sep_low_contrast=0.25,   # 低對比位點比例 >= 此值 → 焊墊被當成凸塊
 )
 
 
@@ -472,7 +481,7 @@ def analyze(A, kind, cfg, in_region=None, array_of=None):
     if in_region is not None:
         bumps = [b for b in bumps if in_region(b[0], b[1])]
     out = dict(R0=R0, n_cand=len(bumps), n_balls=len(balls), sites=[], rejects={}, rejected=[], arrays=[],
-               est=None, grade="", metrics={})
+               est=None, grade="", metrics={}, separation=None)
     if R0 is None:
         return out
     # 遮罩：大球 + 每顆候選圓盤 (量測時把自己放回來)
@@ -537,6 +546,62 @@ def analyze(A, kind, cfg, in_region=None, array_of=None):
     est_all = estimate([s for s in sites if s["used"]], cfg, mark=False)
     out.update(sites=sites, rejects=rejects, rejected=rejected, arrays=arrays, est=est_all, grade=grade(est_all))
     out["metrics"] = quality_metrics(out)
+    out["separation"] = separation_check(A, bumps, balls, R0, [s for s in sites if s["used"]],
+                                         out["metrics"].get("pitch_px"), cfg)
+    return out
+
+
+def separation_check(A, bumps, balls, R0, used, pitch, cfg):
+    """
+    焊墊分離安全檢查 (不改變量測結果)。現有量測以「凸塊 ∪ 焊墊」的聯集外緣求焊墊圓，焊墊大幅偏移或完全分離時
+    會量到接近 0 的偏移；此檢查找出這種情形，讓判定最多為需複判。兩種訊號：
+      孤立焊墊：遮掉凸塊與大球後，在焊墊尺度找淡圓盤；位於凸塊外側 (半個 pitch 內) 的數量相對可採用位點的比例，
+                以及它們相對最近凸塊的方向一致性 (同一陣列的焊墊整體往同一方向偏)
+      低對比位點：可採用位點的核心對比分成強、弱兩群 (分離的焊墊被當成凸塊量測)
+    回傳 dict：suspected、orphan_ratio、coherence、orphan_vector (中位數，px)、low_contrast_ratio
+    """
+    out = dict(suspected=False, orphan_ratio=0.0, coherence=0.0, orphan_vector=None, low_contrast_ratio=0.0)
+    if len(used) < cfg["sep_min_sites"]:
+        return out
+    con = np.array([s["contrast"] for s in used])
+    out["low_contrast_ratio"] = float(np.mean(con < 0.5 * np.percentile(con, 75)))
+    H, W = A.shape
+    # 遮掉凸塊候選與大球，以鄰近背景補洞 (正規化卷積)
+    m = np.ones((H, W), np.float32)
+    for (x, y, r, _) in bumps:
+        cv2.circle(m, (int(round(x)), int(round(y))), int(round(r + cfg["nb_margin"] + 1)), 0, -1)
+    for (x, y, r, _) in balls:
+        cv2.circle(m, (int(round(x)), int(round(y))), int(round(r * cfg["ball_margin"] + cfg["nb_margin"])), 0, -1)
+    fill = cv2.GaussianBlur(A * m, (0, 0), R0) / np.maximum(cv2.GaussianBlur(m, (0, 0), R0), 1e-3)
+    F = np.where(m > 0, A, fill).astype(np.float32)
+    # 焊墊尺度的 LoG，換算成圓盤振幅 (以理想圓盤的響應為 1)
+    Rp = cfg["sep_pad_scale"] * R0
+    sg = Rp / np.sqrt(2)
+    lap = -cv2.Laplacian(cv2.GaussianBlur(F, (0, 0), sg), cv2.CV_32F, ksize=3) * sg * sg
+    k = int(Rp * 4) | 1
+    disc = np.zeros((k, k), np.float32)
+    cv2.circle(disc, (k // 2, k // 2), int(round(Rp)), 1, -1)
+    ref = float((-cv2.Laplacian(cv2.GaussianBlur(disc, (0, 0), sg), cv2.CV_32F, ksize=3) * sg * sg)[k // 2, k // 2])
+    amp = lap / ref
+    w = int(R0) | 1
+    peaks = np.argwhere((amp >= cv2.dilate(amp, np.ones((w, w), np.uint8)) - 1e-9) & (m > 0)
+                        & (amp >= cfg["sep_min_amp"] * float(np.median(con))))
+    bxy = np.array([[s["bump"]["x"], s["bump"]["y"]] for s in used])
+    pitch = pitch or 3 * R0
+    vecs = []
+    for (py, px) in peaks:
+        d = np.hypot(bxy[:, 0] - px, bxy[:, 1] - py)
+        j = int(np.argmin(d))
+        if R0 + cfg["nb_margin"] < d[j] < 0.75 * pitch:
+            vecs.append((px - bxy[j, 0], py - bxy[j, 1]))
+    if vecs:
+        v = np.array(vecs, float)
+        u = v / np.linalg.norm(v, axis=1, keepdims=True)
+        out.update(orphan_ratio=len(v) / len(used), coherence=float(np.linalg.norm(u.mean(0))),
+                   orphan_vector=[float(x) for x in np.median(v, axis=0)])
+    out["suspected"] = bool((out["orphan_ratio"] >= cfg["sep_orphan_frac"] and out["coherence"] >= cfg["sep_coherence"])
+                            or out["orphan_ratio"] >= cfg["sep_orphan_frac_any"]
+                            or out["low_contrast_ratio"] >= cfg["sep_low_contrast"])
     return out
 
 

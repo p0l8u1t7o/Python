@@ -965,5 +965,6 @@
   "ui.annot.tool.eraser": "Eraser",
   "ui.annot.brush_size": "Brush size",
   "ui.annot.help.brush": "Paint over a ball to add void areas; strokes touching an existing void are merged. Use [ ] to change the brush size, scroll to zoom, drag with Shift or the middle button to pan; Ctrl+Z/Ctrl+Y to undo/redo.",
-  "ui.annot.help.eraser": "Painted areas are removed from voids; a void can be split in two. Use [ ] to change the size; drag with Shift or the middle button to pan."
+  "ui.annot.help.eraser": "Painted areas are removed from voids; a void can be split in two. Use [ ] to change the size; drag with Shift or the middle button to pan.",
+  "reason.pad_separation_suspected": "Pads appear largely offset from or separated from the bumps; the offset may be underestimated and requires manual review"
 }

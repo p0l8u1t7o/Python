@@ -29,7 +29,7 @@ _BOTH = (KIND_RAW16, KIND_RGB8)
 @register
 class BumpAlignment(InspectionModule):
     module_id = "bump_alignment"
-    version = "1.1.1"
+    version = "1.1.2"
     names = {"zh-TW": "微凸塊對位", "en": "Micro Bump Alignment"}
     supported_kinds = _BOTH
     supports_region_arrays = True
@@ -143,7 +143,9 @@ class BumpAlignment(InspectionModule):
                               candidates=res["n_cand"], large_balls=res["n_balls"],
                               sites_measured=len(res["sites"]), sites_used=len(used),
                               lobe_sites=sum(s["pad"]["mode"] == "lobe" for s in used),
-                              pixel_size_um=px_um, pixel_size_source=px_src)
+                              pixel_size_um=px_um, pixel_size_source=px_src, pad_separation=res["separation"])
+        if res["separation"] and res["separation"]["suspected"]:
+            result.reasons.append("pad_separation_suspected")
         if res["est"] is None:
             result.status = STATUS_NO_RESULT
             result.reasons.append("insufficient_sites")
@@ -181,6 +183,12 @@ class BumpAlignment(InspectionModule):
             elif mag + k * se > limit and level != JUDGE_FAIL:
                 level = JUDGE_REVIEW
                 reasons.append(f"die_shift_near_limit:{name}")
+        # 焊墊疑似大幅偏移或分離：現有量測方法會低估偏移，不得判合格 (PLAN-007)；
+        # 已超出規格時維持不合格 (實際偏移只會更大)
+        if ((result.summary or {}).get("pad_separation") or {}).get("suspected"):
+            reasons.append("pad_separation_suspected")
+            if level == JUDGE_PASS:
+                level = JUDGE_REVIEW
         return level, reasons
 
 

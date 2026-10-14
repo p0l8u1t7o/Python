@@ -965,5 +965,6 @@
   "ui.annot.tool.eraser": "橡皮擦",
   "ui.annot.brush_size": "筆刷大小",
   "ui.annot.help.brush": "在焊點上塗抹新增空洞區域，與既有空洞相接時合併。[ ] 調整筆刷大小；滾輪縮放，按住 Shift 或中鍵拖曳平移；Ctrl+Z／Ctrl+Y 復原／重做。",
-  "ui.annot.help.eraser": "塗抹處從空洞區域扣除，可把一個空洞切成兩個。[ ] 調整大小；按住 Shift 或中鍵拖曳平移。"
+  "ui.annot.help.eraser": "塗抹處從空洞區域扣除，可把一個空洞切成兩個。[ ] 調整大小；按住 Shift 或中鍵拖曳平移。",
+  "reason.pad_separation_suspected": "焊墊疑似大幅偏移或與凸塊分離，偏移量可能被低估，請人工確認"
 }
